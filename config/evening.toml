@@ -8,6 +8,10 @@
 # bark from the rock, raise a frame on open ground, and lay the bark
 # before the rain. A slower attempt still has the overhang.
 rain_starts_at = 16
+# While rain is already falling, this tick makes open rain heavier.
+# Wood left in the open soaks twice as fast. A rock overhang or a bark
+# roof is unchanged, and nothing dries.
+season_at = 18
 # A drag occupies the body until the next window closes.
 drag_ticks = 1
 frame_phase_ticks = 1

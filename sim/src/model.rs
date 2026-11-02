@@ -293,6 +293,7 @@ pub enum Wake {
     Fire(FireId),
     Illness,
     Deer,
+    Season,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -362,6 +363,9 @@ pub struct World {
     pub seed: u64,
     pub time: u64,
     pub raining: bool,
+    /// Open rain soaks wood twice as fast once this is set. Shelter does not change.
+    #[serde(default)]
+    pub wet_season: bool,
     pub first_rain: Option<EventId>,
     pub next_actor: ActorId,
     pub next_item: ItemId,
@@ -425,6 +429,7 @@ impl World {
             seed,
             time: 0,
             raining: false,
+            wet_season: false,
             first_rain: None,
             next_actor: 1,
             next_item: 1,
@@ -454,6 +459,7 @@ impl World {
         };
         let rain_at = world.tuning.rain_starts_at;
         world.schedule(rain_at, Wake::Rain);
+        world.schedule(world.tuning.season_at, Wake::Season);
         world.schedule(0, Wake::Thirst);
         world.schedule(0, Wake::Hunger);
         world.schedule(0, Wake::Illness);

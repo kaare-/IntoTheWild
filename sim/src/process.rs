@@ -26,7 +26,71 @@ impl World {
                 Wake::Work(id) => self.complete_work(id),
                 Wake::Fire(id) => self.burn_down(id),
                 Wake::Deer => self.apply_deer(),
+                Wake::Season => self.apply_season(),
             }
+        }
+    }
+
+    /// One change of season. Open rain soaks wood twice as fast from now on.
+    /// A roof and the rock overhang keep the gains they already had.
+    fn apply_season(&mut self) {
+        if self.wet_season {
+            return;
+        }
+        self.wet_season = true;
+        if !self.raining {
+            return;
+        }
+        for cell in self.open_wood_cells() {
+            self.emit(
+                "The rain is heavier this season.",
+                Scope::Cell(cell),
+                vec![],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
+    }
+
+    fn open_wood_cells(&self) -> Vec<CellId> {
+        let mut cells = Vec::new();
+        for pile in &self.piles {
+            if pile.count == 0 || self.exposure_millis(pile.cell) < 1000 {
+                continue;
+            }
+            if matches!(
+                pile.material,
+                Material::Branch | Material::Bark | Material::Log
+            ) {
+                cells.push(pile.cell);
+            }
+        }
+        for item in self.items.values() {
+            if item.role != Role::Loose || item.carrier.is_some() {
+                continue;
+            }
+            if self.exposure_millis(item.cell) < 1000 {
+                continue;
+            }
+            if matches!(
+                item.material,
+                Material::Branch | Material::Bark | Material::Log
+            ) {
+                cells.push(item.cell);
+            }
+        }
+        cells.sort_unstable();
+        cells.dedup();
+        cells
+    }
+
+    fn season_gain(&self, gain: u32, open_sky: bool) -> u32 {
+        if self.wet_season && open_sky {
+            gain.saturating_mul(2).min(1000)
+        } else {
+            gain
         }
     }
 
@@ -200,9 +264,10 @@ impl World {
             .piles
             .iter()
             .map(|pile| {
+                let exposure = self.exposure_millis(pile.cell);
                 self.wet_add(
-                    self.tuning.rain_gain(pile.material),
-                    self.exposure_millis(pile.cell),
+                    self.season_gain(self.tuning.rain_gain(pile.material), exposure >= 1000),
+                    exposure,
                 )
             })
             .collect();
@@ -214,11 +279,14 @@ impl World {
         let item_gains: Vec<(ItemId, u32)> = item_ids
             .iter()
             .map(|id| {
+                let item = self.item(*id).unwrap();
+                let exposure = self.item_exposure(*id);
+                let open_sky = exposure >= 1000 && item.role != Role::BarkCover;
                 (
                     *id,
                     self.wet_add(
-                        self.tuning.rain_gain(self.item(*id).unwrap().material),
-                        self.item_exposure(*id),
+                        self.season_gain(self.tuning.rain_gain(item.material), open_sky),
+                        exposure,
                     ),
                 )
             })
@@ -234,7 +302,11 @@ impl World {
             .iter()
             .map(|id| {
                 let cell = self.actor(*id).unwrap().cell;
-                let mut gain = self.wet_add(self.tuning.body_rain, self.exposure_millis(cell));
+                let exposure = self.exposure_millis(cell);
+                let mut gain = self.wet_add(
+                    self.season_gain(self.tuning.body_rain, exposure >= 1000),
+                    exposure,
+                );
                 if self.cell(cell).region == Region::Brook {
                     gain += self.tuning.brook_rain;
                 }

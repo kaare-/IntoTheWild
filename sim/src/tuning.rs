@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tuning {
     pub rain_starts_at: u64,
+    #[serde(default = "default_season_at")]
+    pub season_at: u64,
     pub drag_ticks: u64,
     pub frame_phase_ticks: u64,
     pub frame_phases: u8,
@@ -57,6 +59,9 @@ pub struct Tuning {
 fn default_fire_ticks() -> u64 {
     8
 }
+fn default_season_at() -> u64 {
+    18
+}
 fn default_hunger_tick() -> u32 {
     10
 }
@@ -100,6 +105,7 @@ struct RawFile {
 #[derive(Deserialize)]
 struct RawTime {
     rain_starts_at: u64,
+    season_at: u64,
     drag_ticks: u64,
     frame_phase_ticks: u64,
     frame_phases: u8,
@@ -186,6 +192,7 @@ impl Tuning {
         let water = raw.materials.get("water").ok_or("missing material water")?;
         Ok(Tuning {
             rain_starts_at: raw.time.rain_starts_at,
+            season_at: raw.time.season_at,
             drag_ticks: raw.time.drag_ticks,
             frame_phase_ticks: raw.time.frame_phase_ticks,
             frame_phases: raw.time.frame_phases,

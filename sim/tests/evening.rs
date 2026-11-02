@@ -895,3 +895,76 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
         .examine(walker, ExamineTarget::Deer)
         .contains("cannot see a deer"));
 }
+
+#[test]
+fn the_wet_season_makes_open_rain_heavier_and_stays_local() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let sera = world.spawn_at("Sera", "s", 4, 3).unwrap();
+    let otto = world.spawn_at("Otto", "o", 0, 4).unwrap();
+    while world.sim_time() < 18 {
+        world.step(&[]);
+    }
+    assert!(world.is_raining());
+    assert!(!world.wet_season);
+    let before = world.examine(sera, ExamineTarget::Wood);
+    assert!(before.contains("damp"), "{before}");
+    assert!(!before.contains("soaked"), "{before}");
+    assert!(before.contains("dry"), "{before}");
+    assert!(!before.contains("heavier"));
+    assert!(!world.observe(sera).unwrap().text.contains("heavier"));
+    assert_eq!(
+        world.examine(otto, ExamineTarget::Wood),
+        "You see no wood from here."
+    );
+
+    world.step(&[]);
+    assert!(world.wet_season);
+    let after = world.examine(sera, ExamineTarget::Wood);
+    assert!(after.contains("soaked"), "{after}");
+    assert!(after.contains("dry"), "{after}");
+    assert!(
+        after.contains("The rain is heavier on it this season."),
+        "{after}"
+    );
+    assert!(after.contains("Rain does not reach it."));
+    let seen = world.observe(sera).unwrap();
+    assert!(seen
+        .text
+        .contains("The rain is heavier on the wood this season."));
+    assert!(seen
+        .events
+        .iter()
+        .any(|event| event.text == "The rain is heavier this season."));
+    let far = world.observe(otto).unwrap();
+    assert!(!far.text.contains("heavier"));
+    assert!(far
+        .events
+        .iter()
+        .all(|event| !event.text.contains("heavier")));
+    assert_eq!(
+        world.examine(otto, ExamineTarget::Wood),
+        "You see no wood from here."
+    );
+    let announced = world
+        .event_log()
+        .iter()
+        .filter(|event| event.text == "The rain is heavier this season.")
+        .count();
+    world.step(&[]);
+    assert_eq!(
+        world
+            .event_log()
+            .iter()
+            .filter(|event| event.text == "The rain is heavier this season.")
+            .count(),
+        announced
+    );
+
+    let mut twin = World::valley(Tuning::evening(), 1);
+    twin.spawn_at("Sera", "s", 4, 3).unwrap();
+    twin.spawn_at("Otto", "o", 0, 4).unwrap();
+    while twin.sim_time() < world.sim_time() {
+        twin.step(&[]);
+    }
+    assert_eq!(world, twin);
+}

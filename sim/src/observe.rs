@@ -171,6 +171,9 @@ impl World {
         let actor = self.actor(actor_id).unwrap();
         let mut lines = Vec::new();
         lines.push(self.sky_line().to_string());
+        if let Some(season) = self.season_line(actor_id) {
+            lines.push(season);
+        }
         lines.push(self.here_text(actor_id));
         lines.push(self.self_text(actor_id));
         if let Some(work) = self.work_view(actor_id) {
@@ -181,6 +184,28 @@ impl World {
             lines.push(self.adjacent_line(actor.cell, dir));
         }
         lines.join("\n")
+    }
+
+    fn season_line(&self, viewer: ActorId) -> Option<String> {
+        if !self.wet_season || !self.raining {
+            return None;
+        }
+        let sees_open_wood = self.visible_cell_ids(viewer).iter().any(|cell| {
+            self.exposure_millis(*cell) >= 1000
+                && (self.pile_count(*cell, Material::Branch) > 0
+                    || self.pile_count(*cell, Material::Bark) > 0
+                    || self.pile_count(*cell, Material::Log) > 0
+                    || self.items.values().any(|item| {
+                        item.cell == *cell
+                            && item.carrier.is_none()
+                            && item.role == Role::Loose
+                            && matches!(
+                                item.material,
+                                Material::Branch | Material::Bark | Material::Log
+                            )
+                    }))
+        });
+        sees_open_wood.then(|| "The rain is heavier on the wood this season.".to_string())
     }
 
     fn sky_line(&self) -> &'static str {
@@ -356,10 +381,11 @@ impl World {
                     _ => ("wood", "is"),
                 };
                 lines.push(format!(
-                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}",
+                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}",
                     self.place_phrase(origin, cell),
                     self.condition_word(self.pile_moisture(cell, material)),
-                    self.rain_reaches_phrase(cell)
+                    self.rain_reaches_phrase(cell),
+                    self.heavier_rain_clause(cell, material)
                 ));
             }
             let loose: Vec<_> = self
@@ -376,12 +402,13 @@ impl World {
             if !loose.is_empty() {
                 let worst = loose.iter().copied().max().unwrap_or(0);
                 lines.push(format!(
-                    "{} loose {} {} in contact with the ground {}. {}",
+                    "{} loose {} {} in contact with the ground {}. {}{}",
                     loose.len(),
                     pile_noun(material, loose.len() as u32),
                     if loose.len() == 1 { "is" } else { "are" },
                     self.place_phrase(origin, cell),
-                    self.condition_sentence(worst, cell)
+                    self.condition_sentence(worst, cell),
+                    self.heavier_rain_clause(cell, material)
                 ));
             }
         }
@@ -589,6 +616,18 @@ impl World {
             "You see no frame from here.".into()
         } else {
             lines.join("\n")
+        }
+    }
+
+    fn heavier_rain_clause(&self, cell: CellId, material: Material) -> &'static str {
+        if self.wet_season
+            && self.raining
+            && self.exposure_millis(cell) >= 1000
+            && matches!(material, Material::Branch | Material::Bark | Material::Log)
+        {
+            " The rain is heavier on it this season."
+        } else {
+            ""
         }
     }
 

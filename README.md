@@ -39,6 +39,8 @@ Thirst rises every tick, whether or not anyone is here. Rain wets clothes and do
 
 A deer is already on the trail at (2,3). It walks one cell every tick, including when nobody has sent a command, along the trail and then to the berries under the rock. If it is standing on a pile of berries it eats one handful and stays for that tick. The handful leaves the pile. It is not a new item. The cell it walks off keeps hoofprints, and those prints stay. `examine deer` and `examine tracks` are the same examine command as the wood and the fire. There is no separate animal command. A person sees the deer, the prints, and what it just did only inside their own sight. Someone who arrives later can still find the prints.
 
+The wet season arrives at tick 18, while the rain is already falling, whether or not anyone has sent a command. From then on, rain in the open soaks wood twice as fast. The rock overhang and a bark roof keep the same shelter. Nothing dries. Someone who can see that open wood reads "The rain is heavier on the wood this season." Someone who cannot see it does not get that line, or the event on that ground. The commands stay the same.
+
 ## An evening
 
 Rain starts at tick 16. One person can still roof a frame before that if they take three branches and bark from under the rock and build on open ground. The open pile at (5,2) and the dry pile under the rock are the comparison. Two people can drag the log; one cannot.
@@ -83,9 +85,10 @@ Run from this workspace on 2 November 2026.
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | Pass. 17 simulation tests and the in-process restart test. |
+| `cargo test --workspace` | Pass. 18 simulation tests and the in-process restart test. |
 | Waterborne illness through the player API (manual server, seed 1, two clients) | Pass. One raw drink at the brook made Sera ill. The same command id did not drink again. Otto did not see her stomach turn. Boiling over the rock fire left her ill and did not sicken her again. Five empty advances later she was well. |
 | Deer through the player API (manual server, seed 1, two clients) | Pass. An empty advance moved the deer east and left hoofprints on (2,3). Sera saw it eat one handful under the rock; that pile went from 4 to 3. Otto at (0,0) had neither the deer nor that eat. He later stood on (2,3), found the hoofprints, and could not see the deer. Examine did not advance the clock. The scripted policy returned `e`, which was already allowed. |
+| Wet season through the player API (manual server, seed 1, two clients) | Pass. Empty advances reached tick 18 with the open branches damp and no season line. The next empty advance soaked that pile and Sera read "The rain is heavier on the wood this season." The rock pile stayed dry. Otto at (0,4) still saw no wood and no heavier-rain line. The announcement did not repeat on the next tick. Examine did not advance the clock. The scripted policy returned `e` and `n`, both already allowed. |
 | Rain evening through the player API (`python3 agent/evening_session.py` against `--manual`) | Pass. Dry rock pile, soaked open pile, bark roof, distant slice, duplicate grab id. |
 | Opposite HTTP receive order for the same drag (`python3 agent/order_check.py`, seed 7) | Pass. Both orders finished at (4,2). |
 | One branch, and an interrupted drag | Pass in `sim/tests/evening.rs`. The evening session also interrupted a live drag before it landed. |
@@ -114,5 +117,4 @@ The browser check used Chrome against `http://127.0.0.1:18431` with `--window-se
 
 ## Follow-ups
 
-1. Seasons.
-2. Decay of wet wood and abandoned frames.
+1. Decay of wet wood, abandoned frames, and hoofprints.
