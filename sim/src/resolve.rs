@@ -41,6 +41,8 @@ impl World {
         let mut raises = Vec::new();
         let mut barks = Vec::new();
         let mut drinks = Vec::new();
+        let mut lights = Vec::new();
+        let mut cooks = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -71,6 +73,8 @@ impl World {
                         Attempt::RaiseFrame => raises.push(intent),
                         Attempt::LayBark => barks.push(intent),
                         Attempt::Drink => drinks.push(intent),
+                        Attempt::Light => lights.push(intent),
+                        Attempt::Cook => cooks.push(intent),
                     }
                 }
             }
@@ -149,6 +153,8 @@ impl World {
         self.apply_raises(raises, &mut results);
         self.apply_barks(barks, &mut results);
         self.apply_drinks(drinks, &mut results);
+        self.apply_lights(lights, &start_cells, &mut results);
+        self.apply_cooks(cooks, &mut results);
         results
     }
 
@@ -186,6 +192,28 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if self.cell(actor.cell).region != crate::model::Region::Brook {
                     Err("The brook is not here.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Light => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if let Some(message) = self.light_refusal(actor.id) {
+                    Err(message)
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Cook => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if let Some(message) = self.cook_refusal(actor.id) {
+                    Err(message)
                 } else {
                     Ok(true)
                 }
@@ -333,6 +361,7 @@ impl World {
                 Material::Branch => "branch",
                 Material::Bark => "sheet of bark",
                 Material::Log => "log",
+                Material::Berry => "handful of berries",
             };
             for intent in claims {
                 let hash = contest_hash(self.seed, self.time, "gather", &subject, intent.actor_id);
@@ -417,6 +446,7 @@ impl World {
                 Material::Branch => "branch",
                 Material::Bark => "sheet of bark",
                 Material::Log => "log",
+                Material::Berry => "handful of berries",
             };
             self.emit(
                 format!("{name} drops a {noun}. It is in contact with the ground."),
@@ -810,6 +840,240 @@ impl World {
         }
     }
 
+    pub(crate) fn light_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
+        let person = self.actor(actor)?;
+        if self.raining && self.exposure_millis(person.cell) >= 1000 {
+            return Some("The rain puts the bark out before it catches.".into());
+        }
+        if self.fire_at(person.cell).is_some() {
+            return Some("A fire already burns here.".into());
+        }
+        if !self.has_dry(actor, Material::Bark) {
+            return Some(if self.has_material_at_hand(actor, Material::Bark) {
+                "The bark is too damp to catch.".into()
+            } else {
+                "You need dry loose bark for tinder.".into()
+            });
+        }
+        if !self.has_dry(actor, Material::Branch) {
+            return Some(if self.has_material_at_hand(actor, Material::Branch) {
+                "The branch is too damp to burn.".into()
+            } else {
+                "You need a dry branch for the fire.".into()
+            });
+        }
+        None
+    }
+
+    pub(crate) fn cook_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
+        let person = self.actor(actor)?;
+        if self.fire_at(person.cell).is_none() {
+            return Some("There is no fire burning here.".into());
+        }
+        if self.loose_ids(actor, Material::Berry).is_empty()
+            && self.pile_count(person.cell, Material::Berry) == 0
+        {
+            return Some("There are no berries here to cook.".into());
+        }
+        None
+    }
+
+    fn apply_lights(
+        &mut self,
+        lights: Vec<Intent>,
+        start_cells: &BTreeMap<crate::model::ActorId, crate::model::CellId>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let mut groups: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
+        for intent in lights {
+            let cell = start_cells.get(&intent.actor_id).copied().unwrap_or(0);
+            groups.entry(cell).or_default().push(intent);
+        }
+        for (cell, mut claims) in groups {
+            let subject = format!("{cell}:fire");
+            claims.sort_by(|a, b| {
+                let left = contest_hash(self.seed, self.time, "light", &subject, a.actor_id);
+                let right = contest_hash(self.seed, self.time, "light", &subject, b.actor_id);
+                left.cmp(&right).then(a.actor_id.cmp(&b.actor_id))
+            });
+            let mut lit = self.fire_at(cell).is_some();
+            for intent in claims {
+                let hash = contest_hash(self.seed, self.time, "light", &subject, intent.actor_id);
+                let draw = Some(Draw {
+                    tag: "light".into(),
+                    subject: subject.clone(),
+                    value: hash,
+                });
+                if lit || self.light_refusal(intent.actor_id).is_some() {
+                    let message = self
+                        .light_refusal(intent.actor_id)
+                        .unwrap_or_else(|| "A fire already burns here.".into());
+                    self.finish(intent.command_id, intent.actor_id, false, message, results);
+                    continue;
+                }
+                let bark = self.consume_dry(intent.actor_id, Material::Bark);
+                let branch = self.consume_dry(intent.actor_id, Material::Branch);
+                let (Ok(bark_item), Ok(branch_item)) = (bark, branch) else {
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        false,
+                        "You need dry loose bark and a dry branch.",
+                        results,
+                    );
+                    continue;
+                };
+                let name = self.name_of(intent.actor_id);
+                let event = self.emit(
+                    format!("{name} lights a fire with bark and a dry branch."),
+                    Scope::Cell(cell),
+                    vec![intent.actor_id],
+                    vec![cell],
+                    bark_item.into_iter().chain(branch_item).collect(),
+                    vec![],
+                    draw,
+                );
+                self.mint_fire(cell, event);
+                lit = true;
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    true,
+                    "You light a fire with bark and a dry branch.",
+                    results,
+                );
+            }
+        }
+    }
+
+    fn apply_cooks(&mut self, cooks: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let mut carried = Vec::new();
+        let mut piles: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
+        for intent in cooks {
+            if self.loose_ids(intent.actor_id, Material::Berry).is_empty() {
+                let cell = self
+                    .actor(intent.actor_id)
+                    .map(|actor| actor.cell)
+                    .unwrap_or(0);
+                piles.entry(cell).or_default().push(intent);
+            } else {
+                carried.push(intent);
+            }
+        }
+        for intent in carried {
+            self.cook_for(intent, None, "", results);
+        }
+        for (cell, mut claims) in piles {
+            let available = self.pile_count(cell, Material::Berry);
+            let subject = format!("{cell}:berry");
+            claims.sort_by(|a, b| {
+                let left = contest_hash(self.seed, self.time, "cook", &subject, a.actor_id);
+                let right = contest_hash(self.seed, self.time, "cook", &subject, b.actor_id);
+                left.cmp(&right).then(a.actor_id.cmp(&b.actor_id))
+            });
+            let winners: BTreeSet<_> = claims
+                .iter()
+                .take(available as usize)
+                .map(|intent| intent.actor_id)
+                .collect();
+            for intent in claims {
+                let hash = contest_hash(self.seed, self.time, "cook", &subject, intent.actor_id);
+                if winners.contains(&intent.actor_id) {
+                    self.cook_for(intent, Some(hash), &subject, results);
+                } else {
+                    let name = self.name_of(intent.actor_id);
+                    self.emit(
+                        format!(
+                            "{name} reaches for the berries, but another hand is already there."
+                        ),
+                        Scope::Cell(cell),
+                        vec![intent.actor_id],
+                        vec![cell],
+                        vec![],
+                        vec![],
+                        Some(Draw {
+                            tag: "cook".into(),
+                            subject: subject.clone(),
+                            value: hash,
+                        }),
+                    );
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        false,
+                        "There are no berries left to cook.",
+                        results,
+                    );
+                }
+            }
+        }
+    }
+
+    fn cook_for(
+        &mut self,
+        intent: Intent,
+        draw: Option<u64>,
+        subject: &str,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if self.cook_refusal(intent.actor_id).is_some() {
+            let message = self
+                .cook_refusal(intent.actor_id)
+                .unwrap_or_else(|| "There is no fire burning here.".into());
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let Ok(item) = self.consume_food(intent.actor_id) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There are no berries here to cook.",
+                results,
+            );
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            format!("{name} cooks a handful of berries over the fire."),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            item.into_iter().collect(),
+            fire_event,
+            draw.map(|value| Draw {
+                tag: "cook".into(),
+                subject: subject.to_string(),
+                value,
+            }),
+        );
+        let message = if before == 0 {
+            "You cook a handful of berries. You were not hungry."
+        } else if after < self.tuning.hungry_at {
+            "You cook a handful of berries. The hunger eases."
+        } else {
+            "You cook a handful of berries. You are still hungry."
+        };
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
     fn apply_drinks(&mut self, drinks: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in drinks {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -846,13 +1110,7 @@ impl World {
             } else {
                 "You drink from the brook. You are still thirsty."
             };
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                true,
-                message,
-                results,
-            );
+            self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
     }
 

@@ -13,6 +13,9 @@ drag_ticks = 1
 frame_phase_ticks = 1
 frame_phases = 3
 bark_ticks = 1
+# A fire lit with dry bark and a dry branch burns this many ticks, then goes out.
+# Rain in the open puts it out sooner. A rock overhang or a bark roof keeps it.
+fire_ticks = 8
 
 [body]
 # Fractions of a full soaking (1.0) applied when exposure is total.
@@ -27,6 +30,13 @@ thirst_per_tick = 0.01
 drink_relief = 0.45
 thirsty_at = 0.25
 parched_at = 0.60
+# Hunger rises every tick, with or without a command. Bark is tinder, not
+# food. Cooking one handful of berries over a burning fire takes off 0.45.
+# Raw berries do not. Rain does not feed you.
+hunger_per_tick = 0.01
+cook_relief = 0.45
+hungry_at = 0.25
+starving_at = 0.60
 carry_slots = 4
 sight = 2
 
@@ -48,6 +58,9 @@ rain_gain = 0.22
 
 [materials.log]
 rain_gain = 0.08
+
+[materials.berry]
+rain_gain = 0.16
 
 [server]
 # Used by the server binary. Overridden by CLI flags.

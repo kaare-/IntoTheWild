@@ -1,6 +1,6 @@
 # Villmarks
 
-A small wilderness MUD. The valley is already there: a brook, a slope, a rock overhang, dry wood under that rock, an open pile, and one heavy log. People and external agents use the same rules. Rain soaks whatever the sky can reach. Bark on a frame supported at both ends is a roof; a half-finished frame is not.
+A small wilderness MUD. The valley is already there: a brook, a slope, a rock overhang, dry wood and berries under that rock, an open pile, and one heavy log. People and external agents use the same rules. Rain soaks whatever the sky can reach. Bark on a frame supported at both ends is a roof; a half-finished frame is not. The same bark, with a dry branch, is tinder for a fire.
 
 The simulation is a Rust library with no network, database, clock, or model calls. One Tokio and Axum process owns the valley. A TypeScript page and a Python client are players, not special cases. Design choices taken from EmpireMUD, Bunnyland, Aardwolf, and GemStone III are in [DESIGN.md](DESIGN.md). Nothing here is deployed.
 
@@ -33,9 +33,9 @@ cargo run -p villmarks-server -- --data data/valley.sqlite
 
 Delete the sqlite file to reseed the valley. A living file keeps the tuning it was born with. The web dev server, if you want it, is `npm run dev` in `web/` on port 47321 and proxies the API.
 
-Commands: `look`, `examine wood|bark|log|frame|self|here|<name>`, `say`, `n` `s` `e` `w`, `gather branch|bark`, `drop`, `grab`, `drag n|s|e|w`, `release`, `raise frame`, `lay bark`, `drink`, `interrupt`, `help`.
+Commands: `look`, `examine wood|bark|berries|fire|log|frame|self|here|<name>`, `say`, `n` `s` `e` `w`, `gather branch|bark|berries`, `drop`, `grab`, `drag n|s|e|w`, `release`, `raise frame`, `lay bark`, `drink`, `light fire`, `cook`, `interrupt`, `help`.
 
-Thirst rises every tick, whether or not anyone is here. Rain wets clothes and does not quench it. `drink` works only while you are standing in the brook. One drink takes the edge off. The number stays on the server. You hear "not thirsty", "thirsty", or "parched".
+Thirst rises every tick, whether or not anyone is here. Rain wets clothes and does not quench it. `drink` works only while you are standing in the brook. Hunger rises the same way. Bark is not food. `light fire` takes one dry loose sheet of bark and one dry branch. Rain puts that fire out in the open; the rock overhang or a bark roof keeps it. `cook` works only while a fire is burning where you stand and a handful of berries is in your arms or at your feet. Raw berries do nothing. One drink or one cooked handful takes the edge off. The amounts stay on the server. You hear "not thirsty", "thirsty", or "parched", and "not hungry", "hungry", or "starving".
 
 ## An evening
 
@@ -81,7 +81,7 @@ Run from this workspace on 2 November 2026.
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | Pass. 11 simulation tests and the in-process restart test. |
+| `cargo test --workspace` | Pass. 14 simulation tests and the in-process restart test. |
 | Rain evening through the player API (`python3 agent/evening_session.py` against `--manual`) | Pass. Dry rock pile, soaked open pile, bark roof, distant slice, duplicate grab id. |
 | Opposite HTTP receive order for the same drag (`python3 agent/order_check.py`, seed 7) | Pass. Both orders finished at (4,2). |
 | One branch, and an interrupted drag | Pass in `sim/tests/evening.rs`. The evening session also interrupted a live drag before it landed. |
@@ -110,8 +110,7 @@ The browser check used Chrome against `http://127.0.0.1:18431` with `--window-se
 
 ## Follow-ups
 
-1. Hunger.
-2. Waterborne disease from the brook, now that drinking exists.
-3. Animals on the trails.
-4. Seasons.
-5. Decay of wet wood and abandoned frames.
+1. Waterborne disease from the brook, now that drinking exists.
+2. Animals on the trails.
+3. Seasons.
+4. Decay of wet wood and abandoned frames.

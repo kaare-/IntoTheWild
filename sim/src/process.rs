@@ -2,8 +2,8 @@
 //! including when nobody has sent a command.
 
 use crate::model::{
-    cell_id, cell_xy, ActorId, CellId, ConstructionId, EventId, ItemId, Material, Region, Role,
-    Scope, Wake, Work, WorkId, WorkKind, World,
+    cell_id, cell_xy, ActorId, CellId, ConstructionId, EventId, FireId, ItemId, Material, Region,
+    Role, Scope, Wake, Work, WorkId, WorkKind, World,
 };
 
 impl World {
@@ -21,7 +21,9 @@ impl World {
             match entry.wake {
                 Wake::Rain => self.apply_rain(),
                 Wake::Thirst => self.apply_thirst(),
+                Wake::Hunger => self.apply_hunger(),
                 Wake::Work(id) => self.complete_work(id),
+                Wake::Fire(id) => self.burn_down(id),
             }
         }
     }
@@ -48,6 +50,45 @@ impl World {
                 Some(format!("{name}'s mouth is dry."))
             } else if before < thirsty_at && after >= thirsty_at {
                 Some(format!("Thirst is in {name}'s mouth."))
+            } else {
+                None
+            };
+            if let Some(text) = crossed {
+                self.emit(
+                    text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+        }
+    }
+
+    fn apply_hunger(&mut self) {
+        self.schedule(self.time + 1, Wake::Hunger);
+        let gain = self.tuning.hunger_per_tick;
+        if gain == 0 {
+            return;
+        }
+        let hungry_at = self.tuning.hungry_at;
+        let starving_at = self.tuning.starving_at;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some(actor) = self.actors.get_mut(&id) else {
+                continue;
+            };
+            let before = actor.hunger;
+            actor.hunger = (actor.hunger + gain).min(1000);
+            let after = actor.hunger;
+            let name = actor.name.clone();
+            let cell = actor.cell;
+            let crossed = if before < starving_at && after >= starving_at {
+                Some(format!("{name}'s stomach is empty."))
+            } else if before < hungry_at && after >= hungry_at {
+                Some(format!("Hunger is in {name}'s stomach."))
             } else {
                 None
             };
@@ -128,7 +169,7 @@ impl World {
             .filter(|item| {
                 matches!(
                     item.material,
-                    Material::Branch | Material::Bark | Material::Log
+                    Material::Branch | Material::Bark | Material::Log | Material::Berry
                 )
             })
             .map(|item| item.id)
@@ -153,6 +194,25 @@ impl World {
         );
         if first {
             self.first_rain = Some(id);
+        }
+        self.douse_open_fires(id);
+    }
+
+    fn douse_open_fires(&mut self, rain_event: EventId) {
+        let open: Vec<FireId> = self
+            .fires
+            .values()
+            .filter(|fire| self.exposure_millis(fire.cell) >= 1000)
+            .map(|fire| fire.id)
+            .collect();
+        for id in open {
+            self.extinguish(id, "Rain puts out the fire.", Some(rain_event));
+        }
+    }
+
+    fn burn_down(&mut self, id: FireId) {
+        if self.fires.contains_key(&id) {
+            self.extinguish(id, "The fire burns down.", None);
         }
     }
 

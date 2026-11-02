@@ -10,7 +10,8 @@ pub const LEGEND: &str = "\
 @ you          p other
 L log          w dry wood
 W wet wood     b bark
-B wet bark
+B wet bark     * fire
+y berries      Y wet berries
 R rock roof    H bark roof
 f unfinished frame
 ~ brook    ^ slope    . ground
@@ -40,6 +41,7 @@ pub struct SelfInfo {
     pub under_roof: bool,
     pub wetness: String,
     pub thirst: String,
+    pub hunger: String,
     pub gripping: bool,
     pub carrying: Vec<CarryView>,
     pub busy: bool,
@@ -67,6 +69,10 @@ pub struct CellView {
     pub bark_pile: u32,
     pub bark_pile_condition: Option<String>,
     pub loose_bark: u32,
+    pub berry_pile: u32,
+    pub berry_pile_condition: Option<String>,
+    pub loose_berries: u32,
+    pub fire: bool,
     pub log: bool,
     pub log_condition: Option<String>,
     pub log_gripped_by: Vec<String>,
@@ -107,6 +113,7 @@ impl World {
                 under_roof: self.exposure_millis(actor.cell) < 1000,
                 wetness: self.condition_word(actor.wetness).into(),
                 thirst: self.thirst_word(actor.thirst).into(),
+                hunger: self.hunger_word(actor.hunger).into(),
                 gripping: self.gripping(actor.id).is_some(),
                 carrying: self.carry_views(actor.id),
                 busy: actor.busy.is_some(),
@@ -133,6 +140,8 @@ impl World {
             ExamineTarget::Bark => self.examine_material(actor_id, Material::Bark),
             ExamineTarget::Log => self.examine_log(actor_id),
             ExamineTarget::Frame => self.examine_frames(actor_id),
+            ExamineTarget::Berries => self.examine_material(actor_id, Material::Berry),
+            ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Person(name) => {
                 if actor.name.eq_ignore_ascii_case(&name) {
                     return self.self_text(actor_id);
@@ -189,6 +198,15 @@ impl World {
         if cell.rock {
             parts.push("Rock leans overhead. Wood left here stays out of the weather.".into());
         }
+        if self.fire_at(actor.cell).is_some() {
+            parts.push("A small fire burns here.".into());
+        }
+        if self.pile_count(actor.cell, Material::Berry) > 0 {
+            parts.push(format!(
+                "Berries lie here, {}.",
+                self.condition_word(self.pile_moisture(actor.cell, Material::Berry))
+            ));
+        }
         let others = self.others_here(actor_id);
         if !others.is_empty() {
             parts.push(format!(
@@ -205,6 +223,7 @@ impl World {
         let mut parts = vec![
             format!("Your clothes are {}.", self.condition_word(actor.wetness)),
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
+            format!("You are {}.", self.hunger_word(actor.hunger)),
         ];
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
@@ -243,12 +262,13 @@ impl World {
         let actor = self.actor(actor_id).unwrap();
         let (x, y) = cell_xy(actor.cell);
         format!(
-            "{} is on the {}, {}. Their clothes are {}. They are {}.",
+            "{} is on the {}, {}. Their clothes are {}. They are {}. They are {}.",
             actor.name,
             self.cell(actor.cell).region.word(),
             self.cover_phrase(actor.cell),
             self.condition_word(actor.wetness),
-            self.thirst_sentence(actor.thirst)
+            self.thirst_sentence(actor.thirst),
+            self.hunger_word(actor.hunger)
         ) + &format!(" ({x},{y})")
     }
 
@@ -269,6 +289,12 @@ impl World {
         }
         if self.pile_count(dest, Material::Branch) > 0 {
             bits.push("a pile of branches".into());
+        }
+        if self.pile_count(dest, Material::Berry) > 0 {
+            bits.push("berries".into());
+        }
+        if self.fire_at(dest).is_some() {
+            bits.push("a fire".into());
         }
         if self.construction_at(dest).is_some() {
             bits.push("a frame".into());
@@ -294,14 +320,14 @@ impl World {
             let count = self.pile_count(cell, material);
             if count > 0 {
                 let noun = pile_noun(material, count);
+                let (kind, verb) = match material {
+                    Material::Bark => ("bark", "is"),
+                    Material::Berry => ("berries", "are"),
+                    _ => ("wood", "is"),
+                };
                 lines.push(format!(
-                    "A pile of {count} {noun} is in contact with the ground {}. The {} is {}. {}",
+                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}",
                     self.place_phrase(origin, cell),
-                    if material == Material::Bark {
-                        "bark"
-                    } else {
-                        "wood"
-                    },
                     self.condition_word(self.pile_moisture(cell, material)),
                     self.rain_reaches_phrase(cell)
                 ));
@@ -359,6 +385,7 @@ impl World {
                 Material::Branch => "wood",
                 Material::Bark => "bark",
                 Material::Log => "log",
+                Material::Berry => "berries",
             };
             format!("You see no {name} from here.")
         } else {
@@ -400,6 +427,26 @@ impl World {
             }
         }
         "You see no log from here.".into()
+    }
+
+    fn examine_fire(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for fire in self.fires.values() {
+            if chebyshev(origin, fire.cell) > self.tuning.sight {
+                continue;
+            }
+            let (x, y) = cell_xy(fire.cell);
+            lines.push(format!(
+                "A small fire burns {}. It was lit on this ground. ({x},{y})",
+                self.place_phrase(origin, fire.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no fire from here.".into()
+        } else {
+            lines.join("\n")
+        }
     }
 
     fn examine_frames(&self, viewer: ActorId) -> String {
@@ -536,6 +583,9 @@ impl World {
     }
 
     fn content_char(&self, cell: CellId) -> char {
+        if self.fire_at(cell).is_some() {
+            return '*';
+        }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {
                 item.material == Material::Log && item.cell == cell && item.carrier.is_none()
@@ -567,6 +617,17 @@ impl World {
                 'B'
             } else {
                 'b'
+            };
+        }
+        let berry_moisture = self.worst_loose(cell, Material::Berry);
+        if self.pile_count(cell, Material::Berry) > 0 || berry_moisture.is_some() {
+            let moisture = berry_moisture
+                .unwrap_or(0)
+                .max(self.pile_moisture(cell, Material::Berry));
+            return if moisture >= self.tuning.damp_at {
+                'Y'
+            } else {
+                'y'
             };
         }
         ' '
@@ -615,6 +676,17 @@ impl World {
         let pile_log = self.pile_count(cell, Material::Log) > 0;
         let branch_pile = self.pile_count(cell, Material::Branch);
         let bark_pile = self.pile_count(cell, Material::Bark);
+        let berry_pile = self.pile_count(cell, Material::Berry);
+        let loose_berries = self
+            .items
+            .values()
+            .filter(|item| {
+                item.cell == cell
+                    && item.material == Material::Berry
+                    && item.role == Role::Loose
+                    && item.carrier.is_none()
+            })
+            .count() as u32;
         let mut actors: Vec<String> = self
             .actors
             .values()
@@ -660,6 +732,13 @@ impl World {
                     .into()
             }),
             loose_bark,
+            berry_pile,
+            berry_pile_condition: (berry_pile > 0).then(|| {
+                self.condition_word(self.pile_moisture(cell, Material::Berry))
+                    .into()
+            }),
+            loose_berries,
+            fire: self.fire_at(cell).is_some(),
             log: log.is_some() || pile_log,
             log_condition: log
                 .map(|item| self.condition_word(item.moisture).into())
@@ -783,6 +862,8 @@ impl World {
             "examine bark".into(),
             "examine log".into(),
             "examine frame".into(),
+            "examine berries".into(),
+            "examine fire".into(),
             "say".into(),
             "help".into(),
         ];
@@ -793,6 +874,12 @@ impl World {
         }
         if self.cell(actor.cell).region == crate::model::Region::Brook && actor.busy.is_none() {
             actions.push("drink".into());
+        }
+        if actor.busy.is_none() && self.light_refusal(actor_id).is_none() {
+            actions.push("light fire".into());
+        }
+        if actor.busy.is_none() && self.cook_refusal(actor_id).is_none() {
+            actions.push("cook".into());
         }
         if actor.busy.is_some() {
             actions.push("interrupt".into());
@@ -831,11 +918,19 @@ impl World {
         {
             actions.push("gather bark".into());
         }
+        if self.pile_count(actor.cell, Material::Berry) > 0
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather berries".into());
+        }
         if !self.loose_ids(actor_id, Material::Branch).is_empty() {
             actions.push("drop branch".into());
         }
         if !self.loose_ids(actor_id, Material::Bark).is_empty() {
             actions.push("drop bark".into());
+        }
+        if !self.loose_ids(actor_id, Material::Berry).is_empty() {
+            actions.push("drop berries".into());
         }
         if self.log_at(actor.cell) {
             actions.push("grab".into());
@@ -918,6 +1013,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Bark, true) => "sheet of bark",
         (Material::Bark, false) => "sheets of bark",
         (Material::Log, _) => "log",
+        (Material::Berry, true) => "handful of berries",
+        (Material::Berry, false) => "handfuls of berries",
     }
 }
 

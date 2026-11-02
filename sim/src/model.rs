@@ -14,6 +14,7 @@ pub type ActorId = u32;
 pub type ItemId = u32;
 pub type ConstructionId = u32;
 pub type WorkId = u32;
+pub type FireId = u32;
 pub type EventId = u64;
 pub type CellId = u16;
 
@@ -42,6 +43,7 @@ pub enum Material {
     Branch,
     Bark,
     Log,
+    Berry,
 }
 
 impl Material {
@@ -50,6 +52,7 @@ impl Material {
             Material::Branch => "branch",
             Material::Bark => "bark",
             Material::Log => "log",
+            Material::Berry => "berry",
         }
     }
 }
@@ -119,6 +122,8 @@ pub enum ExamineTarget {
     Bark,
     Log,
     Frame,
+    Berries,
+    Fire,
     Person(String),
 }
 
@@ -137,6 +142,8 @@ pub enum Attempt {
     RaiseFrame,
     LayBark,
     Drink,
+    Light,
+    Cook,
 }
 
 impl Attempt {
@@ -151,6 +158,8 @@ impl Attempt {
                 | Attempt::RaiseFrame
                 | Attempt::LayBark
                 | Attempt::Drink
+                | Attempt::Light
+                | Attempt::Cook
         )
     }
 }
@@ -203,6 +212,8 @@ pub struct Actor {
     pub wetness: u32,
     #[serde(default)]
     pub thirst: u32,
+    #[serde(default)]
+    pub hunger: u32,
     pub busy: Option<WorkId>,
 }
 
@@ -255,11 +266,21 @@ pub struct Grip {
     pub since_event: EventId,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fire {
+    pub id: FireId,
+    pub cell: CellId,
+    pub lit_event: EventId,
+    pub goes_out_at: u64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Wake {
     Rain,
     Thirst,
+    Hunger,
     Work(WorkId),
+    Fire(FireId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,6 +328,8 @@ pub struct World {
     pub next_item: ItemId,
     pub next_construction: ConstructionId,
     pub next_work: WorkId,
+    #[serde(default = "default_next_id")]
+    pub next_fire: FireId,
     pub next_event: EventId,
     pub next_seq: u32,
     pub cells: Vec<Cell>,
@@ -319,6 +342,8 @@ pub struct World {
     #[serde(with = "serde_map")]
     pub(crate) works: BTreeMap<WorkId, Work>,
     pub(crate) piles: Vec<Pile>,
+    #[serde(default)]
+    pub(crate) fires: BTreeMap<FireId, Fire>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -361,6 +386,7 @@ impl World {
             next_item: 1,
             next_construction: 1,
             next_work: 1,
+            next_fire: 1,
             next_event: 1,
             next_seq: 1,
             cells,
@@ -369,6 +395,7 @@ impl World {
             constructions: BTreeMap::new(),
             works: BTreeMap::new(),
             piles: Vec::new(),
+            fires: BTreeMap::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -377,8 +404,10 @@ impl World {
         let rain_at = world.tuning.rain_starts_at;
         world.schedule(rain_at, Wake::Rain);
         world.schedule(0, Wake::Thirst);
+        world.schedule(0, Wake::Hunger);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
@@ -435,6 +464,7 @@ impl World {
                 cell,
                 wetness: 0,
                 thirst: 0,
+                hunger: 0,
                 busy: None,
             },
         );
@@ -644,6 +674,124 @@ impl World {
         ids
     }
 
+    pub(crate) fn is_dry(&self, moisture: u32) -> bool {
+        moisture < self.tuning.damp_at
+    }
+
+    pub(crate) fn fire_at(&self, cell: CellId) -> Option<&Fire> {
+        self.fires.values().find(|fire| fire.cell == cell)
+    }
+
+    pub(crate) fn dry_loose_ids(&self, actor: ActorId, material: Material) -> Vec<ItemId> {
+        self.loose_ids(actor, material)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+            .collect()
+    }
+
+    pub(crate) fn dry_pile_count(&self, cell: CellId, material: Material) -> u32 {
+        let count = self.pile_count(cell, material);
+        if count > 0 && self.is_dry(self.pile_moisture(cell, material)) {
+            count
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn has_dry(&self, actor: ActorId, material: Material) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        !self.dry_loose_ids(actor, material).is_empty()
+            || self.dry_pile_count(person.cell, material) > 0
+    }
+
+    pub(crate) fn has_material_at_hand(&self, actor: ActorId, material: Material) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        !self.loose_ids(actor, material).is_empty() || self.pile_count(person.cell, material) > 0
+    }
+
+    /// Pile on the cell first, so a sheet carried for a roof is not the tinder.
+    pub(crate) fn consume_dry(
+        &mut self,
+        actor: ActorId,
+        material: Material,
+    ) -> Result<Option<ItemId>, ()> {
+        let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        if self.dry_pile_count(person_cell, material) > 0
+            && self.take_from_pile(person_cell, material, 1).is_some()
+        {
+            return Ok(None);
+        }
+        let Some(item_id) = self.dry_loose_ids(actor, material).first().copied() else {
+            return Err(());
+        };
+        self.items.remove(&item_id);
+        Ok(Some(item_id))
+    }
+
+    pub(crate) fn consume_food(&mut self, actor: ActorId) -> Result<Option<ItemId>, ()> {
+        let Some(item_id) = self.loose_ids(actor, Material::Berry).first().copied() else {
+            let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
+                return Err(());
+            };
+            return if self
+                .take_from_pile(person_cell, Material::Berry, 1)
+                .is_some()
+            {
+                Ok(None)
+            } else {
+                Err(())
+            };
+        };
+        self.items.remove(&item_id);
+        Ok(Some(item_id))
+    }
+
+    pub(crate) fn mint_fire(&mut self, cell: CellId, lit_event: EventId) -> FireId {
+        let id = self.next_fire;
+        self.next_fire += 1;
+        let goes_out_at = self.time.saturating_add(self.tuning.fire_ticks);
+        self.fires.insert(
+            id,
+            Fire {
+                id,
+                cell,
+                lit_event,
+                goes_out_at,
+            },
+        );
+        self.schedule(goes_out_at, Wake::Fire(id));
+        id
+    }
+
+    pub(crate) fn extinguish(&mut self, id: FireId, text: &str, extra_cause: Option<EventId>) {
+        let Some(fire) = self.fires.remove(&id) else {
+            return;
+        };
+        self.schedule.retain(|entry| entry.wake != Wake::Fire(id));
+        let mut causes = vec![fire.lit_event];
+        if let Some(cause) = extra_cause {
+            causes.push(cause);
+        }
+        self.emit(
+            text,
+            Scope::Cell(fire.cell),
+            vec![],
+            vec![fire.cell],
+            vec![],
+            causes,
+            None,
+        );
+    }
+
     pub(crate) fn gripping(&self, actor: ActorId) -> Option<ItemId> {
         self.grips.iter().find(|g| g.actor == actor).map(|g| g.item)
     }
@@ -689,6 +837,16 @@ impl World {
             "parched" => "parched",
             "thirsty" => "thirsty",
             _ => "not thirsty",
+        }
+    }
+
+    pub(crate) fn hunger_word(&self, hunger: u32) -> &'static str {
+        if hunger >= self.tuning.starving_at {
+            "starving"
+        } else if hunger >= self.tuning.hungry_at {
+            "hungry"
+        } else {
+            "not hungry"
         }
     }
 
@@ -829,6 +987,10 @@ impl World {
     pub(crate) fn wet_add(&self, gain: u32, exposure: u32) -> u32 {
         ((gain as u64) * (exposure as u64) / 1000) as u32
     }
+}
+
+fn default_next_id() -> u32 {
+    1
 }
 
 fn clean_name(name: &str) -> Result<String, String> {

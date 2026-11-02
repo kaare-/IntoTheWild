@@ -30,6 +30,7 @@ fn the_valley_is_already_there() {
     let world = World::valley(Tuning::evening(), 1);
     assert_eq!(world.log_cell(), Some((3, 2)));
     assert_eq!(world.material_tally(Material::Branch), 8);
+    assert_eq!(world.material_tally(Material::Berry), 4);
     assert_eq!(world.material_tally(Material::Log), 1);
     assert!(!world.is_raining());
     assert_eq!(world.exposure_at(6, 1), Some(0));
@@ -326,7 +327,10 @@ fn thirst_rises_without_a_command_and_the_brook_eases_it() {
     world.step(&[cmd("sip", sera, Attempt::Drink)]);
     let eased = world.observe(sera).unwrap();
     assert_eq!(eased.self_info.thirst, "not thirsty");
-    assert!(eased.events.iter().any(|event| event.text.contains("drinks from the brook")));
+    assert!(eased
+        .events
+        .iter()
+        .any(|event| event.text.contains("drinks from the brook")));
     assert!(
         world
             .observe(otto)
@@ -345,6 +349,190 @@ fn thirst_rises_without_a_command_and_the_brook_eases_it() {
     assert!(rained.is_raining());
     assert_eq!(rained.observe(linde).unwrap().self_info.thirst, "thirsty");
     assert_eq!(rained.observe(linde).unwrap().self_info.wetness, "soaked");
+}
+
+#[test]
+fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
+    let mut world = world_at(1_000);
+    let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
+    let otto = world.spawn_at("Otto", "o", 2, 3).unwrap();
+    let bark = world.material_tally(Material::Bark);
+    let branch = world.material_tally(Material::Branch);
+    let berries = world.material_tally(Material::Berry);
+    for _ in 0..30 {
+        world.step(&[]);
+    }
+    assert_eq!(world.observe(sera).unwrap().self_info.hunger, "hungry");
+    assert_eq!(world.observe(otto).unwrap().self_info.hunger, "hungry");
+    let prose = world.observe(sera).unwrap().text;
+    assert!(
+        !prose.contains("hunger:"),
+        "raw hunger stays off the observation"
+    );
+    assert!(!prose.contains("0.45"));
+
+    world.step(&[cmd("raw", sera, Attempt::Cook)]);
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("no fire")));
+    assert_eq!(world.observe(sera).unwrap().self_info.hunger, "hungry");
+    assert_eq!(world.material_tally(Material::Berry), berries);
+    assert_eq!(world.material_tally(Material::Bark), bark);
+
+    world.step(&[cmd("none", otto, Attempt::Light)]);
+    assert_eq!(world.material_tally(Material::Bark), bark);
+    assert_eq!(world.observe(otto).unwrap().self_info.hunger, "hungry");
+
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .allowed_actions
+        .iter()
+        .any(|action| action == "light fire"));
+    world.step(&[cmd("tinder", sera, Attempt::Light)]);
+    let lit = world.observe(sera).unwrap();
+    assert_eq!(lit.self_info.hunger, "hungry", "bark is tinder, not a meal");
+    assert!(lit.map.contains('@') && lit.map.contains('*'));
+    assert!(lit.text.contains("A small fire burns here."));
+    assert!(lit
+        .events
+        .iter()
+        .any(|event| event.text.contains("lights a fire with bark")));
+    assert_eq!(world.material_tally(Material::Bark), bark - 1);
+    assert_eq!(world.material_tally(Material::Branch), branch - 1);
+    assert_eq!(world.material_tally(Material::Berry), berries);
+    let here = lit
+        .visible_cells
+        .iter()
+        .find(|cell| cell.x == 6 && cell.y == 1)
+        .unwrap();
+    assert!(here.fire);
+    assert_eq!(here.berry_pile, berries);
+
+    assert!(lit.allowed_actions.iter().any(|action| action == "cook"));
+    world.step(&[cmd("meal", sera, Attempt::Cook)]);
+    let eased = world.observe(sera).unwrap();
+    assert_eq!(eased.self_info.hunger, "not hungry");
+    assert!(eased
+        .events
+        .iter()
+        .any(|event| event.text.contains("cooks a handful of berries")));
+    assert_eq!(world.material_tally(Material::Berry), berries - 1);
+    assert_eq!(world.material_tally(Material::Bark), bark - 1);
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("cooks a handful of berries")));
+
+    world.step(&[cmd("meal", sera, Attempt::Cook)]);
+    assert_eq!(world.material_tally(Material::Berry), berries - 1);
+
+    let mut rained = world_at(0);
+    let linde = rained.spawn_at("Linde", "l", 4, 4).unwrap();
+    for _ in 0..30 {
+        rained.step(&[]);
+    }
+    assert!(rained.is_raining());
+    assert_eq!(rained.observe(linde).unwrap().self_info.hunger, "hungry");
+    assert_eq!(rained.observe(linde).unwrap().self_info.wetness, "soaked");
+}
+
+#[test]
+fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
+    let mut slope = world_at(3);
+    let sera = slope.spawn_at("Sera", "s", 6, 1).unwrap();
+    slope.step(&[cmd("sheet", sera, Attempt::Gather(Material::Bark))]);
+    slope.step(&[cmd("sheet-2", sera, Attempt::Gather(Material::Bark))]);
+    slope.step(&[cmd("out", sera, Attempt::Move(Dir::West))]);
+    slope.step(&[]);
+    slope.step(&[]);
+    slope.step(&[cmd("back", sera, Attempt::Move(Dir::East))]);
+    let bark = slope.material_tally(Material::Bark);
+    slope.step(&[cmd("damp", sera, Attempt::Light)]);
+    let seen: Vec<_> = slope
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .collect();
+    assert!(
+        seen.iter().any(|text| text.contains("too damp")),
+        "{seen:?}"
+    );
+    assert_eq!(slope.material_tally(Material::Bark), bark);
+
+    let mut open = world_at(4);
+    let nils = open.spawn_at("Nils", "n", 6, 1).unwrap();
+    open.step(&[cmd("branch", nils, Attempt::Gather(Material::Branch))]);
+    open.step(&[cmd("bark", nils, Attempt::Gather(Material::Bark))]);
+    open.step(&[cmd("west", nils, Attempt::Move(Dir::West))]);
+    open.step(&[cmd("light", nils, Attempt::Light)]);
+    assert!(!open.is_raining());
+    assert!(open
+        .observe(nils)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+    open.step(&[]);
+    assert!(open.is_raining());
+    assert!(open
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("Rain puts out the fire.")));
+    assert!(!open
+        .observe(nils)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+
+    let mut rock = world_at(1);
+    let otto = rock.spawn_at("Otto", "o", 6, 1).unwrap();
+    rock.step(&[cmd("light", otto, Attempt::Light)]);
+    rock.step(&[]);
+    assert!(rock.is_raining());
+    assert!(rock
+        .observe(otto)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+    assert!(rock
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("puts out")));
+
+    let mut brief = world_at(1_000);
+    let linde = brief.spawn_at("Linde", "l", 6, 1).unwrap();
+    brief.step(&[cmd("light", linde, Attempt::Light)]);
+    for _ in 0..7 {
+        brief.step(&[]);
+    }
+    assert!(brief
+        .observe(linde)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+    brief.step(&[]);
+    assert!(brief
+        .observe(linde)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("The fire burns down.")));
+    assert!(!brief
+        .observe(linde)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
 }
 
 #[test]
@@ -367,6 +555,16 @@ fn parser_accepts_the_evening_commands() {
         Attempt::LayBark
     ));
     assert!(matches!(parse_attempt("drink").unwrap(), Attempt::Drink));
+    assert!(matches!(
+        parse_attempt("light fire").unwrap(),
+        Attempt::Light
+    ));
+    assert!(matches!(parse_attempt("cook").unwrap(), Attempt::Cook));
+    assert!(matches!(
+        parse_attempt("gather berries").unwrap(),
+        Attempt::Gather(Material::Berry)
+    ));
+    assert!(parse_attempt("eat").unwrap_err().contains("tinder"));
     assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
         Attempt::Say(text) if text == "The wood is still dry."

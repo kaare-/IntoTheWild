@@ -6,7 +6,7 @@ Villmarks is one small valley and one authoritative process. The simulation crat
 
 EmpireMUD 2.0 beta (`EmpireMUD/EmpireMUD-2.0-Beta`) stores a player landscape change as a new sector. `ACMD(do_lay)` in `src/building.c` checks that the room can take a road, spends resources, and calls `change_terrain`. `change_terrain` in `src/db.world.c` calls `perform_change_sect`, which writes both `SECT(room)` and `world_map[x][y].sector_type` and marks the map dirty. `show_map_to_char` in `src/mapview.c` then draws a glyph from the sector icon, with road, building, and crop icons able to replace it. The command, the stored terrain, and the glyph are one chain.
 
-That chain is the wrong split for this valley. Bark on a frame is not a new kind of ground. A cell keeps its region (slope, brook, floor) and its rock overhang. Loose wood is a quantity until someone lifts it or builds with it, and then it is an item with a stable id. A frame is a third thing: supports, a beam, and optional bark, sitting on a cell. The map glyph is computed from what that person can see. A half-finished frame stays on the cell and does not become a terrain type. Material is counted once: pile count plus item count.
+That chain is the wrong split for this valley. Bark on a frame is not a new kind of ground. A cell keeps its region (slope, brook, floor) and its rock overhang. Loose wood is a quantity until someone lifts it or builds with it, and then it is an item with a stable id. A frame is a third thing: supports, a beam, and optional bark, sitting on a cell. A fire is a fourth: its own id, the cell it burns on, and the moment it goes out. Lighting one spends a dry sheet of bark and a dry branch once; the fire is not a second copy of that wood, and bark already laid as a roof is not tinder. The map glyph is computed from what that person can see. A half-finished frame stays on the cell and does not become a terrain type. Material is counted once: pile count plus item count. Berries are a pile like branches. Cooking a handful over a burning fire is what eases hunger. Raw berries do not, and neither does the bark.
 
 ## One observation, two kinds of client
 
@@ -28,7 +28,7 @@ Real time, simulation time, and the action window are separate. A window is 20 s
 
 A command is an attempt. The core decides range, duration, and result. Look, examine, and help answer immediately and do not step the world. Anything that changes the valley is queued. A late hint (a client window number older than the current tick) still joins the open window; it is not dropped and it is not applied to a closed one. The same command id returns the stored result, including after a restart. A queued id that has not been sealed returns "Already queued". A parse failure is remembered for that id; send a new id to correct it.
 
-One body attempt per actor per window (move, gather, drop, grab, drag, raise frame, lay bark). Say, interrupt, and release do not take that slot. Long work occupies the body until it finishes, is interrupted, or a precondition fails. Two people pulling the same way can move the log. One person cannot. Two people grabbing one loose branch produce one item; the draw is `contest_hash(seed, time, tag, subject, actor)` and the hash is stored on the event. Empty windows still rain and finish work, including with nobody present.
+One body attempt per actor per window (move, gather, drop, grab, drag, raise frame, lay bark, drink, light a fire, cook). Say, interrupt, and release do not take that slot. Long work occupies the body until it finishes, is interrupted, or a precondition fails. Thirst and hunger rise on the schedule even when the window was empty. Two people pulling the same way can move the log. One person cannot. Two people grabbing one loose branch produce one item; the draw is `contest_hash(seed, time, tag, subject, actor)` and the hash is stored on the event. Two people lighting the same cell get one fire. Empty windows still rain, burn a fire down, and finish work, including with nobody present. Rain in the open puts a fire out. A rock overhang or a bark roof does not.
 
 ## Log and persistence
 
@@ -38,8 +38,7 @@ SQLite is WAL, one connection, one transaction per join and per sealed window. A
 
 ## Follow-ups
 
-1. Hunger.
-2. Waterborne disease from the brook. Drinking is already a real attempt.
-3. Animals that already use the trails.
-4. Seasons that change the rain and the bark.
-5. Decay of wet wood and of frames nobody maintains.
+1. Waterborne disease from the brook. Drinking is already a real attempt.
+2. Animals that already use the trails.
+3. Seasons that change the rain and the bark.
+4. Decay of wet wood and of frames nobody maintains.

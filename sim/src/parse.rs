@@ -5,17 +5,19 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|log|frame|self|here|<name>
+examine wood|bark|berries|fire|log|frame|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark           take one piece into your arms
-drop branch|bark
+gather branch|bark|berries  take one piece into your arms
+drop branch|bark|berries
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
 drink                        drink from the brook, if you are standing in it
+light fire                   dry bark and a dry branch; open rain puts it out
+cook                         cook berries where a fire is burning
 interrupt                    stop the work your body is in
 help"
 }
@@ -66,6 +68,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "lay" if rest == "bark" => Ok(Attempt::LayBark),
         "roof" => Ok(Attempt::LayBark),
         "drink" => Ok(Attempt::Drink),
+        "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
+        "cook" => Ok(Attempt::Cook),
+        "eat" => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
@@ -85,7 +90,8 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "branch" | "branches" | "wood" | "firewood" => Ok(Material::Branch),
         "bark" => Ok(Material::Bark),
         "log" => Ok(Material::Log),
-        _ => Err("Name a material: branch, bark, or log.".into()),
+        "berry" | "berries" => Ok(Material::Berry),
+        _ => Err("Name a material: branch, bark, berries, or log.".into()),
     }
 }
 
@@ -95,6 +101,8 @@ fn parse_target(text: &str) -> ExamineTarget {
         "self" | "me" | "myself" => ExamineTarget::SelfBody,
         "wood" | "branch" | "branches" | "firewood" => ExamineTarget::Wood,
         "bark" => ExamineTarget::Bark,
+        "berry" | "berries" | "fruit" => ExamineTarget::Berries,
+        "fire" | "flame" => ExamineTarget::Fire,
         "log" => ExamineTarget::Log,
         "frame" | "shelter" | "roof" => ExamineTarget::Frame,
         other => ExamineTarget::Person(other.to_string()),

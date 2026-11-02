@@ -48,6 +48,11 @@ def scripted(obs: dict, memory: Memory) -> str | None:
     here = memory.cells.get((me["x"], me["y"]), {})
     branches = carry(me, "branch")
     bark = carry(me, "bark")
+    saving_the_roof = bark == 1 and here.get("frame") == "supported" and "lay bark" in allowed
+    if me_hungry(obs) and "cook" in allowed:
+        return "cook"
+    if me_hungry(obs) and "light fire" in allowed and not saving_the_roof:
+        return "light fire"
 
     if me["gripping"]:
         roofs = [
@@ -125,6 +130,18 @@ def scripted(obs: dict, memory: Memory) -> str | None:
         if step:
             return step
 
+    if me_hungry(obs):
+        if carry(me, "berry") == 0 and here.get("berry_pile", 0) and "gather berries" in allowed:
+            return "gather berries"
+        berries = [pos for pos, cell in memory.cells.items() if cell.get("berry_pile", 0) > 0]
+        fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
+        if carry(me, "berry") and fires:
+            step = walk_toward(me, nearest((me["x"], me["y"]), fires), allowed)
+        else:
+            step = walk_toward(me, nearest((me["x"], me["y"]), berries or fires), allowed)
+        if step:
+            return step
+
     return explore(me, memory, allowed)
 
 
@@ -168,6 +185,10 @@ def ask_model(obs: dict) -> str | None:
 
 def me_thirsty(obs: dict) -> bool:
     return obs.get("self_info", {}).get("thirst") in {"thirsty", "parched"}
+
+
+def me_hungry(obs: dict) -> bool:
+    return obs.get("self_info", {}).get("hunger") in {"hungry", "starving"}
 
 
 def carry(me: dict, material: str) -> int:
