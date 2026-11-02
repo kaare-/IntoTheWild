@@ -1,4 +1,6 @@
-use villmarks_sim::{parse_attempt, Attempt, Dir, ExamineTarget, Intent, Material, Tuning, World};
+use villmarks_sim::{
+    contest_hash, parse_attempt, Attempt, Dir, ExamineTarget, Intent, Material, Tuning, World,
+};
 
 fn world_at(rain_at: u64) -> World {
     let mut tuning = Tuning::evening();
@@ -555,6 +557,11 @@ fn parser_accepts_the_evening_commands() {
         Attempt::LayBark
     ));
     assert!(matches!(parse_attempt("drink").unwrap(), Attempt::Drink));
+    assert!(matches!(parse_attempt("boil").unwrap(), Attempt::Boil));
+    assert!(matches!(
+        parse_attempt("gather water").unwrap(),
+        Attempt::Gather(Material::Water)
+    ));
     assert!(matches!(
         parse_attempt("light fire").unwrap(),
         Attempt::Light
@@ -570,4 +577,160 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Say(text) if text == "The wood is still dry."
     ));
     assert!(parse_attempt("fly").is_err());
+}
+
+fn illness_world(chance: u32, recovery: u32) -> World {
+    let mut tuning = Tuning::evening();
+    tuning.rain_starts_at = 10_000;
+    tuning.illness_chance = chance;
+    tuning.illness_hit = 600;
+    tuning.ill_at = 250;
+    tuning.illness_recovery = recovery;
+    World::valley(tuning, 7)
+}
+
+#[test]
+fn raw_brook_water_records_a_draw_and_time_clears_the_illness() {
+    let hash = contest_hash(7, 0, "drink", "7:brook", 1);
+    let roll = (hash % 1000) as u32;
+
+    let mut safe = illness_world(roll, 0);
+    let sera = safe.spawn_at("Sera", "s", 0, 1).unwrap();
+    safe.step(&[cmd("sip", sera, Attempt::Drink)]);
+    assert_eq!(safe.observe(sera).unwrap().self_info.illness, "well");
+    let draw = safe
+        .event_log()
+        .iter()
+        .find_map(|event| event.draw.clone())
+        .unwrap();
+    assert_eq!(draw.tag, "drink");
+    assert_eq!(draw.value, hash);
+
+    let mut sick = illness_world(roll + 1, 0);
+    let sera = sick.spawn_at("Sera", "s", 0, 1).unwrap();
+    sick.step(&[cmd("sip", sera, Attempt::Drink)]);
+    assert_eq!(sick.observe(sera).unwrap().self_info.illness, "ill");
+
+    let mut world = illness_world(1000, 100);
+    let sera = world.spawn_at("Sera", "s", 0, 1).unwrap();
+    let nils = world.spawn_at("Nils", "n", 6, 3).unwrap();
+    world.step(&[cmd("sip", sera, Attempt::Drink)]);
+    let ill = world.observe(sera).unwrap();
+    assert_eq!(ill.self_info.illness, "ill");
+    assert!(ill.text.contains("You are ill."));
+    assert!(!ill.text.contains("illness:"));
+    assert!(!ill.text.contains("0.60"));
+    assert!(ill
+        .events
+        .iter()
+        .any(|event| event.text.contains("stomach turns")));
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("stomach")
+            && !event.text.contains("drinks from the brook")));
+    assert_eq!(
+        world
+            .event_log()
+            .iter()
+            .filter(|event| event.draw.as_ref().is_some_and(|draw| draw.tag == "drink"))
+            .count(),
+        1
+    );
+
+    world.step(&[cmd("sip", sera, Attempt::Drink)]);
+    assert_eq!(
+        world
+            .event_log()
+            .iter()
+            .filter(|event| event.draw.as_ref().is_some_and(|draw| draw.tag == "drink"))
+            .count(),
+        1
+    );
+
+    let mut ticks = 0;
+    while world.observe(sera).unwrap().self_info.illness == "ill" && ticks < 30 {
+        world.step(&[]);
+        ticks += 1;
+    }
+    assert!(ticks > 0 && ticks < 20, "illness faded after {ticks} ticks");
+    assert_eq!(world.observe(sera).unwrap().self_info.illness, "well");
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("stomach settles")));
+
+    let mut ordered = illness_world(1000, 0);
+    let mut swapped = illness_world(1000, 0);
+    let left = ordered.spawn_at("Sera", "s", 0, 1).unwrap();
+    let right = ordered.spawn_at("Otto", "o", 1, 1).unwrap();
+    let left_b = swapped.spawn_at("Sera", "s", 0, 1).unwrap();
+    let right_b = swapped.spawn_at("Otto", "o", 1, 1).unwrap();
+    ordered.step(&[
+        cmd("a", left, Attempt::Drink),
+        cmd("b", right, Attempt::Drink),
+    ]);
+    swapped.step(&[
+        cmd("b", right_b, Attempt::Drink),
+        cmd("a", left_b, Attempt::Drink),
+    ]);
+    assert_eq!(ordered, swapped);
+}
+
+#[test]
+fn boiled_water_eases_thirst_and_does_not_sicken() {
+    let mut world = illness_world(1000, 0);
+    let sera = world.spawn_at("Sera", "s", 0, 1).unwrap();
+    let otto = world.spawn_at("Otto", "o", 1, 1).unwrap();
+    for _ in 0..30 {
+        world.step(&[]);
+    }
+    assert_eq!(world.observe(sera).unwrap().self_info.thirst, "thirsty");
+    assert_eq!(world.observe(sera).unwrap().self_info.illness, "well");
+
+    world.step(&[cmd("raw", otto, Attempt::Drink)]);
+    assert_eq!(world.observe(otto).unwrap().self_info.illness, "ill");
+
+    world.step(&[cmd("early", sera, Attempt::Boil)]);
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("no fire")));
+    assert_eq!(world.material_tally(Material::Water), 0);
+    assert_eq!(world.observe(sera).unwrap().self_info.illness, "well");
+
+    world.step(&[cmd("fill", sera, Attempt::Gather(Material::Water))]);
+    assert_eq!(world.material_tally(Material::Water), 1);
+    for (n, _) in (0..6).enumerate() {
+        world.step(&[cmd(&format!("east-{n}"), sera, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(sera), Some((6, 1)));
+    world.step(&[cmd("dry", sera, Attempt::Gather(Material::Water))]);
+    assert_eq!(world.material_tally(Material::Water), 1);
+    world.step(&[cmd("light", sera, Attempt::Light)]);
+    world.step(&[cmd("pot", sera, Attempt::Boil)]);
+    let boiled = world.observe(sera).unwrap();
+    assert_eq!(boiled.self_info.illness, "well");
+    assert_eq!(boiled.self_info.thirst, "not thirsty");
+    assert!(boiled
+        .events
+        .iter()
+        .any(|event| event.text.contains("boils a drink of water")));
+    assert!(boiled
+        .events
+        .iter()
+        .all(|event| !event.text.contains("stomach turns")));
+    assert_eq!(world.material_tally(Material::Water), 0);
+    assert_eq!(world.observe(otto).unwrap().self_info.illness, "ill");
+    assert!(world
+        .event_log()
+        .iter()
+        .filter(|event| event.text.contains("boils"))
+        .all(|event| event.draw.is_none()));
 }

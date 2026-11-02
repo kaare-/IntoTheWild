@@ -28,7 +28,7 @@ Real time, simulation time, and the action window are separate. A window is 20 s
 
 A command is an attempt. The core decides range, duration, and result. Look, examine, and help answer immediately and do not step the world. Anything that changes the valley is queued. A late hint (a client window number older than the current tick) still joins the open window; it is not dropped and it is not applied to a closed one. The same command id returns the stored result, including after a restart. A queued id that has not been sealed returns "Already queued". A parse failure is remembered for that id; send a new id to correct it.
 
-One body attempt per actor per window (move, gather, drop, grab, drag, raise frame, lay bark, drink, light a fire, cook). Say, interrupt, and release do not take that slot. Long work occupies the body until it finishes, is interrupted, or a precondition fails. Thirst and hunger rise on the schedule even when the window was empty. Two people pulling the same way can move the log. One person cannot. Two people grabbing one loose branch produce one item; the draw is `contest_hash(seed, time, tag, subject, actor)` and the hash is stored on the event. Two people lighting the same cell get one fire. Empty windows still rain, burn a fire down, and finish work, including with nobody present. Rain in the open puts a fire out. A rock overhang or a bark roof does not.
+One body attempt per actor per window (move, gather, drop, grab, drag, raise frame, lay bark, drink, boil, light a fire, cook). Say, interrupt, and release do not take that slot. Long work occupies the body until it finishes, is interrupted, or a precondition fails. Thirst, hunger, and illness all move on the schedule even when the window was empty. A raw drink from the brook eases thirst and records a draw (`contest_hash` with the tag `drink`). When the draw falls under `illness_chance`, the illness amount jumps and the word becomes "ill". Each later tick lowers that amount until the word is "well". Boiling a drink of brook water over a burning fire eases thirst and records no illness draw. The boiled drink is not the cure. Two people pulling the same way can move the log. One person cannot. Two people grabbing one loose branch produce one item; the draw is `contest_hash(seed, time, tag, subject, actor)` and the hash is stored on the event. Two people lighting the same cell get one fire. Empty windows still rain, fade an illness, burn a fire down, and finish work, including with nobody present. Rain in the open puts a fire out. A rock overhang or a bark roof does not.
 
 ## Log and persistence
 
@@ -38,7 +38,6 @@ SQLite is WAL, one connection, one transaction per join and per sealed window. A
 
 ## Follow-ups
 
-1. Waterborne disease from the brook. Drinking is already a real attempt.
-2. Animals that already use the trails.
-3. Seasons that change the rain and the bark.
-4. Decay of wet wood and of frames nobody maintains.
+1. Animals that already use the trails.
+2. Seasons that change the rain and the bark.
+3. Decay of wet wood and of frames nobody maintains.

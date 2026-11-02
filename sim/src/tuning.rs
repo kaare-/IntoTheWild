@@ -31,6 +31,14 @@ pub struct Tuning {
     pub hungry_at: u32,
     #[serde(default = "default_starving_at")]
     pub starving_at: u32,
+    #[serde(default = "default_illness_chance")]
+    pub illness_chance: u32,
+    #[serde(default = "default_illness_hit")]
+    pub illness_hit: u32,
+    #[serde(default = "default_ill_at")]
+    pub ill_at: u32,
+    #[serde(default = "default_illness_recovery")]
+    pub illness_recovery: u32,
     pub carry_slots: u32,
     pub sight: i32,
     pub drag_needed: u32,
@@ -42,6 +50,8 @@ pub struct Tuning {
     pub log_rain: u32,
     #[serde(default = "default_berry_rain")]
     pub berry_rain: u32,
+    #[serde(default = "default_water_rain")]
+    pub water_rain: u32,
 }
 
 fn default_fire_ticks() -> u64 {
@@ -61,6 +71,21 @@ fn default_starving_at() -> u32 {
 }
 fn default_berry_rain() -> u32 {
     160
+}
+fn default_illness_chance() -> u32 {
+    500
+}
+fn default_illness_hit() -> u32 {
+    600
+}
+fn default_ill_at() -> u32 {
+    250
+}
+fn default_illness_recovery() -> u32 {
+    100
+}
+fn default_water_rain() -> u32 {
+    0
 }
 
 #[derive(Deserialize)]
@@ -97,6 +122,10 @@ struct RawBody {
     cook_relief: f64,
     hungry_at: f64,
     starving_at: f64,
+    illness_chance: f64,
+    illness_hit: f64,
+    ill_at: f64,
+    illness_recovery: f64,
     carry_slots: u32,
     sight: i32,
 }
@@ -154,6 +183,7 @@ impl Tuning {
         let bark = raw.materials.get("bark").ok_or("missing material bark")?;
         let log = raw.materials.get("log").ok_or("missing material log")?;
         let berry = raw.materials.get("berry").ok_or("missing material berry")?;
+        let water = raw.materials.get("water").ok_or("missing material water")?;
         Ok(Tuning {
             rain_starts_at: raw.time.rain_starts_at,
             drag_ticks: raw.time.drag_ticks,
@@ -174,6 +204,10 @@ impl Tuning {
             cook_relief: millis(raw.body.cook_relief, "body.cook_relief")?,
             hungry_at: millis(raw.body.hungry_at, "body.hungry_at")?,
             starving_at: millis(raw.body.starving_at, "body.starving_at")?,
+            illness_chance: millis(raw.body.illness_chance, "body.illness_chance")?,
+            illness_hit: millis(raw.body.illness_hit, "body.illness_hit")?,
+            ill_at: millis(raw.body.ill_at, "body.ill_at")?,
+            illness_recovery: millis(raw.body.illness_recovery, "body.illness_recovery")?,
             carry_slots: raw.body.carry_slots,
             sight: raw.body.sight,
             drag_needed: raw.forces.drag_needed,
@@ -184,6 +218,7 @@ impl Tuning {
             bark_rain: millis(bark.rain_gain, "bark.rain_gain")?,
             log_rain: millis(log.rain_gain, "log.rain_gain")?,
             berry_rain: millis(berry.rain_gain, "berry.rain_gain")?,
+            water_rain: millis(water.rain_gain, "water.rain_gain")?,
         })
     }
 
@@ -198,6 +233,7 @@ impl Tuning {
             Material::Bark => self.bark_rain,
             Material::Log => self.log_rain,
             Material::Berry => self.berry_rain,
+            Material::Water => self.water_rain,
         }
     }
 }

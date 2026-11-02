@@ -22,6 +22,7 @@ impl World {
                 Wake::Rain => self.apply_rain(),
                 Wake::Thirst => self.apply_thirst(),
                 Wake::Hunger => self.apply_hunger(),
+                Wake::Illness => self.apply_illness(),
                 Wake::Work(id) => self.complete_work(id),
                 Wake::Fire(id) => self.burn_down(id),
             }
@@ -95,6 +96,40 @@ impl World {
             if let Some(text) = crossed {
                 self.emit(
                     text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+        }
+    }
+
+    fn apply_illness(&mut self) {
+        self.schedule(self.time + 1, Wake::Illness);
+        let loss = self.tuning.illness_recovery;
+        if loss == 0 {
+            return;
+        }
+        let ill_at = self.tuning.ill_at;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some(actor) = self.actors.get_mut(&id) else {
+                continue;
+            };
+            let before = actor.illness;
+            if before == 0 {
+                continue;
+            }
+            actor.illness = before.saturating_sub(loss);
+            let after = actor.illness;
+            if before >= ill_at && after < ill_at {
+                let name = actor.name.clone();
+                let cell = actor.cell;
+                self.emit(
+                    format!("{name}'s stomach settles."),
                     Scope::Personal(id),
                     vec![id],
                     vec![cell],

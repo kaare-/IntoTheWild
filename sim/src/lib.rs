@@ -11,8 +11,8 @@ mod serde_map;
 mod tuning;
 
 pub use model::{
-    ActorId, Attempt, CommandResult, ConstructionId, Dir, Event, EventId, ExamineTarget, Intent,
-    ItemId, Material, StepReport, WorkId, World, HEIGHT, WIDTH,
+    contest_hash, ActorId, Attempt, CommandResult, ConstructionId, Dir, Event, EventId,
+    ExamineTarget, Intent, ItemId, Material, StepReport, WorkId, World, HEIGHT, WIDTH,
 };
 pub use observe::Observation;
 pub use parse::{help_text, parse_attempt};

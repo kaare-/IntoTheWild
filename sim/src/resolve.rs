@@ -41,6 +41,7 @@ impl World {
         let mut raises = Vec::new();
         let mut barks = Vec::new();
         let mut drinks = Vec::new();
+        let mut boils = Vec::new();
         let mut lights = Vec::new();
         let mut cooks = Vec::new();
 
@@ -73,6 +74,7 @@ impl World {
                         Attempt::RaiseFrame => raises.push(intent),
                         Attempt::LayBark => barks.push(intent),
                         Attempt::Drink => drinks.push(intent),
+                        Attempt::Boil => boils.push(intent),
                         Attempt::Light => lights.push(intent),
                         Attempt::Cook => cooks.push(intent),
                     }
@@ -153,6 +155,7 @@ impl World {
         self.apply_raises(raises, &mut results);
         self.apply_barks(barks, &mut results);
         self.apply_drinks(drinks, &mut results);
+        self.apply_boils(boils, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         results
@@ -192,6 +195,21 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if self.cell(actor.cell).region != crate::model::Region::Brook {
                     Err("The brook is not here.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Boil => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.loose_ids(actor.id, Material::Water).is_empty() {
+                    Err("You have no water to boil.".into())
                 } else {
                     Ok(true)
                 }
@@ -246,7 +264,11 @@ impl World {
                 if *material == Material::Log {
                     return Err("The log is too heavy to gather. Grab it instead.".into());
                 }
-                if self.pile_count(actor.cell, *material) == 0 {
+                if *material == Material::Water {
+                    if self.cell(actor.cell).region != Region::Brook {
+                        return Err("The brook is not here.".into());
+                    }
+                } else if self.pile_count(actor.cell, *material) == 0 {
                     return Err(format!("There is no {} here to gather.", material.word()));
                 }
                 if self.carry_count(actor.id) >= self.tuning.carry_slots {
@@ -336,12 +358,20 @@ impl World {
         results: &mut Vec<CommandResult>,
     ) {
         let mut groups: BTreeMap<(crate::model::CellId, Material), Vec<Intent>> = BTreeMap::new();
+        let mut water = Vec::new();
         for intent in gathers {
             let Attempt::Gather(material) = intent.attempt else {
                 continue;
             };
+            if material == Material::Water {
+                water.push(intent);
+                continue;
+            }
             let cell = start_cells[&intent.actor_id];
             groups.entry((cell, material)).or_default().push(intent);
+        }
+        for intent in water {
+            self.gather_brook_water(intent, start_cells, results);
         }
         for ((cell, material), mut claims) in groups {
             let available = self.pile_count(cell, material);
@@ -362,6 +392,7 @@ impl World {
                 Material::Bark => "sheet of bark",
                 Material::Log => "log",
                 Material::Berry => "handful of berries",
+                Material::Water => "drink of water",
             };
             for intent in claims {
                 let hash = contest_hash(self.seed, self.time, "gather", &subject, intent.actor_id);
@@ -447,6 +478,7 @@ impl World {
                 Material::Bark => "sheet of bark",
                 Material::Log => "log",
                 Material::Berry => "handful of berries",
+                Material::Water => "drink of water",
             };
             self.emit(
                 format!("{name} drops a {noun}. It is in contact with the ground."),
@@ -1074,12 +1106,118 @@ impl World {
         self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
+    fn gather_brook_water(
+        &mut self,
+        intent: Intent,
+        start_cells: &BTreeMap<crate::model::ActorId, crate::model::CellId>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let cell = start_cells.get(&intent.actor_id).copied().unwrap_or(0);
+        if self.cell(cell).region != Region::Brook {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "The brook is not here.",
+                results,
+            );
+            return;
+        }
+        if self.carry_count(intent.actor_id) >= self.tuning.carry_slots {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "Your arms are full.",
+                results,
+            );
+            return;
+        }
+        let item = self.mint_item(Material::Water, 0, cell, Some(intent.actor_id), Role::Loose);
+        let name = self.name_of(intent.actor_id);
+        self.emit(
+            format!("{name} gathers a drink of water from the brook."),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![item],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            "You gather a drink of water.",
+            results,
+        );
+    }
+
+    fn apply_boils(&mut self, boils: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in boils {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(item_id) = self.loose_ids(actor.id, Material::Water).first().copied() else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no water to boil.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&item_id);
+            let before = actor.thirst;
+            let after = before.saturating_sub(self.tuning.drink_relief);
+            if let Some(person) = self.actors.get_mut(&actor.id) {
+                person.thirst = after;
+            }
+            let fire_event = self
+                .fire_at(actor.cell)
+                .map(|fire| fire.lit_event)
+                .into_iter()
+                .collect();
+            self.emit(
+                format!(
+                    "{} boils a drink of water over the fire and drinks it.",
+                    actor.name
+                ),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![item_id],
+                fire_event,
+                None,
+            );
+            let message = if before == 0 {
+                "You boil a drink of water and drink it. You were not thirsty."
+            } else if after < self.tuning.thirsty_at {
+                "You boil a drink of water and drink it. The thirst eases."
+            } else {
+                "You boil a drink of water and drink it. You are still thirsty."
+            };
+            self.finish(intent.command_id, intent.actor_id, true, message, results);
+        }
+    }
+
     fn apply_drinks(&mut self, drinks: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in drinks {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            if self.cell(actor.cell).region != crate::model::Region::Brook {
+            if self.cell(actor.cell).region != Region::Brook {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
@@ -1089,27 +1227,56 @@ impl World {
                 );
                 continue;
             }
-            let before = actor.thirst;
-            let after = before.saturating_sub(self.tuning.drink_relief);
+            let subject = format!("{}:brook", actor.cell);
+            let hash = contest_hash(self.seed, self.time, "drink", &subject, actor.id);
+            let sick = (hash % 1000) < u64::from(self.tuning.illness_chance);
+            let thirst_before = actor.thirst;
+            let thirst_after = thirst_before.saturating_sub(self.tuning.drink_relief);
+            let illness_before = actor.illness;
+            let illness_after = if sick {
+                (illness_before + self.tuning.illness_hit).min(1000)
+            } else {
+                illness_before
+            };
             if let Some(person) = self.actors.get_mut(&actor.id) {
-                person.thirst = after;
+                person.thirst = thirst_after;
+                person.illness = illness_after;
             }
-            self.emit(
+            let drink_event = self.emit(
                 format!("{} drinks from the brook.", actor.name),
-                crate::model::Scope::Cell(actor.cell),
+                Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
                 vec![],
                 vec![],
-                None,
+                Some(Draw {
+                    tag: "drink".into(),
+                    subject,
+                    value: hash,
+                }),
             );
-            let message = if before == 0 {
-                "You drink from the brook. You were not thirsty."
-            } else if after < self.tuning.thirsty_at {
-                "You drink from the brook. The thirst eases."
+            let turned = illness_before < self.tuning.ill_at && illness_after >= self.tuning.ill_at;
+            if turned {
+                self.emit(
+                    format!("{}'s stomach turns.", actor.name),
+                    Scope::Personal(actor.id),
+                    vec![actor.id],
+                    vec![actor.cell],
+                    vec![],
+                    vec![drink_event],
+                    None,
+                );
+            }
+            let mut message = if thirst_before == 0 {
+                "You drink from the brook. You were not thirsty.".to_string()
+            } else if thirst_after < self.tuning.thirsty_at {
+                "You drink from the brook. The thirst eases.".to_string()
             } else {
-                "You drink from the brook. You are still thirsty."
+                "You drink from the brook. You are still thirsty.".to_string()
             };
+            if turned {
+                message.push_str(" Your stomach turns.");
+            }
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
     }

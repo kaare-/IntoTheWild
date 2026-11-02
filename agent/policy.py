@@ -42,10 +42,14 @@ def scripted(obs: dict, memory: Memory) -> str | None:
     if obs.get("work"):
         return None
     allowed = set(obs["allowed_actions"])
-    if me_thirsty(obs) and "drink" in allowed:
-        return "drink"
     me = obs["self_info"]
     here = memory.cells.get((me["x"], me["y"]), {})
+    if me_thirsty(obs):
+        boiled = safe_drink(obs, memory, me, allowed)
+        if boiled:
+            return boiled
+        if "drink" in allowed and not fire_known(memory):
+            return "drink"
     branches = carry(me, "branch")
     bark = carry(me, "bark")
     saving_the_roof = bark == 1 and here.get("frame") == "supported" and "lay bark" in allowed
@@ -185,6 +189,30 @@ def ask_model(obs: dict) -> str | None:
 
 def me_thirsty(obs: dict) -> bool:
     return obs.get("self_info", {}).get("thirst") in {"thirsty", "parched"}
+
+
+def fire_known(memory: Memory) -> bool:
+    return any(cell.get("fire") for cell in memory.cells.values())
+
+
+def safe_drink(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | None:
+    """Prefer boiled brook water when a fire is already burning somewhere seen."""
+    if not fire_known(memory):
+        return None
+    if "boil" in allowed:
+        return "boil"
+    if carry(me, "water") == 0:
+        if "gather water" in allowed:
+            return "gather water"
+        brooks = [pos for pos, cell in memory.cells.items() if cell.get("region") == "brook"]
+        step = walk_toward(me, nearest((me["x"], me["y"]), brooks), allowed)
+        if step:
+            return step
+        if "w" in allowed:
+            return "w"
+        return None
+    fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
+    return walk_toward(me, nearest((me["x"], me["y"]), fires), allowed)
 
 
 def me_hungry(obs: dict) -> bool:

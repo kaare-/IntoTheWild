@@ -44,6 +44,7 @@ pub enum Material {
     Bark,
     Log,
     Berry,
+    Water,
 }
 
 impl Material {
@@ -53,6 +54,7 @@ impl Material {
             Material::Bark => "bark",
             Material::Log => "log",
             Material::Berry => "berry",
+            Material::Water => "water",
         }
     }
 }
@@ -124,6 +126,7 @@ pub enum ExamineTarget {
     Frame,
     Berries,
     Fire,
+    Water,
     Person(String),
 }
 
@@ -144,6 +147,7 @@ pub enum Attempt {
     Drink,
     Light,
     Cook,
+    Boil,
 }
 
 impl Attempt {
@@ -160,6 +164,7 @@ impl Attempt {
                 | Attempt::Drink
                 | Attempt::Light
                 | Attempt::Cook
+                | Attempt::Boil
         )
     }
 }
@@ -214,6 +219,8 @@ pub struct Actor {
     pub thirst: u32,
     #[serde(default)]
     pub hunger: u32,
+    #[serde(default)]
+    pub illness: u32,
     pub busy: Option<WorkId>,
 }
 
@@ -281,6 +288,7 @@ pub enum Wake {
     Hunger,
     Work(WorkId),
     Fire(FireId),
+    Illness,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -405,6 +413,7 @@ impl World {
         world.schedule(rain_at, Wake::Rain);
         world.schedule(0, Wake::Thirst);
         world.schedule(0, Wake::Hunger);
+        world.schedule(0, Wake::Illness);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
@@ -465,6 +474,7 @@ impl World {
                 wetness: 0,
                 thirst: 0,
                 hunger: 0,
+                illness: 0,
                 busy: None,
             },
         );
@@ -847,6 +857,14 @@ impl World {
             "hungry"
         } else {
             "not hungry"
+        }
+    }
+
+    pub(crate) fn illness_word(&self, illness: u32) -> &'static str {
+        if illness >= self.tuning.ill_at {
+            "ill"
+        } else {
+            "well"
         }
     }
 
