@@ -27,6 +27,7 @@ impl World {
                 Wake::Fire(id) => self.burn_down(id),
                 Wake::Deer => self.apply_deer(),
                 Wake::Season => self.apply_season(),
+                Wake::Rot => self.apply_rot(),
             }
         }
     }
@@ -48,6 +49,67 @@ impl World {
                 vec![],
                 vec![cell],
                 vec![],
+                vec![],
+                None,
+            );
+        }
+    }
+
+    /// One loose branch on open ground is gone. Shelter (exposure under
+    /// open sky) leaves a pile alone. A branch in a frame is not loose.
+    fn apply_rot(&mut self) {
+        let interval = self.tuning.rot_ticks.max(1);
+        self.schedule(self.time + interval, Wake::Rot);
+        let mut piles: Vec<CellId> = self
+            .piles
+            .iter()
+            .filter(|pile| {
+                pile.material == Material::Branch
+                    && pile.count > 0
+                    && self.exposure_millis(pile.cell) >= 1000
+            })
+            .map(|pile| pile.cell)
+            .collect();
+        piles.sort_unstable();
+        piles.dedup();
+        for cell in piles {
+            if self.take_from_pile(cell, Material::Branch, 1).is_some() {
+                self.emit(
+                    "A branch rots away in the open.",
+                    Scope::Cell(cell),
+                    vec![],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+        }
+        let mut loose: Vec<(CellId, ItemId)> = self
+            .items
+            .values()
+            .filter(|item| {
+                item.material == Material::Branch
+                    && item.role == Role::Loose
+                    && item.carrier.is_none()
+                    && self.exposure_millis(item.cell) >= 1000
+            })
+            .map(|item| (item.cell, item.id))
+            .collect();
+        loose.sort_unstable();
+        let mut seen = Vec::new();
+        for (cell, id) in loose {
+            if seen.contains(&cell) {
+                continue;
+            }
+            seen.push(cell);
+            self.items.remove(&id);
+            self.emit(
+                "A branch rots away in the open.",
+                Scope::Cell(cell),
+                vec![],
+                vec![cell],
+                vec![id],
                 vec![],
                 None,
             );

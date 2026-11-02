@@ -10,6 +10,8 @@ pub struct Tuning {
     pub rain_starts_at: u64,
     #[serde(default = "default_season_at")]
     pub season_at: u64,
+    #[serde(default = "default_rot_ticks")]
+    pub rot_ticks: u64,
     pub drag_ticks: u64,
     pub frame_phase_ticks: u64,
     pub frame_phases: u8,
@@ -62,6 +64,9 @@ fn default_fire_ticks() -> u64 {
 fn default_season_at() -> u64 {
     18
 }
+fn default_rot_ticks() -> u64 {
+    8
+}
 fn default_hunger_tick() -> u32 {
     10
 }
@@ -106,6 +111,7 @@ struct RawFile {
 struct RawTime {
     rain_starts_at: u64,
     season_at: u64,
+    rot_ticks: u64,
     drag_ticks: u64,
     frame_phase_ticks: u64,
     frame_phases: u8,
@@ -167,6 +173,7 @@ impl Tuning {
             || raw.time.frame_phase_ticks == 0
             || raw.time.bark_ticks == 0
             || raw.time.fire_ticks == 0
+            || raw.time.rot_ticks == 0
         {
             return Err("work durations must be at least 1 tick".into());
         }
@@ -193,6 +200,7 @@ impl Tuning {
         Ok(Tuning {
             rain_starts_at: raw.time.rain_starts_at,
             season_at: raw.time.season_at,
+            rot_ticks: raw.time.rot_ticks,
             drag_ticks: raw.time.drag_ticks,
             frame_phase_ticks: raw.time.frame_phase_ticks,
             frame_phases: raw.time.frame_phases,

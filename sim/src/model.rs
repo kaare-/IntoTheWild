@@ -294,6 +294,7 @@ pub enum Wake {
     Illness,
     Deer,
     Season,
+    Rot,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -460,6 +461,7 @@ impl World {
         let rain_at = world.tuning.rain_starts_at;
         world.schedule(rain_at, Wake::Rain);
         world.schedule(world.tuning.season_at, Wake::Season);
+        world.schedule(world.tuning.rot_ticks, Wake::Rot);
         world.schedule(0, Wake::Thirst);
         world.schedule(0, Wake::Hunger);
         world.schedule(0, Wake::Illness);

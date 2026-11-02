@@ -275,17 +275,22 @@ fn bark_on_a_supported_frame_keeps_the_wood_beneath_drier() {
         world.step(&[]);
     }
     let frame = world.examine(sera, ExamineTarget::Frame);
-    let wood = world.examine(sera, ExamineTarget::Wood);
+    let seen = world.observe(sera).unwrap();
     assert!(frame.contains("The wood in the frame is dry."), "{frame}");
     assert!(
         frame.contains("under a roof")
             || frame.contains("under a bark roof")
-            || wood.contains("under a bark roof")
+            || seen.text.contains("under a bark roof")
             || frame.contains("Bark lies over it"),
         "{frame}"
     );
-    assert!(wood.contains("soaked"), "{wood}");
-    assert_eq!(world.material_tally(Material::Branch), 8);
+    let open = seen
+        .visible_cells
+        .iter()
+        .find(|cell| cell.x == 5 && cell.y == 2)
+        .unwrap();
+    assert_eq!(open.branch_pile, 0, "open branches rot away");
+    assert_eq!(world.material_tally(Material::Branch), 4);
     assert_eq!(world.material_tally(Material::Bark), 4);
 }
 
@@ -370,7 +375,6 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
     let otto = world.spawn_at("Otto", "o", 2, 3).unwrap();
     let bark = world.material_tally(Material::Bark);
-    let branch = world.material_tally(Material::Branch);
     let berries = world.material_tally(Material::Berry);
     assert_eq!(berries, 4);
 
@@ -413,6 +417,7 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .allowed_actions
         .iter()
         .any(|action| action == "light fire"));
+    let branches_before_light = world.material_tally(Material::Branch);
     world.step(&[cmd("tinder", sera, Attempt::Light)]);
     let lit = world.observe(sera).unwrap();
     assert_eq!(lit.self_info.hunger, "hungry", "bark is tinder, not a meal");
@@ -423,7 +428,10 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .iter()
         .any(|event| event.text.contains("lights a fire with bark")));
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
-    assert_eq!(world.material_tally(Material::Branch), branch - 1);
+    assert_eq!(
+        world.material_tally(Material::Branch),
+        branches_before_light - 1
+    );
     assert_eq!(world.material_tally(Material::Berry), 1);
     let here = lit
         .visible_cells
@@ -959,6 +967,120 @@ fn the_wet_season_makes_open_rain_heavier_and_stays_local() {
             .count(),
         announced
     );
+
+    let mut twin = World::valley(Tuning::evening(), 1);
+    twin.spawn_at("Sera", "s", 4, 3).unwrap();
+    twin.spawn_at("Otto", "o", 0, 4).unwrap();
+    while twin.sim_time() < world.sim_time() {
+        twin.step(&[]);
+    }
+    assert_eq!(world, twin);
+}
+
+#[test]
+fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let sera = world.spawn_at("Sera", "s", 4, 3).unwrap();
+    let otto = world.spawn_at("Otto", "o", 0, 4).unwrap();
+    let wood = world.examine(sera, ExamineTarget::Wood);
+    let rock_line = wood
+        .lines()
+        .find(|line| line.contains("under the rock overhang"))
+        .unwrap();
+    let open_line = wood
+        .lines()
+        .find(|line| line.contains("in the open"))
+        .unwrap();
+    assert!(
+        !rock_line.contains("rotting"),
+        "shelter keeps this wood: {rock_line}"
+    );
+    assert!(
+        open_line.contains("It is rotting in the open."),
+        "{open_line}"
+    );
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .text
+        .contains("Wood left in the open is rotting."));
+    assert!(!world.observe(otto).unwrap().text.contains("rotting"));
+    assert_eq!(
+        world.examine(otto, ExamineTarget::Wood),
+        "You see no wood from here."
+    );
+    let rock = world
+        .observe(sera)
+        .unwrap()
+        .visible_cells
+        .into_iter()
+        .find(|cell| cell.x == 6 && cell.y == 1)
+        .unwrap();
+    let open = world
+        .observe(sera)
+        .unwrap()
+        .visible_cells
+        .into_iter()
+        .find(|cell| cell.x == 5 && cell.y == 2)
+        .unwrap();
+    assert_eq!(rock.branch_pile, 4);
+    assert_eq!(open.branch_pile, 4);
+
+    while world.sim_time() < 8 {
+        world.step(&[]);
+    }
+    assert_eq!(world.material_tally(Material::Branch), 8);
+    world.step(&[]);
+    assert_eq!(world.material_tally(Material::Branch), 7);
+    let seen = world.observe(sera).unwrap();
+    let open = seen
+        .visible_cells
+        .iter()
+        .find(|cell| cell.x == 5 && cell.y == 2)
+        .unwrap();
+    let rock = seen
+        .visible_cells
+        .iter()
+        .find(|cell| cell.x == 6 && cell.y == 1)
+        .unwrap();
+    assert_eq!(open.branch_pile, 3);
+    assert_eq!(rock.branch_pile, 4);
+    assert!(seen
+        .events
+        .iter()
+        .any(|event| event.text == "A branch rots away in the open."));
+    let far = world.observe(otto).unwrap();
+    assert!(far.events.iter().all(|event| !event.text.contains("rots")));
+    assert!(!far.text.contains("rotting"));
+
+    while world.sim_time() < 33 {
+        world.step(&[]);
+    }
+    assert_eq!(world.material_tally(Material::Branch), 4);
+    let gone = world.observe(sera).unwrap();
+    assert_eq!(
+        gone.visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        0
+    );
+    assert_eq!(
+        gone.visible_cells
+            .iter()
+            .find(|cell| cell.x == 6 && cell.y == 1)
+            .unwrap()
+            .branch_pile,
+        4
+    );
+    assert!(!gone.text.contains("Wood left in the open is rotting."));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("rots")));
 
     let mut twin = World::valley(Tuning::evening(), 1);
     twin.spawn_at("Sera", "s", 4, 3).unwrap();

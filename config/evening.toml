@@ -12,6 +12,10 @@ rain_starts_at = 16
 # Wood left in the open soaks twice as fast. A rock overhang or a bark
 # roof is unchanged, and nothing dries.
 season_at = 18
+# Loose branches on open ground lose one at this interval. A rock overhang
+# or a bark roof brings exposure under open sky, and that stops the rot.
+# Branches built into a frame are not loose, so they are not in it.
+rot_ticks = 8
 # A drag occupies the body until the next window closes.
 drag_ticks = 1
 frame_phase_ticks = 1

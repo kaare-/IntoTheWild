@@ -41,6 +41,8 @@ A deer is already on the trail at (2,3). It walks one cell every tick, including
 
 The wet season arrives at tick 18, while the rain is already falling, whether or not anyone has sent a command. From then on, rain in the open soaks wood twice as fast. The rock overhang and a bark roof keep the same shelter. Nothing dries. Someone who can see that open wood reads "The rain is heavier on the wood this season." Someone who cannot see it does not get that line, or the event on that ground. The commands stay the same.
 
+Loose branches left in the open rot. Every 8 ticks one of them is gone, with or without a command. The line is "Wood left in the open is rotting." and, when one goes, "A branch rots away in the open." A rock overhang or a bark roof stops that, because the sky is no longer open on that cell. A branch built into a frame is not loose, so it is not in the rot. Bark, berries, and the log are not this rot. Someone who cannot see the open wood does not get the line.
+
 ## An evening
 
 Rain starts at tick 16. One person can still roof a frame before that if they take three branches and bark from under the rock and build on open ground. The open pile at (5,2) and the dry pile under the rock are the comparison. Two people can drag the log; one cannot.
@@ -85,10 +87,11 @@ Run from this workspace on 2 November 2026.
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | Pass. 18 simulation tests and the in-process restart test. |
+| `cargo test --workspace` | Pass. 19 simulation tests and the in-process restart test. |
 | Waterborne illness through the player API (manual server, seed 1, two clients) | Pass. One raw drink at the brook made Sera ill. The same command id did not drink again. Otto did not see her stomach turn. Boiling over the rock fire left her ill and did not sicken her again. Five empty advances later she was well. |
 | Deer through the player API (manual server, seed 1, two clients) | Pass. An empty advance moved the deer east and left hoofprints on (2,3). Sera saw it eat one handful under the rock; that pile went from 4 to 3. Otto at (0,0) had neither the deer nor that eat. He later stood on (2,3), found the hoofprints, and could not see the deer. Examine did not advance the clock. The scripted policy returned `e`, which was already allowed. |
 | Wet season through the player API (manual server, seed 1, two clients) | Pass. Empty advances reached tick 18 with the open branches damp and no season line. The next empty advance soaked that pile and Sera read "The rain is heavier on the wood this season." The rock pile stayed dry. Otto at (0,4) still saw no wood and no heavier-rain line. The announcement did not repeat on the next tick. Examine did not advance the clock. The scripted policy returned `e` and `n`, both already allowed. |
+| Rot through the player API (manual server, seed 1, two clients) | Pass. Before any advance, Sera read that the open branches were rotting and the rock pile was not. Empty advances held both piles at 4 through tick 8. The next empty advance left the open pile at 3, the rock pile at 4, and the event "A branch rots away in the open." Otto at (0,4) saw no wood and no rot line. The next tick did not rot another branch. Examine did not advance the clock. The scripted policy returned `e` and `n`, both already allowed. |
 | Rain evening through the player API (`python3 agent/evening_session.py` against `--manual`) | Pass. Dry rock pile, soaked open pile, bark roof, distant slice, duplicate grab id. |
 | Opposite HTTP receive order for the same drag (`python3 agent/order_check.py`, seed 7) | Pass. Both orders finished at (4,2). |
 | One branch, and an interrupted drag | Pass in `sim/tests/evening.rs`. The evening session also interrupted a live drag before it landed. |
@@ -117,4 +120,4 @@ The browser check used Chrome against `http://127.0.0.1:18431` with `--window-se
 
 ## Follow-ups
 
-1. Decay of wet wood, abandoned frames, and hoofprints.
+The original list is in the valley now: the evening, thirst, hunger and the fire, brook illness, the deer, the wet season, and rot of loose branches left in the open. Nothing further is started.

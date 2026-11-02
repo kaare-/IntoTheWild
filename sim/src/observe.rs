@@ -174,6 +174,9 @@ impl World {
         if let Some(season) = self.season_line(actor_id) {
             lines.push(season);
         }
+        if let Some(rot) = self.rot_line(actor_id) {
+            lines.push(rot);
+        }
         lines.push(self.here_text(actor_id));
         lines.push(self.self_text(actor_id));
         if let Some(work) = self.work_view(actor_id) {
@@ -206,6 +209,20 @@ impl World {
                     }))
         });
         sees_open_wood.then(|| "The rain is heavier on the wood this season.".to_string())
+    }
+
+    fn rot_line(&self, viewer: ActorId) -> Option<String> {
+        let sees = self.visible_cell_ids(viewer).iter().any(|cell| {
+            self.exposure_millis(*cell) >= 1000
+                && (self.pile_count(*cell, Material::Branch) > 0
+                    || self.items.values().any(|item| {
+                        item.cell == *cell
+                            && item.carrier.is_none()
+                            && item.role == Role::Loose
+                            && item.material == Material::Branch
+                    }))
+        });
+        sees.then(|| "Wood left in the open is rotting.".to_string())
     }
 
     fn sky_line(&self) -> &'static str {
@@ -381,11 +398,12 @@ impl World {
                     _ => ("wood", "is"),
                 };
                 lines.push(format!(
-                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}",
+                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}",
                     self.place_phrase(origin, cell),
                     self.condition_word(self.pile_moisture(cell, material)),
                     self.rain_reaches_phrase(cell),
-                    self.heavier_rain_clause(cell, material)
+                    self.heavier_rain_clause(cell, material),
+                    self.rotting_clause(cell, material)
                 ));
             }
             let loose: Vec<_> = self
@@ -402,13 +420,14 @@ impl World {
             if !loose.is_empty() {
                 let worst = loose.iter().copied().max().unwrap_or(0);
                 lines.push(format!(
-                    "{} loose {} {} in contact with the ground {}. {}{}",
+                    "{} loose {} {} in contact with the ground {}. {}{}{}",
                     loose.len(),
                     pile_noun(material, loose.len() as u32),
                     if loose.len() == 1 { "is" } else { "are" },
                     self.place_phrase(origin, cell),
                     self.condition_sentence(worst, cell),
-                    self.heavier_rain_clause(cell, material)
+                    self.heavier_rain_clause(cell, material),
+                    self.rotting_clause(cell, material)
                 ));
             }
         }
@@ -626,6 +645,14 @@ impl World {
             && matches!(material, Material::Branch | Material::Bark | Material::Log)
         {
             " The rain is heavier on it this season."
+        } else {
+            ""
+        }
+    }
+
+    fn rotting_clause(&self, cell: CellId, material: Material) -> &'static str {
+        if material == Material::Branch && self.exposure_millis(cell) >= 1000 {
+            " It is rotting in the open."
         } else {
             ""
         }
