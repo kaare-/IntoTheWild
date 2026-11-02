@@ -40,6 +40,7 @@ impl World {
         let mut drags = Vec::new();
         let mut raises = Vec::new();
         let mut barks = Vec::new();
+        let mut drinks = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -69,6 +70,7 @@ impl World {
                         Attempt::Drag(_) => drags.push(intent),
                         Attempt::RaiseFrame => raises.push(intent),
                         Attempt::LayBark => barks.push(intent),
+                        Attempt::Drink => drinks.push(intent),
                     }
                 }
             }
@@ -146,6 +148,7 @@ impl World {
         self.apply_drags(drags, &start_grips, &released, &mut results);
         self.apply_raises(raises, &mut results);
         self.apply_barks(barks, &mut results);
+        self.apply_drinks(drinks, &mut results);
         results
     }
 
@@ -174,6 +177,17 @@ impl World {
                     Ok(false)
                 } else {
                     Err("You are not in the middle of anything.".into())
+                }
+            }
+            Attempt::Drink => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if self.cell(actor.cell).region != crate::model::Region::Brook {
+                    Err("The brook is not here.".into())
+                } else {
+                    Ok(true)
                 }
             }
             Attempt::Release => {
@@ -791,6 +805,52 @@ impl World {
                 intent.actor_id,
                 true,
                 "You start laying bark over the frame.",
+                results,
+            );
+        }
+    }
+
+    fn apply_drinks(&mut self, drinks: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in drinks {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.cell(actor.cell).region != crate::model::Region::Brook {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The brook is not here.",
+                    results,
+                );
+                continue;
+            }
+            let before = actor.thirst;
+            let after = before.saturating_sub(self.tuning.drink_relief);
+            if let Some(person) = self.actors.get_mut(&actor.id) {
+                person.thirst = after;
+            }
+            self.emit(
+                format!("{} drinks from the brook.", actor.name),
+                crate::model::Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            let message = if before == 0 {
+                "You drink from the brook. You were not thirsty."
+            } else if after < self.tuning.thirsty_at {
+                "You drink from the brook. The thirst eases."
+            } else {
+                "You drink from the brook. You are still thirsty."
+            };
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                message,
                 results,
             );
         }

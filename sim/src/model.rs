@@ -136,6 +136,7 @@ pub enum Attempt {
     Interrupt,
     RaiseFrame,
     LayBark,
+    Drink,
 }
 
 impl Attempt {
@@ -149,6 +150,7 @@ impl Attempt {
                 | Attempt::Drag(_)
                 | Attempt::RaiseFrame
                 | Attempt::LayBark
+                | Attempt::Drink
         )
     }
 }
@@ -199,6 +201,8 @@ pub struct Actor {
     pub token: String,
     pub cell: CellId,
     pub wetness: u32,
+    #[serde(default)]
+    pub thirst: u32,
     pub busy: Option<WorkId>,
 }
 
@@ -254,6 +258,7 @@ pub struct Grip {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Wake {
     Rain,
+    Thirst,
     Work(WorkId),
 }
 
@@ -371,6 +376,7 @@ impl World {
         };
         let rain_at = world.tuning.rain_starts_at;
         world.schedule(rain_at, Wake::Rain);
+        world.schedule(0, Wake::Thirst);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
@@ -428,6 +434,7 @@ impl World {
                 token: token.to_string(),
                 cell,
                 wetness: 0,
+                thirst: 0,
                 busy: None,
             },
         );
@@ -664,6 +671,24 @@ impl World {
             "damp"
         } else {
             "dry"
+        }
+    }
+
+    pub(crate) fn thirst_word(&self, thirst: u32) -> &'static str {
+        if thirst >= self.tuning.parched_at {
+            "parched"
+        } else if thirst >= self.tuning.thirsty_at {
+            "thirsty"
+        } else {
+            "not thirsty"
+        }
+    }
+
+    pub(crate) fn thirst_sentence(&self, thirst: u32) -> &'static str {
+        match self.thirst_word(thirst) {
+            "parched" => "parched",
+            "thirsty" => "thirsty",
+            _ => "not thirsty",
         }
     }
 

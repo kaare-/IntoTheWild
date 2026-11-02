@@ -9,6 +9,7 @@ type Observation = {
     x: number;
     y: number;
     wetness: string;
+    thirst: string;
     under_roof: boolean;
     gripping: boolean;
     busy: boolean;
@@ -184,6 +185,7 @@ function paint(observation: Observation) {
   app.querySelector("#where")!.textContent = [
     `(${self.x},${self.y})`,
     self.wetness,
+    self.thirst,
     self.under_roof ? "under a roof" : "open sky",
     self.gripping ? "gripping the log" : "",
     carry ? `carrying ${carry}` : "",

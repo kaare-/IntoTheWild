@@ -39,6 +39,7 @@ pub struct SelfInfo {
     pub region: String,
     pub under_roof: bool,
     pub wetness: String,
+    pub thirst: String,
     pub gripping: bool,
     pub carrying: Vec<CarryView>,
     pub busy: bool,
@@ -105,6 +106,7 @@ impl World {
                 region: self.cell(actor.cell).region.word().into(),
                 under_roof: self.exposure_millis(actor.cell) < 1000,
                 wetness: self.condition_word(actor.wetness).into(),
+                thirst: self.thirst_word(actor.thirst).into(),
                 gripping: self.gripping(actor.id).is_some(),
                 carrying: self.carry_views(actor.id),
                 busy: actor.busy.is_some(),
@@ -200,10 +202,10 @@ impl World {
 
     fn self_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
-        let mut parts = vec![format!(
-            "Your clothes are {}.",
-            self.condition_word(actor.wetness)
-        )];
+        let mut parts = vec![
+            format!("Your clothes are {}.", self.condition_word(actor.wetness)),
+            format!("You are {}.", self.thirst_sentence(actor.thirst)),
+        ];
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
             parts.push("Your arms are empty.".into());
@@ -241,11 +243,12 @@ impl World {
         let actor = self.actor(actor_id).unwrap();
         let (x, y) = cell_xy(actor.cell);
         format!(
-            "{} is on the {}, {}. Their clothes are {}.",
+            "{} is on the {}, {}. Their clothes are {}. They are {}.",
             actor.name,
             self.cell(actor.cell).region.word(),
             self.cover_phrase(actor.cell),
-            self.condition_word(actor.wetness)
+            self.condition_word(actor.wetness),
+            self.thirst_sentence(actor.thirst)
         ) + &format!(" ({x},{y})")
     }
 
@@ -787,6 +790,9 @@ impl World {
             if other != actor_id {
                 actions.push(format!("examine {}", self.name_of(other)));
             }
+        }
+        if self.cell(actor.cell).region == crate::model::Region::Brook && actor.busy.is_none() {
+            actions.push("drink".into());
         }
         if actor.busy.is_some() {
             actions.push("interrupt".into());

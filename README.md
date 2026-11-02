@@ -33,7 +33,9 @@ cargo run -p villmarks-server -- --data data/valley.sqlite
 
 Delete the sqlite file to reseed the valley. A living file keeps the tuning it was born with. The web dev server, if you want it, is `npm run dev` in `web/` on port 47321 and proxies the API.
 
-Commands: `look`, `examine wood|bark|log|frame|self|here|<name>`, `say`, `n` `s` `e` `w`, `gather branch|bark`, `drop`, `grab`, `drag n|s|e|w`, `release`, `raise frame`, `lay bark`, `interrupt`, `help`.
+Commands: `look`, `examine wood|bark|log|frame|self|here|<name>`, `say`, `n` `s` `e` `w`, `gather branch|bark`, `drop`, `grab`, `drag n|s|e|w`, `release`, `raise frame`, `lay bark`, `drink`, `interrupt`, `help`.
+
+Thirst rises every tick, whether or not anyone is here. Rain wets clothes and does not quench it. `drink` works only while you are standing in the brook. One drink takes the edge off. The number stays on the server. You hear "not thirsty", "thirsty", or "parched".
 
 ## An evening
 
@@ -108,9 +110,8 @@ The browser check used Chrome against `http://127.0.0.1:18431` with `--window-se
 
 ## Follow-ups
 
-1. Thirst, and drinking from the brook.
-2. Hunger.
-3. Waterborne disease from that brook.
-4. Animals on the trails.
-5. Seasons.
-6. Decay of wet wood and abandoned frames.
+1. Hunger.
+2. Waterborne disease from the brook, now that drinking exists.
+3. Animals on the trails.
+4. Seasons.
+5. Decay of wet wood and abandoned frames.

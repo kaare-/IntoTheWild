@@ -21,6 +21,12 @@ brook_rain = 0.10
 wade = 0.05
 damp_at = 0.25
 soaked_at = 0.60
+# Thirst rises every tick, including with nobody present. One drink
+# from the brook takes off 0.45. Rain wets clothes and does not quench.
+thirst_per_tick = 0.01
+drink_relief = 0.45
+thirsty_at = 0.25
+parched_at = 0.60
 carry_slots = 4
 sight = 2
 

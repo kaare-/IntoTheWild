@@ -38,9 +38,8 @@ SQLite is WAL, one connection, one transaction per join and per sealed window. A
 
 ## Follow-ups
 
-1. Thirst, and drinking from the brook.
-2. Hunger.
-3. Waterborne disease from that brook.
-4. Animals that already use the trails.
-5. Seasons that change the rain and the bark.
-6. Decay of wet wood and of frames nobody maintains.
+1. Hunger.
+2. Waterborne disease from the brook. Drinking is already a real attempt.
+3. Animals that already use the trails.
+4. Seasons that change the rain and the bark.
+5. Decay of wet wood and of frames nobody maintains.

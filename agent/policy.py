@@ -42,6 +42,8 @@ def scripted(obs: dict, memory: Memory) -> str | None:
     if obs.get("work"):
         return None
     allowed = set(obs["allowed_actions"])
+    if me_thirsty(obs) and "drink" in allowed:
+        return "drink"
     me = obs["self_info"]
     here = memory.cells.get((me["x"], me["y"]), {})
     branches = carry(me, "branch")
@@ -162,6 +164,10 @@ def ask_model(obs: dict) -> str | None:
             if item.lower() == text:
                 return item
     return None
+
+
+def me_thirsty(obs: dict) -> bool:
+    return obs.get("self_info", {}).get("thirst") in {"thirsty", "parched"}
 
 
 def carry(me: dict, material: str) -> int:

@@ -15,6 +15,7 @@ drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
+drink                        drink from the brook, if you are standing in it
 interrupt                    stop the work your body is in
 help"
 }
@@ -64,6 +65,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "build" if rest == "frame" => Ok(Attempt::RaiseFrame),
         "lay" if rest == "bark" => Ok(Attempt::LayBark),
         "roof" => Ok(Attempt::LayBark),
+        "drink" => Ok(Attempt::Drink),
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }

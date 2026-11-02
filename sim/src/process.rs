@@ -20,7 +20,47 @@ impl World {
         for entry in due {
             match entry.wake {
                 Wake::Rain => self.apply_rain(),
+                Wake::Thirst => self.apply_thirst(),
                 Wake::Work(id) => self.complete_work(id),
+            }
+        }
+    }
+
+    fn apply_thirst(&mut self) {
+        self.schedule(self.time + 1, Wake::Thirst);
+        let gain = self.tuning.thirst_per_tick;
+        if gain == 0 {
+            return;
+        }
+        let thirsty_at = self.tuning.thirsty_at;
+        let parched_at = self.tuning.parched_at;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some(actor) = self.actors.get_mut(&id) else {
+                continue;
+            };
+            let before = actor.thirst;
+            actor.thirst = (actor.thirst + gain).min(1000);
+            let after = actor.thirst;
+            let name = actor.name.clone();
+            let cell = actor.cell;
+            let crossed = if before < parched_at && after >= parched_at {
+                Some(format!("{name}'s mouth is dry."))
+            } else if before < thirsty_at && after >= thirsty_at {
+                Some(format!("Thirst is in {name}'s mouth."))
+            } else {
+                None
+            };
+            if let Some(text) = crossed {
+                self.emit(
+                    text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
             }
         }
     }

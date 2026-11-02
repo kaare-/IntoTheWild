@@ -299,6 +299,55 @@ fn snapshot_roundtrip_keeps_grips_schedule_and_future_rain() {
 }
 
 #[test]
+fn thirst_rises_without_a_command_and_the_brook_eases_it() {
+    let mut world = world_at(1_000);
+    let sera = world.spawn_at("Sera", "s", 0, 1).unwrap();
+    let otto = world.spawn_at("Otto", "o", 4, 3).unwrap();
+    for _ in 0..30 {
+        world.step(&[]);
+    }
+    assert_eq!(world.observe(sera).unwrap().self_info.thirst, "thirsty");
+    assert_eq!(world.observe(otto).unwrap().self_info.thirst, "thirsty");
+    assert!(
+        !world.observe(sera).unwrap().text.contains("thirst:"),
+        "raw thirst stays off the observation"
+    );
+
+    world.step(&[cmd("away", otto, Attempt::Drink)]);
+    let refused = world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("brook is not here"));
+    assert!(refused, "otto is not standing in the brook");
+    assert_eq!(world.observe(otto).unwrap().self_info.thirst, "thirsty");
+
+    world.step(&[cmd("sip", sera, Attempt::Drink)]);
+    let eased = world.observe(sera).unwrap();
+    assert_eq!(eased.self_info.thirst, "not thirsty");
+    assert!(eased.events.iter().any(|event| event.text.contains("drinks from the brook")));
+    assert!(
+        world
+            .observe(otto)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("drinks from the brook")),
+        "a distant character does not see the drink"
+    );
+
+    let mut rained = world_at(0);
+    let linde = rained.spawn_at("Linde", "l", 4, 4).unwrap();
+    for _ in 0..30 {
+        rained.step(&[]);
+    }
+    assert!(rained.is_raining());
+    assert_eq!(rained.observe(linde).unwrap().self_info.thirst, "thirsty");
+    assert_eq!(rained.observe(linde).unwrap().self_info.wetness, "soaked");
+}
+
+#[test]
 fn parser_accepts_the_evening_commands() {
     assert!(matches!(parse_attempt("look").unwrap(), Attempt::Look));
     assert!(matches!(
@@ -317,6 +366,7 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("lay bark").unwrap(),
         Attempt::LayBark
     ));
+    assert!(matches!(parse_attempt("drink").unwrap(), Attempt::Drink));
     assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
         Attempt::Say(text) if text == "The wood is still dry."
