@@ -2,8 +2,8 @@
 //! including when nobody has sent a command.
 
 use crate::model::{
-    cell_id, cell_xy, ActorId, CellId, ConstructionId, EventId, FireId, ItemId, Material, Region,
-    Role, Scope, Wake, Work, WorkId, WorkKind, World,
+    cell_id, cell_xy, ActorId, CellId, ConstructionId, Dir, EventId, FireId, ItemId, Material,
+    Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE,
 };
 
 impl World {
@@ -25,7 +25,56 @@ impl World {
                 Wake::Illness => self.apply_illness(),
                 Wake::Work(id) => self.complete_work(id),
                 Wake::Fire(id) => self.burn_down(id),
+                Wake::Deer => self.apply_deer(),
             }
+        }
+    }
+
+    /// One step along the trail, unless berries are under its feet. Eating
+    /// takes one handful from the pile and does not mint an item. The cell
+    /// it leaves keeps hoofprints.
+    fn apply_deer(&mut self) {
+        self.schedule(self.time + 1, Wake::Deer);
+        let Some(deer) = self.deer.clone() else {
+            return;
+        };
+        if self.pile_count(deer.cell, Material::Berry) > 0 {
+            let _ = self.take_from_pile(deer.cell, Material::Berry, 1);
+            let id = self.emit(
+                "A deer eats a handful of berries.",
+                Scope::Cell(deer.cell),
+                vec![],
+                vec![deer.cell],
+                vec![],
+                deer.last_event.into_iter().collect(),
+                None,
+            );
+            if let Some(deer) = self.deer.as_mut() {
+                deer.last_event = Some(id);
+            }
+            return;
+        }
+        let next_at = (deer.route_at + 1) % DEER_ROUTE.len();
+        let (nx, ny) = DEER_ROUTE[next_at];
+        let Some(dest) = cell_id(nx, ny) else {
+            return;
+        };
+        let dir = step_dir(deer.cell, dest);
+        let origin = deer.cell;
+        self.tracks.insert(origin);
+        let id = self.emit(
+            format!("A deer steps {}.", dir.word()),
+            Scope::Cell(dest),
+            vec![],
+            vec![origin, dest],
+            vec![],
+            deer.last_event.into_iter().collect(),
+            None,
+        );
+        if let Some(deer) = self.deer.as_mut() {
+            deer.cell = dest;
+            deer.route_at = next_at;
+            deer.last_event = Some(id);
         }
     }
 
@@ -616,5 +665,19 @@ impl World {
                 );
             }
         }
+    }
+}
+
+fn step_dir(from: CellId, to: CellId) -> Dir {
+    let (x1, y1) = cell_xy(from);
+    let (x2, y2) = cell_xy(to);
+    if x2 > x1 {
+        Dir::East
+    } else if x2 < x1 {
+        Dir::West
+    } else if y2 > y1 {
+        Dir::South
+    } else {
+        Dir::North
     }
 }

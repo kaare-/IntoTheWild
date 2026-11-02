@@ -12,7 +12,8 @@ L log          w dry wood
 W wet wood     b bark
 B wet bark     * fire
 y berries      Y wet berries
-u water
+u water        d deer
+\" tracks
 R rock roof    H bark roof
 f unfinished frame
 ~ brook    ^ slope    . ground
@@ -80,6 +81,8 @@ pub struct CellView {
     pub log_gripped_by: Vec<String>,
     pub frame: String,
     pub actors: Vec<String>,
+    pub deer: bool,
+    pub tracks: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -146,6 +149,8 @@ impl World {
             ExamineTarget::Berries => self.examine_material(actor_id, Material::Berry),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
+            ExamineTarget::Deer => self.examine_deer(actor_id),
+            ExamineTarget::Tracks => self.examine_tracks(actor_id),
             ExamineTarget::Person(name) => {
                 if actor.name.eq_ignore_ascii_case(&name) {
                     return self.self_text(actor_id);
@@ -213,6 +218,16 @@ impl World {
                 "Berries lie here, {}.",
                 self.condition_word(self.pile_moisture(actor.cell, Material::Berry))
             ));
+        }
+        if self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| deer.cell == actor.cell)
+        {
+            parts.push("A deer stands here.".into());
+        }
+        if self.tracks.contains(&actor.cell) {
+            parts.push("Hoofprints mark the ground.".into());
         }
         let others = self.others_here(actor_id);
         if !others.is_empty() {
@@ -301,6 +316,12 @@ impl World {
         }
         if self.pile_count(dest, Material::Berry) > 0 {
             bits.push("berries".into());
+        }
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
+            bits.push("a deer".into());
+        }
+        if self.tracks.contains(&dest) {
+            bits.push("hoofprints".into());
         }
         if self.fire_at(dest).is_some() {
             bits.push("a fire".into());
@@ -482,6 +503,44 @@ impl World {
         }
     }
 
+    fn examine_deer(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let Some(deer) = self.deer.as_ref() else {
+            return "You cannot see a deer from here.".into();
+        };
+        if chebyshev(origin, deer.cell) > self.tuning.sight {
+            return "You cannot see a deer from here.".into();
+        }
+        let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
+            " It is eating the berries."
+        } else {
+            ""
+        };
+        format!(
+            "A deer stands {}.{}",
+            self.place_phrase(origin, deer.cell),
+            eating
+        )
+    }
+
+    fn examine_tracks(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.tracks.contains(&cell) {
+                lines.push(format!(
+                    "Hoofprints mark the ground {}.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no hoofprints from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_frames(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -619,6 +678,9 @@ impl World {
         if self.fire_at(cell).is_some() {
             return '*';
         }
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
+            return 'd';
+        }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {
                 item.material == Material::Log && item.cell == cell && item.carrier.is_none()
@@ -672,6 +734,9 @@ impl World {
             })
         {
             return 'u';
+        }
+        if self.tracks.contains(&cell) {
+            return '"';
         }
         ' '
     }
@@ -798,6 +863,8 @@ impl World {
             },
             frame: frame.into(),
             actors,
+            deer: self.deer.as_ref().is_some_and(|deer| deer.cell == cell),
+            tracks: self.tracks.contains(&cell),
         }
     }
 
@@ -911,6 +978,20 @@ impl World {
             "say".into(),
             "help".into(),
         ];
+        if self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| chebyshev(actor.cell, deer.cell) <= self.tuning.sight)
+        {
+            actions.push("examine deer".into());
+        }
+        if self
+            .visible_cell_ids(actor_id)
+            .iter()
+            .any(|cell| self.tracks.contains(cell))
+        {
+            actions.push("examine tracks".into());
+        }
         for other in self.visible_actor_ids(actor_id) {
             if other != actor_id {
                 actions.push(format!("examine {}", self.name_of(other)));

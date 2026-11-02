@@ -4,7 +4,7 @@
 use crate::serde_map;
 use crate::tuning::Tuning;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const WIDTH: i32 = 7;
 pub const HEIGHT: i32 = 5;
@@ -15,6 +15,7 @@ pub type ItemId = u32;
 pub type ConstructionId = u32;
 pub type WorkId = u32;
 pub type FireId = u32;
+pub type DeerId = u32;
 pub type EventId = u64;
 pub type CellId = u16;
 
@@ -127,6 +128,8 @@ pub enum ExamineTarget {
     Berries,
     Fire,
     Water,
+    Deer,
+    Tracks,
     Person(String),
 }
 
@@ -289,7 +292,35 @@ pub enum Wake {
     Work(WorkId),
     Fire(FireId),
     Illness,
+    Deer,
 }
+
+/// One deer. It is not a sector and not a pile. `route_at` is the cell it
+/// is standing on in [`DEER_ROUTE`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deer {
+    pub id: DeerId,
+    pub cell: CellId,
+    pub route_at: usize,
+    pub last_event: Option<EventId>,
+}
+
+/// Trail the deer already uses, then a detour to the berries under the rock
+/// and back. Orthogonal, so each step is one direction.
+pub(crate) const DEER_ROUTE: [(i32, i32); 12] = [
+    (2, 3),
+    (3, 3),
+    (4, 3),
+    (4, 2),
+    (5, 2),
+    (5, 1),
+    (6, 1),
+    (5, 1),
+    (5, 2),
+    (4, 2),
+    (4, 3),
+    (3, 3),
+];
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Scheduled {
@@ -352,6 +383,11 @@ pub struct World {
     pub(crate) piles: Vec<Pile>,
     #[serde(default)]
     pub(crate) fires: BTreeMap<FireId, Fire>,
+    #[serde(default)]
+    pub(crate) deer: Option<Deer>,
+    /// Cells the deer has left. The marks stay; decay is not in this valley.
+    #[serde(default)]
+    pub(crate) tracks: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -404,6 +440,13 @@ impl World {
             works: BTreeMap::new(),
             piles: Vec::new(),
             fires: BTreeMap::new(),
+            deer: Some(Deer {
+                id: 1,
+                cell: cell_id(2, 3).unwrap(),
+                route_at: 0,
+                last_event: None,
+            }),
+            tracks: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -414,6 +457,7 @@ impl World {
         world.schedule(0, Wake::Thirst);
         world.schedule(0, Wake::Hunger);
         world.schedule(0, Wake::Illness);
+        world.schedule(0, Wake::Deer);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
@@ -545,6 +589,14 @@ impl World {
             .collect();
         names.sort();
         names
+    }
+
+    pub fn deer_cell(&self) -> Option<(i32, i32)> {
+        self.deer.as_ref().map(|deer| cell_xy(deer.cell))
+    }
+
+    pub fn hoofprints_at(&self, x: i32, y: i32) -> bool {
+        cell_id(x, y).is_some_and(|id| self.tracks.contains(&id))
     }
 
     pub fn exposure_at(&self, x: i32, y: i32) -> Option<u32> {

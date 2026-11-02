@@ -1,6 +1,6 @@
 # Villmarks
 
-A small wilderness MUD. The valley is already there: a brook, a slope, a rock overhang, dry wood and berries under that rock, an open pile, and one heavy log. People and external agents use the same rules. Rain soaks whatever the sky can reach. Bark on a frame supported at both ends is a roof; a half-finished frame is not. The same bark, with a dry branch, is tinder for a fire.
+A small wilderness MUD. The valley is already there: a brook, a slope, a rock overhang, dry wood and berries under that rock, an open pile, one heavy log, and one deer on the trail. People and external agents use the same rules. Rain soaks whatever the sky can reach. Bark on a frame supported at both ends is a roof; a half-finished frame is not. The same bark, with a dry branch, is tinder for a fire.
 
 The simulation is a Rust library with no network, database, clock, or model calls. One Tokio and Axum process owns the valley. A TypeScript page and a Python client are players, not special cases. Design choices taken from EmpireMUD, Bunnyland, Aardwolf, and GemStone III are in [DESIGN.md](DESIGN.md). Nothing here is deployed.
 
@@ -33,9 +33,11 @@ cargo run -p villmarks-server -- --data data/valley.sqlite
 
 Delete the sqlite file to reseed the valley. A living file keeps the tuning it was born with. The web dev server, if you want it, is `npm run dev` in `web/` on port 47321 and proxies the API.
 
-Commands: `look`, `examine wood|bark|berries|water|fire|log|frame|self|here|<name>`, `say`, `n` `s` `e` `w`, `gather branch|bark|berries|water`, `drop`, `grab`, `drag n|s|e|w`, `release`, `raise frame`, `lay bark`, `drink`, `boil`, `light fire`, `cook`, `interrupt`, `help`.
+Commands: `look`, `examine wood|bark|berries|water|fire|deer|tracks|log|frame|self|here|<name>`, `say`, `n` `s` `e` `w`, `gather branch|bark|berries|water`, `drop`, `grab`, `drag n|s|e|w`, `release`, `raise frame`, `lay bark`, `drink`, `boil`, `light fire`, `cook`, `interrupt`, `help`.
 
 Thirst rises every tick, whether or not anyone is here. Rain wets clothes and does not quench it. `drink` works only while you are standing in the brook. That raw drink eases thirst and rolls a recorded draw: half the time, in this valley, your stomach turns and you are ill. The illness amount stays on the server. You hear "well" or "ill". It fades on its own, a little every tick, until you are well again. `gather water` at the brook, carry it to a fire, and `boil` it. The boiled drink eases thirst and does not roll that draw. It also does not cure an illness you already have. Hunger rises the same way thirst does. Bark is tinder. `light fire` takes one dry loose sheet of bark and one dry branch. Rain puts that fire out in the open; the rock overhang or a bark roof keeps it. `cook` works only while a fire is burning where you stand and a handful of berries is in your arms or at your feet. Raw berries do nothing. One raw drink, one boiled drink, or one cooked handful takes the edge off thirst or hunger. Those amounts stay on the server too. You hear "not thirsty", "thirsty", or "parched", and "not hungry", "hungry", or "starving".
+
+A deer is already on the trail at (2,3). It walks one cell every tick, including when nobody has sent a command, along the trail and then to the berries under the rock. If it is standing on a pile of berries it eats one handful and stays for that tick. The handful leaves the pile. It is not a new item. The cell it walks off keeps hoofprints, and those prints stay. `examine deer` and `examine tracks` are the same examine command as the wood and the fire. There is no separate animal command. A person sees the deer, the prints, and what it just did only inside their own sight. Someone who arrives later can still find the prints.
 
 ## An evening
 
@@ -81,8 +83,9 @@ Run from this workspace on 2 November 2026.
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | Pass. 16 simulation tests and the in-process restart test. |
+| `cargo test --workspace` | Pass. 17 simulation tests and the in-process restart test. |
 | Waterborne illness through the player API (manual server, seed 1, two clients) | Pass. One raw drink at the brook made Sera ill. The same command id did not drink again. Otto did not see her stomach turn. Boiling over the rock fire left her ill and did not sicken her again. Five empty advances later she was well. |
+| Deer through the player API (manual server, seed 1, two clients) | Pass. An empty advance moved the deer east and left hoofprints on (2,3). Sera saw it eat one handful under the rock; that pile went from 4 to 3. Otto at (0,0) had neither the deer nor that eat. He later stood on (2,3), found the hoofprints, and could not see the deer. Examine did not advance the clock. The scripted policy returned `e`, which was already allowed. |
 | Rain evening through the player API (`python3 agent/evening_session.py` against `--manual`) | Pass. Dry rock pile, soaked open pile, bark roof, distant slice, duplicate grab id. |
 | Opposite HTTP receive order for the same drag (`python3 agent/order_check.py`, seed 7) | Pass. Both orders finished at (4,2). |
 | One branch, and an interrupted drag | Pass in `sim/tests/evening.rs`. The evening session also interrupted a live drag before it landed. |
@@ -111,6 +114,5 @@ The browser check used Chrome against `http://127.0.0.1:18431` with `--window-se
 
 ## Follow-ups
 
-1. Animals on the trails.
-2. Seasons.
-3. Decay of wet wood and abandoned frames.
+1. Seasons.
+2. Decay of wet wood and abandoned frames.

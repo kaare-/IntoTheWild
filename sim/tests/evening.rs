@@ -142,11 +142,22 @@ fn duplicate_command_does_not_run_twice() {
     let mut world = world_at(100);
     let sera = world.spawn_at("Sera", "s", 5, 2).unwrap();
     world.step(&[cmd("c1", sera, Attempt::Gather(Material::Branch))]);
-    let events = world.event_log().len();
+    let gathers = world
+        .event_log()
+        .iter()
+        .filter(|event| event.text.contains("gathers a"))
+        .count();
     assert_eq!(tally_carry(&world, sera), 1);
     world.step(&[cmd("c1", sera, Attempt::Gather(Material::Branch))]);
     assert_eq!(tally_carry(&world, sera), 1);
-    assert_eq!(world.event_log().len(), events);
+    assert_eq!(
+        world
+            .event_log()
+            .iter()
+            .filter(|event| event.text.contains("gathers a"))
+            .count(),
+        gathers
+    );
     assert_eq!(world.material_tally(Material::Branch), 8);
 }
 
@@ -361,7 +372,21 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     let bark = world.material_tally(Material::Bark);
     let branch = world.material_tally(Material::Branch);
     let berries = world.material_tally(Material::Berry);
-    for _ in 0..30 {
+    assert_eq!(berries, 4);
+
+    world.step(&[cmd("raw", sera, Attempt::Cook)]);
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("no fire")));
+    assert_eq!(world.material_tally(Material::Berry), berries);
+    assert_eq!(world.material_tally(Material::Bark), bark);
+
+    world.step(&[cmd("pocket", sera, Attempt::Gather(Material::Berry))]);
+    assert_eq!(world.material_tally(Material::Berry), berries);
+    while world.sim_time() < 30 {
         world.step(&[]);
     }
     assert_eq!(world.observe(sera).unwrap().self_info.hunger, "hungry");
@@ -372,17 +397,11 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         "raw hunger stays off the observation"
     );
     assert!(!prose.contains("0.45"));
-
-    world.step(&[cmd("raw", sera, Attempt::Cook)]);
-    assert!(world
-        .observe(sera)
-        .unwrap()
-        .events
-        .iter()
-        .any(|event| event.text.contains("no fire")));
-    assert_eq!(world.observe(sera).unwrap().self_info.hunger, "hungry");
-    assert_eq!(world.material_tally(Material::Berry), berries);
-    assert_eq!(world.material_tally(Material::Bark), bark);
+    assert_eq!(
+        world.material_tally(Material::Berry),
+        1,
+        "the deer eats the pile; the carried handful remains"
+    );
 
     world.step(&[cmd("none", otto, Attempt::Light)]);
     assert_eq!(world.material_tally(Material::Bark), bark);
@@ -405,14 +424,14 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .any(|event| event.text.contains("lights a fire with bark")));
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert_eq!(world.material_tally(Material::Branch), branch - 1);
-    assert_eq!(world.material_tally(Material::Berry), berries);
+    assert_eq!(world.material_tally(Material::Berry), 1);
     let here = lit
         .visible_cells
         .iter()
         .find(|cell| cell.x == 6 && cell.y == 1)
         .unwrap();
     assert!(here.fire);
-    assert_eq!(here.berry_pile, berries);
+    assert_eq!(here.berry_pile, 0);
 
     assert!(lit.allowed_actions.iter().any(|action| action == "cook"));
     world.step(&[cmd("meal", sera, Attempt::Cook)]);
@@ -422,7 +441,7 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .events
         .iter()
         .any(|event| event.text.contains("cooks a handful of berries")));
-    assert_eq!(world.material_tally(Material::Berry), berries - 1);
+    assert_eq!(world.material_tally(Material::Berry), 0);
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert!(world
         .observe(otto)
@@ -432,7 +451,7 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .all(|event| !event.text.contains("cooks a handful of berries")));
 
     world.step(&[cmd("meal", sera, Attempt::Cook)]);
-    assert_eq!(world.material_tally(Material::Berry), berries - 1);
+    assert_eq!(world.material_tally(Material::Berry), 0);
 
     let mut rained = world_at(0);
     let linde = rained.spawn_at("Linde", "l", 4, 4).unwrap();
@@ -567,6 +586,14 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Light
     ));
     assert!(matches!(parse_attempt("cook").unwrap(), Attempt::Cook));
+    assert!(matches!(
+        parse_attempt("examine deer").unwrap(),
+        Attempt::Examine(ExamineTarget::Deer)
+    ));
+    assert!(matches!(
+        parse_attempt("examine tracks").unwrap(),
+        Attempt::Examine(ExamineTarget::Tracks)
+    ));
     assert!(matches!(
         parse_attempt("gather berries").unwrap(),
         Attempt::Gather(Material::Berry)
@@ -733,4 +760,138 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
         .iter()
         .filter(|event| event.text.contains("boils"))
         .all(|event| event.draw.is_none()));
+}
+
+#[test]
+fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
+    let mut near = world_at(10_000);
+    let sera = near.spawn_at("Sera", "s", 4, 3).unwrap();
+    let otto = near.spawn_at("Otto", "o", 0, 0).unwrap();
+    assert_eq!(near.deer_cell(), Some((2, 3)));
+    assert!(!near.hoofprints_at(2, 3));
+    let before = near.observe(sera).unwrap();
+    assert!(before.map.contains('d'));
+    assert!(before
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 2 && cell.y == 3 && cell.deer));
+    assert!(before
+        .allowed_actions
+        .iter()
+        .any(|action| action == "examine deer"));
+    assert!(near
+        .examine(sera, ExamineTarget::Deer)
+        .contains("A deer stands"));
+    let distant = near.observe(otto).unwrap();
+    assert!(!distant.map.contains('d'));
+    assert!(distant.visible_cells.iter().all(|cell| !cell.deer));
+    assert!(!distant.text.contains("deer"));
+    assert!(near
+        .examine(otto, ExamineTarget::Deer)
+        .contains("cannot see a deer"));
+
+    near.step(&[]);
+    assert_eq!(near.deer_cell(), Some((3, 3)));
+    assert!(near.hoofprints_at(2, 3));
+    let moved = near.observe(sera).unwrap();
+    assert!(moved
+        .events
+        .iter()
+        .any(|event| event.text == "A deer steps east."));
+    assert!(moved.text.contains("a deer"));
+    assert!(moved
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 2 && cell.y == 3 && cell.tracks && !cell.deer));
+    let missed = near.observe(otto).unwrap();
+    assert!(missed
+        .events
+        .iter()
+        .all(|event| !event.text.contains("deer")));
+    assert!(missed
+        .visible_cells
+        .iter()
+        .all(|cell| !cell.deer && !cell.tracks));
+    assert!(!missed.map.contains('d'));
+    assert!(!missed.map.contains('"'));
+
+    let mut twin = world_at(10_000);
+    twin.spawn_at("Sera", "s", 4, 3).unwrap();
+    twin.spawn_at("Otto", "o", 0, 0).unwrap();
+    twin.step(&[]);
+    assert_eq!(near, twin);
+
+    for _ in 0..5 {
+        near.step(&[]);
+    }
+    assert_eq!(near.deer_cell(), Some((6, 1)));
+    assert_eq!(near.material_tally(Material::Berry), 4);
+    assert!(near
+        .observe(sera)
+        .unwrap()
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 6 && cell.y == 1 && cell.deer && cell.berry_pile == 4));
+    near.step(&[]);
+    assert_eq!(near.deer_cell(), Some((6, 1)));
+    assert_eq!(near.material_tally(Material::Berry), 3);
+    let ate = near.observe(sera).unwrap();
+    assert!(ate
+        .events
+        .iter()
+        .any(|event| event.text == "A deer eats a handful of berries."));
+    assert!(near
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("deer")));
+    for _ in 0..3 {
+        near.step(&[]);
+    }
+    assert_eq!(near.material_tally(Material::Berry), 0);
+    assert_eq!(near.deer_cell(), Some((6, 1)));
+    near.step(&[]);
+    assert_eq!(near.deer_cell(), Some((5, 1)));
+
+    let mut race = world_at(10_000);
+    let nils = race.spawn_at("Nils", "n", 6, 1).unwrap();
+    for _ in 0..6 {
+        race.step(&[]);
+    }
+    assert_eq!(race.material_tally(Material::Berry), 4);
+    race.step(&[cmd("hand", nils, Attempt::Gather(Material::Berry))]);
+    assert_eq!(
+        race.material_tally(Material::Berry),
+        3,
+        "the gather resolves first, then the deer eats one handful"
+    );
+    assert_eq!(race.deer_cell(), Some((6, 1)));
+
+    let mut finder = world_at(10_000);
+    let walker = finder.spawn_at("Otto", "o", 0, 0).unwrap();
+    finder.step(&[]);
+    assert!(finder.hoofprints_at(2, 3));
+    assert_ne!(finder.deer_cell(), Some((2, 3)));
+    for (n, dir) in [Dir::East, Dir::East, Dir::South, Dir::South, Dir::South]
+        .into_iter()
+        .enumerate()
+    {
+        finder.step(&[cmd(&format!("walk-{n}"), walker, Attempt::Move(dir))]);
+    }
+    assert_eq!(finder.actor_cell(walker), Some((2, 3)));
+    assert_ne!(finder.deer_cell(), Some((2, 3)));
+    let found = finder.observe(walker).unwrap();
+    assert!(found.text.contains("Hoofprints mark the ground."));
+    assert!(!found.text.contains("A deer stands here."));
+    assert!(found
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 2 && cell.y == 3 && cell.tracks));
+    assert!(finder
+        .examine(walker, ExamineTarget::Tracks)
+        .contains("Hoofprints mark the ground"));
+    assert!(finder
+        .examine(walker, ExamineTarget::Deer)
+        .contains("cannot see a deer"));
 }
