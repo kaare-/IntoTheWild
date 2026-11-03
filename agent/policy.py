@@ -50,6 +50,9 @@ def scripted(obs: dict, memory: Memory) -> str | None:
             return boiled
         if "drink" in allowed and not fire_known(memory):
             return "drink"
+    fed = safe_food(obs, memory, me, allowed)
+    if fed:
+        return fed
     branches = carry(me, "branch")
     bark = carry(me, "bark")
     saving_the_roof = bark == 1 and here.get("frame") == "supported" and "lay bark" in allowed
@@ -196,7 +199,10 @@ def fire_known(memory: Memory) -> bool:
 
 
 def safe_drink(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | None:
-    """Prefer boiled brook water when a fire is already burning somewhere seen."""
+    """Prefer boiled water when a fire is already burning somewhere seen.
+
+    Boiling needs a pot. Raw water is only chosen when no fire is known.
+    """
     if not fire_known(memory):
         return None
     if "boil" in allowed:
@@ -204,15 +210,63 @@ def safe_drink(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | 
     if carry(me, "water") == 0:
         if "gather water" in allowed:
             return "gather water"
-        brooks = [pos for pos, cell in memory.cells.items() if cell.get("region") == "brook"]
-        step = walk_toward(me, nearest((me["x"], me["y"]), brooks), allowed)
+        waters = [
+            pos
+            for pos, cell in memory.cells.items()
+            if cell.get("region") == "brook" or cell.get("still")
+        ]
+        step = walk_toward(me, nearest((me["x"], me["y"]), waters), allowed)
         if step:
             return step
         if "w" in allowed:
             return "w"
         return None
+    if carry(me, "pot") == 0:
+        if "gather pot" in allowed:
+            return "gather pot"
+        pots = [pos for pos, cell in memory.cells.items() if cell.get("pot_pile", 0) > 0]
+        return walk_toward(me, nearest((me["x"], me["y"]), pots), allowed)
     fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
     return walk_toward(me, nearest((me["x"], me["y"]), fires), allowed)
+
+
+def me_tired(obs: dict) -> bool:
+    return obs.get("self_info", {}).get("energy") in {"tiring", "spent"}
+
+
+def safe_food(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | None:
+    """Eat sweet berries raw. Cook anything that is not safe raw. Never eat it raw."""
+    origin = (me["x"], me["y"])
+    if me_tired(obs):
+        if "eat berries" in allowed:
+            return "eat berries"
+        if carry(me, "berry") == 0:
+            if "gather berries" in allowed:
+                return "gather berries"
+            berries = [
+                pos for pos, cell in memory.cells.items() if cell.get("berry_pile", 0) > 0
+            ]
+            step = walk_toward(me, nearest(origin, berries), allowed)
+            if step:
+                return step
+    if me_hungry(obs):
+        if "cook" in allowed:
+            return "cook"
+        if "gather mushrooms" in allowed:
+            return "gather mushrooms"
+        if "gather bitter berries" in allowed:
+            return "gather bitter berries"
+        if carry(me, "mushroom") or carry(me, "bitter berry"):
+            fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
+            return walk_toward(me, nearest(origin, fires), allowed)
+        foods = [
+            pos
+            for pos, cell in memory.cells.items()
+            if cell.get("mushroom_pile", 0) > 0 or cell.get("bitter_berry_pile", 0) > 0
+        ]
+        fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
+        return walk_toward(me, nearest(origin, foods or fires), allowed)
+    return None
 
 
 def me_hungry(obs: dict) -> bool:

@@ -22,6 +22,7 @@ impl World {
                 Wake::Rain => self.apply_rain(),
                 Wake::Thirst => self.apply_thirst(),
                 Wake::Hunger => self.apply_hunger(),
+                Wake::Energy => self.apply_energy(),
                 Wake::Illness => self.apply_illness(),
                 Wake::Work(id) => self.complete_work(id),
                 Wake::Fire(id) => self.burn_down(id),
@@ -75,7 +76,7 @@ impl World {
         for cell in piles {
             if self.take_from_pile(cell, Material::Branch, 1).is_some() {
                 self.emit(
-                    "A branch rots away in the open.",
+                    "A branch rots away in the open. You hear branches breaking.",
                     Scope::Cell(cell),
                     vec![],
                     vec![cell],
@@ -105,7 +106,7 @@ impl World {
             seen.push(cell);
             self.items.remove(&id);
             self.emit(
-                "A branch rots away in the open.",
+                "A branch rots away in the open. You hear branches breaking.",
                 Scope::Cell(cell),
                 vec![],
                 vec![cell],
@@ -187,9 +188,14 @@ impl World {
         };
         let dir = step_dir(deer.cell, dest);
         let origin = deer.cell;
+        let through_brush = self.has_brush(origin) || self.has_brush(dest);
         self.tracks.insert(origin);
+        let mut text = format!("A deer steps {}.", dir.word());
+        if through_brush {
+            text.push_str(" You hear branches breaking.");
+        }
         let id = self.emit(
-            format!("A deer steps {}.", dir.word()),
+            text,
             Scope::Cell(dest),
             vec![],
             vec![origin, dest],
@@ -265,6 +271,45 @@ impl World {
                 Some(format!("{name}'s stomach is empty."))
             } else if before < hungry_at && after >= hungry_at {
                 Some(format!("Hunger is in {name}'s stomach."))
+            } else {
+                None
+            };
+            if let Some(text) = crossed {
+                self.emit(
+                    text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+        }
+    }
+
+    fn apply_energy(&mut self) {
+        self.schedule(self.time + 1, Wake::Energy);
+        let gain = self.tuning.energy_per_tick;
+        if gain == 0 {
+            return;
+        }
+        let tiring_at = self.tuning.tiring_at;
+        let spent_at = self.tuning.spent_at;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some(actor) = self.actors.get_mut(&id) else {
+                continue;
+            };
+            let before = actor.energy;
+            actor.energy = (actor.energy + gain).min(1000);
+            let after = actor.energy;
+            let name = actor.name.clone();
+            let cell = actor.cell;
+            let crossed = if before < spent_at && after >= spent_at {
+                Some(format!("{name} is spent."))
+            } else if before < tiring_at && after >= tiring_at {
+                Some(format!("{name} is tiring."))
             } else {
                 None
             };

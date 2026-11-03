@@ -37,6 +37,16 @@ pub struct Tuning {
     pub starving_at: u32,
     #[serde(default = "default_illness_chance")]
     pub illness_chance: u32,
+    #[serde(default = "default_still_chance")]
+    pub still_chance: u32,
+    #[serde(default = "default_hunger_tick")]
+    pub energy_per_tick: u32,
+    #[serde(default = "default_hungry_at")]
+    pub tiring_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub spent_at: u32,
+    #[serde(default = "default_cook_relief")]
+    pub eat_relief: u32,
     #[serde(default = "default_illness_hit")]
     pub illness_hit: u32,
     #[serde(default = "default_ill_at")]
@@ -56,6 +66,12 @@ pub struct Tuning {
     pub berry_rain: u32,
     #[serde(default = "default_water_rain")]
     pub water_rain: u32,
+    #[serde(default = "default_berry_rain")]
+    pub mushroom_rain: u32,
+    #[serde(default = "default_berry_rain")]
+    pub bitter_rain: u32,
+    #[serde(default = "default_water_rain")]
+    pub pot_rain: u32,
 }
 
 fn default_fire_ticks() -> u64 {
@@ -84,6 +100,9 @@ fn default_berry_rain() -> u32 {
 }
 fn default_illness_chance() -> u32 {
     500
+}
+fn default_still_chance() -> u32 {
+    900
 }
 fn default_illness_hit() -> u32 {
     600
@@ -135,6 +154,7 @@ struct RawBody {
     hungry_at: f64,
     starving_at: f64,
     illness_chance: f64,
+    still_chance: f64,
     illness_hit: f64,
     ill_at: f64,
     illness_recovery: f64,
@@ -197,6 +217,19 @@ impl Tuning {
         let log = raw.materials.get("log").ok_or("missing material log")?;
         let berry = raw.materials.get("berry").ok_or("missing material berry")?;
         let water = raw.materials.get("water").ok_or("missing material water")?;
+        let mushroom = raw
+            .materials
+            .get("mushroom")
+            .ok_or("missing material mushroom")?;
+        let bitter = raw
+            .materials
+            .get("bitter berry")
+            .ok_or("missing material bitter berry")?;
+        let pot = raw.materials.get("pot").ok_or("missing material pot")?;
+        let hunger_per_tick = millis(raw.body.hunger_per_tick, "body.hunger_per_tick")?;
+        let cook_relief = millis(raw.body.cook_relief, "body.cook_relief")?;
+        let hungry_at = millis(raw.body.hungry_at, "body.hungry_at")?;
+        let starving_at = millis(raw.body.starving_at, "body.starving_at")?;
         Ok(Tuning {
             rain_starts_at: raw.time.rain_starts_at,
             season_at: raw.time.season_at,
@@ -215,11 +248,16 @@ impl Tuning {
             drink_relief: millis(raw.body.drink_relief, "body.drink_relief")?,
             thirsty_at: millis(raw.body.thirsty_at, "body.thirsty_at")?,
             parched_at: millis(raw.body.parched_at, "body.parched_at")?,
-            hunger_per_tick: millis(raw.body.hunger_per_tick, "body.hunger_per_tick")?,
-            cook_relief: millis(raw.body.cook_relief, "body.cook_relief")?,
-            hungry_at: millis(raw.body.hungry_at, "body.hungry_at")?,
-            starving_at: millis(raw.body.starving_at, "body.starving_at")?,
+            hunger_per_tick,
+            cook_relief,
+            hungry_at,
+            starving_at,
             illness_chance: millis(raw.body.illness_chance, "body.illness_chance")?,
+            still_chance: millis(raw.body.still_chance, "body.still_chance")?,
+            energy_per_tick: hunger_per_tick,
+            tiring_at: hungry_at,
+            spent_at: starving_at,
+            eat_relief: cook_relief,
             illness_hit: millis(raw.body.illness_hit, "body.illness_hit")?,
             ill_at: millis(raw.body.ill_at, "body.ill_at")?,
             illness_recovery: millis(raw.body.illness_recovery, "body.illness_recovery")?,
@@ -234,6 +272,9 @@ impl Tuning {
             log_rain: millis(log.rain_gain, "log.rain_gain")?,
             berry_rain: millis(berry.rain_gain, "berry.rain_gain")?,
             water_rain: millis(water.rain_gain, "water.rain_gain")?,
+            mushroom_rain: millis(mushroom.rain_gain, "mushroom.rain_gain")?,
+            bitter_rain: millis(bitter.rain_gain, "bitter berry.rain_gain")?,
+            pot_rain: millis(pot.rain_gain, "pot.rain_gain")?,
         })
     }
 
@@ -249,6 +290,9 @@ impl Tuning {
             Material::Log => self.log_rain,
             Material::Berry => self.berry_rain,
             Material::Water => self.water_rain,
+            Material::Mushroom => self.mushroom_rain,
+            Material::BitterBerry => self.bitter_rain,
+            Material::Pot => self.pot_rain,
         }
     }
 }

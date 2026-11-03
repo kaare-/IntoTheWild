@@ -46,6 +46,9 @@ pub enum Material {
     Log,
     Berry,
     Water,
+    Mushroom,
+    BitterBerry,
+    Pot,
 }
 
 impl Material {
@@ -56,6 +59,31 @@ impl Material {
             Material::Log => "log",
             Material::Berry => "berry",
             Material::Water => "water",
+            Material::Mushroom => "mushroom",
+            Material::BitterBerry => "bitter berry",
+            Material::Pot => "pot",
+        }
+    }
+
+    pub fn gather_noun(self) -> &'static str {
+        match self {
+            Material::Branch => "branch",
+            Material::Bark => "sheet of bark",
+            Material::Log => "log",
+            Material::Berry => "handful of berries",
+            Material::Water => "drink of water",
+            Material::Mushroom => "mushroom",
+            Material::BitterBerry => "handful of bitter berries",
+            Material::Pot => "pot",
+        }
+    }
+
+    pub fn cooked_phrase(self) -> &'static str {
+        match self {
+            Material::Mushroom => "a mushroom",
+            Material::BitterBerry => "a handful of bitter berries",
+            Material::Berry => "a handful of berries",
+            _ => "some food",
         }
     }
 }
@@ -126,6 +154,9 @@ pub enum ExamineTarget {
     Log,
     Frame,
     Berries,
+    BitterBerries,
+    Mushrooms,
+    Pot,
     Fire,
     Water,
     Deer,
@@ -151,6 +182,7 @@ pub enum Attempt {
     Light,
     Cook,
     Boil,
+    Eat(Material),
 }
 
 impl Attempt {
@@ -168,6 +200,7 @@ impl Attempt {
                 | Attempt::Light
                 | Attempt::Cook
                 | Attempt::Boil
+                | Attempt::Eat(_)
         )
     }
 }
@@ -201,6 +234,9 @@ pub struct Cell {
     pub region: Region,
     pub rock: bool,
     pub trail: bool,
+    /// A pool that does not run. Drinking it is not the same as the brook.
+    #[serde(default)]
+    pub still: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -224,6 +260,9 @@ pub struct Actor {
     pub hunger: u32,
     #[serde(default)]
     pub illness: u32,
+    /// Rises like hunger. Food brings it back down. The word stays on the observation.
+    #[serde(default)]
+    pub energy: u32,
     pub busy: Option<WorkId>,
 }
 
@@ -295,6 +334,7 @@ pub enum Wake {
     Deer,
     Season,
     Rot,
+    Energy,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -422,6 +462,7 @@ impl World {
                     region,
                     rock,
                     trail,
+                    still: x == 2 && y == 1,
                 });
             }
         }
@@ -465,10 +506,14 @@ impl World {
         world.schedule(0, Wake::Thirst);
         world.schedule(0, Wake::Hunger);
         world.schedule(0, Wake::Illness);
+        world.schedule(0, Wake::Energy);
         world.schedule(0, Wake::Deer);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Pot, 1, 0);
+        world.add_pile(cell_id(4, 1).unwrap(), Material::BitterBerry, 2, 0);
+        world.add_pile(cell_id(3, 1).unwrap(), Material::Mushroom, 2, 0);
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
@@ -527,6 +572,7 @@ impl World {
                 thirst: 0,
                 hunger: 0,
                 illness: 0,
+                energy: 0,
                 busy: None,
             },
         );
@@ -807,22 +853,37 @@ impl World {
         Ok(Some(item_id))
     }
 
-    pub(crate) fn consume_food(&mut self, actor: ActorId) -> Result<Option<ItemId>, ()> {
-        let Some(item_id) = self.loose_ids(actor, Material::Berry).first().copied() else {
-            let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
-                return Err(());
-            };
-            return if self
-                .take_from_pile(person_cell, Material::Berry, 1)
-                .is_some()
-            {
-                Ok(None)
-            } else {
-                Err(())
-            };
+    /// One loose handful, carried before the pile on this cell.
+    pub(crate) fn take_hand(
+        &mut self,
+        actor: ActorId,
+        material: Material,
+    ) -> Result<Option<ItemId>, ()> {
+        if let Some(item_id) = self.loose_ids(actor, material).first().copied() {
+            self.items.remove(&item_id);
+            return Ok(Some(item_id));
+        }
+        let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
         };
-        self.items.remove(&item_id);
-        Ok(Some(item_id))
+        if self.take_from_pile(person_cell, material, 1).is_some() {
+            Ok(None)
+        } else {
+            Err(())
+        }
+    }
+
+    /// Heat treats mushrooms first, then bitter berries, then sweet berries.
+    pub(crate) fn consume_food(
+        &mut self,
+        actor: ActorId,
+    ) -> Result<(Option<ItemId>, Material), ()> {
+        for material in [Material::Mushroom, Material::BitterBerry, Material::Berry] {
+            if let Ok(item) = self.take_hand(actor, material) {
+                return Ok((item, material));
+            }
+        }
+        Err(())
     }
 
     pub(crate) fn mint_fire(&mut self, cell: CellId, lit_event: EventId) -> FireId {
@@ -926,6 +987,43 @@ impl World {
         } else {
             "well"
         }
+    }
+
+    pub(crate) fn energy_word(&self, energy: u32) -> &'static str {
+        if energy >= self.tuning.spent_at {
+            "spent"
+        } else if energy >= self.tuning.tiring_at {
+            "tiring"
+        } else {
+            "rested"
+        }
+    }
+
+    pub(crate) fn water_here(&self, cell: CellId) -> bool {
+        self.cell(cell).region == Region::Brook || self.cell(cell).still
+    }
+
+    pub(crate) fn has_brush(&self, cell: CellId) -> bool {
+        self.pile_count(cell, Material::Branch) > 0
+            || self.items.values().any(|item| {
+                item.cell == cell
+                    && item.material == Material::Branch
+                    && item.role == Role::Loose
+                    && item.carrier.is_none()
+            })
+    }
+
+    pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
+        [Material::Mushroom, Material::BitterBerry, Material::Berry]
+            .into_iter()
+            .any(|material| !self.loose_ids(actor, material).is_empty())
+    }
+
+    pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {
+        [Material::Mushroom, Material::BitterBerry, Material::Berry]
+            .into_iter()
+            .map(|material| self.pile_count(cell, material))
+            .sum()
     }
 
     pub(crate) fn name_of(&self, id: ActorId) -> String {

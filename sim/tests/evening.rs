@@ -606,7 +606,15 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("gather berries").unwrap(),
         Attempt::Gather(Material::Berry)
     ));
-    assert!(parse_attempt("eat").unwrap_err().contains("tinder"));
+    assert!(matches!(
+        parse_attempt("eat").unwrap(),
+        Attempt::Eat(Material::Berry)
+    ));
+    assert!(matches!(
+        parse_attempt("eat mushrooms").unwrap(),
+        Attempt::Eat(Material::Mushroom)
+    ));
+    assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
     assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
         Attempt::Say(text) if text == "The wood is still dry."
@@ -749,6 +757,17 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
     world.step(&[cmd("dry", sera, Attempt::Gather(Material::Water))]);
     assert_eq!(world.material_tally(Material::Water), 1);
     world.step(&[cmd("light", sera, Attempt::Light)]);
+    world.step(&[cmd("nopot", sera, Attempt::Boil)]);
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("no pot")));
+    assert_eq!(world.material_tally(Material::Water), 1);
+    assert_eq!(world.observe(sera).unwrap().self_info.illness, "well");
+    world.step(&[cmd("getpot", sera, Attempt::Gather(Material::Pot))]);
+    assert_eq!(world.material_tally(Material::Pot), 1);
     world.step(&[cmd("pot", sera, Attempt::Boil)]);
     let boiled = world.observe(sera).unwrap();
     assert_eq!(boiled.self_info.illness, "well");
@@ -1045,10 +1064,9 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         .unwrap();
     assert_eq!(open.branch_pile, 3);
     assert_eq!(rock.branch_pile, 4);
-    assert!(seen
-        .events
-        .iter()
-        .any(|event| event.text == "A branch rots away in the open."));
+    assert!(seen.events.iter().any(|event| {
+        event.text == "A branch rots away in the open. You hear branches breaking."
+    }));
     let far = world.observe(otto).unwrap();
     assert!(far.events.iter().all(|event| !event.text.contains("rots")));
     assert!(!far.text.contains("rotting"));
@@ -1089,4 +1107,197 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         twin.step(&[]);
     }
     assert_eq!(world, twin);
+}
+
+#[test]
+fn breaking_branches_are_heard_nearby_and_not_far_off() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let sera = world.spawn_at("Sera", "s", 4, 3).unwrap();
+    let otto = world.spawn_at("Otto", "o", 0, 4).unwrap();
+    let clock = world.sim_time();
+    let _ = world.examine(sera, ExamineTarget::Wood);
+    assert_eq!(world.sim_time(), clock, "examine does not step the valley");
+
+    world.step(&[]);
+    let first = world.observe(sera).unwrap();
+    assert!(first
+        .events
+        .iter()
+        .any(|event| event.text == "A deer steps east."));
+    assert!(first
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branches breaking")));
+
+    for _ in 0..3 {
+        world.step(&[]);
+    }
+    assert_eq!(world.deer_cell(), Some((5, 2)));
+    let brush = world.observe(sera).unwrap();
+    assert!(brush
+        .events
+        .iter()
+        .any(|event| { event.text == "A deer steps east. You hear branches breaking." }));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branches breaking")));
+
+    while world.sim_time() < 8 {
+        world.step(&[]);
+    }
+    world.step(&[]);
+    let rotted = world.observe(sera).unwrap();
+    assert!(rotted.events.iter().any(|event| {
+        event.text == "A branch rots away in the open. You hear branches breaking."
+    }));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branches breaking")));
+
+    let mut taken = world_at(10_000);
+    let near = taken.spawn_at("Sera", "s", 4, 3).unwrap();
+    let far = taken.spawn_at("Otto", "o", 0, 4).unwrap();
+    let hand = taken.spawn_at("Nils", "n", 5, 2).unwrap();
+    taken.step(&[cmd("snap", hand, Attempt::Gather(Material::Branch))]);
+    assert!(taken
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| { event.text == "Nils gathers a branch. You hear branches breaking." }));
+    assert!(taken
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branches breaking")));
+}
+
+#[test]
+fn still_water_sickens_more_often_than_the_brook() {
+    let mut pool = World::valley(Tuning::evening(), 1);
+    pool.tuning.still_chance = 1000;
+    pool.tuning.illness_chance = 0;
+    let sera = pool.spawn_at("Sera", "s", 2, 1).unwrap();
+    let looked = pool.examine(sera, ExamineTarget::Water);
+    assert_eq!(pool.sim_time(), 0);
+    assert!(looked.contains("almost every time"));
+    assert!(looked.contains("only occasionally"));
+    assert!(!looked.contains("0.90") && !looked.contains("0.20"));
+    pool.step(&[cmd("pool", sera, Attempt::Drink)]);
+    let ill = pool.observe(sera).unwrap();
+    assert_eq!(ill.self_info.illness, "ill");
+    assert_eq!(ill.self_info.thirst, "not thirsty");
+    assert!(ill
+        .events
+        .iter()
+        .any(|event| event.text.contains("drinks the still water")));
+    let draw = pool
+        .event_log()
+        .iter()
+        .find(|event| event.draw.as_ref().is_some_and(|draw| draw.tag == "drink"))
+        .unwrap()
+        .draw
+        .clone()
+        .unwrap();
+    assert!(draw.subject.ends_with(":still"));
+    assert_eq!(
+        draw.value,
+        contest_hash(pool.seed, 0, "drink", &draw.subject, sera)
+    );
+    assert!(ill.text.contains("ill"));
+    assert!(!ill.text.contains("900"));
+
+    let mut running = World::valley(Tuning::evening(), 1);
+    running.tuning.still_chance = 1000;
+    running.tuning.illness_chance = 0;
+    let sera = running.spawn_at("Sera", "s", 0, 1).unwrap();
+    running.step(&[cmd("run", sera, Attempt::Drink)]);
+    let well = running.observe(sera).unwrap();
+    assert_eq!(well.self_info.illness, "well");
+    assert!(well
+        .events
+        .iter()
+        .any(|event| event.text.contains("drinks from the brook")));
+
+    let mut swapped = World::valley(Tuning::evening(), 3);
+    swapped.tuning.still_chance = 0;
+    swapped.tuning.illness_chance = 1000;
+    let at_pool = swapped.spawn_at("Sera", "s", 2, 1).unwrap();
+    swapped.step(&[cmd("safe", at_pool, Attempt::Drink)]);
+    assert_eq!(swapped.observe(at_pool).unwrap().self_info.illness, "well");
+    let at_brook = swapped.spawn_at("Otto", "o", 0, 1).unwrap();
+    swapped.step(&[cmd("bad", at_brook, Attempt::Drink)]);
+    assert_eq!(swapped.observe(at_brook).unwrap().self_info.illness, "ill");
+}
+
+#[test]
+fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
+    let mut world = world_at(10_000);
+    let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
+    let nils = world.spawn_at("Nils", "n", 3, 1).unwrap();
+    let linde = world.spawn_at("Linde", "l", 4, 1).unwrap();
+    assert!(world
+        .examine(sera, ExamineTarget::Berries)
+        .contains("They are good to eat raw."));
+    assert!(world
+        .examine(nils, ExamineTarget::Mushrooms)
+        .contains("Raw mushrooms do not feed you."));
+    assert!(world
+        .examine(linde, ExamineTarget::BitterBerries)
+        .contains("They should be cooked."));
+    assert_eq!(world.sim_time(), 0);
+
+    world.step(&[cmd("raw-mushroom", nils, Attempt::Eat(Material::Mushroom))]);
+    assert_eq!(world.material_tally(Material::Mushroom), 2);
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| { event.text.contains("Raw mushrooms do not feed you.") }));
+    world.step(&[cmd(
+        "raw-bitter",
+        linde,
+        Attempt::Eat(Material::BitterBerry),
+    )]);
+    assert_eq!(world.material_tally(Material::BitterBerry), 2);
+
+    world.step(&[cmd("pocket", sera, Attempt::Gather(Material::Berry))]);
+    while world.observe(sera).unwrap().self_info.energy != "tiring" {
+        world.step(&[]);
+        assert!(world.sim_time() < 40, "energy should reach tiring");
+    }
+    let hunger = world.observe(sera).unwrap().self_info.hunger.clone();
+    assert_eq!(hunger, "hungry");
+    world.step(&[cmd("eat", sera, Attempt::Eat(Material::Berry))]);
+    let ate = world.observe(sera).unwrap();
+    assert_eq!(ate.self_info.energy, "rested");
+    assert_eq!(ate.self_info.hunger, hunger);
+    assert!(ate
+        .events
+        .iter()
+        .any(|event| event.text.contains("eats a handful of berries")));
+    assert!(!ate.text.contains("energy:"));
+
+    world.step(&[cmd("pick", nils, Attempt::Gather(Material::Mushroom))]);
+    for n in 0..3 {
+        world.step(&[cmd(&format!("to-fire-{n}"), nils, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(nils), Some((6, 1)));
+    world.step(&[cmd("light", nils, Attempt::Light)]);
+    world.step(&[cmd("meal", nils, Attempt::Cook)]);
+    let cooked = world.observe(nils).unwrap();
+    assert!(cooked
+        .events
+        .iter()
+        .any(|event| event.text.contains("cooks a mushroom")));
+    assert_eq!(cooked.self_info.hunger, "not hungry");
+    assert_eq!(world.material_tally(Material::Mushroom), 1);
 }

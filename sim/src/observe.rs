@@ -12,11 +12,13 @@ L log          w dry wood
 W wet wood     b bark
 B wet bark     * fire
 y berries      Y wet berries
-u water        d deer
-\" tracks
+m mushrooms    q bitter berries
+k pot          u water
+d deer         \" tracks
 R rock roof    H bark roof
 f unfinished frame
-~ brook    ^ slope    . ground
+~ brook    = still water
+^ slope    . ground
 ?? outside your sight";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -45,6 +47,7 @@ pub struct SelfInfo {
     pub thirst: String,
     pub hunger: String,
     pub illness: String,
+    pub energy: String,
     pub gripping: bool,
     pub carrying: Vec<CarryView>,
     pub busy: bool,
@@ -75,6 +78,10 @@ pub struct CellView {
     pub berry_pile: u32,
     pub berry_pile_condition: Option<String>,
     pub loose_berries: u32,
+    pub bitter_berry_pile: u32,
+    pub mushroom_pile: u32,
+    pub pot_pile: u32,
+    pub still: bool,
     pub fire: bool,
     pub log: bool,
     pub log_condition: Option<String>,
@@ -120,6 +127,7 @@ impl World {
                 thirst: self.thirst_word(actor.thirst).into(),
                 hunger: self.hunger_word(actor.hunger).into(),
                 illness: self.illness_word(actor.illness).into(),
+                energy: self.energy_word(actor.energy).into(),
                 gripping: self.gripping(actor.id).is_some(),
                 carrying: self.carry_views(actor.id),
                 busy: actor.busy.is_some(),
@@ -147,6 +155,9 @@ impl World {
             ExamineTarget::Log => self.examine_log(actor_id),
             ExamineTarget::Frame => self.examine_frames(actor_id),
             ExamineTarget::Berries => self.examine_material(actor_id, Material::Berry),
+            ExamineTarget::BitterBerries => self.examine_material(actor_id, Material::BitterBerry),
+            ExamineTarget::Mushrooms => self.examine_material(actor_id, Material::Mushroom),
+            ExamineTarget::Pot => self.examine_material(actor_id, Material::Pot),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -252,14 +263,32 @@ impl World {
         if cell.region == crate::model::Region::Brook {
             parts.push("The water here is raw.".into());
         }
+        if cell.still && cell.region != crate::model::Region::Brook {
+            parts.push("Still water lies here. It is not the brook.".into());
+        }
         if self.fire_at(actor.cell).is_some() {
             parts.push("A small fire burns here.".into());
         }
         if self.pile_count(actor.cell, Material::Berry) > 0 {
             parts.push(format!(
-                "Berries lie here, {}.",
+                "Berries lie here, {}. They are good to eat raw.",
                 self.condition_word(self.pile_moisture(actor.cell, Material::Berry))
             ));
+        }
+        if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
+            parts.push(format!(
+                "Bitter berries lie here, {}. They should be cooked.",
+                self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry))
+            ));
+        }
+        if self.pile_count(actor.cell, Material::Mushroom) > 0 {
+            parts.push(format!(
+                "Mushrooms lie here, {}. They must be cooked. Raw mushrooms do not feed you.",
+                self.condition_word(self.pile_moisture(actor.cell, Material::Mushroom))
+            ));
+        }
+        if self.pile_count(actor.cell, Material::Pot) > 0 {
+            parts.push("A pot sits here.".into());
         }
         if self
             .deer
@@ -289,6 +318,7 @@ impl World {
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
             format!("You are {}.", self.hunger_word(actor.hunger)),
             format!("You are {}.", self.illness_word(actor.illness)),
+            format!("You are {}.", self.energy_word(actor.energy)),
         ];
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
@@ -327,14 +357,15 @@ impl World {
         let actor = self.actor(actor_id).unwrap();
         let (x, y) = cell_xy(actor.cell);
         format!(
-            "{} is on the {}, {}. Their clothes are {}. They are {}. They are {}. They are {}.",
+            "{} is on the {}, {}. Their clothes are {}. They are {}. They are {}. They are {}. They are {}.",
             actor.name,
             self.cell(actor.cell).region.word(),
             self.cover_phrase(actor.cell),
             self.condition_word(actor.wetness),
             self.thirst_sentence(actor.thirst),
             self.hunger_word(actor.hunger),
-            self.illness_word(actor.illness)
+            self.illness_word(actor.illness),
+            self.energy_word(actor.energy)
         ) + &format!(" ({x},{y})")
     }
 
@@ -358,6 +389,18 @@ impl World {
         }
         if self.pile_count(dest, Material::Berry) > 0 {
             bits.push("berries".into());
+        }
+        if self.pile_count(dest, Material::BitterBerry) > 0 {
+            bits.push("bitter berries".into());
+        }
+        if self.pile_count(dest, Material::Mushroom) > 0 {
+            bits.push("mushrooms".into());
+        }
+        if self.pile_count(dest, Material::Pot) > 0 {
+            bits.push("a pot".into());
+        }
+        if cell.still && cell.region != crate::model::Region::Brook {
+            bits.push("still water".into());
         }
         if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
             bits.push("a deer".into());
@@ -392,18 +435,15 @@ impl World {
             let count = self.pile_count(cell, material);
             if count > 0 {
                 let noun = pile_noun(material, count);
-                let (kind, verb) = match material {
-                    Material::Bark => ("bark", "is"),
-                    Material::Berry => ("berries", "are"),
-                    _ => ("wood", "is"),
-                };
+                let (kind, verb) = food_kind(material);
                 lines.push(format!(
-                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}",
+                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}{}",
                     self.place_phrase(origin, cell),
                     self.condition_word(self.pile_moisture(cell, material)),
                     self.rain_reaches_phrase(cell),
                     self.heavier_rain_clause(cell, material),
-                    self.rotting_clause(cell, material)
+                    self.rotting_clause(cell, material),
+                    food_clause(material)
                 ));
             }
             let loose: Vec<_> = self
@@ -420,14 +460,15 @@ impl World {
             if !loose.is_empty() {
                 let worst = loose.iter().copied().max().unwrap_or(0);
                 lines.push(format!(
-                    "{} loose {} {} in contact with the ground {}. {}{}{}",
+                    "{} loose {} {} in contact with the ground {}. {}{}{}{}",
                     loose.len(),
                     pile_noun(material, loose.len() as u32),
                     if loose.len() == 1 { "is" } else { "are" },
                     self.place_phrase(origin, cell),
                     self.condition_sentence(worst, cell),
                     self.heavier_rain_clause(cell, material),
-                    self.rotting_clause(cell, material)
+                    self.rotting_clause(cell, material),
+                    food_clause(material)
                 ));
             }
         }
@@ -448,12 +489,13 @@ impl World {
             };
             let cell = self.actor(other).unwrap().cell;
             lines.push(format!(
-                "{} {} {} carried by {who}, {}. {}",
+                "{} {} {} carried by {who}, {}. {}{}",
                 ids.len(),
                 pile_noun(material, ids.len() as u32),
                 if ids.len() == 1 { "is" } else { "are" },
                 self.cover_phrase(cell),
-                self.condition_word(moisture)
+                self.condition_word(moisture),
+                food_clause(material)
             ));
         }
         if lines.is_empty() {
@@ -462,6 +504,9 @@ impl World {
                 Material::Bark => "bark",
                 Material::Log => "log",
                 Material::Berry => "berries",
+                Material::BitterBerry => "bitter berries",
+                Material::Mushroom => "mushrooms",
+                Material::Pot => "pot",
                 Material::Water => "water",
             };
             format!("You see no {name} from here.")
@@ -530,13 +575,18 @@ impl World {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if self.cell(cell).region != crate::model::Region::Brook {
-                continue;
+            let place = self.cell(cell);
+            if place.region == crate::model::Region::Brook {
+                lines.push(format!(
+                    "The brook {} is running water. Drinking it turns your stomach only occasionally. Boiled in a pot over a fire, it does not.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if place.still {
+                lines.push(format!(
+                    "Still water {} does not run. Drinking it turns your stomach almost every time. Boiled in a pot over a fire, it does not.",
+                    self.place_phrase(origin, cell)
+                ));
             }
-            lines.push(format!(
-                "The brook {} is raw. Drinking it can turn your stomach. Boiled over a fire, it does not.",
-                self.place_phrase(origin, cell)
-            ));
         }
         let carried = self.examine_material(viewer, Material::Water);
         if !carried.starts_with("You see no") {
@@ -731,6 +781,8 @@ impl World {
         let place = self.cell(cell);
         if place.rock {
             'R'
+        } else if place.still {
+            '='
         } else {
             match place.region {
                 crate::model::Region::Brook => '~',
@@ -790,6 +842,21 @@ impl World {
             } else {
                 'y'
             };
+        }
+        if self.pile_count(cell, Material::Mushroom) > 0
+            || self.worst_loose(cell, Material::Mushroom).is_some()
+        {
+            return 'm';
+        }
+        if self.pile_count(cell, Material::BitterBerry) > 0
+            || self.worst_loose(cell, Material::BitterBerry).is_some()
+        {
+            return 'q';
+        }
+        if self.pile_count(cell, Material::Pot) > 0
+            || self.worst_loose(cell, Material::Pot).is_some()
+        {
+            return 'k';
         }
         if self.pile_count(cell, Material::Water) > 0
             || self.items.values().any(|item| {
@@ -912,6 +979,10 @@ impl World {
                     .into()
             }),
             loose_berries,
+            bitter_berry_pile: self.pile_count(cell, Material::BitterBerry),
+            mushroom_pile: self.pile_count(cell, Material::Mushroom),
+            pot_pile: self.pile_count(cell, Material::Pot),
+            still: place.still,
             fire: self.fire_at(cell).is_some(),
             log: log.is_some() || pile_log,
             log_condition: log
@@ -1039,6 +1110,9 @@ impl World {
             "examine log".into(),
             "examine frame".into(),
             "examine berries".into(),
+            "examine bitter berries".into(),
+            "examine mushrooms".into(),
+            "examine pot".into(),
             "examine fire".into(),
             "examine water".into(),
             "say".into(),
@@ -1063,13 +1137,14 @@ impl World {
                 actions.push(format!("examine {}", self.name_of(other)));
             }
         }
-        if self.cell(actor.cell).region == crate::model::Region::Brook && actor.busy.is_none() {
+        if self.water_here(actor.cell) && actor.busy.is_none() {
             actions.push("drink".into());
         }
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()
             && self.fire_at(actor.cell).is_some()
             && !self.loose_ids(actor_id, Material::Water).is_empty()
+            && !self.loose_ids(actor_id, Material::Pot).is_empty()
         {
             actions.push("boil".into());
         }
@@ -1121,9 +1196,25 @@ impl World {
         {
             actions.push("gather berries".into());
         }
-        if self.cell(actor.cell).region == crate::model::Region::Brook
+        if self.has_material_at_hand(actor_id, Material::Berry) {
+            actions.push("eat berries".into());
+        }
+        if self.pile_count(actor.cell, Material::BitterBerry) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
+            actions.push("gather bitter berries".into());
+        }
+        if self.pile_count(actor.cell, Material::Mushroom) > 0
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather mushrooms".into());
+        }
+        if self.pile_count(actor.cell, Material::Pot) > 0
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather pot".into());
+        }
+        if self.water_here(actor.cell) && self.carry_count(actor_id) < self.tuning.carry_slots {
             actions.push("gather water".into());
         }
         if !self.loose_ids(actor_id, Material::Branch).is_empty() {
@@ -1137,6 +1228,15 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Water).is_empty() {
             actions.push("drop water".into());
+        }
+        if !self.loose_ids(actor_id, Material::BitterBerry).is_empty() {
+            actions.push("drop bitter berries".into());
+        }
+        if !self.loose_ids(actor_id, Material::Mushroom).is_empty() {
+            actions.push("drop mushrooms".into());
+        }
+        if !self.loose_ids(actor_id, Material::Pot).is_empty() {
+            actions.push("drop pot".into());
         }
         if self.log_at(actor.cell) {
             actions.push("grab".into());
@@ -1221,8 +1321,35 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Log, _) => "log",
         (Material::Berry, true) => "handful of berries",
         (Material::Berry, false) => "handfuls of berries",
+        (Material::BitterBerry, true) => "handful of bitter berries",
+        (Material::BitterBerry, false) => "handfuls of bitter berries",
+        (Material::Mushroom, true) => "mushroom",
+        (Material::Mushroom, false) => "mushrooms",
+        (Material::Pot, _) => "pot",
         (Material::Water, true) => "drink of water",
         (Material::Water, false) => "drinks of water",
+    }
+}
+
+fn food_kind(material: Material) -> (&'static str, &'static str) {
+    match material {
+        Material::Bark => ("bark", "is"),
+        Material::Berry => ("sweet berries", "are"),
+        Material::BitterBerry => ("bitter berries", "are"),
+        Material::Mushroom => ("mushrooms", "are"),
+        Material::Pot => ("pot", "is"),
+        Material::Water => ("water", "is"),
+        _ => ("wood", "is"),
+    }
+}
+
+fn food_clause(material: Material) -> &'static str {
+    match material {
+        Material::Berry => " They are good to eat raw.",
+        Material::BitterBerry => " They should be cooked.",
+        Material::Mushroom => " They must be cooked. Raw mushrooms do not feed you.",
+        Material::Pot => " It can boil water over a fire.",
+        _ => "",
     }
 }
 

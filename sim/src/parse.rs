@@ -5,20 +5,21 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|water|fire|deer|tracks|log|frame|self|here|<name>
+examine wood|bark|berries|bitter berries|mushrooms|pot|water|fire|deer|tracks|log|frame|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|water
-drop branch|bark|berries|water
+gather branch|bark|berries|bitter berries|mushrooms|pot|water
+drop branch|bark|berries|bitter berries|mushrooms|pot|water
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
-drink                        raw brook water; it can turn your stomach
-boil                         boil brook water over a fire, then drink it
+drink                        raw water where you stand; still water is worse
+boil                         needs a pot and a fire; safe, and not a cure
 light fire                   dry bark and a dry branch; open rain puts it out
-cook                         cook berries where a fire is burning
+cook                         mushrooms, bitter berries, or sweet berries
+eat berries                  sweet berries only; raw mushrooms do not feed you
 interrupt                    stop the work your body is in
 help"
 }
@@ -72,7 +73,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "boil" => Ok(Attempt::Boil),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
-        "eat" => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
+        "eat" => parse_eat(rest),
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
@@ -92,9 +93,27 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "branch" | "branches" | "wood" | "firewood" => Ok(Material::Branch),
         "bark" => Ok(Material::Bark),
         "log" => Ok(Material::Log),
-        "berry" | "berries" => Ok(Material::Berry),
+        "berry" | "berries" | "sweet berries" => Ok(Material::Berry),
+        "bitter" | "bitter berry" | "bitter berries" => Ok(Material::BitterBerry),
+        "mushroom" | "mushrooms" => Ok(Material::Mushroom),
+        "pot" => Ok(Material::Pot),
         "water" => Ok(Material::Water),
-        _ => Err("Name a material: branch, bark, berries, water, or log.".into()),
+        _ => Err(
+            "Name a material: branch, bark, berries, bitter berries, mushrooms, pot, water, or log."
+                .into(),
+        ),
+    }
+}
+
+fn parse_eat(text: &str) -> Result<Attempt, String> {
+    match text.trim() {
+        "" | "berry" | "berries" | "sweet" | "sweet berries" => Ok(Attempt::Eat(Material::Berry)),
+        "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
+        "bitter" | "bitter berry" | "bitter berries" => Ok(Attempt::Eat(Material::BitterBerry)),
+        "bark" | "wood" | "branch" | "branches" | "log" => {
+            Err("Bark is tinder, not food. Light a fire and cook berries.".into())
+        }
+        _ => Err("Name a food: berries, bitter berries, or mushrooms.".into()),
     }
 }
 
@@ -104,7 +123,10 @@ fn parse_target(text: &str) -> ExamineTarget {
         "self" | "me" | "myself" => ExamineTarget::SelfBody,
         "wood" | "branch" | "branches" | "firewood" => ExamineTarget::Wood,
         "bark" => ExamineTarget::Bark,
-        "berry" | "berries" | "fruit" => ExamineTarget::Berries,
+        "berry" | "berries" | "fruit" | "sweet berries" => ExamineTarget::Berries,
+        "bitter" | "bitter berries" | "bitter berry" => ExamineTarget::BitterBerries,
+        "mushroom" | "mushrooms" => ExamineTarget::Mushrooms,
+        "pot" => ExamineTarget::Pot,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,

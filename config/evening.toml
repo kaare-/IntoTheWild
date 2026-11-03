@@ -39,18 +39,22 @@ drink_relief = 0.45
 thirsty_at = 0.25
 parched_at = 0.60
 # Hunger rises every tick, with or without a command. Bark is tinder, not
-# food. Cooking one handful of berries over a burning fire takes off 0.45.
-# Raw berries do not. Rain does not feed you.
+# food. Cooking mushrooms, bitter berries, or sweet berries over a burning
+# fire takes off 0.45 of hunger. Sweet berries eaten raw do not. They take
+# the same amount off energy instead. Energy uses these same hunger numbers
+# and is not a separate block. Rain does not feed you.
 hunger_per_tick = 0.01
 cook_relief = 0.45
 hungry_at = 0.25
 starving_at = 0.60
-# A raw drink from the brook rolls a draw. When that draw falls under this
-# chance, illness jumps by illness_hit. It then falls by illness_recovery
-# every tick, with or without a command, until the word is well again.
-# One bad drink stays with you for the walk to a fire. Boiling water over
-# that fire does not roll the draw, and it does not cure the illness.
-illness_chance = 0.50
+# A raw drink rolls a draw. The brook is running water and only occasionally
+# makes you ill. Still water, the pool, almost always does. When the draw
+# falls under that source's chance, illness jumps by illness_hit. It then
+# falls by illness_recovery every tick, with or without a command, until the
+# word is well again. Boiling needs a pot and a fire. It does not roll the
+# draw, and it does not cure an illness you already have.
+illness_chance = 0.20
+still_chance = 0.90
 illness_hit = 1.0
 ill_at = 0.25
 illness_recovery = 0.05
@@ -80,6 +84,15 @@ rain_gain = 0.08
 rain_gain = 0.16
 
 [materials.water]
+rain_gain = 0.0
+
+[materials.mushroom]
+rain_gain = 0.16
+
+[materials."bitter berry"]
+rain_gain = 0.16
+
+[materials.pot]
 rain_gain = 0.0
 
 [server]
