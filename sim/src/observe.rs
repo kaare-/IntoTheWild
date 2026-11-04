@@ -255,15 +255,8 @@ impl World {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            let open_branch = self.exposure_millis(cell) >= 1000
-                && (self.pile_count(cell, Material::Branch) > 0
-                    || self.items.values().any(|item| {
-                        item.cell == cell
-                            && item.carrier.is_none()
-                            && item.role == Role::Loose
-                            && item.material == Material::Branch
-                    }));
-            if open_branch {
+            let deer_on_it = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
+            if self.open_loose_branches(cell) && !deer_on_it {
                 lines.push(format!(
                     "Wood left in the open is rotting {}.",
                     self.cell_offset(origin, cell)
@@ -354,9 +347,10 @@ impl World {
         }
         let branches_here = self.pile_count(actor.cell, Material::Branch)
             + self.ground_ids(actor.cell, Material::Branch).len() as u32;
-        if branches_here > 1 {
+        let deer_on_this_wood = deer_here && self.open_loose_branches(actor.cell);
+        if !deer_on_this_wood && branches_here > 1 {
             parts.push("A pile of branches lies here.".into());
-        } else if branches_here == 1 {
+        } else if !deer_on_this_wood && branches_here == 1 {
             parts.push("A branch lies here.".into());
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
@@ -419,7 +413,7 @@ impl World {
                 parts.push("A spear lies here. The point is not hardened.".into());
             }
         }
-        if deer_here && !berries_here {
+        if deer_here && !berries_here && !self.open_loose_branches(actor.cell) {
             parts.push("A deer stands here.".into());
         }
         if self.tracks.contains(&actor.cell) {
@@ -615,10 +609,30 @@ impl World {
     /// A deer on a cell in sight that the four neighbor lines do not name.
     /// Due north, south, east, or west of the next cell is already "a deer"
     /// on that line. A diagonal, or a deer farther off, is this sentence.
+    fn open_loose_branches(&self, cell: CellId) -> bool {
+        self.exposure_millis(cell) >= 1000
+            && (self.pile_count(cell, Material::Branch) > 0
+                || self.items.values().any(|item| {
+                    item.cell == cell
+                        && item.carrier.is_none()
+                        && item.role == Role::Loose
+                        && item.material == Material::Branch
+                }))
+    }
+
     fn deer_look_line(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let deer = self.deer.as_ref()?;
-        if chebyshev(origin, deer.cell) > self.tuning.sight || origin == deer.cell {
+        if chebyshev(origin, deer.cell) > self.tuning.sight {
+            return None;
+        }
+        if self.open_loose_branches(deer.cell) {
+            return Some(format!(
+                "A deer stands on the rotting wood {}.",
+                self.mark_place(origin, deer.cell)
+            ));
+        }
+        if origin == deer.cell {
             return None;
         }
         let (x1, y1) = cell_xy(origin);
@@ -650,7 +664,11 @@ impl World {
         {
             bits.push("the heavy log".into());
         }
-        if self.pile_count(dest, Material::Branch) > 0 {
+        let deer_on_this_wood = self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| deer.cell == dest && self.open_loose_branches(dest));
+        if self.pile_count(dest, Material::Branch) > 0 && !deer_on_this_wood {
             bits.push("a pile of branches".into());
         }
         if self.pile_count(dest, Material::Berry) > 0 {
@@ -717,7 +735,7 @@ impl World {
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
         }
-        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) && !deer_on_this_wood {
             bits.push("a deer".into());
         }
         if self.tracks.contains(&dest) {
