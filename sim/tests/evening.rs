@@ -2720,3 +2720,42 @@ fn mushrooms_and_berries_in_the_arms_are_words() {
     let _ = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), clock);
 }
+
+#[test]
+fn carried_food_examine_uses_the_arms_words() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+    world.step(&[cmd("m1", near, Attempt::Gather(Material::Mushroom))]);
+    world.step(&[cmd("m2", near, Attempt::Gather(Material::Mushroom))]);
+    for i in 0..3 {
+        world.step(&[cmd(&format!("e{i}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("berry", near, Attempt::Gather(Material::Berry))]);
+    world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    let clock = world.sim_time();
+    let mushrooms = world.examine(near, ExamineTarget::Mushrooms);
+    let berries = world.examine(near, ExamineTarget::Berries);
+    let pot = world.examine(near, ExamineTarget::Pot);
+    assert_eq!(world.sim_time(), clock);
+    assert_eq!(
+        mushrooms,
+        "Two dry mushrooms are carried by you, under the rock overhang. They must be cooked. Raw mushrooms do not feed you."
+    );
+    assert!(!mushrooms.contains("2 mushrooms"), "{mushrooms}");
+    assert!(!mushrooms.contains(". dry"), "{mushrooms}");
+    let carried_berries = berries
+        .lines()
+        .find(|line| line.contains("carried by you"))
+        .unwrap_or("");
+    assert_eq!(
+        carried_berries,
+        "A dry handful of berries is carried by you, under the rock overhang. They are good to eat raw."
+    );
+    assert!(!carried_berries.contains("1 handful"), "{berries}");
+    assert!(!carried_berries.contains(". dry"), "{berries}");
+    assert_eq!(
+        pot,
+        "A dry pot is carried by you, under the rock overhang, and it can boil water over a fire."
+    );
+}

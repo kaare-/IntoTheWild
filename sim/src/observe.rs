@@ -1024,6 +1024,18 @@ impl World {
                     self.condition_word(moisture),
                     self.cover_phrase(cell)
                 ));
+            } else if matches!(
+                material,
+                Material::Mushroom | Material::Berry | Material::BitterBerry
+            ) {
+                let phrase =
+                    carried_food_phrase(material, ids.len() as u32, self.condition_word(moisture));
+                lines.push(format!(
+                    "{phrase} {} carried by {who}, {}.{}",
+                    if ids.len() == 1 { "is" } else { "are" },
+                    self.cover_phrase(cell),
+                    food_clause(material)
+                ));
             } else {
                 lines.push(format!(
                     "{} {} {} carried by {who}, {}. {}{}",
@@ -1988,6 +2000,20 @@ impl World {
                 names[names.len() - 1]
             ),
         }
+    }
+}
+
+fn carried_food_phrase(material: Material, count: u32, condition: &str) -> String {
+    let (one, many) = match material {
+        Material::Mushroom => ("mushroom", "mushrooms"),
+        Material::Berry => ("handful of berries", "handfuls of berries"),
+        Material::BitterBerry => ("handful of poison berries", "handfuls of poison berries"),
+        _ => return format!("{count} {}", pile_noun(material, count)),
+    };
+    if count == 1 {
+        format!("A {condition} {one}")
+    } else {
+        format!("{} {condition} {many}", capitalize(&count_word(count)))
     }
 }
 
