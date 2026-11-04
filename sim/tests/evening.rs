@@ -639,6 +639,18 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Examine(ExamineTarget::Tracks)
     ));
     assert!(matches!(
+        parse_attempt("examine rock").unwrap(),
+        Attempt::Examine(ExamineTarget::Rock)
+    ));
+    assert!(matches!(
+        parse_attempt("examine overhang").unwrap(),
+        Attempt::Examine(ExamineTarget::Rock)
+    ));
+    assert!(matches!(
+        parse_attempt("examine rock overhang").unwrap(),
+        Attempt::Examine(ExamineTarget::Rock)
+    ));
+    assert!(matches!(
         parse_attempt("gather berries").unwrap(),
         Attempt::Gather(Material::Berry)
     ));
@@ -2758,4 +2770,51 @@ fn carried_food_examine_uses_the_arms_words() {
         pot,
         "A dry pot is carried by you, under the rock overhang, and it can boil water over a fire."
     );
+}
+
+#[test]
+fn examine_rock_names_the_shelter_you_can_see() {
+    let mut world = world_at(10_000);
+    let under = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let clock = world.sim_time();
+    let here = world.examine(under, ExamineTarget::Rock);
+    assert_eq!(world.sim_time(), clock);
+    assert_eq!(
+        here,
+        "Rock leans overhead. You are out of the wind. Rain does not reach you."
+    );
+    assert!(world
+        .observe(under)
+        .unwrap()
+        .text
+        .contains("Rock leans overhead."));
+    assert!(world
+        .observe(under)
+        .unwrap()
+        .text
+        .contains("You are out of the wind."));
+    assert!(world
+        .observe(under)
+        .unwrap()
+        .allowed_actions
+        .iter()
+        .any(|action| action == "examine rock"));
+
+    let beside = world.spawn_at("Beside", "b", 5, 1).unwrap();
+    assert_eq!(
+        world.examine(beside, ExamineTarget::Rock),
+        "Rock leans overhead to the east. It is out of the wind. Rain does not reach it."
+    );
+
+    let far = world.spawn_at("Far", "f", 3, 1).unwrap();
+    assert_eq!(
+        world.examine(far, ExamineTarget::Rock),
+        "You cannot see a rock from here."
+    );
+    assert!(!world
+        .observe(far)
+        .unwrap()
+        .allowed_actions
+        .iter()
+        .any(|action| action == "examine rock"));
 }

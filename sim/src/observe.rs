@@ -186,6 +186,7 @@ impl World {
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
             ExamineTarget::Tracks => self.examine_tracks(actor_id),
+            ExamineTarget::Rock => self.examine_rock(actor_id),
             ExamineTarget::Person(name) => {
                 if actor.name.eq_ignore_ascii_case(&name) {
                     return self.self_text(actor_id);
@@ -1170,6 +1171,41 @@ impl World {
         }
     }
 
+    fn examine_rock(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.cell(cell).rock {
+                continue;
+            }
+            let exposure = self.exposure_millis(cell);
+            let wind = self.wind_word(exposure);
+            if cell == origin {
+                let rain = if exposure == 0 {
+                    "Rain does not reach you."
+                } else if exposure < 1000 {
+                    "Only a little rain reaches you."
+                } else if self.raining {
+                    "Rain reaches you."
+                } else {
+                    "The sky is open above you."
+                };
+                lines.push(format!("Rock leans overhead. You are {wind}. {rain}"));
+            } else {
+                lines.push(format!(
+                    "Rock leans overhead to the {}. It is {wind}. {}",
+                    self.relative(origin, cell),
+                    self.rain_reaches_phrase(cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You cannot see a rock from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_deer(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let Some(deer) = self.deer.as_ref() else {
@@ -1734,6 +1770,13 @@ impl World {
             .is_some_and(|deer| chebyshev(actor.cell, deer.cell) <= self.tuning.sight)
         {
             actions.push("examine deer".into());
+        }
+        if self
+            .visible_cell_ids(actor_id)
+            .iter()
+            .any(|cell| self.cell(*cell).rock)
+        {
+            actions.push("examine rock".into());
         }
         if self
             .visible_cell_ids(actor_id)
