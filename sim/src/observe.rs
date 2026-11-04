@@ -368,10 +368,14 @@ impl World {
             let bits: Vec<String> = carrying
                 .iter()
                 .map(|item| {
-                    format!(
-                        "{} {} carried by you ({})",
-                        item.count, item.material, item.condition
-                    )
+                    if item.material == "stone" && item.count == 1 {
+                        format!("a {} stone", item.condition)
+                    } else {
+                        format!(
+                            "{} {} carried by you ({})",
+                            item.count, item.material, item.condition
+                        )
+                    }
                 })
                 .collect();
             parts.push(format!("You have {}.", bits.join(", ")));
@@ -486,17 +490,27 @@ impl World {
         for cell in self.visible_cell_ids(viewer) {
             let count = self.pile_count(cell, material);
             if count > 0 {
-                let noun = pile_noun(material, count);
-                let (kind, verb) = food_kind(material);
-                lines.push(format!(
-                    "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}{}",
-                    self.place_phrase(origin, cell),
-                    self.condition_word(self.pile_moisture(cell, material)),
-                    self.rain_reaches_phrase(cell),
-                    self.heavier_rain_clause(cell, material),
-                    self.rotting_clause(cell, material),
-                    food_clause(material)
-                ));
+                if material == Material::Stone && count == 1 {
+                    lines.push(format!(
+                        "A stone lies in contact with the ground {}. The stone is {}. {}{}",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(self.pile_moisture(cell, material)),
+                        self.rain_reaches_phrase(cell),
+                        food_clause(material)
+                    ));
+                } else {
+                    let noun = pile_noun(material, count);
+                    let (kind, verb) = food_kind(material);
+                    lines.push(format!(
+                        "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}{}",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(self.pile_moisture(cell, material)),
+                        self.rain_reaches_phrase(cell),
+                        self.heavier_rain_clause(cell, material),
+                        self.rotting_clause(cell, material),
+                        food_clause(material)
+                    ));
+                }
             }
             let loose: Vec<_> = self
                 .items
@@ -511,17 +525,27 @@ impl World {
                 .collect();
             if !loose.is_empty() {
                 let worst = loose.iter().copied().max().unwrap_or(0);
-                lines.push(format!(
-                    "{} loose {} {} in contact with the ground {}. {}{}{}{}",
-                    loose.len(),
-                    pile_noun(material, loose.len() as u32),
-                    if loose.len() == 1 { "is" } else { "are" },
-                    self.place_phrase(origin, cell),
-                    self.condition_sentence(worst, cell),
-                    self.heavier_rain_clause(cell, material),
-                    self.rotting_clause(cell, material),
-                    food_clause(material)
-                ));
+                if material == Material::Stone && loose.len() == 1 {
+                    lines.push(format!(
+                        "A stone lies in contact with the ground {}. The stone is {}. {}{}",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(worst),
+                        self.rain_reaches_phrase(cell),
+                        food_clause(material)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "{} loose {} {} in contact with the ground {}. {}{}{}{}",
+                        loose.len(),
+                        pile_noun(material, loose.len() as u32),
+                        if loose.len() == 1 { "is" } else { "are" },
+                        self.place_phrase(origin, cell),
+                        self.condition_sentence(worst, cell),
+                        self.heavier_rain_clause(cell, material),
+                        self.rotting_clause(cell, material),
+                        food_clause(material)
+                    ));
+                }
             }
         }
         for other in self.visible_actor_ids(viewer) {
@@ -540,15 +564,23 @@ impl World {
                 self.name_of(other)
             };
             let cell = self.actor(other).unwrap().cell;
-            lines.push(format!(
-                "{} {} {} carried by {who}, {}. {}{}",
-                ids.len(),
-                pile_noun(material, ids.len() as u32),
-                if ids.len() == 1 { "is" } else { "are" },
-                self.cover_phrase(cell),
-                self.condition_word(moisture),
-                food_clause(material)
-            ));
+            if material == Material::Stone && ids.len() == 1 {
+                lines.push(format!(
+                    "A {} stone is carried by {who}, {}, and it is a found stone.",
+                    self.condition_word(moisture),
+                    self.cover_phrase(cell)
+                ));
+            } else {
+                lines.push(format!(
+                    "{} {} {} carried by {who}, {}. {}{}",
+                    ids.len(),
+                    pile_noun(material, ids.len() as u32),
+                    if ids.len() == 1 { "is" } else { "are" },
+                    self.cover_phrase(cell),
+                    self.condition_word(moisture),
+                    food_clause(material)
+                ));
+            }
         }
         if lines.is_empty() {
             let name = match material {

@@ -1670,8 +1670,12 @@ fn a_stone_on_the_slope_can_be_carried_and_stays_unseen_from_far() {
         .any(|action| action == "gather stone"));
     let examined = world.examine(near, ExamineTarget::Stone);
     assert_eq!(world.sim_time(), clock);
-    assert!(examined.contains("found stone"));
-    assert!(!examined.contains("knap"));
+    assert_eq!(
+        examined,
+        "A stone lies in contact with the ground here, in the open. The stone is dry. The sky is open above it. It is a found stone."
+    );
+    assert!(!examined.contains("pile"));
+    assert!(!examined.contains("1 loose"));
     let distant = world.observe(far).unwrap();
     assert!(!distant.text.contains("stone"));
     assert!(distant
@@ -1690,6 +1694,14 @@ fn a_stone_on_the_slope_can_be_carried_and_stays_unseen_from_far() {
         .carrying
         .iter()
         .any(|item| item.material == "stone" && item.count == 1));
+    assert!(carried.text.contains("You have a dry stone."));
+    assert!(!carried.text.contains("1 stone"));
+    let held = world.examine(near, ExamineTarget::Stone);
+    assert_eq!(
+        held,
+        "A dry stone is carried by you, in the open, and it is a found stone."
+    );
+    assert!(!held.contains("1 stone"));
     assert!(!carried.text.contains("A loose stone lies here."));
     assert!(carried
         .visible_cells
@@ -1709,6 +1721,13 @@ fn a_stone_on_the_slope_can_be_carried_and_stays_unseen_from_far() {
     assert_eq!(world.actor_cell(near), Some((3, 0)));
     let back = world.observe(near).unwrap();
     assert!(back.text.contains("A loose stone lies here."));
+    let dropped_text = world.examine(near, ExamineTarget::Stone);
+    assert_eq!(
+        dropped_text,
+        "A stone lies in contact with the ground here, in the open. The stone is dry. The sky is open above it. It is a found stone."
+    );
+    assert!(!dropped_text.contains("1 loose"));
+    assert!(!dropped_text.contains("pile"));
     assert!(back.visible_cells.iter().any(|cell| {
         cell.x == 3 && cell.y == 0 && cell.loose_stone == 1 && cell.stone_pile == 0
     }));
