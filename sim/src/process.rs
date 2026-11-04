@@ -329,7 +329,8 @@ impl World {
     }
 
     /// Cold, wind, and sun on a body. Exposure is the shelter the valley
-    /// already has. Wind doubles the cold only under open sky. Mud cuts
+    /// already has. Wind doubles the cold only under open sky. A body
+    /// standing on a burning fire loses cold that tick instead. Mud cuts
     /// the sun. Rain hides the sun and washes mud off exposed skin.
     fn apply_weather(&mut self) {
         self.schedule(self.time + 1, Wake::Weather);
@@ -355,6 +356,7 @@ impl World {
             let cold_before = actor.cold;
             let sun_before = actor.sunburn;
             let mud_before = actor.mud;
+            let on_fire = self.fire_at(cell).is_some();
             let mut cold_gain = ((u64::from(cold_base) * u64::from(exposure)) / 1000) as u32;
             if exposure >= 1000 {
                 cold_gain = cold_gain.saturating_mul(2);
@@ -374,20 +376,28 @@ impl World {
             } else {
                 mud_fade
             };
+            let cold_after = if on_fire {
+                cold_before.saturating_sub(self.tuning.fire_warmth)
+            } else {
+                (cold_before + cold_gain).min(1000)
+            };
+            let sun_after = (sun_before + sun_gain).min(1000);
             if let Some(actor) = self.actors.get_mut(&id) {
-                actor.cold = (cold_before + cold_gain).min(1000);
-                actor.sunburn = (sun_before + sun_gain).min(1000);
+                actor.cold = cold_after;
+                actor.sunburn = sun_after;
                 actor.mud = mud_before.saturating_sub(mud_loss);
             }
-            let cold_after = cold_before + cold_gain;
-            let sun_after = sun_before + sun_gain;
-            let cold_line = if cold_before < cold_at && cold_after >= cold_at {
+            let cold_line = if on_fire && cold_before >= chilly_at && cold_after < chilly_at {
+                Some(format!("{name} is warm at the fire."))
+            } else if on_fire && cold_before >= cold_at && cold_after < cold_at {
+                Some(format!("{name} is warming at the fire."))
+            } else if !on_fire && cold_before < cold_at && cold_after >= cold_at {
                 Some(if exposure >= 1000 {
                     format!("{name} is cold. The wind is on them.")
                 } else {
                     format!("{name} is cold.")
                 })
-            } else if cold_before < chilly_at && cold_after >= chilly_at {
+            } else if !on_fire && cold_before < chilly_at && cold_after >= chilly_at {
                 Some(if exposure >= 1000 {
                     format!("{name} is chilly. The wind is on them.")
                 } else {

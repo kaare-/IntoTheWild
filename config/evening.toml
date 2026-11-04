@@ -70,6 +70,10 @@ illness_recovery = 0.05
 cold_per_tick = 0.04
 chilly_at = 0.25
 cold_at = 0.60
+# Standing on a burning fire. This tick does not also add the sky's cold.
+# Open wind is 0.08, so this is enough to warm a body in the open.
+# The sun on that body is unchanged. The next cell does not warm.
+fire_warmth = 0.16
 sun_per_tick = 0.05
 pink_at = 0.25
 burned_at = 0.60

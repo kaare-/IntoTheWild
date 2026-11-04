@@ -53,6 +53,8 @@ def scripted(obs: dict, memory: Memory) -> str | None:
     fed = safe_food(obs, memory, me, allowed)
     if fed:
         return fed
+    if me.get("cold") in {"chilly", "cold"} and here.get("fire"):
+        return None
     cared = weather_care(obs, memory, me, allowed)
     if cared:
         return cared
@@ -254,13 +256,18 @@ def weather_care(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str 
             step = walk_toward(me, nearest(origin, banks), allowed)
             if step:
                 return step
-    if cold in {"chilly", "cold"} and not here.get("under_roof"):
-        roofs = [
-            pos
-            for pos, cell in memory.cells.items()
-            if cell.get("under_roof") or cell.get("roof") in {"rock", "bark"}
-        ]
-        return walk_toward(me, nearest(origin, roofs), allowed)
+    if cold in {"chilly", "cold"}:
+        fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
+        step = walk_toward(me, nearest(origin, fires), allowed)
+        if step:
+            return step
+        if not here.get("under_roof"):
+            roofs = [
+                pos
+                for pos, cell in memory.cells.items()
+                if cell.get("under_roof") or cell.get("roof") in {"rock", "bark"}
+            ]
+            return walk_toward(me, nearest(origin, roofs), allowed)
     return None
 
 

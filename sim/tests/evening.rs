@@ -1413,3 +1413,69 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
         .any(|event| event.text.contains("drinks the still water")));
     assert!(open.text.contains("keeping the still water from freezing"));
 }
+
+#[test]
+fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
+    let mut world = world_at(10_000);
+    let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
+    let otto = world.spawn_at("Otto", "o", 4, 3).unwrap();
+    world.step(&[cmd("bark", sera, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", sera, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("west", sera, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(sera), Some((5, 1)));
+    while world.observe(sera).unwrap().self_info.cold != "cold" {
+        world.step(&[]);
+        assert!(world.sim_time() < 20, "open sky should make her cold");
+    }
+    let sun_at_light = world.observe(sera).unwrap().self_info.sunburn.clone();
+    world.step(&[cmd("light", sera, Attempt::Light)]);
+    let lit = world.observe(sera).unwrap();
+    assert!(lit.text.contains("warms anyone standing at it"));
+    assert_eq!(lit.self_info.wind, "in the wind");
+    assert!(lit
+        .events
+        .iter()
+        .any(|event| event.text.contains("warming at the fire")));
+    assert_ne!(lit.self_info.cold, "cold");
+    for _ in 0..6 {
+        world.step(&[]);
+    }
+    let warmed = world.observe(sera).unwrap();
+    assert_eq!(warmed.self_info.cold, "warm");
+    assert!(warmed
+        .events
+        .iter()
+        .any(|event| event.text.contains("is warm at the fire")));
+    assert_eq!(world.observe(otto).unwrap().self_info.cold, "cold");
+    assert_ne!(
+        warmed.self_info.sunburn, "unburned",
+        "the fire does not fade a sunburn"
+    );
+    assert!(sun_at_light == "pink" || sun_at_light == "burned" || sun_at_light == "unburned");
+    let mut ticks = 0;
+    while world
+        .observe(sera)
+        .unwrap()
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 5 && cell.y == 1 && cell.fire)
+        && ticks < 12
+    {
+        world.step(&[]);
+        ticks += 1;
+    }
+    assert!(
+        world
+            .observe(sera)
+            .unwrap()
+            .visible_cells
+            .iter()
+            .all(|cell| !(cell.x == 5 && cell.y == 1 && cell.fire)),
+        "the fire goes out"
+    );
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert_eq!(world.observe(sera).unwrap().self_info.cold, "chilly");
+    assert_eq!(world.observe(otto).unwrap().self_info.cold, "cold");
+}

@@ -283,7 +283,7 @@ impl World {
             }
         }
         if self.fire_at(actor.cell).is_some() {
-            parts.push("A small fire burns here.".into());
+            parts.push("A small fire burns here. It warms anyone standing at it.".into());
         }
         if self.pile_count(actor.cell, Material::Berry) > 0 {
             parts.push(format!(
@@ -590,7 +590,7 @@ impl World {
             }
             let (x, y) = cell_xy(fire.cell);
             lines.push(format!(
-                "A small fire burns {}. It was lit on this ground. ({x},{y})",
+                "A small fire burns {}. It was lit on this ground. It warms anyone standing at it. ({x},{y})",
                 self.place_phrase(origin, fire.cell)
             ));
         }

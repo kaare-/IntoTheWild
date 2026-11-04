@@ -55,6 +55,10 @@ pub struct Tuning {
     pub chilly_at: u32,
     #[serde(default = "default_starving_at")]
     pub cold_at: u32,
+    /// Cold a body loses each tick while standing on a burning fire.
+    /// That tick does not also add the sky's cold.
+    #[serde(default = "default_fire_warmth")]
+    pub fire_warmth: u32,
     #[serde(default = "default_sun_tick")]
     pub sun_per_tick: u32,
     #[serde(default = "default_hungry_at")]
@@ -134,6 +138,9 @@ fn default_chill_at() -> u64 {
 fn default_cold_tick() -> u32 {
     40
 }
+fn default_fire_warmth() -> u32 {
+    160
+}
 fn default_sun_tick() -> u32 {
     50
 }
@@ -207,6 +214,7 @@ struct RawBody {
     cold_per_tick: f64,
     chilly_at: f64,
     cold_at: f64,
+    fire_warmth: f64,
     sun_per_tick: f64,
     pink_at: f64,
     burned_at: f64,
@@ -319,6 +327,7 @@ impl Tuning {
             cold_per_tick: millis(raw.body.cold_per_tick, "body.cold_per_tick")?,
             chilly_at: millis(raw.body.chilly_at, "body.chilly_at")?,
             cold_at: millis(raw.body.cold_at, "body.cold_at")?,
+            fire_warmth: millis(raw.body.fire_warmth, "body.fire_warmth")?,
             sun_per_tick: millis(raw.body.sun_per_tick, "body.sun_per_tick")?,
             pink_at: millis(raw.body.pink_at, "body.pink_at")?,
             burned_at: millis(raw.body.burned_at, "body.burned_at")?,
