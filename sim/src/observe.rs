@@ -1851,13 +1851,27 @@ impl World {
             .map(|event| EventView {
                 id: event.id,
                 time: event.time,
-                text: event.text.clone(),
+                text: self.heard_text(origin, event),
             })
             .collect();
         if views.len() > 40 {
             views = views.split_off(views.len() - 40);
         }
         views
+    }
+
+    /// A rot is one stored sentence. Each hearer gets the cell count from
+    /// where they stand, the same way `examine tracks` does.
+    fn heard_text(&self, origin: CellId, event: &crate::model::Event) -> String {
+        if event.text == "A branch rots away in the open. You hear branches breaking." {
+            if let Some(&cell) = event.affected_cells.first() {
+                return format!(
+                    "A branch rots away {}. You hear branches breaking.",
+                    self.mark_place(origin, cell)
+                );
+            }
+        }
+        event.text.clone()
     }
 
     fn event_visible(&self, viewer: ActorId, origin: CellId, event: &crate::model::Event) -> bool {

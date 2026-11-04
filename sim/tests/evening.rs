@@ -1157,7 +1157,8 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
     assert_eq!(open.branch_pile, 3);
     assert_eq!(rock.branch_pile, 4);
     assert!(seen.events.iter().any(|event| {
-        event.text == "A branch rots away in the open. You hear branches breaking."
+        event.text
+            == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
     }));
     let far = world.observe(otto).unwrap();
     assert!(far.events.iter().all(|event| !event.text.contains("rots")));
@@ -1243,8 +1244,29 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     world.step(&[]);
     let rotted = world.observe(sera).unwrap();
     assert!(rotted.events.iter().any(|event| {
-        event.text == "A branch rots away in the open. You hear branches breaking."
+        event.text
+            == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
     }));
+    let under = world.spawn_at("Under", "u", 6, 1).unwrap();
+    assert!(world.observe(under).unwrap().events.iter().any(|event| {
+        event.text
+            == "A branch rots away one cell south and one cell west, in the open. You hear branches breaking."
+    }));
+    let on_it = world.spawn_at("On", "on", 5, 2).unwrap();
+    assert!(world.observe(on_it).unwrap().events.iter().any(|event| {
+        event.text == "A branch rots away here, in the open. You hear branches breaking."
+    }));
+    assert_eq!(
+        world
+            .observe(on_it)
+            .unwrap()
+            .visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        3
+    );
     assert!(world
         .observe(otto)
         .unwrap()
