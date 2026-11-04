@@ -249,17 +249,29 @@ impl World {
     }
 
     fn rot_line(&self, viewer: ActorId) -> Option<String> {
-        let sees = self.visible_cell_ids(viewer).iter().any(|cell| {
-            self.exposure_millis(*cell) >= 1000
-                && (self.pile_count(*cell, Material::Branch) > 0
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let open_branch = self.exposure_millis(cell) >= 1000
+                && (self.pile_count(cell, Material::Branch) > 0
                     || self.items.values().any(|item| {
-                        item.cell == *cell
+                        item.cell == cell
                             && item.carrier.is_none()
                             && item.role == Role::Loose
                             && item.material == Material::Branch
-                    }))
-        });
-        sees.then(|| "Wood left in the open is rotting.".to_string())
+                    }));
+            if open_branch {
+                lines.push(format!(
+                    "Wood left in the open is rotting {}.",
+                    self.mark_place(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
+        }
     }
 
     fn sky_line(&self) -> &'static str {
