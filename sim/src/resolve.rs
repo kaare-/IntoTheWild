@@ -1280,13 +1280,13 @@ impl World {
                 value,
             }),
         );
-        let message = if before == 0 {
-            format!("You cook {phrase}. You were not hungry.")
-        } else if after < self.tuning.hungry_at {
-            format!("You cook {phrase}. The hunger eases.")
-        } else {
-            format!("You cook {phrase}. You are still hungry.")
-        };
+        let hunger_now = self.hunger_word(after);
+        let energy_was = self.energy_word(energy_before);
+        let energy_now = self.energy_word(energy_after);
+        let mut message = format!("You cook {phrase}. You are {hunger_now}.");
+        if energy_was != energy_now {
+            message.push_str(&format!(" You are {energy_now}."));
+        }
         self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 

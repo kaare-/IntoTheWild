@@ -2579,17 +2579,90 @@ fn a_hardened_spear_hunts_the_deer_and_the_carcass_cooks() {
     kill.step(&[cmd("branch2", hunter, Attempt::Gather(Material::Branch))]);
     let relit = kill.step(&[cmd("relight", hunter, Attempt::Light)]);
     assert!(relit.results[0].success, "{}", relit.results[0].message);
+    let energy_before = kill.observe(hunter).unwrap().self_info.energy;
     let cooked = kill.step(&[cmd("cook", hunter, Attempt::Cook)]);
-    assert!(
-        cooked.results[0].message.contains("You cook the carcass."),
-        "{}",
-        cooked.results[0].message
-    );
-    assert!(
-        cooked.results[0].message.contains("The hunger eases."),
-        "{}",
-        cooked.results[0].message
-    );
+    let after = kill.observe(hunter).unwrap().self_info;
+    let mut expected = format!("You cook the carcass. You are {}.", after.hunger);
+    if energy_before != after.energy {
+        expected.push_str(&format!(" You are {}.", after.energy));
+    }
+    assert_eq!(cooked.results[0].message, expected);
     assert_eq!(kill.material_tally(Material::Carcass), 0);
     assert!(kill.deer_cell().is_none());
+}
+
+fn burning(world: &World, actor: u32) -> bool {
+    let view = world.observe(actor).unwrap();
+    let x = view.self_info.x;
+    let y = view.self_info.y;
+    view.visible_cells
+        .iter()
+        .any(|cell| cell.x == x && cell.y == y && cell.fire)
+}
+
+#[test]
+fn cook_names_an_energy_change_and_stays_quiet_when_the_word_stays() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+    world.step(&[cmd("m1", near, Attempt::Gather(Material::Mushroom))]);
+    world.step(&[cmd("m2", near, Attempt::Gather(Material::Mushroom))]);
+    for i in 0..3 {
+        world.step(&[cmd(&format!("e{i}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let picked = world.step(&[cmd("berry", near, Attempt::Gather(Material::Berry))]);
+    assert!(picked.results[0].success, "{}", picked.results[0].message);
+
+    let mut ticks = 0;
+    while world.observe(near).unwrap().self_info.energy != "tiring" {
+        world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 80, "energy never reached tiring");
+    }
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, "hungry");
+    if !burning(&world, near) {
+        let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+    }
+    let before = world.observe(near).unwrap().self_info;
+    assert_eq!(before.hunger, "hungry");
+    assert_eq!(before.energy, "tiring");
+    let both = world.step(&[cmd("cook-both", near, Attempt::Cook)]);
+    assert_eq!(
+        both.results[0].message,
+        "You cook a mushroom. You are not hungry. You are rested."
+    );
+    let eased = world.observe(near).unwrap().self_info;
+    assert_eq!(eased.hunger, "not hungry");
+    assert_eq!(eased.energy, "rested");
+
+    ticks = 0;
+    while world.observe(near).unwrap().self_info.energy != "tiring" {
+        world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 80, "energy never tired again");
+    }
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, "hungry");
+    let eaten = world.step(&[cmd("eat", near, Attempt::Eat(Material::Berry))]);
+    assert!(eaten.results[0].success, "{}", eaten.results[0].message);
+    assert_eq!(world.observe(near).unwrap().self_info.energy, "rested");
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, "hungry");
+    if !burning(&world, near) {
+        let relit = world.step(&[cmd("relight", near, Attempt::Light)]);
+        assert!(relit.results[0].success, "{}", relit.results[0].message);
+    }
+    let only = world.observe(near).unwrap().self_info;
+    assert_eq!(only.hunger, "hungry");
+    assert_eq!(only.energy, "rested");
+    let cooked = world.step(&[cmd("cook-hunger", near, Attempt::Cook)]);
+    assert_eq!(
+        cooked.results[0].message,
+        "You cook a mushroom. You are not hungry."
+    );
+    assert!(!cooked.results[0].message.contains("rested"));
+    assert!(!cooked.results[0].message.contains("tiring"));
+    assert!(!cooked.results[0].message.contains("spent"));
+    let done = world.observe(near).unwrap().self_info;
+    assert_eq!(done.hunger, "not hungry");
+    assert_eq!(done.energy, "rested");
 }
