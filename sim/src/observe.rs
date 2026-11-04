@@ -397,6 +397,10 @@ impl World {
                 .map(|item| {
                     if item.material == "stone" && item.count == 1 {
                         format!("a {} stone", item.condition)
+                    } else if item.material == "bark" && item.count == 1 {
+                        format!("a {} sheet of bark", item.condition)
+                    } else if item.material == "pot" && item.count == 1 {
+                        format!("a {} pot", item.condition)
                     } else if item.material == "clay" && item.count == 1 {
                         "a lump of clay".into()
                     } else if item.material == "bowl" && item.count == 1 {
@@ -643,6 +647,13 @@ impl World {
                         self.rain_reaches_phrase(cell),
                         food_clause(material)
                     ));
+                } else if material == Material::Pot && count == 1 {
+                    lines.push(format!(
+                        "A pot lies in contact with the ground {}. The pot is {}. {} It can boil water over a fire.",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(self.pile_moisture(cell, material)),
+                        self.rain_reaches_phrase(cell)
+                    ));
                 } else {
                     let noun = pile_noun(material, count);
                     let (kind, verb) = food_kind(material);
@@ -678,6 +689,13 @@ impl World {
                         self.rain_reaches_phrase(cell),
                         food_clause(material)
                     ));
+                } else if material == Material::Pot && loose.len() == 1 {
+                    lines.push(format!(
+                        "A pot lies in contact with the ground {}. The pot is {}. {} It can boil water over a fire.",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(worst),
+                        self.rain_reaches_phrase(cell)
+                    ));
                 } else {
                     lines.push(format!(
                         "{} loose {} {} in contact with the ground {}. {}{}{}{}",
@@ -712,6 +730,18 @@ impl World {
             if material == Material::Stone && ids.len() == 1 {
                 lines.push(format!(
                     "A {} stone is carried by {who}, {}, and it is a found stone.",
+                    self.condition_word(moisture),
+                    self.cover_phrase(cell)
+                ));
+            } else if material == Material::Bark && ids.len() == 1 {
+                lines.push(format!(
+                    "A {} sheet of bark is carried by {who}, {}.",
+                    self.condition_word(moisture),
+                    self.cover_phrase(cell)
+                ));
+            } else if material == Material::Pot && ids.len() == 1 {
+                lines.push(format!(
+                    "A {} pot is carried by {who}, {}, and it can boil water over a fire.",
                     self.condition_word(moisture),
                     self.cover_phrase(cell)
                 ));

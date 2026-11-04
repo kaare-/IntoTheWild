@@ -2042,3 +2042,66 @@ fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
     assert!(carrying(&damp, sera).contains(&"branch".to_string()));
     assert_eq!(pile_at(&damp, sera, 6, 1), (0, 2, 1));
 }
+
+#[test]
+fn a_carried_sheet_and_a_carried_pot_are_one_sentence() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let berries = world.examine(near, ExamineTarget::Berries);
+    assert!(
+        berries.contains("A pile of 4 handfuls of berries"),
+        "{berries}"
+    );
+    let wood = world.examine(near, ExamineTarget::Wood);
+    assert!(
+        wood.contains("A pile of 4 branches") || wood.contains("A pile of 4"),
+        "{wood}"
+    );
+    let clock = world.sim_time();
+    let ground = world.examine(near, ExamineTarget::Pot);
+    assert_eq!(
+        ground,
+        "A pot lies in contact with the ground here, under the rock overhang. The pot is dry. Rain does not reach it. It can boil water over a fire."
+    );
+    assert!(!ground.contains("1 pot"));
+    assert!(!ground.contains("pile"));
+    assert_eq!(world.sim_time(), clock);
+
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    let held = world.observe(near).unwrap();
+    assert!(held.text.contains("a dry sheet of bark"));
+    assert!(held.text.contains("a dry pot"));
+    assert!(!held.text.contains("1 pot"));
+    assert!(!held.text.contains("1 bark"));
+    for step in 0..3 {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
+    }
+    world.step(&[cmd("south-a", near, Attempt::Move(Dir::South))]);
+    world.step(&[cmd("south-b", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((3, 3)));
+    let away = world.sim_time();
+    let bark = world.examine(near, ExamineTarget::Bark);
+    let pot = world.examine(near, ExamineTarget::Pot);
+    assert_eq!(world.sim_time(), away);
+    assert_eq!(bark, "A dry sheet of bark is carried by you, in the open.");
+    assert!(!bark.contains("1 sheet"));
+    assert!(!bark.contains(". dry"));
+    assert_eq!(
+        pot,
+        "A dry pot is carried by you, in the open, and it can boil water over a fire."
+    );
+    assert!(!pot.contains("1 pot"));
+    assert!(!pot.contains(". dry"));
+
+    world.step(&[cmd("drop", near, Attempt::Drop(Material::Pot))]);
+    let dropped = world.examine(near, ExamineTarget::Pot);
+    assert_eq!(
+        dropped,
+        "A pot lies in contact with the ground here, in the open. The pot is dry. The sky is open above it. It can boil water over a fire."
+    );
+    assert!(!dropped.contains("1 pot"));
+    assert!(!dropped.contains("pile"));
+    let still = world.examine(near, ExamineTarget::Bark);
+    assert_eq!(still, "A dry sheet of bark is carried by you, in the open.");
+}
