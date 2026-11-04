@@ -916,25 +916,27 @@ impl World {
         !self.loose_ids(actor, material).is_empty() || self.pile_count(person.cell, material) > 0
     }
 
-    /// Pile on the cell first, so a sheet carried for a roof is not the tinder.
+    /// Dry fuel from the arms when it is already carried. The pile at the
+    /// feet is spent only when the arms do not hold a dry piece. The bool
+    /// is true when the piece came from the arms.
     pub(crate) fn consume_dry(
         &mut self,
         actor: ActorId,
         material: Material,
-    ) -> Result<Option<ItemId>, ()> {
+    ) -> Result<(Option<ItemId>, bool), ()> {
+        if let Some(item_id) = self.dry_loose_ids(actor, material).first().copied() {
+            self.items.remove(&item_id);
+            return Ok((Some(item_id), true));
+        }
         let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
             return Err(());
         };
         if self.dry_pile_count(person_cell, material) > 0
             && self.take_from_pile(person_cell, material, 1).is_some()
         {
-            return Ok(None);
+            return Ok((None, false));
         }
-        let Some(item_id) = self.dry_loose_ids(actor, material).first().copied() else {
-            return Err(());
-        };
-        self.items.remove(&item_id);
-        Ok(Some(item_id))
+        Err(())
     }
 
     /// One loose handful, carried before the pile on this cell.

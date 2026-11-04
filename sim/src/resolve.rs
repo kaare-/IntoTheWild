@@ -1048,7 +1048,8 @@ impl World {
                 }
                 let bark = self.consume_dry(intent.actor_id, Material::Bark);
                 let branch = self.consume_dry(intent.actor_id, Material::Branch);
-                let (Ok(bark_item), Ok(branch_item)) = (bark, branch) else {
+                let (Ok((bark_item, bark_arms)), Ok((branch_item, branch_arms))) = (bark, branch)
+                else {
                     self.finish(
                         intent.command_id,
                         intent.actor_id,
@@ -1060,7 +1061,7 @@ impl World {
                 };
                 let name = self.name_of(intent.actor_id);
                 let event = self.emit(
-                    format!("{name} lights a fire with bark and a dry branch."),
+                    light_line(Some(&name), bark_arms, branch_arms),
                     Scope::Cell(cell),
                     vec![intent.actor_id],
                     vec![cell],
@@ -1074,7 +1075,7 @@ impl World {
                     intent.command_id,
                     intent.actor_id,
                     true,
-                    "You light a fire with bark and a dry branch.",
+                    light_line(None, bark_arms, branch_arms),
                     results,
                 );
             }
@@ -1759,5 +1760,19 @@ fn attempt_dir(attempt: &Attempt) -> Option<Dir> {
     match attempt {
         Attempt::Drag(dir) | Attempt::Move(dir) => Some(*dir),
         _ => None,
+    }
+}
+
+/// `who` is the public line. None is the line the lighter hears.
+fn light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {
+    let fuel = match (bark_arms, branch_arms) {
+        (true, true) => "the bark and the branch from the arms",
+        (false, false) => "bark and a dry branch from the pile at the feet",
+        (true, false) => "the bark from the arms and a dry branch from the pile at the feet",
+        (false, true) => "bark from the pile at the feet and the branch from the arms",
+    };
+    match who {
+        Some(name) => format!("{name} lights a fire with {fuel}."),
+        None => format!("You light a fire with {fuel}."),
     }
 }

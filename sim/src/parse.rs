@@ -18,7 +18,7 @@ raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
-light fire                   dry bark and a dry branch; open rain puts it out
+light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         mushrooms or sweet berries; poison berries are not food
 eat berries                  sweet berries only; poison berries sicken you
 smear mud                    mud on skin against the sun

@@ -423,10 +423,11 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     assert_eq!(lit.self_info.hunger, "hungry", "bark is tinder, not a meal");
     assert!(lit.map.contains('@') && lit.map.contains('*'));
     assert!(lit.text.contains("A small fire burns here."));
-    assert!(lit
-        .events
-        .iter()
-        .any(|event| event.text.contains("lights a fire with bark")));
+    assert!(lit.events.iter().any(|event| {
+        event
+            .text
+            .contains("lights a fire with bark and a dry branch from the pile at the feet")
+    }));
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert_eq!(
         world.material_tally(Material::Branch),
@@ -1934,4 +1935,110 @@ fn clay_stays_soft_when_the_fire_goes_out() {
         .material_items(Material::Clay)
         .iter()
         .any(|item| item.1.is_none()));
+}
+
+fn pile_at(world: &World, actor: u32, x: i32, y: i32) -> (u32, u32, u32) {
+    let cell = world
+        .observe(actor)
+        .unwrap()
+        .visible_cells
+        .into_iter()
+        .find(|cell| cell.x == x && cell.y == y)
+        .unwrap();
+    (cell.bark_pile, cell.branch_pile, cell.pot_pile)
+}
+
+fn carrying(world: &World, actor: u32) -> Vec<String> {
+    world
+        .observe(actor)
+        .unwrap()
+        .self_info
+        .carrying
+        .into_iter()
+        .map(|item| item.material)
+        .collect()
+}
+
+#[test]
+fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+    world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    world.step(&[cmd("water", near, Attempt::Gather(Material::Water))]);
+    for step in 0..4 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let (bark_pile, branch_pile, pot_pile) = pile_at(&world, near, 6, 1);
+    assert_eq!((bark_pile, branch_pile, pot_pile), (1, 3, 1));
+    assert_eq!(carrying(&world, near).len(), 4);
+
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert_eq!(
+        lit.results[0].message,
+        "You light a fire with the bark and the branch from the arms."
+    );
+    let seen = world.observe(near).unwrap();
+    assert!(seen.events.iter().any(|event| {
+        event.text == "Near lights a fire with the bark and the branch from the arms."
+    }));
+    assert!(seen.text.contains("A small fire burns here."));
+    assert_eq!(pile_at(&world, near, 6, 1), (1, 3, 1));
+    assert_eq!(
+        carrying(&world, near),
+        vec!["clay".to_string(), "water".to_string()]
+    );
+    assert!(seen
+        .allowed_actions
+        .iter()
+        .any(|action| action == "gather pot"));
+
+    let took = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    assert!(took.results[0].success, "{}", took.results[0].message);
+    assert_eq!(pile_at(&world, near, 6, 1).2, 0);
+    assert!(carrying(&world, near).contains(&"pot".to_string()));
+    assert!(!carrying(&world, near)
+        .iter()
+        .any(|item| item == "bark" || item == "branch"));
+
+    let mut piled = world_at(10_000);
+    let feet = piled.spawn_at("Feet", "f", 6, 1).unwrap();
+    let from_pile = piled.step(&[cmd("light", feet, Attempt::Light)]);
+    assert_eq!(
+        from_pile.results[0].message,
+        "You light a fire with bark and a dry branch from the pile at the feet."
+    );
+    assert_eq!(pile_at(&piled, feet, 6, 1), (1, 3, 1));
+    assert!(carrying(&piled, feet).is_empty());
+
+    let mut mixed = world_at(10_000);
+    let half = mixed.spawn_at("Half", "h", 6, 1).unwrap();
+    mixed.step(&[cmd("bark", half, Attempt::Gather(Material::Bark))]);
+    let mixed_light = mixed.step(&[cmd("light", half, Attempt::Light)]);
+    assert_eq!(
+        mixed_light.results[0].message,
+        "You light a fire with the bark from the arms and a dry branch from the pile at the feet."
+    );
+    assert_eq!(pile_at(&mixed, half, 6, 1), (1, 3, 1));
+    assert!(carrying(&mixed, half).is_empty());
+
+    let mut damp = world_at(3);
+    let sera = damp.spawn_at("Sera", "s", 6, 1).unwrap();
+    damp.step(&[cmd("bark", sera, Attempt::Gather(Material::Bark))]);
+    damp.step(&[cmd("branch", sera, Attempt::Gather(Material::Branch))]);
+    damp.step(&[cmd("west", sera, Attempt::Move(Dir::West))]);
+    damp.step(&[]);
+    damp.step(&[]);
+    damp.step(&[cmd("back", sera, Attempt::Move(Dir::East))]);
+    let wet = damp.step(&[cmd("light", sera, Attempt::Light)]);
+    assert_eq!(
+        wet.results[0].message,
+        "You light a fire with bark and a dry branch from the pile at the feet."
+    );
+    assert!(carrying(&damp, sera).contains(&"bark".to_string()));
+    assert!(carrying(&damp, sera).contains(&"branch".to_string()));
+    assert_eq!(pile_at(&damp, sera, 6, 1), (0, 2, 1));
 }
