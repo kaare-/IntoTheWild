@@ -2974,7 +2974,7 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     let clock = world.sim_time();
     assert_eq!(
         world.examine(near, ExamineTarget::Berries),
-        "The berries that were here are gone."
+        "The berries that were here are gone. A deer ate them."
     );
     assert_eq!(world.sim_time(), clock);
     assert_eq!(world.material_tally(Material::Berry), 0);
@@ -2988,4 +2988,40 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         "You see no berries from here."
     );
     assert_eq!(world.sim_time(), clock);
+}
+
+#[test]
+fn examine_berries_does_not_blame_a_deer_that_did_not_eat_them() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    for i in 0..4 {
+        world.step(&[cmd(
+            &format!("g{i}"),
+            near,
+            Attempt::Gather(Material::Berry),
+        )]);
+    }
+    for (i, dir) in [Dir::West, Dir::West, Dir::West].into_iter().enumerate() {
+        world.step(&[cmd(&format!("w{i}"), near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((3, 1)));
+    assert!(world
+        .event_log()
+        .iter()
+        .all(|event| !event.text.contains("eats")));
+    let witness = world.spawn_at("Witness", "w", 6, 1).unwrap();
+    let clock = world.sim_time();
+    assert_eq!(
+        world.examine(witness, ExamineTarget::Berries),
+        "The berries that were here are gone."
+    );
+    assert!(!world
+        .examine(witness, ExamineTarget::Berries)
+        .contains("deer"));
+    assert_eq!(world.sim_time(), clock);
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    assert_eq!(
+        world.examine(far, ExamineTarget::Berries),
+        "You see no berries from here."
+    );
 }

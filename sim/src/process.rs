@@ -291,8 +291,13 @@ impl World {
             return;
         }
         if self.pile_count(deer.cell, Material::Berry) > 0 {
-            let _ = self.take_from_pile(deer.cell, Material::Berry, 1);
-            let text = if self.pile_count(deer.cell, Material::Berry) == 0 {
+            let cell = deer.cell;
+            let _ = self.take_from_pile(cell, Material::Berry, 1);
+            let last = self.pile_count(cell, Material::Berry) == 0;
+            if last {
+                self.deer_ate_berries.insert(cell);
+            }
+            let text = if last {
                 "A deer eats the last handful of berries."
             } else {
                 "A deer eats a handful of berries."

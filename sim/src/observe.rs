@@ -1052,6 +1052,9 @@ impl World {
         }
         if lines.is_empty() {
             if material == Material::Berry && self.spent_berries.contains(&origin) {
+                if self.deer_ate_berries.contains(&origin) {
+                    return "The berries that were here are gone. A deer ate them.".into();
+                }
                 return "The berries that were here are gone.".into();
             }
             let name = match material {

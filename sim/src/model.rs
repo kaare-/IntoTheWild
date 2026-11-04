@@ -502,6 +502,10 @@ pub struct World {
     /// Cells where a berry pile reached zero. The pile is not put back.
     #[serde(default)]
     pub(crate) spent_berries: BTreeSet<CellId>,
+    /// Cells where the deer ate the last handful. A person taking the last
+    /// handful leaves this unset.
+    #[serde(default)]
+    pub(crate) deer_ate_berries: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -565,6 +569,7 @@ impl World {
             }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
+            deer_ate_berries: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -856,6 +861,7 @@ impl World {
             self.piles.remove(idx);
             if material == Material::Berry {
                 self.spent_berries.insert(emptied);
+                self.deer_ate_berries.remove(&emptied);
             }
         }
         Some(moisture)
