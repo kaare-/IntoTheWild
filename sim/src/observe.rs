@@ -14,6 +14,7 @@ B wet bark     * fire
 y berries      Y wet berries
 m mushrooms    q poison berries
 k pot          u water
+s stone
 d deer         \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -85,6 +86,8 @@ pub struct CellView {
     pub poison_berry_pile: u32,
     pub mushroom_pile: u32,
     pub pot_pile: u32,
+    pub stone_pile: u32,
+    pub loose_stone: u32,
     pub still: bool,
     pub frozen: bool,
     pub fire: bool,
@@ -168,6 +171,7 @@ impl World {
             ExamineTarget::Mushrooms => self.examine_material(actor_id, Material::Mushroom),
             ExamineTarget::Pot => self.examine_material(actor_id, Material::Pot),
             ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
+            ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -312,6 +316,11 @@ impl World {
         if self.pile_count(actor.cell, Material::Pot) > 0 {
             parts.push("A pot sits here.".into());
         }
+        if self.pile_count(actor.cell, Material::Stone) > 0
+            || !self.ground_ids(actor.cell, Material::Stone).is_empty()
+        {
+            parts.push("A loose stone lies here.".into());
+        }
         if self
             .deer
             .as_ref()
@@ -437,6 +446,11 @@ impl World {
         if self.pile_count(dest, Material::Pot) > 0 {
             bits.push("a pot".into());
         }
+        if self.pile_count(dest, Material::Stone) > 0
+            || !self.ground_ids(dest, Material::Stone).is_empty()
+        {
+            bits.push("a stone".into());
+        }
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
         }
@@ -546,6 +560,7 @@ impl World {
                 Material::Mud => "mud",
                 Material::Mushroom => "mushrooms",
                 Material::Pot => "pot",
+                Material::Stone => "stone",
                 Material::Water => "water",
             };
             format!("You see no {name} from here.")
@@ -922,6 +937,11 @@ impl World {
         {
             return 'u';
         }
+        if self.pile_count(cell, Material::Stone) > 0
+            || self.worst_loose(cell, Material::Stone).is_some()
+        {
+            return 's';
+        }
         if self.tracks.contains(&cell) {
             return '"';
         }
@@ -1036,6 +1056,8 @@ impl World {
             poison_berry_pile: self.pile_count(cell, Material::BitterBerry),
             mushroom_pile: self.pile_count(cell, Material::Mushroom),
             pot_pile: self.pile_count(cell, Material::Pot),
+            stone_pile: self.pile_count(cell, Material::Stone),
+            loose_stone: self.ground_ids(cell, Material::Stone).len() as u32,
             still: place.still,
             frozen: self.still_frozen(cell),
             fire: self.fire_at(cell).is_some(),
@@ -1270,6 +1292,12 @@ impl World {
         {
             actions.push("gather pot".into());
         }
+        if (self.pile_count(actor.cell, Material::Stone) > 0
+            || !self.ground_ids(actor.cell, Material::Stone).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather stone".into());
+        }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -1299,6 +1327,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Pot).is_empty() {
             actions.push("drop pot".into());
+        }
+        if !self.loose_ids(actor_id, Material::Stone).is_empty() {
+            actions.push("drop stone".into());
         }
         if !self.loose_ids(actor_id, Material::Mud).is_empty() {
             actions.push("drop mud".into());
@@ -1392,6 +1423,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Mushroom, true) => "mushroom",
         (Material::Mushroom, false) => "mushrooms",
         (Material::Pot, _) => "pot",
+        (Material::Stone, _) => "stone",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
@@ -1407,6 +1439,7 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
         Material::Mud => ("mud", "is"),
         Material::Mushroom => ("mushrooms", "are"),
         Material::Pot => ("pot", "is"),
+        Material::Stone => ("stone", "is"),
         Material::Water => ("water", "is"),
         _ => ("wood", "is"),
     }
@@ -1419,6 +1452,7 @@ fn food_clause(material: Material) -> &'static str {
         Material::Mud => " It can be smeared on skin against the sun.",
         Material::Mushroom => " They must be cooked. Raw mushrooms do not feed you.",
         Material::Pot => " It can boil water over a fire.",
+        Material::Stone => " It is a found stone.",
         _ => "",
     }
 }

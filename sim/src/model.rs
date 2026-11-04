@@ -50,6 +50,7 @@ pub enum Material {
     BitterBerry,
     Pot,
     Mud,
+    Stone,
 }
 
 impl Material {
@@ -64,6 +65,7 @@ impl Material {
             Material::BitterBerry => "poison berry",
             Material::Pot => "pot",
             Material::Mud => "mud",
+            Material::Stone => "stone",
         }
     }
 
@@ -78,6 +80,7 @@ impl Material {
             Material::BitterBerry => "handful of poison berries",
             Material::Pot => "pot",
             Material::Mud => "handful of mud",
+            Material::Stone => "stone",
         }
     }
 
@@ -161,6 +164,7 @@ pub enum ExamineTarget {
     Mushrooms,
     Pot,
     Mud,
+    Stone,
     Fire,
     Water,
     Deer,
@@ -542,6 +546,7 @@ impl World {
         world.add_pile(cell_id(3, 1).unwrap(), Material::Mushroom, 2, 0);
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
+        world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.normalize();
         world
@@ -650,6 +655,22 @@ impl World {
             .filter(|i| i.material == material)
             .count() as u32;
         piles + items
+    }
+
+    /// One row per item of this material: id, carrier, x, y. The id stays
+    /// with the item when it is carried and when it is dropped.
+    pub fn material_items(&self, material: Material) -> Vec<(ItemId, Option<ActorId>, i32, i32)> {
+        let mut rows: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| item.material == material)
+            .map(|item| {
+                let (x, y) = cell_xy(item.cell);
+                (item.id, item.carrier, x, y)
+            })
+            .collect();
+        rows.sort();
+        rows
     }
 
     pub fn log_cell(&self) -> Option<(i32, i32)> {
@@ -808,6 +829,22 @@ impl World {
             .values()
             .filter(|i| i.carrier == Some(actor))
             .count() as u32
+    }
+
+    pub(crate) fn ground_ids(&self, cell: CellId, material: Material) -> Vec<ItemId> {
+        let mut ids: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|item| {
+                item.cell == cell
+                    && item.material == material
+                    && item.role == Role::Loose
+                    && item.carrier.is_none()
+            })
+            .map(|item| item.id)
+            .collect();
+        ids.sort();
+        ids
     }
 
     pub(crate) fn loose_ids(&self, actor: ActorId, material: Material) -> Vec<ItemId> {

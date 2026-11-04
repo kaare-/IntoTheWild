@@ -248,6 +248,7 @@ impl World {
                                 Err("There are no sweet berries here to eat.".into())
                             }
                         }
+                        Material::Stone => Err("A stone is not food.".into()),
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
                     }
                 }
@@ -326,7 +327,10 @@ impl World {
                     if !self.water_here(actor.cell) {
                         return Err("There is no mud here to gather.".into());
                     }
-                } else if self.pile_count(actor.cell, *material) == 0 {
+                } else if self.pile_count(actor.cell, *material) == 0
+                    && (*material != Material::Stone
+                        || self.ground_ids(actor.cell, *material).is_empty())
+                {
                     return Err(format!("There is no {} here to gather.", material.word()));
                 }
                 if self.carry_count(actor.id) >= self.tuning.carry_slots {
@@ -440,7 +444,12 @@ impl World {
             self.gather_mud(intent, start_cells, results);
         }
         for ((cell, material), mut claims) in groups {
-            let available = self.pile_count(cell, material);
+            let ground = if material == Material::Stone {
+                self.ground_ids(cell, material)
+            } else {
+                Vec::new()
+            };
+            let available = self.pile_count(cell, material) + ground.len() as u32;
             let subject = format!("{cell}:{material:?}");
             claims.sort_by(|a, b| {
                 let left = contest_hash(self.seed, self.time, "gather", &subject, a.actor_id);
@@ -463,14 +472,24 @@ impl World {
                 });
                 let name = self.name_of(intent.actor_id);
                 if winners.contains(&intent.actor_id) {
-                    let moisture = self.take_from_pile(cell, material, 1).unwrap_or(0);
-                    let item = self.mint_item(
-                        material,
-                        moisture,
-                        cell,
-                        Some(intent.actor_id),
-                        Role::Loose,
-                    );
+                    let item = if self.pile_count(cell, material) > 0 {
+                        let moisture = self.take_from_pile(cell, material, 1).unwrap_or(0);
+                        self.mint_item(material, moisture, cell, Some(intent.actor_id), Role::Loose)
+                    } else if let Some(id) = self.ground_ids(cell, material).first().copied() {
+                        if let Some(lying) = self.items.get_mut(&id) {
+                            lying.carrier = Some(intent.actor_id);
+                        }
+                        id
+                    } else {
+                        self.finish(
+                            intent.command_id,
+                            intent.actor_id,
+                            false,
+                            format!("There is no {} here to gather.", material.word()),
+                            results,
+                        );
+                        continue;
+                    };
                     let breaking = if material == Material::Branch {
                         " You hear branches breaking."
                     } else {

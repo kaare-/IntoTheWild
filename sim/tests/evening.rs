@@ -590,6 +590,18 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Gather(Material::Water)
     ));
     assert!(matches!(
+        parse_attempt("gather stone").unwrap(),
+        Attempt::Gather(Material::Stone)
+    ));
+    assert!(matches!(
+        parse_attempt("drop stone").unwrap(),
+        Attempt::Drop(Material::Stone)
+    ));
+    assert!(matches!(
+        parse_attempt("examine stone").unwrap(),
+        Attempt::Examine(ExamineTarget::Stone)
+    ));
+    assert!(matches!(
         parse_attempt("light fire").unwrap(),
         Attempt::Light
     ));
@@ -1636,4 +1648,84 @@ fn under_the_rock_the_leftover_sentence_goes_once_the_counter_is_spent() {
     assert_eq!(sheltered.self_info.cold, "warm");
     assert_eq!(sheltered.self_info.wind, "out of the wind");
     assert!(!sheltered.text.contains("still on you"));
+}
+
+#[test]
+fn a_stone_on_the_slope_can_be_carried_and_stays_unseen_from_far() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Sera", "s", 2, 0).unwrap();
+    let far = world.spawn_at("Otto", "o", 6, 4).unwrap();
+    let clock = world.sim_time();
+    let here = world.observe(near).unwrap();
+    assert!(here.text.contains("A loose stone lies here."));
+    assert!(here.text.contains("slope"));
+    assert!(here
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 2 && cell.y == 0 && cell.stone_pile == 1));
+    assert!(here.map.contains('s'));
+    assert!(here
+        .allowed_actions
+        .iter()
+        .any(|action| action == "gather stone"));
+    let examined = world.examine(near, ExamineTarget::Stone);
+    assert_eq!(world.sim_time(), clock);
+    assert!(examined.contains("found stone"));
+    assert!(!examined.contains("knap"));
+    let distant = world.observe(far).unwrap();
+    assert!(!distant.text.contains("stone"));
+    assert!(distant
+        .visible_cells
+        .iter()
+        .all(|cell| cell.stone_pile == 0 && cell.loose_stone == 0));
+    assert_eq!(
+        world.examine(far, ExamineTarget::Stone),
+        "You see no stone from here."
+    );
+
+    world.step(&[cmd("get", near, Attempt::Gather(Material::Stone))]);
+    let carried = world.observe(near).unwrap();
+    assert!(carried
+        .self_info
+        .carrying
+        .iter()
+        .any(|item| item.material == "stone" && item.count == 1));
+    assert!(!carried.text.contains("A loose stone lies here."));
+    assert!(carried
+        .visible_cells
+        .iter()
+        .all(|cell| cell.stone_pile == 0 && cell.loose_stone == 0));
+    assert_eq!(world.material_tally(Material::Stone), 1);
+    let id = world.material_items(Material::Stone)[0].0;
+    assert_eq!(world.material_items(Material::Stone)[0].1, Some(near));
+
+    world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("drop", near, Attempt::Drop(Material::Stone))]);
+    let dropped = world.material_items(Material::Stone);
+    assert_eq!(dropped.len(), 1);
+    assert_eq!(dropped[0].0, id);
+    assert_eq!(dropped[0].1, None);
+    assert_eq!((dropped[0].2, dropped[0].3), (3, 0));
+    assert_eq!(world.actor_cell(near), Some((3, 0)));
+    let back = world.observe(near).unwrap();
+    assert!(back.text.contains("A loose stone lies here."));
+    assert!(back.visible_cells.iter().any(|cell| {
+        cell.x == 3 && cell.y == 0 && cell.loose_stone == 1 && cell.stone_pile == 0
+    }));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .visible_cells
+        .iter()
+        .all(|cell| cell.stone_pile == 0 && cell.loose_stone == 0));
+
+    world.step(&[cmd("again", near, Attempt::Gather(Material::Stone))]);
+    let again = world.material_items(Material::Stone);
+    assert_eq!(again, vec![(id, Some(near), 3, 0)]);
+    assert_eq!(world.material_tally(Material::Stone), 1);
+    assert!(!world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A loose stone lies here."));
 }

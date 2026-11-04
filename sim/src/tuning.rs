@@ -382,6 +382,7 @@ impl Tuning {
             Material::BitterBerry => self.bitter_rain,
             Material::Pot => self.pot_rain,
             Material::Mud => self.mud_rain,
+            Material::Stone => 0,
         }
     }
 }

@@ -5,11 +5,11 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|fire|deer|tracks|log|frame|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|fire|deer|tracks|log|frame|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water
-drop branch|bark|berries|poison berries|mushrooms|pot|mud|water
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
@@ -102,8 +102,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "pot" => Ok(Material::Pot),
         "mud" => Ok(Material::Mud),
         "water" => Ok(Material::Water),
+        "stone" | "stones" => Ok(Material::Stone),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, or log."
                 .into(),
         ),
     }
@@ -135,6 +136,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "mud" => ExamineTarget::Mud,
         "mushroom" | "mushrooms" => ExamineTarget::Mushrooms,
         "pot" => ExamineTarget::Pot,
+        "stone" | "stones" => ExamineTarget::Stone,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,
