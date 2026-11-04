@@ -292,8 +292,13 @@ impl World {
         }
         if self.pile_count(deer.cell, Material::Berry) > 0 {
             let _ = self.take_from_pile(deer.cell, Material::Berry, 1);
+            let text = if self.pile_count(deer.cell, Material::Berry) == 0 {
+                "A deer eats the last handful of berries."
+            } else {
+                "A deer eats a handful of berries."
+            };
             let id = self.emit(
-                "A deer eats a handful of berries.",
+                text,
                 Scope::Cell(deer.cell),
                 vec![],
                 vec![deer.cell],

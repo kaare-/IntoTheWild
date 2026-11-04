@@ -934,6 +934,42 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
     }
     assert_eq!(near.material_tally(Material::Berry), 0);
     assert_eq!(near.deer_cell(), Some((6, 1)));
+    let eats: Vec<_> = near
+        .event_log()
+        .iter()
+        .filter(|event| event.text.contains("eats"))
+        .map(|event| event.text.clone())
+        .collect();
+    assert_eq!(
+        eats.iter()
+            .filter(|text| *text == "A deer eats a handful of berries.")
+            .count(),
+        3
+    );
+    assert_eq!(
+        eats.iter()
+            .filter(|text| *text == "A deer eats the last handful of berries.")
+            .count(),
+        1
+    );
+    assert!(near
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "A deer eats the last handful of berries."));
+    assert!(near
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("handful")));
+    let witness = near.spawn_at("Witness", "w", 6, 1).unwrap();
+    assert!(!near
+        .observe(witness)
+        .unwrap()
+        .text
+        .contains("Berries lie here"));
     near.step(&[]);
     assert_eq!(near.deer_cell(), Some((5, 1)));
 
