@@ -1914,6 +1914,16 @@ impl World {
                 );
             }
         }
+        if let Some(rest) = event.text.strip_prefix("A deer steps ") {
+            if let Some(dir) = rest.strip_suffix(". A branch snapped under the deer.") {
+                if let Scope::Cell(cell) = event.scope {
+                    return format!(
+                        "A deer steps {dir}. A branch snapped under the deer {}.",
+                        self.mark_place(origin, cell)
+                    );
+                }
+            }
+        }
         event.text.clone()
     }
 

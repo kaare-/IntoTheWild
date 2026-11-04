@@ -204,7 +204,7 @@ fn half_finished_frame_remains_and_does_not_stop_rain() {
     let text = world.examine(sera, ExamineTarget::Frame);
     assert!(text.contains("not supported at both ends"), "{text}");
     assert!(text.contains("Supports: 1"), "{text}");
-    assert_eq!(world.material_tally(Material::Branch), 8);
+    assert_eq!(world.material_tally(Material::Branch), 6);
 }
 
 #[test]
@@ -216,12 +216,14 @@ fn rain_with_nobody_present_soaks_open_wood_and_spares_the_overhang() {
     assert!(world.is_raining());
     let near = world.spawn_at("Sera", "s", 5, 3).unwrap();
     let text = world.examine(near, ExamineTarget::Wood);
-    assert!(text.contains("soaked"), "{text}");
     assert!(text.contains("dry"), "{text}");
     assert!(text.contains("in contact with the ground"), "{text}");
     assert!(text.contains("under the rock overhang"), "{text}");
     assert!(text.contains("Rain does not reach it."), "{text}");
-    assert!(text.contains("Rain reaches it."), "{text}");
+    assert!(!text.contains("Rain reaches it."), "{text}");
+    let log = world.examine(near, ExamineTarget::Log);
+    assert!(log.contains("soaked"), "{log}");
+    assert!(log.contains("Rain reaches it."), "{log}");
 
     let far = world.spawn_at("Linde", "l", 0, 4).unwrap();
     let seen = world.observe(far).unwrap();
@@ -290,7 +292,7 @@ fn bark_on_a_supported_frame_keeps_the_wood_beneath_drier() {
         .find(|cell| cell.x == 5 && cell.y == 2)
         .unwrap();
     assert_eq!(open.branch_pile, 0, "open branches rot away");
-    assert_eq!(world.material_tally(Material::Branch), 4);
+    assert_eq!(world.material_tally(Material::Branch), 3);
     assert_eq!(world.material_tally(Material::Bark), 4);
 }
 
@@ -1026,10 +1028,12 @@ fn the_wet_season_makes_open_rain_heavier_and_stays_local() {
     assert!(world.is_raining());
     assert!(!world.wet_season);
     let before = world.examine(sera, ExamineTarget::Wood);
-    assert!(before.contains("damp"), "{before}");
-    assert!(!before.contains("soaked"), "{before}");
     assert!(before.contains("dry"), "{before}");
+    assert!(before.contains("Rain does not reach it."), "{before}");
     assert!(!before.contains("heavier"));
+    let before_log = world.examine(sera, ExamineTarget::Log);
+    assert!(!before_log.contains("soaked"), "{before_log}");
+    assert!(!before_log.contains("heavier"), "{before_log}");
     assert!(!world.observe(sera).unwrap().text.contains("heavier"));
     assert_eq!(
         world.examine(otto, ExamineTarget::Wood),
@@ -1039,13 +1043,12 @@ fn the_wet_season_makes_open_rain_heavier_and_stays_local() {
     world.step(&[]);
     assert!(world.wet_season);
     let after = world.examine(sera, ExamineTarget::Wood);
-    assert!(after.contains("soaked"), "{after}");
     assert!(after.contains("dry"), "{after}");
-    assert!(
-        after.contains("The rain is heavier on it this season."),
-        "{after}"
-    );
-    assert!(after.contains("Rain does not reach it."));
+    assert!(after.contains("Rain does not reach it."), "{after}");
+    assert!(!after.contains("heavier"), "{after}");
+    let after_log = world.examine(sera, ExamineTarget::Log);
+    assert!(after_log.contains("damp"), "{after_log}");
+    assert!(after_log.contains("Rain reaches it."), "{after_log}");
     let seen = world.observe(sera).unwrap();
     assert!(seen
         .text
@@ -1140,9 +1143,9 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
     while world.sim_time() < 8 {
         world.step(&[]);
     }
-    assert_eq!(world.material_tally(Material::Branch), 8);
+    assert_eq!(world.material_tally(Material::Branch), 6);
     world.step(&[]);
-    assert_eq!(world.material_tally(Material::Branch), 7);
+    assert_eq!(world.material_tally(Material::Branch), 5);
     let seen = world.observe(sera).unwrap();
     let open = seen
         .visible_cells
@@ -1154,8 +1157,8 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         .iter()
         .find(|cell| cell.x == 6 && cell.y == 1)
         .unwrap();
-    assert_eq!(open.branch_pile, 3);
-    assert_eq!(rock.branch_pile, 4);
+    assert_eq!(open.branch_pile, 2);
+    assert_eq!(rock.branch_pile, 3);
     assert!(seen.events.iter().any(|event| {
         event.text
             == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
@@ -1167,7 +1170,7 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
     while world.sim_time() < 33 {
         world.step(&[]);
     }
-    assert_eq!(world.material_tally(Material::Branch), 4);
+    assert_eq!(world.material_tally(Material::Branch), 2);
     let gone = world.observe(sera).unwrap();
     assert_eq!(
         gone.visible_cells
@@ -1183,7 +1186,7 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
             .find(|cell| cell.x == 6 && cell.y == 1)
             .unwrap()
             .branch_pile,
-        4
+        2
     );
     assert!(!gone.text.contains("Wood left in the open is rotting"));
     assert!(world
@@ -1227,16 +1230,45 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     }
     assert_eq!(world.deer_cell(), Some((5, 2)));
     let brush = world.observe(sera).unwrap();
-    assert!(brush
+    assert!(brush.events.iter().any(|event| {
+        event.text
+            == "A deer steps east. A branch snapped under the deer one cell north and one cell east, in the open."
+    }));
+    assert_eq!(
+        brush
+            .visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        3
+    );
+    assert!(world.observe(otto).unwrap().events.iter().all(|event| {
+        !event.text.contains("branches breaking") && !event.text.contains("snapped")
+    }));
+
+    world.step(&[]);
+    let left = world.observe(sera).unwrap();
+    let tick = left.sim_time - 1;
+    assert!(left
         .events
         .iter()
-        .any(|event| { event.text == "A deer steps east. You hear branches breaking." }));
-    assert!(world
-        .observe(otto)
-        .unwrap()
+        .any(|event| event.time == tick && event.text == "A deer steps north."));
+    assert!(left
         .events
         .iter()
-        .all(|event| !event.text.contains("branches breaking")));
+        .filter(|event| event.time == tick)
+        .all(|event| {
+            !event.text.contains("branches breaking") && !event.text.contains("snapped")
+        }));
+    assert_eq!(
+        left.visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        3
+    );
 
     while world.sim_time() < 8 {
         world.step(&[]);
@@ -1265,7 +1297,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
             .find(|cell| cell.x == 5 && cell.y == 2)
             .unwrap()
             .branch_pile,
-        3
+        2
     );
     assert!(world
         .observe(otto)
@@ -1279,7 +1311,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     assert_eq!(world.sim_time(), clock);
     assert!(
         from_mid.contains(
-            "A pile of 3 branches is in contact with the ground one cell north and two cells east, in the open."
+            "A pile of 2 branches is in contact with the ground one cell north and two cells east, in the open."
         ),
         "{from_mid}"
     );
@@ -1287,7 +1319,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let from_rock = world.examine(under, ExamineTarget::Wood);
     assert!(
         from_rock.contains(
-            "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open."
+            "A pile of 2 branches is in contact with the ground one cell south and one cell west, in the open."
         ),
         "{from_rock}"
     );
@@ -1316,7 +1348,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
             .find(|cell| cell.x == 5 && cell.y == 2)
             .unwrap()
             .branch_pile,
-        3
+        2
     );
 
     let mut taken = world_at(10_000);
@@ -2117,7 +2149,7 @@ fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
     world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
     world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
     let (bark_pile, branch_pile, pot_pile) = pile_at(&world, near, 6, 1);
-    assert_eq!((bark_pile, branch_pile, pot_pile), (1, 3, 1));
+    assert_eq!((bark_pile, branch_pile, pot_pile), (1, 2, 1));
     assert_eq!(carrying(&world, near).len(), 4);
 
     let lit = world.step(&[cmd("light", near, Attempt::Light)]);
@@ -2130,7 +2162,7 @@ fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
         event.text == "Near lights a fire with the bark and the branch from the arms."
     }));
     assert!(seen.text.contains("A small fire burns here."));
-    assert_eq!(pile_at(&world, near, 6, 1), (1, 3, 1));
+    assert_eq!(pile_at(&world, near, 6, 1), (1, 2, 1));
     assert_eq!(
         carrying(&world, near),
         vec!["clay".to_string(), "water".to_string()]
@@ -2184,7 +2216,7 @@ fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
     );
     assert!(carrying(&damp, sera).contains(&"bark".to_string()));
     assert!(carrying(&damp, sera).contains(&"branch".to_string()));
-    assert_eq!(pile_at(&damp, sera, 6, 1), (0, 2, 1));
+    assert_eq!(pile_at(&damp, sera, 6, 1), (0, 1, 1));
 }
 
 #[test]
@@ -2532,6 +2564,8 @@ fn harden_the_spear(world: &mut World, near: u32) {
     world.step(&[cmd("tinder", near, Attempt::Gather(Material::Branch))]);
     let lit = world.step(&[cmd("light", near, Attempt::Light)]);
     assert!(lit.results[0].success, "{}", lit.results[0].message);
+    world.step(&[cmd("bark-later", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch-later", near, Attempt::Gather(Material::Branch))]);
     for _ in 0..4 {
         world.step(&[]);
     }
@@ -2754,6 +2788,18 @@ fn cook_names_an_energy_change_and_stays_quiet_when_the_word_stays() {
     let eased = world.observe(near).unwrap().self_info;
     assert_eq!(eased.hunger, "not hungry");
     assert_eq!(eased.energy, "rested");
+    let spare_bark = world.step(&[cmd("bark-later", near, Attempt::Gather(Material::Bark))]);
+    assert!(
+        spare_bark.results[0].success,
+        "{}",
+        spare_bark.results[0].message
+    );
+    let spare_branch = world.step(&[cmd("branch-later", near, Attempt::Gather(Material::Branch))]);
+    assert!(
+        spare_branch.results[0].success,
+        "{}",
+        spare_branch.results[0].message
+    );
 
     ticks = 0;
     while world.observe(near).unwrap().self_info.energy != "tiring" {

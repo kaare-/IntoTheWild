@@ -323,12 +323,17 @@ impl World {
         };
         let dir = step_dir(deer.cell, dest);
         let origin = deer.cell;
-        let through_brush = self.has_brush(origin) || self.has_brush(dest);
         self.tracks.insert(origin);
-        let mut text = format!("A deer steps {}.", dir.word());
-        if through_brush {
-            text.push_str(" You hear branches breaking.");
-        }
+        let snapped = self.pile_count(dest, Material::Branch) > 0
+            && self.take_from_pile(dest, Material::Branch, 1).is_some();
+        let text = if snapped {
+            format!(
+                "A deer steps {}. A branch snapped under the deer.",
+                dir.word()
+            )
+        } else {
+            format!("A deer steps {}.", dir.word())
+        };
         let id = self.emit(
             text,
             Scope::Cell(dest),
