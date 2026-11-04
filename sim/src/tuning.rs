@@ -18,6 +18,10 @@ pub struct Tuning {
     pub bark_ticks: u64,
     #[serde(default = "default_fire_ticks")]
     pub fire_ticks: u64,
+    /// Ticks of leftover heat after a body leaves a fire or the fire goes out.
+    /// During them the sky's cold is halved. Open wind still cools.
+    #[serde(default = "default_warmth_hold")]
+    pub warmth_hold: u64,
     pub body_rain: u32,
     pub brook_rain: u32,
     pub wade: u32,
@@ -105,6 +109,9 @@ pub struct Tuning {
 fn default_fire_ticks() -> u64 {
     8
 }
+fn default_warmth_hold() -> u64 {
+    4
+}
 fn default_season_at() -> u64 {
     18
 }
@@ -188,6 +195,7 @@ struct RawTime {
     frame_phases: u8,
     bark_ticks: u64,
     fire_ticks: u64,
+    warmth_hold: u64,
     chill_at: u64,
 }
 
@@ -258,6 +266,7 @@ impl Tuning {
             || raw.time.bark_ticks == 0
             || raw.time.fire_ticks == 0
             || raw.time.rot_ticks == 0
+            || raw.time.warmth_hold == 0
         {
             return Err("work durations must be at least 1 tick".into());
         }
@@ -304,6 +313,7 @@ impl Tuning {
             frame_phases: raw.time.frame_phases,
             bark_ticks: raw.time.bark_ticks,
             fire_ticks: raw.time.fire_ticks,
+            warmth_hold: raw.time.warmth_hold,
             chill_at: raw.time.chill_at,
             body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
             brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,

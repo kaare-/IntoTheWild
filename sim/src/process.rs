@@ -330,8 +330,11 @@ impl World {
 
     /// Cold, wind, and sun on a body. Exposure is the shelter the valley
     /// already has. Wind doubles the cold only under open sky. A body
-    /// standing on a burning fire loses cold that tick instead. Mud cuts
-    /// the sun. Rain hides the sun and washes mud off exposed skin.
+    /// standing on a burning fire loses cold that tick instead, and keeps
+    /// a few ticks of leftover heat after it steps off or the fire goes out.
+    /// During those ticks the sky's cold is halved. Mud cuts the sun. Rain
+    /// hides the sun and washes mud off exposed skin. Rain still puts an
+    /// open fire out.
     fn apply_weather(&mut self) {
         self.schedule(self.time + 1, Wake::Weather);
         let raining = self.raining;
@@ -357,9 +360,14 @@ impl World {
             let sun_before = actor.sunburn;
             let mud_before = actor.mud;
             let on_fire = self.fire_at(cell).is_some();
+            let carried = actor.warmth;
+            let hold = u32::try_from(self.tuning.warmth_hold).unwrap_or(u32::MAX);
             let mut cold_gain = ((u64::from(cold_base) * u64::from(exposure)) / 1000) as u32;
             if exposure >= 1000 {
                 cold_gain = cold_gain.saturating_mul(2);
+            }
+            if !on_fire && carried > 0 {
+                cold_gain /= 2;
             }
             let mut sun_gain = if raining {
                 0
@@ -382,10 +390,27 @@ impl World {
                 (cold_before + cold_gain).min(1000)
             };
             let sun_after = (sun_before + sun_gain).min(1000);
+            let warmth_after = if on_fire {
+                hold
+            } else {
+                carried.saturating_sub(1)
+            };
             if let Some(actor) = self.actors.get_mut(&id) {
                 actor.cold = cold_after;
+                actor.warmth = warmth_after;
                 actor.sunburn = sun_after;
                 actor.mud = mud_before.saturating_sub(mud_loss);
+            }
+            if !on_fire && carried == hold && hold > 0 {
+                self.emit(
+                    format!("{name} still has the warmth of the fire."),
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
             }
             let cold_line = if on_fire && cold_before >= chilly_at && cold_after < chilly_at {
                 Some(format!("{name} is warm at the fire."))

@@ -24,6 +24,9 @@ bark_ticks = 1
 # A fire lit with dry bark and a dry branch burns this many ticks, then goes out.
 # Rain in the open puts it out sooner. A rock overhang or a bark roof keeps it.
 fire_ticks = 8
+# After a body steps off a fire, or the fire goes out, the sky's cold is halved
+# for this many ticks. Open wind still cools. The fire still dies in the rain.
+warmth_hold = 4
 # From this tick, still water is frozen unless a fire burns on it.
 # The brook keeps running. A body in the open is already getting cold before this.
 chill_at = 12

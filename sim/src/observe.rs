@@ -284,6 +284,12 @@ impl World {
         }
         if self.fire_at(actor.cell).is_some() {
             parts.push("A small fire burns here. It warms anyone standing at it.".into());
+        } else if self
+            .fires
+            .values()
+            .any(|fire| chebyshev(actor.cell, fire.cell) == 1)
+        {
+            parts.push("The heat of the fire does not reach you.".into());
         }
         if self.pile_count(actor.cell, Material::Berry) > 0 {
             parts.push(format!(
@@ -343,6 +349,9 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.mud_word(actor.mud)),
         ];
+        if actor.warmth > 0 && self.fire_at(actor.cell).is_none() {
+            parts.push("The warmth of the fire is still on you.".into());
+        }
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
             parts.push("Your arms are empty.".into());
@@ -589,8 +598,13 @@ impl World {
                 continue;
             }
             let (x, y) = cell_xy(fire.cell);
+            let reach = if chebyshev(origin, fire.cell) == 1 {
+                " The heat does not reach you from here."
+            } else {
+                ""
+            };
             lines.push(format!(
-                "A small fire burns {}. It was lit on this ground. It warms anyone standing at it. ({x},{y})",
+                "A small fire burns {}. It was lit on this ground. It warms anyone standing at it.{reach} ({x},{y})",
                 self.place_phrase(origin, fire.cell)
             ));
         }

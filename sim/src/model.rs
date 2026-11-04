@@ -272,6 +272,10 @@ pub struct Actor {
     /// Open sky and wind. Shelter brings the gain down with exposure.
     #[serde(default)]
     pub cold: u32,
+    /// Ticks of leftover fire heat. Charged while standing on a fire.
+    /// Each tick off the fire spends one, and the sky's cold is halved.
+    #[serde(default)]
+    pub warmth: u32,
     /// Sun on bare skin. Mud on the skin brings the gain down. Rain hides the sun.
     #[serde(default)]
     pub sunburn: u32,
@@ -591,6 +595,7 @@ impl World {
                 illness: 0,
                 energy: 0,
                 cold: 0,
+                warmth: 0,
                 sunburn: 0,
                 mud: 0,
                 busy: None,
