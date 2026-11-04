@@ -465,6 +465,32 @@ impl World {
                         } else {
                             "a spear with an unhardened point".into()
                         }
+                    } else if item.material == "mushroom" {
+                        if item.count == 1 {
+                            format!("a {} mushroom", item.condition)
+                        } else {
+                            format!("{} {} mushrooms", count_word(item.count), item.condition)
+                        }
+                    } else if item.material == "berry" {
+                        if item.count == 1 {
+                            format!("a {} handful of berries", item.condition)
+                        } else {
+                            format!(
+                                "{} {} handfuls of berries",
+                                count_word(item.count),
+                                item.condition
+                            )
+                        }
+                    } else if item.material == "poison berry" {
+                        if item.count == 1 {
+                            format!("a {} handful of poison berries", item.condition)
+                        } else {
+                            format!(
+                                "{} {} handfuls of poison berries",
+                                count_word(item.count),
+                                item.condition
+                            )
+                        }
                     } else {
                         format!(
                             "{} {} carried by you ({})",
@@ -1962,6 +1988,23 @@ impl World {
                 names[names.len() - 1]
             ),
         }
+    }
+}
+
+fn count_word(count: u32) -> String {
+    match count {
+        2 => "two".into(),
+        3 => "three".into(),
+        4 => "four".into(),
+        5 => "five".into(),
+        6 => "six".into(),
+        7 => "seven".into(),
+        8 => "eight".into(),
+        9 => "nine".into(),
+        10 => "ten".into(),
+        11 => "eleven".into(),
+        12 => "twelve".into(),
+        other => other.to_string(),
     }
 }
 

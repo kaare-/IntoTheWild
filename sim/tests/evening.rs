@@ -2666,3 +2666,57 @@ fn cook_names_an_energy_change_and_stays_quiet_when_the_word_stays() {
     assert_eq!(done.hunger, "not hungry");
     assert_eq!(done.energy, "rested");
 }
+
+#[test]
+fn mushrooms_and_berries_in_the_arms_are_words() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+    let first = world.step(&[cmd("m1", near, Attempt::Gather(Material::Mushroom))]);
+    assert!(first.results[0].success, "{}", first.results[0].message);
+    let one = world.observe(near).unwrap();
+    assert!(
+        one.text.contains("You have a dry mushroom."),
+        "{}",
+        one.text
+    );
+    assert!(!one.text.contains("1 mushroom"), "{}", one.text);
+    assert!(!one.text.contains("carried by you"), "{}", one.text);
+    let second = world.step(&[cmd("m2", near, Attempt::Gather(Material::Mushroom))]);
+    assert!(second.results[0].success, "{}", second.results[0].message);
+    let two = world.observe(near).unwrap();
+    assert!(
+        two.text.contains("You have two dry mushrooms."),
+        "{}",
+        two.text
+    );
+    assert!(!two.text.contains("2 mushroom"), "{}", two.text);
+    for i in 0..3 {
+        world.step(&[cmd(&format!("e{i}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let berries = world.step(&[cmd("berry", near, Attempt::Gather(Material::Berry))]);
+    assert!(berries.results[0].success, "{}", berries.results[0].message);
+    let held = world.observe(near).unwrap();
+    assert!(
+        held.text
+            .contains("You have two dry mushrooms, a dry handful of berries."),
+        "{}",
+        held.text
+    );
+    assert!(!held.text.contains("1 berry"), "{}", held.text);
+    assert!(!held.text.contains("(dry)"), "{}", held.text);
+    let pot = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    assert!(pot.results[0].success, "{}", pot.results[0].message);
+    let with_pot = world.observe(near).unwrap();
+    assert!(
+        with_pot
+            .text
+            .contains("two dry mushrooms, a dry handful of berries, a dry pot"),
+        "{}",
+        with_pot.text
+    );
+    assert!(!with_pot.text.contains("1 pot"), "{}", with_pot.text);
+    let clock = world.sim_time();
+    let _ = world.observe(near).unwrap();
+    assert_eq!(world.sim_time(), clock);
+}
