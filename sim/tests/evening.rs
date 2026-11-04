@@ -2105,3 +2105,82 @@ fn a_carried_sheet_and_a_carried_pot_are_one_sentence() {
     let still = world.examine(near, ExamineTarget::Bark);
     assert_eq!(still, "A dry sheet of bark is carried by you, in the open.");
 }
+
+#[test]
+fn one_thing_on_the_ground_is_named_and_is_not_a_pile() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let piled = world.examine(near, ExamineTarget::Bark);
+    assert!(piled.contains("A pile of 2 sheets of bark"), "{piled}");
+    assert!(!piled.contains("pile of 1"));
+    let before = world.observe(near).unwrap();
+    assert!(!before.text.contains("A sheet of bark lies here."));
+    assert!(before.text.contains("A pot sits here."));
+    let berries = world.examine(near, ExamineTarget::Berries);
+    let wood = world.examine(near, ExamineTarget::Wood);
+    assert!(
+        berries.contains("A pile of 4 handfuls of berries"),
+        "{berries}"
+    );
+    assert!(wood.contains("A pile of 4 branches"), "{wood}");
+
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let one = world.observe(near).unwrap();
+    assert!(one.text.contains("A sheet of bark lies here."));
+    let clock = one.sim_time;
+    let sheet = world.examine(near, ExamineTarget::Bark);
+    assert_eq!(world.sim_time(), clock);
+    assert!(sheet.contains(
+        "A sheet of bark lies in contact with the ground here, under the rock overhang. The bark is dry. Rain does not reach it."
+    ));
+    assert!(sheet.contains("A dry sheet of bark is carried by you, under the rock overhang."));
+    assert!(!sheet.contains("pile"), "{sheet}");
+
+    world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    for step in 0..3 {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
+    }
+    for step in 0..3 {
+        world.step(&[cmd(
+            &format!("south-{step}"),
+            near,
+            Attempt::Move(Dir::South),
+        )]);
+    }
+    assert_eq!(world.actor_cell(near), Some((3, 4)));
+    world.step(&[cmd("drop-pot", near, Attempt::Drop(Material::Pot))]);
+    let pot_look = world.observe(near).unwrap();
+    assert!(pot_look.text.contains("A pot sits here."));
+    assert!(!pot_look.text.contains("A sheet of bark lies here."));
+    let pot = world.examine(near, ExamineTarget::Pot);
+    assert_eq!(
+        pot,
+        "A pot lies in contact with the ground here, in the open. The pot is dry. The sky is open above it. It can boil water over a fire."
+    );
+    assert!(!pot.contains("pile") && !pot.contains("1 pot"));
+
+    world.step(&[cmd("drop-bark", near, Attempt::Drop(Material::Bark))]);
+    let both = world.observe(near).unwrap();
+    assert!(both.text.contains("A pot sits here."));
+    assert!(both.text.contains("A sheet of bark lies here."));
+    let dropped_sheet = world.examine(near, ExamineTarget::Bark);
+    assert_eq!(
+        dropped_sheet,
+        "A sheet of bark lies in contact with the ground here, in the open. The bark is dry. The sky is open above it."
+    );
+    assert!(!dropped_sheet.contains("pile"));
+
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((3, 3)));
+    let beside = world.observe(near).unwrap();
+    let south = beside
+        .text
+        .split("South:")
+        .nth(1)
+        .unwrap_or("")
+        .split("West:")
+        .next()
+        .unwrap_or("");
+    assert!(south.contains("a pot"), "{south}");
+    assert!(south.contains("a sheet of bark"), "{south}");
+}

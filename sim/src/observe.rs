@@ -319,8 +319,15 @@ impl World {
                 self.condition_word(self.pile_moisture(actor.cell, Material::Mushroom))
             ));
         }
-        if self.pile_count(actor.cell, Material::Pot) > 0 {
+        if self.pile_count(actor.cell, Material::Pot) > 0
+            || !self.ground_ids(actor.cell, Material::Pot).is_empty()
+        {
             parts.push("A pot sits here.".into());
+        }
+        let bark_here = self.pile_count(actor.cell, Material::Bark)
+            + self.ground_ids(actor.cell, Material::Bark).len() as u32;
+        if bark_here == 1 {
+            parts.push("A sheet of bark lies here.".into());
         }
         if self.pile_count(actor.cell, Material::Stone) > 0
             || !self.ground_ids(actor.cell, Material::Stone).is_empty()
@@ -482,8 +489,15 @@ impl World {
         if self.pile_count(dest, Material::Mushroom) > 0 {
             bits.push("mushrooms".into());
         }
-        if self.pile_count(dest, Material::Pot) > 0 {
+        if self.pile_count(dest, Material::Pot) > 0
+            || !self.ground_ids(dest, Material::Pot).is_empty()
+        {
             bits.push("a pot".into());
+        }
+        let bark_there = self.pile_count(dest, Material::Bark)
+            + self.ground_ids(dest, Material::Bark).len() as u32;
+        if bark_there == 1 {
+            bits.push("a sheet of bark".into());
         }
         if self.pile_count(dest, Material::Stone) > 0
             || !self.ground_ids(dest, Material::Stone).is_empty()
@@ -647,6 +661,13 @@ impl World {
                         self.rain_reaches_phrase(cell),
                         food_clause(material)
                     ));
+                } else if material == Material::Bark && count == 1 {
+                    lines.push(format!(
+                        "A sheet of bark lies in contact with the ground {}. The bark is {}. {}",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(self.pile_moisture(cell, material)),
+                        self.rain_reaches_phrase(cell)
+                    ));
                 } else if material == Material::Pot && count == 1 {
                     lines.push(format!(
                         "A pot lies in contact with the ground {}. The pot is {}. {} It can boil water over a fire.",
@@ -688,6 +709,13 @@ impl World {
                         self.condition_word(worst),
                         self.rain_reaches_phrase(cell),
                         food_clause(material)
+                    ));
+                } else if material == Material::Bark && loose.len() == 1 {
+                    lines.push(format!(
+                        "A sheet of bark lies in contact with the ground {}. The bark is {}. {}",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(worst),
+                        self.rain_reaches_phrase(cell)
                     ));
                 } else if material == Material::Pot && loose.len() == 1 {
                     lines.push(format!(
