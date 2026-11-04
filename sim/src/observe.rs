@@ -1053,6 +1053,11 @@ impl World {
         if lines.is_empty() {
             if material == Material::Berry && self.spent_berries.contains(&origin) {
                 if self.deer_ate_berries.contains(&origin) {
+                    let still_here = self.deer.as_ref().is_some_and(|deer| deer.cell == origin);
+                    if still_here {
+                        return "The berries that were here are gone. The deer here ate them."
+                            .into();
+                    }
                     return "The berries that were here are gone. A deer ate them.".into();
                 }
                 return "The berries that were here are gone.".into();

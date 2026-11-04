@@ -2971,10 +2971,11 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         world.step(&[]);
     }
     assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(world.deer_cell(), Some((6, 1)));
     let clock = world.sim_time();
     assert_eq!(
         world.examine(near, ExamineTarget::Berries),
-        "The berries that were here are gone. A deer ate them."
+        "The berries that were here are gone. The deer here ate them."
     );
     assert_eq!(world.sim_time(), clock);
     assert_eq!(world.material_tally(Material::Berry), 0);
@@ -2987,7 +2988,18 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         world.examine(far, ExamineTarget::Berries),
         "You see no berries from here."
     );
+    world.step(&[]);
+    assert_ne!(world.deer_cell(), Some((6, 1)));
+    let clock = world.sim_time();
+    assert_eq!(
+        world.examine(near, ExamineTarget::Berries),
+        "The berries that were here are gone. A deer ate them."
+    );
     assert_eq!(world.sim_time(), clock);
+    assert_eq!(
+        world.examine(far, ExamineTarget::Berries),
+        "You see no berries from here."
+    );
 }
 
 #[test]
@@ -3015,9 +3027,18 @@ fn examine_berries_does_not_blame_a_deer_that_did_not_eat_them() {
         world.examine(witness, ExamineTarget::Berries),
         "The berries that were here are gone."
     );
-    assert!(!world
-        .examine(witness, ExamineTarget::Berries)
-        .contains("deer"));
+    assert_eq!(world.sim_time(), clock);
+    for _ in 0..20 {
+        if world.deer_cell() == Some((6, 1)) {
+            break;
+        }
+        world.step(&[]);
+    }
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    let clock = world.sim_time();
+    let text = world.examine(witness, ExamineTarget::Berries);
+    assert_eq!(text, "The berries that were here are gone.");
+    assert!(!text.contains("deer"), "{text}");
     assert_eq!(world.sim_time(), clock);
     let far = world.spawn_at("Far", "f", 0, 0).unwrap();
     assert_eq!(
