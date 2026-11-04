@@ -324,7 +324,15 @@ impl World {
                         }
                         Material::Stone => Err("A stone is not food.".into()),
                         Material::Spear => Err("A spear is not food.".into()),
-                        Material::Carcass => Err("The carcass must be cooked.".into()),
+                        Material::Carcass => {
+                            if self.loose_ids(actor.id, Material::Carcass).is_empty()
+                                && self.ground_ids(actor.cell, Material::Carcass).is_empty()
+                            {
+                                Err("You are not carrying a carcass.".into())
+                            } else {
+                                Err("The carcass must be cooked.".into())
+                            }
+                        }
                         Material::Clay => Err("Unfired clay is not food.".into()),
                         Material::Bowl => Err("A bowl is not food.".into()),
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),

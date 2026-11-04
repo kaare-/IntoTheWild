@@ -23,6 +23,7 @@ light fire                   dry bark and a dry branch, from the arms if you car
 cook                         mushrooms, sweet berries, or a carcass; poison berries are not food
 hunt                         a hardened spear; the deer on your cell or the next
 eat berries                  sweet berries only; poison berries sicken you
+eat carcass                  raw meat is refused; it must be cooked
 smear mud                    mud on skin against the sun
 interrupt                    stop the work your body is in
 help"
@@ -130,7 +131,8 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
             Err("Bark is tinder, not food. Light a fire and cook berries.".into())
         }
         "mud" => Err("Mud is for your skin, not your stomach.".into()),
-        _ => Err("Name a food: berries, poison berries, or mushrooms.".into()),
+        "carcass" | "deer carcass" | "meat" | "raw meat" => Ok(Attempt::Eat(Material::Carcass)),
+        _ => Err("Name a food: berries, poison berries, mushrooms, or carcass.".into()),
     }
 }
 

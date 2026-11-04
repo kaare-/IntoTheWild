@@ -1779,6 +1779,11 @@ impl World {
         if self.has_material_at_hand(actor_id, Material::Berry) {
             actions.push("eat berries".into());
         }
+        if !self.loose_ids(actor_id, Material::Carcass).is_empty()
+            || !self.ground_ids(actor.cell, Material::Carcass).is_empty()
+        {
+            actions.push("eat carcass".into());
+        }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {

@@ -650,6 +650,10 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("eat mushrooms").unwrap(),
         Attempt::Eat(Material::Mushroom)
     ));
+    assert!(matches!(
+        parse_attempt("eat carcass").unwrap(),
+        Attempt::Eat(Material::Carcass)
+    ));
     assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
     assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
@@ -2556,9 +2560,21 @@ fn a_hardened_spear_hunts_the_deer_and_the_carcass_cooks() {
     assert!(kill.spears()[0].2);
 
     kill.step(&[cmd("lift", hunter, Attempt::Gather(Material::Carcass))]);
+    let hunger_before = kill.observe(hunter).unwrap().self_info.hunger;
     let raw = kill.step(&[cmd("raw", hunter, Attempt::Eat(Material::Carcass))]);
+    assert!(!raw.results[0].success);
     assert_eq!(raw.results[0].message, "The carcass must be cooked.");
     assert_eq!(kill.material_tally(Material::Carcass), 1);
+    assert_eq!(kill.material_items(Material::Carcass)[0].1, Some(hunter));
+    let hunger_after = kill.observe(hunter).unwrap().self_info.hunger;
+    assert_ne!(
+        (hunger_before.as_str(), hunger_after.as_str()),
+        ("hungry", "not hungry")
+    );
+    assert_ne!(
+        (hunger_before.as_str(), hunger_after.as_str()),
+        ("starving", "not hungry")
+    );
     kill.step(&[cmd("bark2", hunter, Attempt::Gather(Material::Bark))]);
     kill.step(&[cmd("branch2", hunter, Attempt::Gather(Material::Branch))]);
     let relit = kill.step(&[cmd("relight", hunter, Attempt::Light)]);
