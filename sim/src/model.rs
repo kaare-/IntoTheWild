@@ -499,6 +499,9 @@ pub struct World {
     /// Cells the deer has left. The marks stay; decay is not in this valley.
     #[serde(default)]
     pub(crate) tracks: BTreeSet<CellId>,
+    /// Cells where a berry pile reached zero. The pile is not put back.
+    #[serde(default)]
+    pub(crate) spent_berries: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -561,6 +564,7 @@ impl World {
                 held: false,
             }),
             tracks: BTreeSet::new(),
+            spent_berries: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -848,7 +852,11 @@ impl World {
         let moisture = self.piles[idx].moisture;
         self.piles[idx].count -= n;
         if self.piles[idx].count == 0 {
+            let emptied = self.piles[idx].cell;
             self.piles.remove(idx);
+            if material == Material::Berry {
+                self.spent_berries.insert(emptied);
+            }
         }
         Some(moisture)
     }

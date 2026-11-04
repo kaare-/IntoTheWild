@@ -2952,3 +2952,40 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "You cannot see a deer from here."
     );
 }
+
+#[test]
+fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    let before = world.examine(near, ExamineTarget::Berries);
+    assert!(
+        before.contains("A pile of 4 handfuls of berries"),
+        "{before}"
+    );
+    assert!(!before.contains("are gone"), "{before}");
+    for _ in 0..12 {
+        if world.material_tally(Material::Berry) == 0 {
+            break;
+        }
+        world.step(&[]);
+    }
+    assert_eq!(world.material_tally(Material::Berry), 0);
+    let clock = world.sim_time();
+    assert_eq!(
+        world.examine(near, ExamineTarget::Berries),
+        "The berries that were here are gone."
+    );
+    assert_eq!(world.sim_time(), clock);
+    assert_eq!(world.material_tally(Material::Berry), 0);
+    assert!(!world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Berries lie here"));
+    assert_eq!(
+        world.examine(far, ExamineTarget::Berries),
+        "You see no berries from here."
+    );
+    assert_eq!(world.sim_time(), clock);
+}

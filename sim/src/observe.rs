@@ -1051,6 +1051,9 @@ impl World {
             }
         }
         if lines.is_empty() {
+            if material == Material::Berry && self.spent_berries.contains(&origin) {
+                return "The berries that were here are gone.".into();
+            }
             let name = match material {
                 Material::Branch => "wood",
                 Material::Bark => "bark",
