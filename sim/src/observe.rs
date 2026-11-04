@@ -1293,7 +1293,7 @@ impl World {
             if self.tracks.contains(&cell) {
                 lines.push(format!(
                     "Hoofprints mark the ground {}.",
-                    self.place_phrase(origin, cell)
+                    self.mark_place(origin, cell)
                 ));
             }
         }
@@ -1381,6 +1381,28 @@ impl World {
             self.condition_word(moisture),
             self.rain_reaches_phrase(cell)
         )
+    }
+
+    fn mark_place(&self, from: CellId, to: CellId) -> String {
+        if from == to {
+            return self.place_phrase(from, to);
+        }
+        let (x1, y1) = cell_xy(from);
+        let (x2, y2) = cell_xy(to);
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let mut parts = Vec::new();
+        if dy != 0 {
+            let n = dy.unsigned_abs();
+            let way = if dy < 0 { "north" } else { "south" };
+            parts.push(format!("{} {way}", cell_span(n)));
+        }
+        if dx != 0 {
+            let n = dx.unsigned_abs();
+            let way = if dx > 0 { "east" } else { "west" };
+            parts.push(format!("{} {way}", cell_span(n)));
+        }
+        format!("{}, {}", parts.join(" and "), self.cover_phrase(to))
     }
 
     fn place_phrase(&self, from: CellId, to: CellId) -> String {
@@ -2125,6 +2147,16 @@ fn carried_food_phrase(material: Material, count: u32, condition: &str) -> Strin
     } else {
         format!("{} {condition} {many}", capitalize(&count_word(count)))
     }
+}
+
+fn cell_span(count: u32) -> String {
+    let word = if count == 1 {
+        "one".to_string()
+    } else {
+        count_word(count)
+    };
+    let noun = if count == 1 { "cell" } else { "cells" };
+    format!("{word} {noun}")
 }
 
 fn count_word(count: u32) -> String {

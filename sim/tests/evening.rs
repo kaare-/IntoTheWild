@@ -2859,3 +2859,33 @@ fn examine_slope_names_the_open_ground_you_can_see() {
         .iter()
         .any(|action| action == "examine slope"));
 }
+
+#[test]
+fn examine_tracks_names_each_visible_mark_once() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    for (i, dir) in [Dir::East, Dir::East, Dir::North, Dir::North]
+        .into_iter()
+        .enumerate()
+    {
+        world.step(&[cmd(&format!("w{i}"), near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let clock = world.sim_time();
+    let text = world.examine(near, ExamineTarget::Tracks);
+    assert_eq!(world.sim_time(), clock);
+    assert_eq!(
+        text,
+        "Hoofprints mark the ground one cell south and two cells west, in the open.\nHoofprints mark the ground two cells south and two cells west, in the open."
+    );
+    let mut lines: Vec<_> = text.lines().collect();
+    let count = lines.len();
+    lines.sort();
+    lines.dedup();
+    assert_eq!(lines.len(), count, "{text}");
+    assert_eq!(
+        world.examine(far, ExamineTarget::Tracks),
+        "You see no hoofprints from here."
+    );
+}
