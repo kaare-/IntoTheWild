@@ -361,11 +361,13 @@ impl World {
             let mud_before = actor.mud;
             let on_fire = self.fire_at(cell).is_some();
             let carried = actor.warmth;
+            let mut from_fire = actor.warm_from_fire;
             let hold = u32::try_from(self.tuning.warmth_hold).unwrap_or(u32::MAX);
-            let mut cold_gain = ((u64::from(cold_base) * u64::from(exposure)) / 1000) as u32;
+            let mut sky_cold = ((u64::from(cold_base) * u64::from(exposure)) / 1000) as u32;
             if exposure >= 1000 {
-                cold_gain = cold_gain.saturating_mul(2);
+                sky_cold = sky_cold.saturating_mul(2);
             }
+            let mut cold_gain = sky_cold;
             if !on_fire && carried > 0 {
                 cold_gain /= 2;
             }
@@ -395,9 +397,19 @@ impl World {
             } else {
                 carried.saturating_sub(1)
             };
+            if on_fire {
+                from_fire = cold_after < chilly_at;
+            } else if cold_after >= chilly_at {
+                from_fire = false;
+            } else if warmth_after == 0 && sky_cold == 0 {
+                from_fire = false;
+            } else if carried > 0 || from_fire {
+                from_fire = true;
+            }
             if let Some(actor) = self.actors.get_mut(&id) {
                 actor.cold = cold_after;
                 actor.warmth = warmth_after;
+                actor.warm_from_fire = from_fire;
                 actor.sunburn = sun_after;
                 actor.mud = mud_before.saturating_sub(mud_loss);
             }

@@ -276,6 +276,11 @@ pub struct Actor {
     /// Each tick off the fire spends one, and the sky's cold is halved.
     #[serde(default)]
     pub warmth: u32,
+    /// The warm word is still the fire's. It lasts through the leftover
+    /// ticks and the open-wind ticks after them, until the word leaves warm
+    /// or shelter is what is holding it.
+    #[serde(default)]
+    pub warm_from_fire: bool,
     /// Sun on bare skin. Mud on the skin brings the gain down. Rain hides the sun.
     #[serde(default)]
     pub sunburn: u32,
@@ -596,6 +601,7 @@ impl World {
                 energy: 0,
                 cold: 0,
                 warmth: 0,
+                warm_from_fire: false,
                 sunburn: 0,
                 mud: 0,
                 busy: None,

@@ -1518,14 +1518,21 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
         .events
         .iter()
         .any(|event| event.text.contains("still has the warmth of the fire")));
-    for _ in 0..3 {
+    let mut ticks = 0;
+    while world.observe(sera).unwrap().self_info.cold == "warm" {
+        let body = world.observe(sera).unwrap();
+        assert!(
+            body.text
+                .contains("The warmth of the fire is still on you."),
+            "the leftover sentence stays while the word is warm from the fire"
+        );
         world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 12, "open wind should cool her");
     }
-    assert_eq!(world.observe(sera).unwrap().self_info.cold, "warm");
-    for _ in 0..2 {
-        world.step(&[]);
-    }
-    assert_eq!(world.observe(sera).unwrap().self_info.cold, "chilly");
+    let cooled = world.observe(sera).unwrap();
+    assert_eq!(cooled.self_info.cold, "chilly");
+    assert!(!cooled.text.contains("still on you"));
     assert_eq!(world.observe(otto).unwrap().self_info.cold, "cold");
     assert_eq!(world.observe(nils).unwrap().self_info.cold, "cold");
 }
@@ -1568,6 +1575,11 @@ fn rain_still_puts_out_an_open_fire_and_the_warmth_lingers() {
         .contains("The warmth of the fire is still on you."));
     let mut ticks = 0;
     while world.observe(sera).unwrap().self_info.cold == "warm" {
+        assert!(world
+            .observe(sera)
+            .unwrap()
+            .text
+            .contains("The warmth of the fire is still on you."));
         world.step(&[]);
         ticks += 1;
         assert!(
@@ -1579,7 +1591,49 @@ fn rain_still_puts_out_an_open_fire_and_the_warmth_lingers() {
         ticks > 4,
         "the leftover warmth holds the warm word for a few ticks"
     );
-    assert_eq!(world.observe(sera).unwrap().self_info.cold, "chilly");
+    let cooled = world.observe(sera).unwrap();
+    assert_eq!(cooled.self_info.cold, "chilly");
+    assert!(!cooled.text.contains("still on you"));
     assert_ne!(world.observe(beside).unwrap().self_info.cold, "warm");
     assert!(!world.observe(beside).unwrap().text.contains("still on you"));
+}
+
+#[test]
+fn under_the_rock_the_leftover_sentence_goes_once_the_counter_is_spent() {
+    let mut world = world_at(10_000);
+    let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
+    world.step(&[cmd("bark", sera, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", sera, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("west", sera, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("light", sera, Attempt::Light)]);
+    while world.observe(sera).unwrap().self_info.cold != "warm" {
+        world.step(&[]);
+        assert!(
+            world.sim_time() < 16,
+            "the fire should warm her before the rain"
+        );
+    }
+    assert!(!world.observe(sera).unwrap().text.contains("still on you"));
+    world.step(&[cmd("shelter", sera, Attempt::Move(Dir::East))]);
+    assert_eq!(world.actor_cell(sera), Some((6, 1)));
+    let mut saw = false;
+    for _ in 0..6 {
+        let body = world.observe(sera).unwrap();
+        assert_eq!(body.self_info.cold, "warm");
+        assert_eq!(body.self_info.wind, "out of the wind");
+        if body.text.contains("still on you") {
+            saw = true;
+            world.step(&[]);
+        } else {
+            break;
+        }
+    }
+    assert!(
+        saw,
+        "the leftover sentence shows under the rock while it is still on her"
+    );
+    let sheltered = world.observe(sera).unwrap();
+    assert_eq!(sheltered.self_info.cold, "warm");
+    assert_eq!(sheltered.self_info.wind, "out of the wind");
+    assert!(!sheltered.text.contains("still on you"));
 }

@@ -53,8 +53,13 @@ def scripted(obs: dict, memory: Memory) -> str | None:
     fed = safe_food(obs, memory, me, allowed)
     if fed:
         return fed
-    if me.get("cold") in {"chilly", "cold"} and here.get("fire"):
+    if me.get("cold") == "cold" and here.get("fire"):
         return None
+    if me.get("wind") == "in the wind" and me.get("cold") in {"warm", "chilly"}:
+        rocks = [pos for pos, cell in memory.cells.items() if cell.get("roof") == "rock"]
+        step = walk_toward(me, nearest((me["x"], me["y"]), rocks), allowed)
+        if step:
+            return step
     cared = weather_care(obs, memory, me, allowed)
     if cared:
         return cared

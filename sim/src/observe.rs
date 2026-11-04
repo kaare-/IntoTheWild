@@ -349,7 +349,7 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.mud_word(actor.mud)),
         ];
-        if actor.warmth > 0 && self.fire_at(actor.cell).is_none() {
+        if actor.warm_from_fire && self.fire_at(actor.cell).is_none() {
             parts.push("The warmth of the fire is still on you.".into());
         }
         let carrying = self.carry_views(actor_id);
