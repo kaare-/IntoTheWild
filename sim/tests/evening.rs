@@ -857,6 +857,9 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
     let before = near.observe(sera).unwrap();
     assert!(before.map.contains('d'));
     assert!(before
+        .text
+        .contains("A deer stands two cells west, in the open."));
+    assert!(before
         .visible_cells
         .iter()
         .any(|cell| cell.x == 2 && cell.y == 3 && cell.deer));
@@ -884,6 +887,7 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
         .iter()
         .any(|event| event.text == "A deer steps east."));
     assert!(moved.text.contains("a deer"));
+    assert!(!moved.text.contains("A deer stands one cell west"));
     assert!(moved
         .visible_cells
         .iter()
@@ -3060,6 +3064,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "A deer stands one cell south and one cell west, in the open."
     );
     assert!(!text.contains("to the south and west"), "{text}");
+    let look = world.observe(near).unwrap();
+    assert_eq!(world.sim_time(), clock);
+    assert!(look.map.contains('d'));
+    assert!(look
+        .text
+        .contains("A deer stands one cell south and one cell west, in the open."));
+    assert!(!look.text.contains("South: valley floor, a deer."));
+    assert!(!look.text.contains("West: valley floor, a deer."));
+    assert!(!world.observe(far).unwrap().text.contains("deer"));
     assert_eq!(
         world.examine(far, ExamineTarget::Deer),
         "You cannot see a deer from here."

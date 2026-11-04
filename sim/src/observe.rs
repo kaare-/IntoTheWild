@@ -219,6 +219,9 @@ impl World {
         if let Some(work) = self.work_view(actor_id) {
             lines.push(work.detail);
         }
+        if let Some(deer) = self.deer_look_line(actor_id) {
+            lines.push(deer);
+        }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
@@ -607,6 +610,29 @@ impl World {
                     .is_some()
             })
             .count()
+    }
+
+    /// A deer on a cell in sight that the four neighbor lines do not name.
+    /// Due north, south, east, or west of the next cell is already "a deer"
+    /// on that line. A diagonal, or a deer farther off, is this sentence.
+    fn deer_look_line(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let deer = self.deer.as_ref()?;
+        if chebyshev(origin, deer.cell) > self.tuning.sight || origin == deer.cell {
+            return None;
+        }
+        let (x1, y1) = cell_xy(origin);
+        let (x2, y2) = cell_xy(deer.cell);
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let next_door = (dx == 0 && dy.abs() == 1) || (dy == 0 && dx.abs() == 1);
+        if next_door {
+            return None;
+        }
+        Some(format!(
+            "A deer stands {}.",
+            self.mark_place(origin, deer.cell)
+        ))
     }
 
     fn adjacent_line(&self, origin: CellId, dir: Dir) -> String {
