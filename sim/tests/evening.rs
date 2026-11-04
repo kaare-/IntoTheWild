@@ -1273,6 +1273,40 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
         .events
         .iter()
         .all(|event| !event.text.contains("branches breaking")));
+    let mid = world.spawn_at("Mid", "m", 3, 3).unwrap();
+    let clock = world.sim_time();
+    let from_mid = world.examine(mid, ExamineTarget::Wood);
+    assert_eq!(world.sim_time(), clock);
+    assert!(
+        from_mid.contains(
+            "A pile of 3 branches is in contact with the ground one cell north and two cells east, in the open."
+        ),
+        "{from_mid}"
+    );
+    assert!(!from_mid.contains("to the north and east"), "{from_mid}");
+    let from_rock = world.examine(under, ExamineTarget::Wood);
+    assert!(
+        from_rock.contains(
+            "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open."
+        ),
+        "{from_rock}"
+    );
+    assert!(!from_rock.contains("to the south and west"), "{from_rock}");
+    assert_eq!(
+        world.examine(otto, ExamineTarget::Wood),
+        "You see no wood from here."
+    );
+    assert_eq!(
+        world
+            .observe(on_it)
+            .unwrap()
+            .visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        3
+    );
 
     let mut taken = world_at(10_000);
     let near = taken.spawn_at("Sera", "s", 4, 3).unwrap();

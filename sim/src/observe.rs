@@ -958,6 +958,18 @@ impl World {
                         self.rotting_clause(cell, material),
                         food_clause(material)
                     ));
+                } else if material == Material::Branch {
+                    let noun = pile_noun(material, count);
+                    let (kind, verb) = food_kind(material);
+                    lines.push(format!(
+                        "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}{}",
+                        self.mark_place(origin, cell),
+                        self.condition_word(self.pile_moisture(cell, material)),
+                        self.rain_reaches_phrase(cell),
+                        self.heavier_rain_clause(cell, material),
+                        self.rotting_clause(cell, material),
+                        food_clause(material)
+                    ));
                 } else {
                     let noun = pile_noun(material, count);
                     let (kind, verb) = food_kind(material);
@@ -1006,6 +1018,18 @@ impl World {
                         self.place_phrase(origin, cell),
                         self.condition_word(worst),
                         self.rain_reaches_phrase(cell)
+                    ));
+                } else if material == Material::Branch {
+                    lines.push(format!(
+                        "{} loose {} {} in contact with the ground {}. {}{}{}{}",
+                        loose.len(),
+                        pile_noun(material, loose.len() as u32),
+                        if loose.len() == 1 { "is" } else { "are" },
+                        self.mark_place(origin, cell),
+                        self.condition_sentence(worst, cell),
+                        self.heavier_rain_clause(cell, material),
+                        self.rotting_clause(cell, material),
+                        food_clause(material)
                     ));
                 } else {
                     lines.push(format!(
