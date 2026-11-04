@@ -366,22 +366,17 @@ impl World {
         {
             parts.push("A loose stone lies here.".into());
         }
-        let firing = self
-            .ground_ids(actor.cell, Material::Clay)
-            .into_iter()
-            .any(|id| {
-                self.item(id)
-                    .and_then(|item| item.firing_ready_at)
-                    .is_some()
-            });
+        let firing = self.clay_firing_count(actor.cell);
         let loose_clay = self.ground_ids(actor.cell, Material::Clay).len() as u32;
         let clay_pile = self.pile_count(actor.cell, Material::Clay);
-        if firing {
-            parts.push("A lump of clay is set by the fire. It is not hard yet.".into());
+        if firing == 1 {
+            parts.push("A lump of clay is hardening in the fire.".into());
+        } else if firing > 1 {
+            parts.push("Lumps of clay are hardening in the fire.".into());
         }
         if clay_pile > 1 {
             parts.push("Clay lies on the bank here.".into());
-        } else if clay_pile == 1 || (loose_clay > 0 && !firing) {
+        } else if clay_pile == 1 || (loose_clay > firing as u32) {
             parts.push("A lump of clay lies here. It is unfired.".into());
         }
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty() {
@@ -473,6 +468,9 @@ impl World {
                 .collect();
             parts.push(format!("You have {}.", bits.join(", ")));
         }
+        if self.spear_is_hardening(actor_id) {
+            parts.push("The point of your spear is hardening in the fire.".into());
+        }
         if self.gripping(actor_id).is_some() {
             let mut holders = self.log_gripped_by();
             holders.retain(|name| name != &actor.name);
@@ -520,9 +518,36 @@ impl World {
         let hardened = self.item(id).is_some_and(|item| item.hardened);
         if hardened {
             " They carry a spear with a hardened point.".into()
+        } else if self.spear_is_hardening(actor_id) {
+            " They carry a spear with an unhardened point. The point is hardening in the fire."
+                .into()
         } else {
             " They carry a spear with an unhardened point.".into()
         }
+    }
+
+    fn spear_is_hardening(&self, actor_id: ActorId) -> bool {
+        let Some(actor) = self.actor(actor_id) else {
+            return false;
+        };
+        if self.fire_at(actor.cell).is_none() {
+            return false;
+        }
+        self.loose_ids(actor_id, Material::Spear).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|spear| !spear.hardened && spear.firing_ready_at.is_some())
+        })
+    }
+
+    fn clay_firing_count(&self, cell: CellId) -> usize {
+        self.ground_ids(cell, Material::Clay)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .and_then(|item| item.firing_ready_at)
+                    .is_some()
+            })
+            .count()
     }
 
     fn adjacent_line(&self, origin: CellId, dir: Dir) -> String {
@@ -569,13 +594,23 @@ impl World {
         {
             bits.push("a stone".into());
         }
-        if self.pile_count(dest, Material::Clay) > 0
+        let clay_firing = self.clay_firing_count(dest);
+        if clay_firing > 0 && self.pile_count(dest, Material::Clay) == 0 {
+            bits.push("clay hardening in the fire".into());
+        } else if self.pile_count(dest, Material::Clay) > 0
             || !self.ground_ids(dest, Material::Clay).is_empty()
         {
             bits.push("clay".into());
         }
         if !self.ground_ids(dest, Material::Bowl).is_empty() {
             bits.push("a bowl".into());
+        }
+        if self
+            .actors
+            .values()
+            .any(|person| person.cell == dest && self.spear_is_hardening(person.id))
+        {
+            bits.push("a spear hardening in the fire".into());
         }
         if self.ground_ids(dest, Material::Spear).len() == 1 {
             let hardened = self
@@ -644,10 +679,14 @@ impl World {
                     .and_then(|item| item.firing_ready_at)
                     .is_some();
                 if firing {
-                    lines.push(format!(
-                        "A lump of clay is set by the fire {}. It is not hard yet.",
-                        self.place_phrase(origin, cell)
-                    ));
+                    if origin == cell {
+                        lines.push("A lump of clay is hardening in the fire.".into());
+                    } else {
+                        lines.push(format!(
+                            "A lump of clay is hardening in the fire {}.",
+                            self.place_phrase(origin, cell)
+                        ));
+                    }
                 } else {
                     lines.push(format!(
                         "A lump of clay lies in contact with the ground {}. It is unfired. It cannot boil water.",
@@ -757,10 +796,18 @@ impl World {
                 } else {
                     "an unhardened point"
                 };
-                lines.push(format!(
-                    "A spear with {point} is carried by {who}, {}.",
-                    self.cover_phrase(cell)
-                ));
+                let waiting = !hardened && self.spear_is_hardening(other);
+                if waiting {
+                    lines.push(format!(
+                        "A spear with {point} is carried by {who}, {}. The point is hardening in the fire.",
+                        self.cover_phrase(cell)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "A spear with {point} is carried by {who}, {}.",
+                        self.cover_phrase(cell)
+                    ));
+                }
             }
         }
         if lines.is_empty() {

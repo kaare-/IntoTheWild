@@ -1854,9 +1854,21 @@ fn clay_on_the_bank_hardens_by_the_fire_into_a_bowl() {
         .material_items(Material::Clay)
         .iter()
         .any(|item| item.0 == id && item.1.is_none() && (item.2, item.3) == (6, 1)));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A lump of clay is hardening in the fire."));
+    assert_eq!(
+        world.examine(near, ExamineTarget::Clay),
+        "A lump of clay is hardening in the fire."
+    );
     for _ in 0..3 {
         world.step(&[]);
         assert_eq!(world.material_tally(Material::Bowl), 0);
+        let waiting = world.observe(near).unwrap().text;
+        assert!(waiting.contains("A lump of clay is hardening in the fire."));
+        assert!(!waiting.contains("A fired bowl sits here."));
     }
     world.step(&[]);
     assert_eq!(world.sim_time(), after_set + 4);
@@ -1869,11 +1881,9 @@ fn clay_on_the_bank_hardens_by_the_fire_into_a_bowl() {
         .events
         .iter()
         .any(|event| { event.text.contains("The clay hardens into a bowl.") }));
-    assert!(world
-        .observe(near)
-        .unwrap()
-        .text
-        .contains("A fired bowl sits here."));
+    let fired = world.observe(near).unwrap().text;
+    assert!(fired.contains("A fired bowl sits here."));
+    assert!(!fired.contains("is hardening in the fire."));
     let bowl_text = world.examine(near, ExamineTarget::Bowl);
     assert!(bowl_text.contains("A fired bowl lies in contact with the ground"));
     assert!(bowl_text.contains("It can boil water over a fire."));
@@ -2316,6 +2326,7 @@ fn a_stone_and_a_branch_bind_into_a_spear_whose_point_hardens() {
         .unwrap()
         .text
         .contains("a spear with an unhardened point"));
+    assert!(!world.observe(near).unwrap().text.contains("hardening"));
 
     world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
     world.step(&[cmd("tinder", near, Attempt::Gather(Material::Branch))]);
@@ -2323,9 +2334,26 @@ fn a_stone_and_a_branch_bind_into_a_spear_whose_point_hardens() {
     assert!(lit.results[0].success, "{}", lit.results[0].message);
     let started = world.sim_time();
     assert!(!world.spears()[0].2);
+    let waiting = world.observe(near).unwrap().text;
+    assert!(waiting.contains("The point of your spear is hardening in the fire."));
+    assert!(waiting.contains("a spear with an unhardened point"));
+    assert!(world
+        .observe(beside)
+        .unwrap()
+        .text
+        .contains("a spear hardening in the fire"));
+    assert_eq!(
+        world.examine(beside, ExamineTarget::Spear),
+        "A spear with an unhardened point is carried by Near, under the rock overhang. The point is hardening in the fire."
+    );
     for _ in 0..3 {
         world.step(&[]);
         assert!(!world.spears()[0].2, "the point is not hardened yet");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The point of your spear is hardening in the fire."));
     }
     world.step(&[]);
     assert_eq!(world.sim_time(), started + 4);
@@ -2345,11 +2373,14 @@ fn a_stone_and_a_branch_bind_into_a_spear_whose_point_hardens() {
         .events
         .iter()
         .any(|event| { event.text.contains("The point of Near's spear hardens.") }));
-    assert!(world
-        .observe(near)
+    let held = world.observe(near).unwrap().text;
+    assert!(held.contains("a spear with a hardened point"));
+    assert!(!held.contains("is hardening in the fire."));
+    assert!(!world
+        .observe(beside)
         .unwrap()
         .text
-        .contains("a spear with a hardened point"));
+        .contains("a spear hardening in the fire"));
     assert!(world.deer_cell().is_some());
     assert_eq!(world.material_tally(Material::Spear), 1);
 }
