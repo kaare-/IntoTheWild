@@ -263,7 +263,7 @@ impl World {
             if open_branch {
                 lines.push(format!(
                     "Wood left in the open is rotting {}.",
-                    self.mark_place(origin, cell)
+                    self.cell_offset(origin, cell)
                 ));
             }
         }
@@ -1466,9 +1466,9 @@ impl World {
         )
     }
 
-    fn mark_place(&self, from: CellId, to: CellId) -> String {
+    fn cell_offset(&self, from: CellId, to: CellId) -> String {
         if from == to {
-            return self.place_phrase(from, to);
+            return "here".into();
         }
         let (x1, y1) = cell_xy(from);
         let (x2, y2) = cell_xy(to);
@@ -1485,7 +1485,14 @@ impl World {
             let way = if dx > 0 { "east" } else { "west" };
             parts.push(format!("{} {way}", cell_span(n)));
         }
-        format!("{}, {}", parts.join(" and "), self.cover_phrase(to))
+        parts.join(" and ")
+    }
+
+    fn mark_place(&self, from: CellId, to: CellId) -> String {
+        if from == to {
+            return self.place_phrase(from, to);
+        }
+        format!("{}, {}", self.cell_offset(from, to), self.cover_phrase(to))
     }
 
     fn place_phrase(&self, from: CellId, to: CellId) -> String {

@@ -1110,9 +1110,11 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         open_line.contains("It is rotting in the open."),
         "{open_line}"
     );
-    assert!(world.observe(sera).unwrap().text.contains(
-        "Wood left in the open is rotting one cell north and one cell east, in the open."
-    ));
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .text
+        .contains("Wood left in the open is rotting one cell north and one cell east."));
     assert!(!world.observe(otto).unwrap().text.contains("rotting"));
     assert_eq!(
         world.examine(otto, ExamineTarget::Wood),
@@ -1294,12 +1296,16 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
         world.examine(otto, ExamineTarget::Wood),
         "You see no wood from here."
     );
-    assert!(world.observe(mid).unwrap().text.contains(
-        "Wood left in the open is rotting one cell north and two cells east, in the open."
-    ));
-    assert!(world.observe(under).unwrap().text.contains(
-        "Wood left in the open is rotting one cell south and one cell west, in the open."
-    ));
+    assert!(world
+        .observe(mid)
+        .unwrap()
+        .text
+        .contains("Wood left in the open is rotting one cell north and two cells east."));
+    assert!(world
+        .observe(under)
+        .unwrap()
+        .text
+        .contains("Wood left in the open is rotting one cell south and one cell west."));
     assert!(!world.observe(otto).unwrap().text.contains("rotting"));
     assert_eq!(
         world
