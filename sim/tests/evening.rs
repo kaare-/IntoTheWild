@@ -2184,3 +2184,71 @@ fn one_thing_on_the_ground_is_named_and_is_not_a_pile() {
     assert!(south.contains("a pot"), "{south}");
     assert!(south.contains("a sheet of bark"), "{south}");
 }
+
+fn map_cell(map: &str, x: i32, y: i32) -> String {
+    let row = map.lines().nth((y + 1) as usize).unwrap_or("");
+    let start = 2 + (x as usize) * 3;
+    row.get(start..start + 3).unwrap_or("").to_string()
+}
+
+#[test]
+fn look_names_every_kind_and_the_map_marks_what_the_letter_hides() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let rock = world.observe(near).unwrap();
+    assert!(
+        rock.text.contains("A pile of bark lies here."),
+        "{}",
+        rock.text
+    );
+    assert!(rock.text.contains("A pile of branches lies here."));
+    assert!(rock.text.contains("Berries lie here"));
+    assert!(rock.text.contains("A pot sits here."));
+    assert!(!rock.text.contains("A sheet of bark lies here."));
+    assert_eq!(map_cell(&rock.map, 6, 1), "@w+");
+    assert!(rock.legend.contains("+ more than the letter shows"));
+    let berries = world.examine(near, ExamineTarget::Berries);
+    assert!(
+        berries.contains("A pile of 4 handfuls of berries"),
+        "{berries}"
+    );
+
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    for step in 0..3 {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
+    }
+    for step in 0..3 {
+        world.step(&[cmd(
+            &format!("south-{step}"),
+            near,
+            Attempt::Move(Dir::South),
+        )]);
+    }
+    assert_eq!(world.actor_cell(near), Some((3, 4)));
+    world.step(&[cmd("drop-pot", near, Attempt::Drop(Material::Pot))]);
+    let pot_only = world.observe(near).unwrap();
+    assert!(pot_only.text.contains("A pot sits here."));
+    assert_eq!(map_cell(&pot_only.map, 3, 4), "@k ");
+
+    world.step(&[cmd("drop-bark", near, Attempt::Drop(Material::Bark))]);
+    let both = world.observe(near).unwrap();
+    assert!(both.text.contains("A pot sits here."));
+    assert!(both.text.contains("A sheet of bark lies here."));
+    assert_eq!(map_cell(&both.map, 3, 4), "@b+");
+
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    let beside = world.observe(near).unwrap();
+    assert_eq!(map_cell(&beside.map, 3, 4), ".b+");
+    assert!(beside.text.contains("South:"));
+    let south = beside
+        .text
+        .split("South:")
+        .nth(1)
+        .unwrap_or("")
+        .split("West:")
+        .next()
+        .unwrap_or("");
+    assert!(south.contains("a pot"), "{south}");
+    assert!(south.contains("a sheet of bark"), "{south}");
+}

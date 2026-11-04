@@ -15,7 +15,7 @@ y berries      Y wet berries
 m mushrooms    q poison berries
 k pot          u water
 s stone         c clay
-v bowl
+v bowl         + more than the letter shows
 d deer         \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -324,10 +324,40 @@ impl World {
         {
             parts.push("A pot sits here.".into());
         }
+        let branches_here = self.pile_count(actor.cell, Material::Branch)
+            + self.ground_ids(actor.cell, Material::Branch).len() as u32;
+        if branches_here > 1 {
+            parts.push("A pile of branches lies here.".into());
+        } else if branches_here == 1 {
+            parts.push("A branch lies here.".into());
+        }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
-        if bark_here == 1 {
+        if bark_here > 1 {
+            parts.push("A pile of bark lies here.".into());
+        } else if bark_here == 1 {
             parts.push("A sheet of bark lies here.".into());
+        }
+        if self.pile_count(actor.cell, Material::Log) > 0
+            || self.items.values().any(|item| {
+                item.material == Material::Log && item.cell == actor.cell && item.carrier.is_none()
+            })
+        {
+            parts.push("The heavy log lies here.".into());
+        }
+        let water_here = self.pile_count(actor.cell, Material::Water)
+            + self.ground_ids(actor.cell, Material::Water).len() as u32;
+        if water_here == 1 {
+            parts.push("A drink of water lies here.".into());
+        } else if water_here > 1 {
+            parts.push("Water lies here.".into());
+        }
+        let mud_here = self.pile_count(actor.cell, Material::Mud)
+            + self.ground_ids(actor.cell, Material::Mud).len() as u32;
+        if mud_here == 1 {
+            parts.push("A handful of mud lies here.".into());
+        } else if mud_here > 1 {
+            parts.push("Mud lies here.".into());
         }
         if self.pile_count(actor.cell, Material::Stone) > 0
             || !self.ground_ids(actor.cell, Material::Stone).is_empty()
@@ -498,6 +528,8 @@ impl World {
             + self.ground_ids(dest, Material::Bark).len() as u32;
         if bark_there == 1 {
             bits.push("a sheet of bark".into());
+        } else if bark_there > 1 {
+            bits.push("a pile of bark".into());
         }
         if self.pile_count(dest, Material::Stone) > 0
             || !self.ground_ids(dest, Material::Stone).is_empty()
@@ -1043,10 +1075,15 @@ impl World {
         for y in 0..crate::model::HEIGHT {
             let mut line = format!("{y} ");
             for x in 0..crate::model::WIDTH {
-                let [left, right] = self.glyph(viewer, cell_id(x, y).unwrap());
+                let id = cell_id(x, y).unwrap();
+                let [left, right] = self.glyph(viewer, id);
                 line.push(left);
                 line.push(right);
-                line.push(' ');
+                if left != '?' && self.content_marks(id).len() > 1 {
+                    line.push('+');
+                } else {
+                    line.push(' ');
+                }
             }
             lines.push(line);
         }
@@ -1062,7 +1099,7 @@ impl World {
             return ['?', '?'];
         }
         let terrain = self.terrain_char(cell);
-        let content = self.content_char(cell);
+        let content = self.content_marks(cell).first().copied().unwrap_or(' ');
         let viewer_here = self.actor(viewer).map(|a| a.cell) == Some(cell);
         let others = self
             .actors
@@ -1098,30 +1135,33 @@ impl World {
         }
     }
 
-    fn content_char(&self, cell: CellId) -> char {
+    /// One letter for the cell, in the same order as before. Later marks are
+    /// present but not drawn. The map adds `+` when this list is longer than one.
+    fn content_marks(&self, cell: CellId) -> Vec<char> {
+        let mut marks = Vec::new();
         if self.fire_at(cell).is_some() {
-            return '*';
+            marks.push('*');
         }
         if self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
-            return 'd';
+            marks.push('d');
         }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {
                 item.material == Material::Log && item.cell == cell && item.carrier.is_none()
             });
         if log_here {
-            return 'L';
+            marks.push('L');
         }
         let branch_moisture = self.worst_loose(cell, Material::Branch);
         if self.pile_count(cell, Material::Branch) > 0 || branch_moisture.is_some() {
             let moisture = branch_moisture
                 .unwrap_or(0)
                 .max(self.pile_moisture(cell, Material::Branch));
-            return if moisture >= self.tuning.damp_at {
+            marks.push(if moisture >= self.tuning.damp_at {
                 'W'
             } else {
                 'w'
-            };
+            });
         }
         if self.pile_count(cell, Material::Bark) > 0
             || self.items.values().any(|item| {
@@ -1132,37 +1172,37 @@ impl World {
             })
         {
             let moisture = self.pile_moisture(cell, Material::Bark);
-            return if moisture >= self.tuning.damp_at {
+            marks.push(if moisture >= self.tuning.damp_at {
                 'B'
             } else {
                 'b'
-            };
+            });
         }
         let berry_moisture = self.worst_loose(cell, Material::Berry);
         if self.pile_count(cell, Material::Berry) > 0 || berry_moisture.is_some() {
             let moisture = berry_moisture
                 .unwrap_or(0)
                 .max(self.pile_moisture(cell, Material::Berry));
-            return if moisture >= self.tuning.damp_at {
+            marks.push(if moisture >= self.tuning.damp_at {
                 'Y'
             } else {
                 'y'
-            };
+            });
         }
         if self.pile_count(cell, Material::Mushroom) > 0
             || self.worst_loose(cell, Material::Mushroom).is_some()
         {
-            return 'm';
+            marks.push('m');
         }
         if self.pile_count(cell, Material::BitterBerry) > 0
             || self.worst_loose(cell, Material::BitterBerry).is_some()
         {
-            return 'q';
+            marks.push('q');
         }
         if self.pile_count(cell, Material::Pot) > 0
             || self.worst_loose(cell, Material::Pot).is_some()
         {
-            return 'k';
+            marks.push('k');
         }
         if self.pile_count(cell, Material::Water) > 0
             || self.items.values().any(|item| {
@@ -1172,25 +1212,25 @@ impl World {
                     && item.cell == cell
             })
         {
-            return 'u';
+            marks.push('u');
         }
         if self.pile_count(cell, Material::Stone) > 0
             || self.worst_loose(cell, Material::Stone).is_some()
         {
-            return 's';
+            marks.push('s');
         }
         if self.pile_count(cell, Material::Clay) > 0
             || self.worst_loose(cell, Material::Clay).is_some()
         {
-            return 'c';
+            marks.push('c');
         }
         if self.worst_loose(cell, Material::Bowl).is_some() {
-            return 'v';
+            marks.push('v');
         }
         if self.tracks.contains(&cell) {
-            return '"';
+            marks.push('"');
         }
-        ' '
+        marks
     }
 
     fn worst_loose(&self, cell: CellId, material: Material) -> Option<u32> {
