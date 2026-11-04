@@ -2988,6 +2988,20 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         world.examine(far, ExamineTarget::Berries),
         "You see no berries from here."
     );
+    assert_eq!(
+        world.examine(near, ExamineTarget::Deer),
+        "A deer stands here, under the rock overhang. It ate the berries here."
+    );
+    let beside = world.spawn_at("Beside", "b", 5, 1).unwrap();
+    assert_eq!(
+        world.examine(beside, ExamineTarget::Deer),
+        "A deer stands one cell east, under the rock overhang. It ate the berries there."
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Deer),
+        "You cannot see a deer from here."
+    );
+    assert_eq!(world.sim_time(), clock);
     world.step(&[]);
     assert_ne!(world.deer_cell(), Some((6, 1)));
     let clock = world.sim_time();
@@ -2995,6 +3009,9 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         world.examine(near, ExamineTarget::Berries),
         "The berries that were here are gone. A deer ate them."
     );
+    let deer = world.examine(near, ExamineTarget::Deer);
+    assert_eq!(deer, "A deer stands one cell west, in the open.");
+    assert!(!deer.contains("ate"), "{deer}");
     assert_eq!(world.sim_time(), clock);
     assert_eq!(
         world.examine(far, ExamineTarget::Berries),
@@ -3039,6 +3056,9 @@ fn examine_berries_does_not_blame_a_deer_that_did_not_eat_them() {
     let text = world.examine(witness, ExamineTarget::Berries);
     assert_eq!(text, "The berries that were here are gone.");
     assert!(!text.contains("deer"), "{text}");
+    let deer = world.examine(witness, ExamineTarget::Deer);
+    assert_eq!(deer, "A deer stands here, under the rock overhang.");
+    assert!(!deer.contains("ate"), "{deer}");
     assert_eq!(world.sim_time(), clock);
     let far = world.spawn_at("Far", "f", 0, 0).unwrap();
     assert_eq!(

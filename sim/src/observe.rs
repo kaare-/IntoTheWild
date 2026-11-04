@@ -1287,6 +1287,12 @@ impl World {
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."
+        } else if self.deer_ate_berries.contains(&deer.cell) {
+            if origin == deer.cell {
+                " It ate the berries here."
+            } else {
+                " It ate the berries there."
+            }
         } else {
             ""
         };
