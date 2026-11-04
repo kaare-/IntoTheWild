@@ -30,12 +30,54 @@ impl World {
                 Wake::Deer => self.apply_deer(),
                 Wake::Season => self.apply_season(),
                 Wake::Rot => self.apply_rot(),
+                Wake::Harden(id) => self.harden_clay(id),
             }
         }
     }
 
     /// One change of season. Open rain soaks wood twice as fast from now on.
     /// A roof and the rock overhang keep the gains they already had.
+    /// A lump set by a fire becomes a bowl if that fire is still burning.
+    /// Unfired clay stays clay. The bowl is not a pot, and it can boil water.
+    fn harden_clay(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Clay || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        if item.carrier.is_some() || self.fire_at(item.cell).is_none() {
+            if let Some(lying) = self.items.get_mut(&id) {
+                lying.firing_ready_at = None;
+            }
+            if item.carrier.is_none() {
+                self.emit(
+                    "The clay is still soft. The fire is out.",
+                    Scope::Cell(item.cell),
+                    vec![],
+                    vec![item.cell],
+                    vec![id],
+                    vec![],
+                    None,
+                );
+            }
+            return;
+        }
+        if let Some(lying) = self.items.get_mut(&id) {
+            lying.material = Material::Bowl;
+            lying.firing_ready_at = None;
+        }
+        self.emit(
+            "The clay hardens into a bowl.",
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+    }
+
     fn apply_season(&mut self) {
         if self.wet_season {
             return;

@@ -14,7 +14,8 @@ B wet bark     * fire
 y berries      Y wet berries
 m mushrooms    q poison berries
 k pot          u water
-s stone
+s stone         c clay
+v bowl
 d deer         \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -88,6 +89,9 @@ pub struct CellView {
     pub pot_pile: u32,
     pub stone_pile: u32,
     pub loose_stone: u32,
+    pub clay_pile: u32,
+    pub loose_clay: u32,
+    pub bowl: u32,
     pub still: bool,
     pub frozen: bool,
     pub fire: bool,
@@ -172,6 +176,8 @@ impl World {
             ExamineTarget::Pot => self.examine_material(actor_id, Material::Pot),
             ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
             ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
+            ExamineTarget::Clay => self.examine_clay(actor_id),
+            ExamineTarget::Bowl => self.examine_bowl(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -321,6 +327,27 @@ impl World {
         {
             parts.push("A loose stone lies here.".into());
         }
+        let firing = self
+            .ground_ids(actor.cell, Material::Clay)
+            .into_iter()
+            .any(|id| {
+                self.item(id)
+                    .and_then(|item| item.firing_ready_at)
+                    .is_some()
+            });
+        let loose_clay = self.ground_ids(actor.cell, Material::Clay).len() as u32;
+        let clay_pile = self.pile_count(actor.cell, Material::Clay);
+        if firing {
+            parts.push("A lump of clay is set by the fire. It is not hard yet.".into());
+        }
+        if clay_pile > 1 {
+            parts.push("Clay lies on the bank here.".into());
+        } else if clay_pile == 1 || (loose_clay > 0 && !firing) {
+            parts.push("A lump of clay lies here. It is unfired.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Bowl).is_empty() {
+            parts.push("A fired bowl sits here. It can boil water over a fire.".into());
+        }
         if self
             .deer
             .as_ref()
@@ -370,6 +397,10 @@ impl World {
                 .map(|item| {
                     if item.material == "stone" && item.count == 1 {
                         format!("a {} stone", item.condition)
+                    } else if item.material == "clay" && item.count == 1 {
+                        "a lump of clay".into()
+                    } else if item.material == "bowl" && item.count == 1 {
+                        "a fired bowl".into()
                     } else {
                         format!(
                             "{} {} carried by you ({})",
@@ -455,6 +486,14 @@ impl World {
         {
             bits.push("a stone".into());
         }
+        if self.pile_count(dest, Material::Clay) > 0
+            || !self.ground_ids(dest, Material::Clay).is_empty()
+        {
+            bits.push("clay".into());
+        }
+        if !self.ground_ids(dest, Material::Bowl).is_empty() {
+            bits.push("a bowl".into());
+        }
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
         }
@@ -482,6 +521,112 @@ impl World {
             ));
         }
         format!("{}: {}.", capitalize(dir.word()), bits.join(", "))
+    }
+
+    fn examine_clay(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::Clay);
+            if count > 1 {
+                lines.push(format!(
+                    "A pile of {count} lumps of clay is in contact with the ground {}. The clay is {}. {} It is unfired. It cannot boil water.",
+                    self.place_phrase(origin, cell),
+                    self.condition_word(self.pile_moisture(cell, Material::Clay)),
+                    self.rain_reaches_phrase(cell)
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A lump of clay lies in contact with the ground {}. It is unfired. It cannot boil water.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+            for id in self.ground_ids(cell, Material::Clay) {
+                let firing = self
+                    .item(id)
+                    .and_then(|item| item.firing_ready_at)
+                    .is_some();
+                if firing {
+                    lines.push(format!(
+                        "A lump of clay is set by the fire {}. It is not hard yet.",
+                        self.place_phrase(origin, cell)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "A lump of clay lies in contact with the ground {}. It is unfired. It cannot boil water.",
+                        self.place_phrase(origin, cell)
+                    ));
+                }
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            let ids = self.loose_ids(other, Material::Clay);
+            if ids.is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            if ids.len() == 1 {
+                lines.push(format!(
+                    "A lump of clay is carried by {who}, {}. It is unfired. It cannot boil water.",
+                    self.cover_phrase(cell)
+                ));
+            } else {
+                lines.push(format!(
+                    "{} lumps of clay are carried by {who}, {}. They are unfired. They cannot boil water.",
+                    ids.len(),
+                    self.cover_phrase(cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no clay from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    fn examine_bowl(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for id in self.ground_ids(cell, Material::Bowl) {
+                let moisture = self.item(id).map(|item| item.moisture).unwrap_or(0);
+                lines.push(format!(
+                    "A fired bowl lies in contact with the ground {}. It is {}. {} It can boil water over a fire.",
+                    self.place_phrase(origin, cell),
+                    self.condition_word(moisture),
+                    self.rain_reaches_phrase(cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            let ids = self.loose_ids(other, Material::Bowl);
+            if ids.is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            for _ in &ids {
+                lines.push(format!(
+                    "A fired bowl is carried by {who}, {}. It can boil water over a fire.",
+                    self.cover_phrase(cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no bowl from here.".into()
+        } else {
+            lines.join("\n")
+        }
     }
 
     fn examine_material(&self, viewer: ActorId, material: Material) -> String {
@@ -593,6 +738,8 @@ impl World {
                 Material::Mushroom => "mushrooms",
                 Material::Pot => "pot",
                 Material::Stone => "stone",
+                Material::Clay => "clay",
+                Material::Bowl => "bowl",
                 Material::Water => "water",
             };
             format!("You see no {name} from here.")
@@ -974,6 +1121,14 @@ impl World {
         {
             return 's';
         }
+        if self.pile_count(cell, Material::Clay) > 0
+            || self.worst_loose(cell, Material::Clay).is_some()
+        {
+            return 'c';
+        }
+        if self.worst_loose(cell, Material::Bowl).is_some() {
+            return 'v';
+        }
         if self.tracks.contains(&cell) {
             return '"';
         }
@@ -1090,6 +1245,9 @@ impl World {
             pot_pile: self.pile_count(cell, Material::Pot),
             stone_pile: self.pile_count(cell, Material::Stone),
             loose_stone: self.ground_ids(cell, Material::Stone).len() as u32,
+            clay_pile: self.pile_count(cell, Material::Clay),
+            loose_clay: self.ground_ids(cell, Material::Clay).len() as u32,
+            bowl: self.ground_ids(cell, Material::Bowl).len() as u32,
             still: place.still,
             frozen: self.still_frozen(cell),
             fire: self.fire_at(cell).is_some(),
@@ -1254,9 +1412,17 @@ impl World {
             && self.gripping(actor_id).is_none()
             && self.fire_at(actor.cell).is_some()
             && !self.loose_ids(actor_id, Material::Water).is_empty()
-            && !self.loose_ids(actor_id, Material::Pot).is_empty()
+            && (!self.loose_ids(actor_id, Material::Pot).is_empty()
+                || !self.loose_ids(actor_id, Material::Bowl).is_empty())
         {
             actions.push("boil".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && self.fire_at(actor.cell).is_some()
+            && !self.loose_ids(actor_id, Material::Clay).is_empty()
+        {
+            actions.push("set clay".into());
         }
         if actor.busy.is_none() && self.light_refusal(actor_id).is_none() {
             actions.push("light fire".into());
@@ -1330,6 +1496,17 @@ impl World {
         {
             actions.push("gather stone".into());
         }
+        if (self.pile_count(actor.cell, Material::Clay) > 0
+            || !self.ground_ids(actor.cell, Material::Clay).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather clay".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Bowl).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather bowl".into());
+        }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -1362,6 +1539,12 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Stone).is_empty() {
             actions.push("drop stone".into());
+        }
+        if !self.loose_ids(actor_id, Material::Clay).is_empty() {
+            actions.push("drop clay".into());
+        }
+        if !self.loose_ids(actor_id, Material::Bowl).is_empty() {
+            actions.push("drop bowl".into());
         }
         if !self.loose_ids(actor_id, Material::Mud).is_empty() {
             actions.push("drop mud".into());
@@ -1456,6 +1639,9 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Mushroom, false) => "mushrooms",
         (Material::Pot, _) => "pot",
         (Material::Stone, _) => "stone",
+        (Material::Clay, true) => "lump of clay",
+        (Material::Clay, false) => "lumps of clay",
+        (Material::Bowl, _) => "bowl",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
@@ -1472,6 +1658,8 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
         Material::Mushroom => ("mushrooms", "are"),
         Material::Pot => ("pot", "is"),
         Material::Stone => ("stone", "is"),
+        Material::Clay => ("clay", "is"),
+        Material::Bowl => ("bowl", "is"),
         Material::Water => ("water", "is"),
         _ => ("wood", "is"),
     }

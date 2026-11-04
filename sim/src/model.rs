@@ -51,6 +51,8 @@ pub enum Material {
     Pot,
     Mud,
     Stone,
+    Clay,
+    Bowl,
 }
 
 impl Material {
@@ -66,6 +68,8 @@ impl Material {
             Material::Pot => "pot",
             Material::Mud => "mud",
             Material::Stone => "stone",
+            Material::Clay => "clay",
+            Material::Bowl => "bowl",
         }
     }
 
@@ -81,6 +85,8 @@ impl Material {
             Material::Pot => "pot",
             Material::Mud => "handful of mud",
             Material::Stone => "stone",
+            Material::Clay => "lump of clay",
+            Material::Bowl => "bowl",
         }
     }
 
@@ -165,6 +171,8 @@ pub enum ExamineTarget {
     Pot,
     Mud,
     Stone,
+    Clay,
+    Bowl,
     Fire,
     Water,
     Deer,
@@ -190,6 +198,7 @@ pub enum Attempt {
     Light,
     Cook,
     Boil,
+    SetClay,
     Eat(Material),
     Smear,
 }
@@ -209,6 +218,7 @@ impl Attempt {
                 | Attempt::Light
                 | Attempt::Cook
                 | Attempt::Boil
+                | Attempt::SetClay
                 | Attempt::Eat(_)
                 | Attempt::Smear
         )
@@ -303,6 +313,9 @@ pub struct Item {
     pub carrier: Option<ActorId>,
     pub role: Role,
     pub construction: Option<ConstructionId>,
+    /// When set, this lump of clay is waiting on a fire until this tick.
+    #[serde(default)]
+    pub firing_ready_at: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -364,6 +377,7 @@ pub enum Wake {
     Rot,
     Energy,
     Weather,
+    Harden(ItemId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -547,6 +561,7 @@ impl World {
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
+        world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.normalize();
         world
@@ -819,6 +834,7 @@ impl World {
                 carrier,
                 role,
                 construction: None,
+                firing_ready_at: None,
             },
         );
         id

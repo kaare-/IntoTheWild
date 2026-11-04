@@ -46,6 +46,7 @@ impl World {
         let mut cooks = Vec::new();
         let mut eats = Vec::new();
         let mut smears = Vec::new();
+        let mut sets = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -81,6 +82,7 @@ impl World {
                         Attempt::Cook => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
+                        Attempt::SetClay => sets.push(intent),
                     }
                 }
             }
@@ -160,6 +162,7 @@ impl World {
         self.apply_barks(barks, &mut results);
         self.apply_drinks(drinks, &mut results);
         self.apply_boils(boils, &mut results);
+        self.apply_sets(sets, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -218,8 +221,29 @@ impl World {
                     Err("There is no fire burning here.".into())
                 } else if self.loose_ids(actor.id, Material::Water).is_empty() {
                     Err("You have no water to boil.".into())
-                } else if self.loose_ids(actor.id, Material::Pot).is_empty() {
-                    Err("You have no pot to boil it in.".into())
+                } else if self.loose_ids(actor.id, Material::Pot).is_empty()
+                    && self.loose_ids(actor.id, Material::Bowl).is_empty()
+                {
+                    if self.loose_ids(actor.id, Material::Clay).is_empty() {
+                        Err("You have no pot to boil it in.".into())
+                    } else {
+                        Err("Unfired clay cannot boil water.".into())
+                    }
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SetClay => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Clay).is_empty() {
+                    Err("You are not carrying clay.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
                 } else {
                     Ok(true)
                 }
@@ -249,6 +273,8 @@ impl World {
                             }
                         }
                         Material::Stone => Err("A stone is not food.".into()),
+                        Material::Clay => Err("Unfired clay is not food.".into()),
+                        Material::Bowl => Err("A bowl is not food.".into()),
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
                     }
                 }
@@ -328,7 +354,7 @@ impl World {
                         return Err("There is no mud here to gather.".into());
                     }
                 } else if self.pile_count(actor.cell, *material) == 0
-                    && (*material != Material::Stone
+                    && (!matches!(*material, Material::Stone | Material::Clay | Material::Bowl)
                         || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -444,7 +470,7 @@ impl World {
             self.gather_mud(intent, start_cells, results);
         }
         for ((cell, material), mut claims) in groups {
-            let ground = if material == Material::Stone {
+            let ground = if matches!(material, Material::Stone | Material::Clay | Material::Bowl) {
                 self.ground_ids(cell, material)
             } else {
                 Vec::new()
@@ -478,6 +504,7 @@ impl World {
                     } else if let Some(id) = self.ground_ids(cell, material).first().copied() {
                         if let Some(lying) = self.items.get_mut(&id) {
                             lying.carrier = Some(intent.actor_id);
+                            lying.firing_ready_at = None;
                         }
                         id
                     } else {
@@ -1251,6 +1278,63 @@ impl World {
         );
     }
 
+    fn apply_sets(&mut self, sets: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in sets {
+            let Some(id) = self
+                .loose_ids(intent.actor_id, Material::Clay)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not carrying clay.",
+                    results,
+                );
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if self.fire_at(cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            if let Some(item) = self.items.get_mut(&id) {
+                item.carrier = None;
+                item.cell = cell;
+                item.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, Wake::Harden(id));
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                format!("{name} sets a lump of clay by the fire."),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                "You set a lump of clay by the fire. It is not hard yet.",
+                results,
+            );
+        }
+    }
+
     fn apply_boils(&mut self, boils: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in boils {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -1276,14 +1360,15 @@ impl World {
                 );
                 continue;
             };
-            if self.loose_ids(actor.id, Material::Pot).is_empty() {
-                self.finish(
-                    intent.command_id,
-                    intent.actor_id,
-                    false,
-                    "You have no pot to boil it in.",
-                    results,
-                );
+            if self.loose_ids(actor.id, Material::Pot).is_empty()
+                && self.loose_ids(actor.id, Material::Bowl).is_empty()
+            {
+                let message = if self.loose_ids(actor.id, Material::Clay).is_empty() {
+                    "You have no pot to boil it in."
+                } else {
+                    "Unfired clay cannot boil water."
+                };
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             }
             self.items.remove(&item_id);

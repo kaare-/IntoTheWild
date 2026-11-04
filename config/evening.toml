@@ -27,6 +27,10 @@ fire_ticks = 8
 # After a body steps off a fire, or the fire goes out, the sky's cold is halved
 # for this many ticks. Open wind still cools. The fire still dies in the rain.
 warmth_hold = 4
+# A lump of clay set at a burning fire hardens into a bowl after this many
+# ticks, if the fire is still burning. Unfired clay cannot boil water.
+# The fire still dies in the rain. There is no kiln.
+clay_ticks = 4
 # From this tick, still water is frozen unless a fire burns on it.
 # The brook keeps running. A body in the open is already getting cold before this.
 chill_at = 12

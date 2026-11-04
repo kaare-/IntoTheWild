@@ -5,18 +5,19 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|fire|deer|tracks|log|frame|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|fire|deer|tracks|log|frame|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone
-drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl
+set clay                     a lump at a burning fire; it hardens into a bowl
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes
-boil                         needs a pot and a fire; safe, and not a cure
+boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch; open rain puts it out
 cook                         mushrooms or sweet berries; poison berries are not food
 eat berries                  sweet berries only; poison berries sicken you
@@ -72,6 +73,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "roof" => Ok(Attempt::LayBark),
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
+        "set" if rest == "clay" => Ok(Attempt::SetClay),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
@@ -103,8 +105,10 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "mud" => Ok(Material::Mud),
         "water" => Ok(Material::Water),
         "stone" | "stones" => Ok(Material::Stone),
+        "clay" => Ok(Material::Clay),
+        "bowl" => Ok(Material::Bowl),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, clay, bowl, or log."
                 .into(),
         ),
     }
@@ -137,6 +141,8 @@ fn parse_target(text: &str) -> ExamineTarget {
         "mushroom" | "mushrooms" => ExamineTarget::Mushrooms,
         "pot" => ExamineTarget::Pot,
         "stone" | "stones" => ExamineTarget::Stone,
+        "clay" => ExamineTarget::Clay,
+        "bowl" => ExamineTarget::Bowl,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,

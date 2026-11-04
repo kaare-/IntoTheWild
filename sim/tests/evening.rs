@@ -602,6 +602,18 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Examine(ExamineTarget::Stone)
     ));
     assert!(matches!(
+        parse_attempt("gather clay").unwrap(),
+        Attempt::Gather(Material::Clay)
+    ));
+    assert!(matches!(
+        parse_attempt("set clay").unwrap(),
+        Attempt::SetClay
+    ));
+    assert!(matches!(
+        parse_attempt("examine bowl").unwrap(),
+        Attempt::Examine(ExamineTarget::Bowl)
+    ));
+    assert!(matches!(
         parse_attempt("light fire").unwrap(),
         Attempt::Light
     ));
@@ -1747,4 +1759,179 @@ fn a_stone_on_the_slope_can_be_carried_and_stays_unseen_from_far() {
         .unwrap()
         .text
         .contains("A loose stone lies here."));
+}
+
+#[test]
+fn clay_on_the_bank_hardens_by_the_fire_into_a_bowl() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 6, 4).unwrap();
+    assert_eq!(world.material_tally(Material::Clay), 2);
+    assert_eq!(world.material_tally(Material::Pot), 1);
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let seen = world.observe(near).unwrap();
+    assert!(seen.text.contains("Clay lies on the bank here."));
+    assert!(seen
+        .visible_cells
+        .iter()
+        .any(|cell| { cell.x == 2 && cell.y == 2 && cell.clay_pile == 2 && cell.bowl == 0 }));
+    assert!(seen
+        .allowed_actions
+        .iter()
+        .any(|action| action == "gather clay"));
+    let clock = seen.sim_time;
+    let examined = world.examine(near, ExamineTarget::Clay);
+    assert!(examined.contains("A pile of 2 lumps of clay"));
+    assert!(examined.contains("It is unfired. It cannot boil water."));
+    assert!(!examined.to_lowercase().contains("kiln"));
+    assert!(!examined.to_lowercase().contains("wheel"));
+    assert_eq!(world.observe(near).unwrap().sim_time, clock);
+    let distant = world.observe(far).unwrap();
+    assert!(distant
+        .visible_cells
+        .iter()
+        .all(|cell| { cell.clay_pile == 0 && cell.loose_clay == 0 && cell.bowl == 0 }));
+    assert_eq!(
+        world.examine(far, ExamineTarget::Clay),
+        "You see no clay from here."
+    );
+
+    world.step(&[cmd("gather", near, Attempt::Gather(Material::Clay))]);
+    assert_eq!(world.material_tally(Material::Clay), 2);
+    let carried = world
+        .material_items(Material::Clay)
+        .into_iter()
+        .find(|item| item.1 == Some(near))
+        .expect("the gathered lump");
+    let id = carried.0;
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    world.step(&[cmd("water", near, Attempt::Gather(Material::Water))]);
+    for step in 0..4 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    let boiled = world.step(&[cmd("boil", near, Attempt::Boil)]);
+    assert!(
+        boiled.results[0]
+            .message
+            .contains("Unfired clay cannot boil water."),
+        "{}",
+        boiled.results[0].message
+    );
+    assert!(world
+        .material_items(Material::Clay)
+        .iter()
+        .any(|item| item.0 == id && item.1 == Some(near)));
+    assert!(world
+        .material_items(Material::Water)
+        .iter()
+        .any(|item| item.1 == Some(near)));
+    assert_eq!(world.material_tally(Material::Pot), 1);
+    assert_eq!(world.material_tally(Material::Bowl), 0);
+
+    let set = world.step(&[cmd("set", near, Attempt::SetClay)]);
+    assert!(
+        set.results[0].message.contains("It is not hard yet."),
+        "{}",
+        set.results[0].message
+    );
+    let after_set = world.sim_time();
+    assert!(world
+        .material_items(Material::Clay)
+        .iter()
+        .any(|item| item.0 == id && item.1.is_none() && (item.2, item.3) == (6, 1)));
+    for _ in 0..3 {
+        world.step(&[]);
+        assert_eq!(world.material_tally(Material::Bowl), 0);
+    }
+    world.step(&[]);
+    assert_eq!(world.sim_time(), after_set + 4);
+    assert_eq!(world.material_tally(Material::Bowl), 1);
+    let bowl = world.material_items(Material::Bowl);
+    assert_eq!(bowl, vec![(id, None, 6, 1)]);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| { event.text.contains("The clay hardens into a bowl.") }));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A fired bowl sits here."));
+    let bowl_text = world.examine(near, ExamineTarget::Bowl);
+    assert!(bowl_text.contains("A fired bowl lies in contact with the ground"));
+    assert!(bowl_text.contains("It can boil water over a fire."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .visible_cells
+        .iter()
+        .all(|cell| { cell.clay_pile == 0 && cell.loose_clay == 0 && cell.bowl == 0 }));
+
+    world.step(&[cmd("take", near, Attempt::Gather(Material::Bowl))]);
+    assert_eq!(
+        world.material_items(Material::Bowl),
+        vec![(id, Some(near), 6, 1)]
+    );
+    let drank = world.step(&[cmd("boil-bowl", near, Attempt::Boil)]);
+    assert!(
+        drank.results[0].message.contains("boil a drink of water"),
+        "{}",
+        drank.results[0].message
+    );
+    assert_eq!(
+        world.material_items(Material::Bowl),
+        vec![(id, Some(near), 6, 1)]
+    );
+    assert!(world.material_items(Material::Water).is_empty());
+    assert_eq!(world.material_tally(Material::Pot), 1);
+    assert_eq!(world.observe(near).unwrap().self_info.thirst, "not thirsty");
+}
+
+#[test]
+fn clay_stays_soft_when_the_fire_goes_out() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    for step in 0..4 {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
+    }
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
+    for step in 0..4 {
+        world.step(&[cmd(&format!("back-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    for _ in 0..6 {
+        world.step(&[]);
+    }
+    let set = world.step(&[cmd("set", near, Attempt::SetClay)]);
+    assert!(set.results[0].success, "{}", set.results[0].message);
+    let mut softened = false;
+    for _ in 0..8 {
+        world.step(&[]);
+        if world.observe(near).unwrap().events.iter().any(|event| {
+            event
+                .text
+                .contains("The clay is still soft. The fire is out.")
+        }) {
+            softened = true;
+            break;
+        }
+    }
+    assert!(softened, "the lump should stay soft once the fire is out");
+    assert_eq!(world.material_tally(Material::Bowl), 0);
+    assert!(world
+        .material_items(Material::Clay)
+        .iter()
+        .any(|item| item.1.is_none()));
 }
