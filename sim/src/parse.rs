@@ -5,21 +5,22 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|bitter berries|mushrooms|pot|water|fire|deer|tracks|log|frame|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|fire|deer|tracks|log|frame|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|bitter berries|mushrooms|pot|water
-drop branch|bark|berries|bitter berries|mushrooms|pot|water
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
-drink                        raw water where you stand; still water is worse
+drink                        raw water where you stand; still water freezes
 boil                         needs a pot and a fire; safe, and not a cure
 light fire                   dry bark and a dry branch; open rain puts it out
-cook                         mushrooms, bitter berries, or sweet berries
-eat berries                  sweet berries only; raw mushrooms do not feed you
+cook                         mushrooms or sweet berries; poison berries are not food
+eat berries                  sweet berries only; poison berries sicken you
+smear mud                    mud on skin against the sun
 interrupt                    stop the work your body is in
 help"
 }
@@ -74,6 +75,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
+        "smear" if rest.is_empty() || rest == "mud" => Ok(Attempt::Smear),
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
@@ -94,12 +96,14 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "bark" => Ok(Material::Bark),
         "log" => Ok(Material::Log),
         "berry" | "berries" | "sweet berries" => Ok(Material::Berry),
-        "bitter" | "bitter berry" | "bitter berries" => Ok(Material::BitterBerry),
+        "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
+        | "poison berries" => Ok(Material::BitterBerry),
         "mushroom" | "mushrooms" => Ok(Material::Mushroom),
         "pot" => Ok(Material::Pot),
+        "mud" => Ok(Material::Mud),
         "water" => Ok(Material::Water),
         _ => Err(
-            "Name a material: branch, bark, berries, bitter berries, mushrooms, pot, water, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, or log."
                 .into(),
         ),
     }
@@ -109,11 +113,13 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
     match text.trim() {
         "" | "berry" | "berries" | "sweet" | "sweet berries" => Ok(Attempt::Eat(Material::Berry)),
         "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
-        "bitter" | "bitter berry" | "bitter berries" => Ok(Attempt::Eat(Material::BitterBerry)),
+        "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
+        | "poison berries" => Ok(Attempt::Eat(Material::BitterBerry)),
         "bark" | "wood" | "branch" | "branches" | "log" => {
             Err("Bark is tinder, not food. Light a fire and cook berries.".into())
         }
-        _ => Err("Name a food: berries, bitter berries, or mushrooms.".into()),
+        "mud" => Err("Mud is for your skin, not your stomach.".into()),
+        _ => Err("Name a food: berries, poison berries, or mushrooms.".into()),
     }
 }
 
@@ -124,7 +130,9 @@ fn parse_target(text: &str) -> ExamineTarget {
         "wood" | "branch" | "branches" | "firewood" => ExamineTarget::Wood,
         "bark" => ExamineTarget::Bark,
         "berry" | "berries" | "fruit" | "sweet berries" => ExamineTarget::Berries,
-        "bitter" | "bitter berries" | "bitter berry" => ExamineTarget::BitterBerries,
+        "bitter" | "bitter berries" | "bitter berry" | "poison" | "poison berries"
+        | "poison berry" => ExamineTarget::BitterBerries,
+        "mud" => ExamineTarget::Mud,
         "mushroom" | "mushrooms" => ExamineTarget::Mushrooms,
         "pot" => ExamineTarget::Pot,
         "fire" | "flame" => ExamineTarget::Fire,

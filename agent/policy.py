@@ -53,6 +53,9 @@ def scripted(obs: dict, memory: Memory) -> str | None:
     fed = safe_food(obs, memory, me, allowed)
     if fed:
         return fed
+    cared = weather_care(obs, memory, me, allowed)
+    if cared:
+        return cared
     branches = carry(me, "branch")
     bark = carry(me, "bark")
     saving_the_roof = bark == 1 and here.get("frame") == "supported" and "lay bark" in allowed
@@ -213,7 +216,7 @@ def safe_drink(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | 
         waters = [
             pos
             for pos, cell in memory.cells.items()
-            if cell.get("region") == "brook" or cell.get("still")
+            if cell.get("region") == "brook" or (cell.get("still") and not cell.get("frozen"))
         ]
         step = walk_toward(me, nearest((me["x"], me["y"]), waters), allowed)
         if step:
@@ -228,6 +231,37 @@ def safe_drink(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | 
         return walk_toward(me, nearest((me["x"], me["y"]), pots), allowed)
     fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
     return walk_toward(me, nearest((me["x"], me["y"]), fires), allowed)
+
+
+def weather_care(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | None:
+    """Shelter when the body is cold. Mud when the sun is on bare skin."""
+    origin = (me["x"], me["y"])
+    here = memory.cells.get(origin, {})
+    sun = me.get("sunburn")
+    mud = me.get("mud")
+    cold = me.get("cold")
+    if sun in {"pink", "burned"} and not obs.get("raining"):
+        if "smear mud" in allowed:
+            return "smear mud"
+        if mud == "bare skin":
+            if "gather mud" in allowed:
+                return "gather mud"
+            banks = [
+                pos
+                for pos, cell in memory.cells.items()
+                if cell.get("region") == "brook" or cell.get("still")
+            ]
+            step = walk_toward(me, nearest(origin, banks), allowed)
+            if step:
+                return step
+    if cold in {"chilly", "cold"} and not here.get("under_roof"):
+        roofs = [
+            pos
+            for pos, cell in memory.cells.items()
+            if cell.get("under_roof") or cell.get("roof") in {"rock", "bark"}
+        ]
+        return walk_toward(me, nearest(origin, roofs), allowed)
+    return None
 
 
 def me_tired(obs: dict) -> bool:
@@ -254,15 +288,11 @@ def safe_food(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | N
             return "cook"
         if "gather mushrooms" in allowed:
             return "gather mushrooms"
-        if "gather bitter berries" in allowed:
-            return "gather bitter berries"
-        if carry(me, "mushroom") or carry(me, "bitter berry"):
+        if carry(me, "mushroom"):
             fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
             return walk_toward(me, nearest(origin, fires), allowed)
         foods = [
-            pos
-            for pos, cell in memory.cells.items()
-            if cell.get("mushroom_pile", 0) > 0 or cell.get("bitter_berry_pile", 0) > 0
+            pos for pos, cell in memory.cells.items() if cell.get("mushroom_pile", 0) > 0
         ]
         fires = [pos for pos, cell in memory.cells.items() if cell.get("fire")]
         return walk_toward(me, nearest(origin, foods or fires), allowed)

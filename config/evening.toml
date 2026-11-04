@@ -24,6 +24,9 @@ bark_ticks = 1
 # A fire lit with dry bark and a dry branch burns this many ticks, then goes out.
 # Rain in the open puts it out sooner. A rock overhang or a bark roof keeps it.
 fire_ticks = 8
+# From this tick, still water is frozen unless a fire burns on it.
+# The brook keeps running. A body in the open is already getting cold before this.
+chill_at = 12
 
 [body]
 # Fractions of a full soaking (1.0) applied when exposure is total.
@@ -39,10 +42,11 @@ drink_relief = 0.45
 thirsty_at = 0.25
 parched_at = 0.60
 # Hunger rises every tick, with or without a command. Bark is tinder, not
-# food. Cooking mushrooms, bitter berries, or sweet berries over a burning
-# fire takes off 0.45 of hunger. Sweet berries eaten raw do not. They take
-# the same amount off energy instead. Energy uses these same hunger numbers
-# and is not a separate block. Rain does not feed you.
+# food. Most berries are sweet and can be eaten raw; that takes this much
+# off energy and does not touch hunger. A few berries are poisonous. Cooking
+# does not make them food. Mushrooms still have to be heat-treated. Cooking
+# a mushroom or sweet berries over a fire takes off 0.45 of hunger. Energy
+# uses these same hunger numbers. Rain does not feed you.
 hunger_per_tick = 0.01
 cook_relief = 0.45
 hungry_at = 0.25
@@ -58,6 +62,21 @@ still_chance = 0.90
 illness_hit = 1.0
 ill_at = 0.25
 illness_recovery = 0.05
+# Cold and sun use the same exposure as the rain. Open sky is 1. The wind
+# doubles the cold gain only there. A rock overhang is 0, so it feels neither.
+# A dry bark roof is a little. One smear of mud leaves a quarter of the sun.
+# Mud flakes off each tick. Rain in the open washes it faster. The sun does
+# not burn while rain is falling.
+cold_per_tick = 0.04
+chilly_at = 0.25
+cold_at = 0.60
+sun_per_tick = 0.05
+pink_at = 0.25
+burned_at = 0.60
+smear_at = 0.50
+mud_fade = 0.04
+mud_wash = 0.20
+mud_sun = 0.25
 carry_slots = 4
 sight = 2
 
@@ -90,9 +109,13 @@ rain_gain = 0.0
 rain_gain = 0.16
 
 [materials."bitter berry"]
+# These are the poisonous handfuls. The name in the valley is poison berries.
 rain_gain = 0.16
 
 [materials.pot]
+rain_gain = 0.0
+
+[materials.mud]
 rain_gain = 0.0
 
 [server]

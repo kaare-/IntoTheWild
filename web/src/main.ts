@@ -13,6 +13,10 @@ type Observation = {
     hunger: string;
     illness: string;
     energy: string;
+    cold: string;
+    wind: string;
+    sunburn: string;
+    mud: string;
     under_roof: boolean;
     gripping: boolean;
     busy: boolean;
@@ -192,6 +196,10 @@ function paint(observation: Observation) {
     self.hunger,
     self.illness,
     self.energy,
+    self.cold,
+    self.wind,
+    self.sunburn,
+    self.mud,
     self.under_roof ? "under a roof" : "open sky",
     self.gripping ? "gripping the log" : "",
     carry ? `carrying ${carry}` : "",

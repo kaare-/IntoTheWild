@@ -47,6 +47,28 @@ pub struct Tuning {
     pub spent_at: u32,
     #[serde(default = "default_cook_relief")]
     pub eat_relief: u32,
+    #[serde(default = "default_chill_at")]
+    pub chill_at: u64,
+    #[serde(default = "default_cold_tick")]
+    pub cold_per_tick: u32,
+    #[serde(default = "default_hungry_at")]
+    pub chilly_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub cold_at: u32,
+    #[serde(default = "default_sun_tick")]
+    pub sun_per_tick: u32,
+    #[serde(default = "default_hungry_at")]
+    pub pink_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub burned_at: u32,
+    #[serde(default = "default_smear_at")]
+    pub smear_at: u32,
+    #[serde(default = "default_mud_fade")]
+    pub mud_fade: u32,
+    #[serde(default = "default_mud_wash")]
+    pub mud_wash: u32,
+    #[serde(default = "default_mud_sun")]
+    pub mud_sun: u32,
     #[serde(default = "default_illness_hit")]
     pub illness_hit: u32,
     #[serde(default = "default_ill_at")]
@@ -72,6 +94,8 @@ pub struct Tuning {
     pub bitter_rain: u32,
     #[serde(default = "default_water_rain")]
     pub pot_rain: u32,
+    #[serde(default = "default_water_rain")]
+    pub mud_rain: u32,
 }
 
 fn default_fire_ticks() -> u64 {
@@ -103,6 +127,27 @@ fn default_illness_chance() -> u32 {
 }
 fn default_still_chance() -> u32 {
     900
+}
+fn default_chill_at() -> u64 {
+    12
+}
+fn default_cold_tick() -> u32 {
+    40
+}
+fn default_sun_tick() -> u32 {
+    50
+}
+fn default_smear_at() -> u32 {
+    500
+}
+fn default_mud_fade() -> u32 {
+    40
+}
+fn default_mud_wash() -> u32 {
+    200
+}
+fn default_mud_sun() -> u32 {
+    250
 }
 fn default_illness_hit() -> u32 {
     600
@@ -136,6 +181,7 @@ struct RawTime {
     frame_phases: u8,
     bark_ticks: u64,
     fire_ticks: u64,
+    chill_at: u64,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +204,16 @@ struct RawBody {
     illness_hit: f64,
     ill_at: f64,
     illness_recovery: f64,
+    cold_per_tick: f64,
+    chilly_at: f64,
+    cold_at: f64,
+    sun_per_tick: f64,
+    pink_at: f64,
+    burned_at: f64,
+    smear_at: f64,
+    mud_fade: f64,
+    mud_wash: f64,
+    mud_sun: f64,
     carry_slots: u32,
     sight: i32,
 }
@@ -226,6 +282,7 @@ impl Tuning {
             .get("bitter berry")
             .ok_or("missing material bitter berry")?;
         let pot = raw.materials.get("pot").ok_or("missing material pot")?;
+        let mud = raw.materials.get("mud").ok_or("missing material mud")?;
         let hunger_per_tick = millis(raw.body.hunger_per_tick, "body.hunger_per_tick")?;
         let cook_relief = millis(raw.body.cook_relief, "body.cook_relief")?;
         let hungry_at = millis(raw.body.hungry_at, "body.hungry_at")?;
@@ -239,6 +296,7 @@ impl Tuning {
             frame_phases: raw.time.frame_phases,
             bark_ticks: raw.time.bark_ticks,
             fire_ticks: raw.time.fire_ticks,
+            chill_at: raw.time.chill_at,
             body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
             brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,
             wade: millis(raw.body.wade, "body.wade")?,
@@ -258,6 +316,16 @@ impl Tuning {
             tiring_at: hungry_at,
             spent_at: starving_at,
             eat_relief: cook_relief,
+            cold_per_tick: millis(raw.body.cold_per_tick, "body.cold_per_tick")?,
+            chilly_at: millis(raw.body.chilly_at, "body.chilly_at")?,
+            cold_at: millis(raw.body.cold_at, "body.cold_at")?,
+            sun_per_tick: millis(raw.body.sun_per_tick, "body.sun_per_tick")?,
+            pink_at: millis(raw.body.pink_at, "body.pink_at")?,
+            burned_at: millis(raw.body.burned_at, "body.burned_at")?,
+            smear_at: millis(raw.body.smear_at, "body.smear_at")?,
+            mud_fade: millis(raw.body.mud_fade, "body.mud_fade")?,
+            mud_wash: millis(raw.body.mud_wash, "body.mud_wash")?,
+            mud_sun: millis(raw.body.mud_sun, "body.mud_sun")?,
             illness_hit: millis(raw.body.illness_hit, "body.illness_hit")?,
             ill_at: millis(raw.body.ill_at, "body.ill_at")?,
             illness_recovery: millis(raw.body.illness_recovery, "body.illness_recovery")?,
@@ -275,6 +343,7 @@ impl Tuning {
             mushroom_rain: millis(mushroom.rain_gain, "mushroom.rain_gain")?,
             bitter_rain: millis(bitter.rain_gain, "bitter berry.rain_gain")?,
             pot_rain: millis(pot.rain_gain, "pot.rain_gain")?,
+            mud_rain: millis(mud.rain_gain, "mud.rain_gain")?,
         })
     }
 
@@ -293,6 +362,7 @@ impl Tuning {
             Material::Mushroom => self.mushroom_rain,
             Material::BitterBerry => self.bitter_rain,
             Material::Pot => self.pot_rain,
+            Material::Mud => self.mud_rain,
         }
     }
 }

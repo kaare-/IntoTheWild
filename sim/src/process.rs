@@ -23,6 +23,7 @@ impl World {
                 Wake::Thirst => self.apply_thirst(),
                 Wake::Hunger => self.apply_hunger(),
                 Wake::Energy => self.apply_energy(),
+                Wake::Weather => self.apply_weather(),
                 Wake::Illness => self.apply_illness(),
                 Wake::Work(id) => self.complete_work(id),
                 Wake::Fire(id) => self.burn_down(id),
@@ -314,6 +315,106 @@ impl World {
                 None
             };
             if let Some(text) = crossed {
+                self.emit(
+                    text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+        }
+    }
+
+    /// Cold, wind, and sun on a body. Exposure is the shelter the valley
+    /// already has. Wind doubles the cold only under open sky. Mud cuts
+    /// the sun. Rain hides the sun and washes mud off exposed skin.
+    fn apply_weather(&mut self) {
+        self.schedule(self.time + 1, Wake::Weather);
+        let raining = self.raining;
+        let cold_base = self.tuning.cold_per_tick;
+        let sun_base = self.tuning.sun_per_tick;
+        let chilly_at = self.tuning.chilly_at;
+        let cold_at = self.tuning.cold_at;
+        let pink_at = self.tuning.pink_at;
+        let burned_at = self.tuning.burned_at;
+        let smear_at = self.tuning.smear_at;
+        let mud_sun = self.tuning.mud_sun;
+        let mud_fade = self.tuning.mud_fade;
+        let mud_wash = self.tuning.mud_wash;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some(actor) = self.actors.get(&id) else {
+                continue;
+            };
+            let exposure = self.exposure_millis(actor.cell);
+            let name = actor.name.clone();
+            let cell = actor.cell;
+            let cold_before = actor.cold;
+            let sun_before = actor.sunburn;
+            let mud_before = actor.mud;
+            let mut cold_gain = ((u64::from(cold_base) * u64::from(exposure)) / 1000) as u32;
+            if exposure >= 1000 {
+                cold_gain = cold_gain.saturating_mul(2);
+            }
+            let mut sun_gain = if raining {
+                0
+            } else {
+                ((u64::from(sun_base) * u64::from(exposure)) / 1000) as u32
+            };
+            if mud_before >= smear_at && sun_gain > 0 {
+                sun_gain = ((u64::from(sun_gain) * u64::from(mud_sun)) / 1000) as u32;
+            }
+            let mud_loss = if mud_before == 0 {
+                0
+            } else if raining && exposure >= 1000 {
+                mud_wash
+            } else {
+                mud_fade
+            };
+            if let Some(actor) = self.actors.get_mut(&id) {
+                actor.cold = (cold_before + cold_gain).min(1000);
+                actor.sunburn = (sun_before + sun_gain).min(1000);
+                actor.mud = mud_before.saturating_sub(mud_loss);
+            }
+            let cold_after = cold_before + cold_gain;
+            let sun_after = sun_before + sun_gain;
+            let cold_line = if cold_before < cold_at && cold_after >= cold_at {
+                Some(if exposure >= 1000 {
+                    format!("{name} is cold. The wind is on them.")
+                } else {
+                    format!("{name} is cold.")
+                })
+            } else if cold_before < chilly_at && cold_after >= chilly_at {
+                Some(if exposure >= 1000 {
+                    format!("{name} is chilly. The wind is on them.")
+                } else {
+                    format!("{name} is chilly.")
+                })
+            } else {
+                None
+            };
+            if let Some(text) = cold_line {
+                self.emit(
+                    text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+            let sun_line = if sun_before < burned_at && sun_after >= burned_at {
+                Some(format!("{name}'s skin is burned."))
+            } else if sun_before < pink_at && sun_after >= pink_at {
+                Some(format!("{name}'s skin is pink."))
+            } else {
+                None
+            };
+            if let Some(text) = sun_line {
                 self.emit(
                     text,
                     Scope::Personal(id),

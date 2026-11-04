@@ -12,7 +12,7 @@ L log          w dry wood
 W wet wood     b bark
 B wet bark     * fire
 y berries      Y wet berries
-m mushrooms    q bitter berries
+m mushrooms    q poison berries
 k pot          u water
 d deer         \" tracks
 R rock roof    H bark roof
@@ -48,6 +48,10 @@ pub struct SelfInfo {
     pub hunger: String,
     pub illness: String,
     pub energy: String,
+    pub cold: String,
+    pub wind: String,
+    pub sunburn: String,
+    pub mud: String,
     pub gripping: bool,
     pub carrying: Vec<CarryView>,
     pub busy: bool,
@@ -78,10 +82,11 @@ pub struct CellView {
     pub berry_pile: u32,
     pub berry_pile_condition: Option<String>,
     pub loose_berries: u32,
-    pub bitter_berry_pile: u32,
+    pub poison_berry_pile: u32,
     pub mushroom_pile: u32,
     pub pot_pile: u32,
     pub still: bool,
+    pub frozen: bool,
     pub fire: bool,
     pub log: bool,
     pub log_condition: Option<String>,
@@ -128,6 +133,10 @@ impl World {
                 hunger: self.hunger_word(actor.hunger).into(),
                 illness: self.illness_word(actor.illness).into(),
                 energy: self.energy_word(actor.energy).into(),
+                cold: self.cold_word(actor.cold).into(),
+                wind: self.wind_word(self.exposure_millis(actor.cell)).into(),
+                sunburn: self.sun_word(actor.sunburn).into(),
+                mud: self.mud_word(actor.mud).into(),
                 gripping: self.gripping(actor.id).is_some(),
                 carrying: self.carry_views(actor.id),
                 busy: actor.busy.is_some(),
@@ -158,6 +167,7 @@ impl World {
             ExamineTarget::BitterBerries => self.examine_material(actor_id, Material::BitterBerry),
             ExamineTarget::Mushrooms => self.examine_material(actor_id, Material::Mushroom),
             ExamineTarget::Pot => self.examine_material(actor_id, Material::Pot),
+            ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -264,7 +274,13 @@ impl World {
             parts.push("The water here is raw.".into());
         }
         if cell.still && cell.region != crate::model::Region::Brook {
-            parts.push("Still water lies here. It is not the brook.".into());
+            if self.still_frozen(actor.cell) {
+                parts.push("The still water is frozen.".into());
+            } else if self.time >= self.tuning.chill_at && self.fire_at(actor.cell).is_some() {
+                parts.push("The fire is keeping the still water from freezing.".into());
+            } else {
+                parts.push("Still water lies here. It is not the brook.".into());
+            }
         }
         if self.fire_at(actor.cell).is_some() {
             parts.push("A small fire burns here.".into());
@@ -277,7 +293,7 @@ impl World {
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(
-                "Bitter berries lie here, {}. They should be cooked.",
+                "Poison berries lie here, {}. They are poisonous.",
                 self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry))
             ));
         }
@@ -319,6 +335,13 @@ impl World {
             format!("You are {}.", self.hunger_word(actor.hunger)),
             format!("You are {}.", self.illness_word(actor.illness)),
             format!("You are {}.", self.energy_word(actor.energy)),
+            format!("You are {}.", self.cold_word(actor.cold)),
+            format!(
+                "You are {}.",
+                self.wind_word(self.exposure_millis(actor.cell))
+            ),
+            format!("Your skin is {}.", self.sun_word(actor.sunburn)),
+            format!("Your skin is {}.", self.mud_word(actor.mud)),
         ];
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
@@ -366,7 +389,13 @@ impl World {
             self.hunger_word(actor.hunger),
             self.illness_word(actor.illness),
             self.energy_word(actor.energy)
-        ) + &format!(" ({x},{y})")
+        ) + &format!(
+            " They are {}. They are {}. Their skin is {}. Their skin is {}. ({x},{y})",
+            self.cold_word(actor.cold),
+            self.wind_word(self.exposure_millis(actor.cell)),
+            self.sun_word(actor.sunburn),
+            self.mud_word(actor.mud)
+        )
     }
 
     fn adjacent_line(&self, origin: CellId, dir: Dir) -> String {
@@ -391,7 +420,7 @@ impl World {
             bits.push("berries".into());
         }
         if self.pile_count(dest, Material::BitterBerry) > 0 {
-            bits.push("bitter berries".into());
+            bits.push("poison berries".into());
         }
         if self.pile_count(dest, Material::Mushroom) > 0 {
             bits.push("mushrooms".into());
@@ -504,7 +533,8 @@ impl World {
                 Material::Bark => "bark",
                 Material::Log => "log",
                 Material::Berry => "berries",
-                Material::BitterBerry => "bitter berries",
+                Material::BitterBerry => "poison berries",
+                Material::Mud => "mud",
                 Material::Mushroom => "mushrooms",
                 Material::Pot => "pot",
                 Material::Water => "water",
@@ -578,7 +608,17 @@ impl World {
             let place = self.cell(cell);
             if place.region == crate::model::Region::Brook {
                 lines.push(format!(
-                    "The brook {} is running water. Drinking it turns your stomach only occasionally. Boiled in a pot over a fire, it does not.",
+                    "The brook {} is running water. It does not freeze. Drinking it turns your stomach only occasionally. Boiled in a pot over a fire, it does not.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if place.still && self.still_frozen(cell) {
+                lines.push(format!(
+                    "Still water {} is frozen. A fire on it would keep it open.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if place.still && self.time >= self.tuning.chill_at {
+                lines.push(format!(
+                    "Still water {} is open because a fire is on it. Drinking it turns your stomach almost every time.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still {
@@ -979,10 +1019,11 @@ impl World {
                     .into()
             }),
             loose_berries,
-            bitter_berry_pile: self.pile_count(cell, Material::BitterBerry),
+            poison_berry_pile: self.pile_count(cell, Material::BitterBerry),
             mushroom_pile: self.pile_count(cell, Material::Mushroom),
             pot_pile: self.pile_count(cell, Material::Pot),
             still: place.still,
+            frozen: self.still_frozen(cell),
             fire: self.fire_at(cell).is_some(),
             log: log.is_some() || pile_log,
             log_condition: log
@@ -1110,7 +1151,8 @@ impl World {
             "examine log".into(),
             "examine frame".into(),
             "examine berries".into(),
-            "examine bitter berries".into(),
+            "examine poison berries".into(),
+            "examine mud".into(),
             "examine mushrooms".into(),
             "examine pot".into(),
             "examine fire".into(),
@@ -1137,7 +1179,7 @@ impl World {
                 actions.push(format!("examine {}", self.name_of(other)));
             }
         }
-        if self.water_here(actor.cell) && actor.busy.is_none() {
+        if self.water_here(actor.cell) && !self.still_frozen(actor.cell) && actor.busy.is_none() {
             actions.push("drink".into());
         }
         if actor.busy.is_none()
@@ -1202,7 +1244,7 @@ impl World {
         if self.pile_count(actor.cell, Material::BitterBerry) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
-            actions.push("gather bitter berries".into());
+            actions.push("gather poison berries".into());
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -1214,8 +1256,14 @@ impl World {
         {
             actions.push("gather pot".into());
         }
-        if self.water_here(actor.cell) && self.carry_count(actor_id) < self.tuning.carry_slots {
+        if self.water_here(actor.cell)
+            && !self.still_frozen(actor.cell)
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
             actions.push("gather water".into());
+        }
+        if self.water_here(actor.cell) && self.carry_count(actor_id) < self.tuning.carry_slots {
+            actions.push("gather mud".into());
         }
         if !self.loose_ids(actor_id, Material::Branch).is_empty() {
             actions.push("drop branch".into());
@@ -1230,13 +1278,17 @@ impl World {
             actions.push("drop water".into());
         }
         if !self.loose_ids(actor_id, Material::BitterBerry).is_empty() {
-            actions.push("drop bitter berries".into());
+            actions.push("drop poison berries".into());
         }
         if !self.loose_ids(actor_id, Material::Mushroom).is_empty() {
             actions.push("drop mushrooms".into());
         }
         if !self.loose_ids(actor_id, Material::Pot).is_empty() {
             actions.push("drop pot".into());
+        }
+        if !self.loose_ids(actor_id, Material::Mud).is_empty() {
+            actions.push("drop mud".into());
+            actions.push("smear mud".into());
         }
         if self.log_at(actor.cell) {
             actions.push("grab".into());
@@ -1321,11 +1373,13 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Log, _) => "log",
         (Material::Berry, true) => "handful of berries",
         (Material::Berry, false) => "handfuls of berries",
-        (Material::BitterBerry, true) => "handful of bitter berries",
-        (Material::BitterBerry, false) => "handfuls of bitter berries",
+        (Material::BitterBerry, true) => "handful of poison berries",
+        (Material::BitterBerry, false) => "handfuls of poison berries",
         (Material::Mushroom, true) => "mushroom",
         (Material::Mushroom, false) => "mushrooms",
         (Material::Pot, _) => "pot",
+        (Material::Mud, true) => "handful of mud",
+        (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
         (Material::Water, false) => "drinks of water",
     }
@@ -1335,7 +1389,8 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
     match material {
         Material::Bark => ("bark", "is"),
         Material::Berry => ("sweet berries", "are"),
-        Material::BitterBerry => ("bitter berries", "are"),
+        Material::BitterBerry => ("poison berries", "are"),
+        Material::Mud => ("mud", "is"),
         Material::Mushroom => ("mushrooms", "are"),
         Material::Pot => ("pot", "is"),
         Material::Water => ("water", "is"),
@@ -1346,7 +1401,8 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
 fn food_clause(material: Material) -> &'static str {
     match material {
         Material::Berry => " They are good to eat raw.",
-        Material::BitterBerry => " They should be cooked.",
+        Material::BitterBerry => " They are poisonous. Cooking does not make them food.",
+        Material::Mud => " It can be smeared on skin against the sun.",
         Material::Mushroom => " They must be cooked. Raw mushrooms do not feed you.",
         Material::Pot => " It can boil water over a fire.",
         _ => "",

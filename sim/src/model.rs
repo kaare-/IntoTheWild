@@ -49,6 +49,7 @@ pub enum Material {
     Mushroom,
     BitterBerry,
     Pot,
+    Mud,
 }
 
 impl Material {
@@ -60,8 +61,9 @@ impl Material {
             Material::Berry => "berry",
             Material::Water => "water",
             Material::Mushroom => "mushroom",
-            Material::BitterBerry => "bitter berry",
+            Material::BitterBerry => "poison berry",
             Material::Pot => "pot",
+            Material::Mud => "mud",
         }
     }
 
@@ -73,15 +75,16 @@ impl Material {
             Material::Berry => "handful of berries",
             Material::Water => "drink of water",
             Material::Mushroom => "mushroom",
-            Material::BitterBerry => "handful of bitter berries",
+            Material::BitterBerry => "handful of poison berries",
             Material::Pot => "pot",
+            Material::Mud => "handful of mud",
         }
     }
 
     pub fn cooked_phrase(self) -> &'static str {
         match self {
             Material::Mushroom => "a mushroom",
-            Material::BitterBerry => "a handful of bitter berries",
+            Material::BitterBerry => "a handful of poison berries",
             Material::Berry => "a handful of berries",
             _ => "some food",
         }
@@ -157,6 +160,7 @@ pub enum ExamineTarget {
     BitterBerries,
     Mushrooms,
     Pot,
+    Mud,
     Fire,
     Water,
     Deer,
@@ -183,6 +187,7 @@ pub enum Attempt {
     Cook,
     Boil,
     Eat(Material),
+    Smear,
 }
 
 impl Attempt {
@@ -201,6 +206,7 @@ impl Attempt {
                 | Attempt::Cook
                 | Attempt::Boil
                 | Attempt::Eat(_)
+                | Attempt::Smear
         )
     }
 }
@@ -263,6 +269,15 @@ pub struct Actor {
     /// Rises like hunger. Food brings it back down. The word stays on the observation.
     #[serde(default)]
     pub energy: u32,
+    /// Open sky and wind. Shelter brings the gain down with exposure.
+    #[serde(default)]
+    pub cold: u32,
+    /// Sun on bare skin. Mud on the skin brings the gain down. Rain hides the sun.
+    #[serde(default)]
+    pub sunburn: u32,
+    /// A smear of mud. It flakes off, and rain in the open washes it off.
+    #[serde(default)]
+    pub mud: u32,
     pub busy: Option<WorkId>,
 }
 
@@ -335,6 +350,7 @@ pub enum Wake {
     Season,
     Rot,
     Energy,
+    Weather,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -507,6 +523,7 @@ impl World {
         world.schedule(0, Wake::Hunger);
         world.schedule(0, Wake::Illness);
         world.schedule(0, Wake::Energy);
+        world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
@@ -573,6 +590,9 @@ impl World {
                 hunger: 0,
                 illness: 0,
                 energy: 0,
+                cold: 0,
+                sunburn: 0,
+                mud: 0,
                 busy: None,
             },
         );
@@ -873,12 +893,12 @@ impl World {
         }
     }
 
-    /// Heat treats mushrooms first, then bitter berries, then sweet berries.
+    /// Heat treats mushrooms first, then sweet berries. Poison berries are not food.
     pub(crate) fn consume_food(
         &mut self,
         actor: ActorId,
     ) -> Result<(Option<ItemId>, Material), ()> {
-        for material in [Material::Mushroom, Material::BitterBerry, Material::Berry] {
+        for material in [Material::Mushroom, Material::Berry] {
             if let Ok(item) = self.take_hand(actor, material) {
                 return Ok((item, material));
             }
@@ -999,8 +1019,57 @@ impl World {
         }
     }
 
+    pub(crate) fn cold_word(&self, cold: u32) -> &'static str {
+        if cold >= self.tuning.cold_at {
+            "cold"
+        } else if cold >= self.tuning.chilly_at {
+            "chilly"
+        } else {
+            "warm"
+        }
+    }
+
+    pub(crate) fn sun_word(&self, sunburn: u32) -> &'static str {
+        if sunburn >= self.tuning.burned_at {
+            "burned"
+        } else if sunburn >= self.tuning.pink_at {
+            "pink"
+        } else {
+            "unburned"
+        }
+    }
+
+    pub(crate) fn mud_word(&self, mud: u32) -> &'static str {
+        if mud == 0 {
+            "bare skin"
+        } else if mud < self.tuning.smear_at {
+            "thin mud"
+        } else {
+            "mud-smeared"
+        }
+    }
+
+    pub(crate) fn wind_word(&self, exposure: u32) -> &'static str {
+        if exposure == 0 {
+            "out of the wind"
+        } else if exposure < 1000 {
+            "in a little wind"
+        } else {
+            "in the wind"
+        }
+    }
+
     pub(crate) fn water_here(&self, cell: CellId) -> bool {
         self.cell(cell).region == Region::Brook || self.cell(cell).still
+    }
+
+    /// Still water freezes once the evening has chilled. The brook keeps
+    /// running. A fire on the pool keeps it open.
+    pub(crate) fn still_frozen(&self, cell: CellId) -> bool {
+        self.time >= self.tuning.chill_at
+            && self.cell(cell).still
+            && self.cell(cell).region != Region::Brook
+            && self.fire_at(cell).is_none()
     }
 
     pub(crate) fn has_brush(&self, cell: CellId) -> bool {
@@ -1014,13 +1083,13 @@ impl World {
     }
 
     pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
-        [Material::Mushroom, Material::BitterBerry, Material::Berry]
+        [Material::Mushroom, Material::Berry]
             .into_iter()
             .any(|material| !self.loose_ids(actor, material).is_empty())
     }
 
     pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {
-        [Material::Mushroom, Material::BitterBerry, Material::Berry]
+        [Material::Mushroom, Material::Berry]
             .into_iter()
             .map(|material| self.pile_count(cell, material))
             .sum()

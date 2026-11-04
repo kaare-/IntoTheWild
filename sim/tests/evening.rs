@@ -1251,7 +1251,7 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
         .contains("Raw mushrooms do not feed you."));
     assert!(world
         .examine(linde, ExamineTarget::BitterBerries)
-        .contains("They should be cooked."));
+        .contains("They are poisonous."));
     assert_eq!(world.sim_time(), 0);
 
     world.step(&[cmd("raw-mushroom", nils, Attempt::Eat(Material::Mushroom))]);
@@ -1267,7 +1267,9 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
         linde,
         Attempt::Eat(Material::BitterBerry),
     )]);
-    assert_eq!(world.material_tally(Material::BitterBerry), 2);
+    assert_eq!(world.material_tally(Material::BitterBerry), 1);
+    assert_eq!(world.observe(linde).unwrap().self_info.illness, "ill");
+    assert_eq!(world.observe(linde).unwrap().self_info.hunger, "not hungry");
 
     world.step(&[cmd("pocket", sera, Attempt::Gather(Material::Berry))]);
     while world.observe(sera).unwrap().self_info.energy != "tiring" {
@@ -1300,4 +1302,114 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
         .any(|event| event.text.contains("cooks a mushroom")));
     assert_eq!(cooked.self_info.hunger, "not hungry");
     assert_eq!(world.material_tally(Material::Mushroom), 1);
+}
+
+#[test]
+fn open_sky_chills_and_burns_while_shelter_and_mud_hold_them_off() {
+    let mut world = world_at(10_000);
+    let open = world.spawn_at("Sera", "s", 4, 3).unwrap();
+    let sheltered = world.spawn_at("Otto", "o", 6, 1).unwrap();
+    let clock = world.sim_time();
+    let _ = world.examine(open, ExamineTarget::SelfBody);
+    assert_eq!(world.sim_time(), clock);
+    for _ in 0..8 {
+        world.step(&[]);
+    }
+    let outside = world.observe(open).unwrap();
+    let under = world.observe(sheltered).unwrap();
+    assert_eq!(outside.self_info.cold, "cold");
+    assert_eq!(outside.self_info.wind, "in the wind");
+    assert_eq!(outside.self_info.sunburn, "pink");
+    assert_eq!(under.self_info.cold, "warm");
+    assert_eq!(under.self_info.wind, "out of the wind");
+    assert_eq!(under.self_info.sunburn, "unburned");
+    assert!(!outside.text.contains("0.04"));
+    assert!(outside
+        .events
+        .iter()
+        .any(|event| event.text.contains("The wind is on them")));
+    assert!(under
+        .events
+        .iter()
+        .all(|event| !event.text.contains("wind is on")));
+
+    let mut mud = world_at(10_000);
+    let bare = mud.spawn_at("Sera", "s", 0, 2).unwrap();
+    let covered = mud.spawn_at("Nils", "n", 1, 2).unwrap();
+    mud.step(&[cmd("scoop", covered, Attempt::Gather(Material::Mud))]);
+    mud.step(&[cmd("smear", covered, Attempt::Smear)]);
+    assert_eq!(mud.observe(covered).unwrap().self_info.mud, "mud-smeared");
+    for _ in 0..6 {
+        mud.step(&[]);
+    }
+    assert_eq!(mud.observe(bare).unwrap().self_info.sunburn, "pink");
+    assert_eq!(mud.observe(covered).unwrap().self_info.sunburn, "unburned");
+    assert_ne!(mud.observe(covered).unwrap().self_info.mud, "bare skin");
+}
+
+#[test]
+fn poison_berries_are_not_food_and_still_water_freezes() {
+    let mut cook = world_at(10_000);
+    let sera = cook.spawn_at("Sera", "s", 6, 1).unwrap();
+    cook.step(&[cmd("bark", sera, Attempt::Gather(Material::Bark))]);
+    cook.step(&[cmd("branch", sera, Attempt::Gather(Material::Branch))]);
+    cook.step(&[cmd("west", sera, Attempt::Move(Dir::West))]);
+    cook.step(&[cmd("west-2", sera, Attempt::Move(Dir::West))]);
+    assert_eq!(cook.actor_cell(sera), Some((4, 1)));
+    assert_eq!(cook.material_tally(Material::BitterBerry), 2);
+    cook.step(&[cmd("light", sera, Attempt::Light)]);
+    cook.step(&[cmd("meal", sera, Attempt::Cook)]);
+    let refused = cook.observe(sera).unwrap();
+    assert!(refused
+        .events
+        .iter()
+        .any(|event| event.text.contains("nothing here to cook")));
+    assert_eq!(cook.material_tally(Material::BitterBerry), 2);
+    assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
+
+    let mut pool = World::valley(Tuning::evening(), 1);
+    pool.tuning.chill_at = 0;
+    pool.tuning.rain_starts_at = 10_000;
+    let sera = pool.spawn_at("Sera", "s", 2, 1).unwrap();
+    pool.step(&[cmd("ice", sera, Attempt::Drink)]);
+    let frozen = pool.observe(sera).unwrap();
+    assert!(frozen
+        .events
+        .iter()
+        .any(|event| event.text.contains("The still water is frozen.")));
+    assert_eq!(frozen.self_info.illness, "well");
+    assert!(frozen.visible_cells.iter().any(|cell| cell.frozen));
+    let otto = pool.spawn_at("Otto", "o", 0, 1).unwrap();
+    pool.step(&[cmd("run", otto, Attempt::Drink)]);
+    assert!(pool
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("drinks from the brook")));
+
+    let mut thaw = world_at(10_000);
+    thaw.tuning.chill_at = 0;
+    let sera = thaw.spawn_at("Sera", "s", 6, 1).unwrap();
+    thaw.step(&[cmd("bark", sera, Attempt::Gather(Material::Bark))]);
+    thaw.step(&[cmd("branch", sera, Attempt::Gather(Material::Branch))]);
+    for n in 0..4 {
+        thaw.step(&[cmd(&format!("west-{n}"), sera, Attempt::Move(Dir::West))]);
+    }
+    assert_eq!(thaw.actor_cell(sera), Some((2, 1)));
+    thaw.step(&[cmd("ice", sera, Attempt::Drink)]);
+    assert!(thaw
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text.contains("frozen")));
+    thaw.step(&[cmd("light", sera, Attempt::Light)]);
+    thaw.step(&[cmd("thaw", sera, Attempt::Drink)]);
+    let open = thaw.observe(sera).unwrap();
+    assert!(open
+        .events
+        .iter()
+        .any(|event| event.text.contains("drinks the still water")));
+    assert!(open.text.contains("keeping the still water from freezing"));
 }

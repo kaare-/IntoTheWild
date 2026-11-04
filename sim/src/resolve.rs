@@ -45,6 +45,7 @@ impl World {
         let mut lights = Vec::new();
         let mut cooks = Vec::new();
         let mut eats = Vec::new();
+        let mut smears = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -79,6 +80,7 @@ impl World {
                         Attempt::Light => lights.push(intent),
                         Attempt::Cook => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
+                        Attempt::Smear => smears.push(intent),
                     }
                 }
             }
@@ -161,6 +163,7 @@ impl World {
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
+        self.apply_smears(smears, &mut results);
         results
     }
 
@@ -198,6 +201,8 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if !self.water_here(actor.cell) {
                     Err("The brook is not here.".into())
+                } else if self.still_frozen(actor.cell) {
+                    Err("The still water is frozen.".into())
                 } else {
                     Ok(true)
                 }
@@ -229,7 +234,13 @@ impl World {
                 } else {
                     match material {
                         Material::Mushroom => Err("Raw mushrooms do not feed you.".into()),
-                        Material::BitterBerry => Err("These berries should be cooked.".into()),
+                        Material::BitterBerry => {
+                            if self.has_material_at_hand(actor.id, Material::BitterBerry) {
+                                Ok(true)
+                            } else {
+                                Err("There are no poison berries here to eat.".into())
+                            }
+                        }
                         Material::Berry => {
                             if self.has_material_at_hand(actor.id, Material::Berry) {
                                 Ok(true)
@@ -239,6 +250,19 @@ impl World {
                         }
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
                     }
+                }
+            }
+            Attempt::Smear => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Mud).is_empty() {
+                    Err("You have no mud to smear.".into())
+                } else {
+                    Ok(true)
                 }
             }
             Attempt::Light => {
@@ -294,6 +318,13 @@ impl World {
                 if *material == Material::Water {
                     if !self.water_here(actor.cell) {
                         return Err("The brook is not here.".into());
+                    }
+                    if self.still_frozen(actor.cell) {
+                        return Err("The still water is frozen.".into());
+                    }
+                } else if *material == Material::Mud {
+                    if !self.water_here(actor.cell) {
+                        return Err("There is no mud here to gather.".into());
                     }
                 } else if self.pile_count(actor.cell, *material) == 0 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -386,6 +417,7 @@ impl World {
     ) {
         let mut groups: BTreeMap<(crate::model::CellId, Material), Vec<Intent>> = BTreeMap::new();
         let mut water = Vec::new();
+        let mut mud = Vec::new();
         for intent in gathers {
             let Attempt::Gather(material) = intent.attempt else {
                 continue;
@@ -394,11 +426,18 @@ impl World {
                 water.push(intent);
                 continue;
             }
+            if material == Material::Mud {
+                mud.push(intent);
+                continue;
+            }
             let cell = start_cells[&intent.actor_id];
             groups.entry((cell, material)).or_default().push(intent);
         }
         for intent in water {
             self.gather_brook_water(intent, start_cells, results);
+        }
+        for intent in mud {
+            self.gather_mud(intent, start_cells, results);
         }
         for ((cell, material), mut claims) in groups {
             let available = self.pile_count(cell, material);
@@ -1148,6 +1187,16 @@ impl World {
             );
             return;
         }
+        if self.still_frozen(cell) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "The still water is frozen.",
+                results,
+            );
+            return;
+        }
         if self.carry_count(intent.actor_id) >= self.tuning.carry_slots {
             self.finish(
                 intent.command_id,
@@ -1267,6 +1316,16 @@ impl World {
                 );
                 continue;
             }
+            if self.still_frozen(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The still water is frozen.",
+                    results,
+                );
+                continue;
+            }
             let still =
                 self.cell(actor.cell).still && self.cell(actor.cell).region != Region::Brook;
             let chance = if still {
@@ -1343,6 +1402,10 @@ impl World {
             let Attempt::Eat(material) = intent.attempt else {
                 continue;
             };
+            if material == Material::BitterBerry {
+                self.eat_poison(intent, results);
+                continue;
+            }
             if material != Material::Berry || !self.has_material_at_hand(intent.actor_id, material)
             {
                 self.finish(
@@ -1395,6 +1458,160 @@ impl World {
             };
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
+    }
+
+    fn eat_poison(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if !self.has_material_at_hand(intent.actor_id, Material::BitterBerry) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There are no poison berries here to eat.",
+                results,
+            );
+            return;
+        }
+        let Ok(item) = self.take_hand(intent.actor_id, Material::BitterBerry) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There are no poison berries here to eat.",
+                results,
+            );
+            return;
+        };
+        let illness_before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.illness)
+            .unwrap_or(0);
+        let illness_after = (illness_before + self.tuning.illness_hit).min(1000);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.illness = illness_after;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let eaten = self.emit(
+            format!("{name} eats a handful of poison berries."),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            item.into_iter().collect(),
+            vec![],
+            None,
+        );
+        let turned = illness_before < self.tuning.ill_at && illness_after >= self.tuning.ill_at;
+        if turned {
+            self.emit(
+                format!("{name}'s stomach turns."),
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![eaten],
+                None,
+            );
+        }
+        let message = if turned {
+            "You eat a handful of poison berries. Your stomach turns."
+        } else {
+            "You eat a handful of poison berries. You are still ill."
+        };
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    fn apply_smears(&mut self, smears: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in smears {
+            let Some(item_id) = self
+                .loose_ids(intent.actor_id, Material::Mud)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no mud to smear.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&item_id);
+            if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                person.mud = 1000;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                format!("{name} smears mud on their skin."),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![item_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                "You smear mud on your skin.",
+                results,
+            );
+        }
+    }
+
+    fn gather_mud(
+        &mut self,
+        intent: Intent,
+        start_cells: &BTreeMap<crate::model::ActorId, crate::model::CellId>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let cell = start_cells.get(&intent.actor_id).copied().unwrap_or(0);
+        if !self.water_here(cell) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is no mud here to gather.",
+                results,
+            );
+            return;
+        }
+        if self.carry_count(intent.actor_id) >= self.tuning.carry_slots {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "Your arms are full.",
+                results,
+            );
+            return;
+        }
+        let item = self.mint_item(Material::Mud, 0, cell, Some(intent.actor_id), Role::Loose);
+        let name = self.name_of(intent.actor_id);
+        self.emit(
+            format!("{name} gathers a handful of mud."),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![item],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            "You gather a handful of mud.",
+            results,
+        );
     }
 
     fn begin_work(
