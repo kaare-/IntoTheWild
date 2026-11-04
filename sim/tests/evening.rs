@@ -2889,3 +2889,30 @@ fn examine_tracks_names_each_visible_mark_once() {
         "You see no hoofprints from here."
     );
 }
+
+#[test]
+fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    for (i, dir) in [Dir::East, Dir::East, Dir::North, Dir::North]
+        .into_iter()
+        .enumerate()
+    {
+        world.step(&[cmd(&format!("w{i}"), near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    assert_eq!(world.deer_cell(), Some((5, 2)));
+    let clock = world.sim_time();
+    let text = world.examine(near, ExamineTarget::Deer);
+    assert_eq!(world.sim_time(), clock);
+    assert_eq!(
+        text,
+        "A deer stands one cell south and one cell west, in the open."
+    );
+    assert!(!text.contains("to the south and west"), "{text}");
+    assert_eq!(
+        world.examine(far, ExamineTarget::Deer),
+        "You cannot see a deer from here."
+    );
+}

@@ -1281,7 +1281,7 @@ impl World {
         };
         format!(
             "A deer stands {}.{}",
-            self.place_phrase(origin, deer.cell),
+            self.mark_place(origin, deer.cell),
             eating
         )
     }
