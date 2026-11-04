@@ -31,6 +31,7 @@ impl World {
                 Wake::Season => self.apply_season(),
                 Wake::Rot => self.apply_rot(),
                 Wake::Harden(id) => self.harden_clay(id),
+                Wake::HardenSpear(id) => self.harden_spear(id),
             }
         }
     }
@@ -72,6 +73,81 @@ impl World {
             Scope::Cell(item.cell),
             vec![],
             vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// A carried spear at a burning fire starts its wait. Stepping off, or
+    /// putting the spear down, clears that wait. The deer is not involved.
+    pub(crate) fn arm_spears(&mut self) {
+        let actors: Vec<_> = self.actors.keys().copied().collect();
+        for actor in actors {
+            let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+                continue;
+            };
+            let at_fire = self.fire_at(cell).is_some();
+            for id in self.loose_ids(actor, Material::Spear) {
+                let Some(item) = self.item(id).cloned() else {
+                    continue;
+                };
+                if item.hardened {
+                    continue;
+                }
+                if at_fire {
+                    if item.firing_ready_at.is_none() {
+                        let ready = self.time.saturating_add(self.tuning.spear_ticks);
+                        if let Some(spear) = self.items.get_mut(&id) {
+                            spear.firing_ready_at = Some(ready);
+                        }
+                        self.schedule(ready, Wake::HardenSpear(id));
+                    }
+                } else if item.firing_ready_at.is_some() {
+                    if let Some(spear) = self.items.get_mut(&id) {
+                        spear.firing_ready_at = None;
+                    }
+                }
+            }
+        }
+    }
+
+    fn harden_spear(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Spear
+            || item.hardened
+            || item.firing_ready_at != Some(self.time)
+        {
+            return;
+        }
+        let Some(carrier) = item.carrier else {
+            if let Some(spear) = self.items.get_mut(&id) {
+                spear.firing_ready_at = None;
+            }
+            return;
+        };
+        let cell = self
+            .actor(carrier)
+            .map(|person| person.cell)
+            .unwrap_or(item.cell);
+        if self.fire_at(cell).is_none() {
+            if let Some(spear) = self.items.get_mut(&id) {
+                spear.firing_ready_at = None;
+            }
+            return;
+        }
+        if let Some(spear) = self.items.get_mut(&id) {
+            spear.hardened = true;
+            spear.firing_ready_at = None;
+        }
+        let name = self.name_of(carrier);
+        self.emit(
+            format!("The point of {name}'s spear hardens."),
+            Scope::Cell(cell),
+            vec![carrier],
+            vec![cell],
             vec![id],
             vec![],
             None,

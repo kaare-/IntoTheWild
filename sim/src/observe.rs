@@ -15,7 +15,8 @@ y berries      Y wet berries
 m mushrooms    q poison berries
 k pot          u water
 s stone         c clay
-v bowl         + more than the letter shows
+v bowl         j spear
++ more than the letter shows
 d deer         \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -178,6 +179,7 @@ impl World {
             ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
             ExamineTarget::Clay => self.examine_clay(actor_id),
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
+            ExamineTarget::Spear => self.examine_spear(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -385,6 +387,14 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty() {
             parts.push("A fired bowl sits here. It can boil water over a fire.".into());
         }
+        for id in self.ground_ids(actor.cell, Material::Spear) {
+            let hardened = self.item(id).is_some_and(|item| item.hardened);
+            if hardened {
+                parts.push("A spear lies here. The point is hardened.".into());
+            } else {
+                parts.push("A spear lies here. The point is not hardened.".into());
+            }
+        }
         if self
             .deer
             .as_ref()
@@ -442,6 +452,17 @@ impl World {
                         "a lump of clay".into()
                     } else if item.material == "bowl" && item.count == 1 {
                         "a fired bowl".into()
+                    } else if item.material == "spear" && item.count == 1 {
+                        let hardened = self
+                            .loose_ids(actor_id, Material::Spear)
+                            .first()
+                            .and_then(|id| self.item(*id))
+                            .is_some_and(|spear| spear.hardened);
+                        if hardened {
+                            "a spear with a hardened point".into()
+                        } else {
+                            "a spear with an unhardened point".into()
+                        }
                     } else {
                         format!(
                             "{} {} carried by you ({})",
@@ -489,7 +510,19 @@ impl World {
             self.wind_word(self.exposure_millis(actor.cell)),
             self.sun_word(actor.sunburn),
             self.mud_word(actor.mud)
-        )
+        ) + &self.spear_clause(actor_id)
+    }
+
+    fn spear_clause(&self, actor_id: ActorId) -> String {
+        let Some(id) = self.loose_ids(actor_id, Material::Spear).first().copied() else {
+            return String::new();
+        };
+        let hardened = self.item(id).is_some_and(|item| item.hardened);
+        if hardened {
+            " They carry a spear with a hardened point.".into()
+        } else {
+            " They carry a spear with an unhardened point.".into()
+        }
     }
 
     fn adjacent_line(&self, origin: CellId, dir: Dir) -> String {
@@ -543,6 +576,20 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Bowl).is_empty() {
             bits.push("a bowl".into());
+        }
+        if self.ground_ids(dest, Material::Spear).len() == 1 {
+            let hardened = self
+                .ground_ids(dest, Material::Spear)
+                .first()
+                .and_then(|id| self.item(*id))
+                .is_some_and(|spear| spear.hardened);
+            if hardened {
+                bits.push("a spear with a hardened point".into());
+            } else {
+                bits.push("a spear with an unhardened point".into());
+            }
+        } else if self.ground_ids(dest, Material::Spear).len() > 1 {
+            bits.push("spears".into());
         }
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
@@ -674,6 +721,50 @@ impl World {
         }
         if lines.is_empty() {
             "You see no bowl from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    fn examine_spear(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for id in self.ground_ids(cell, Material::Spear) {
+                let hardened = self.item(id).is_some_and(|item| item.hardened);
+                let point = if hardened {
+                    "The point is hardened."
+                } else {
+                    "The point is not hardened."
+                };
+                lines.push(format!(
+                    "A spear lies in contact with the ground {}. {point}",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            for id in self.loose_ids(other, Material::Spear) {
+                let hardened = self.item(id).is_some_and(|item| item.hardened);
+                let point = if hardened {
+                    "a hardened point"
+                } else {
+                    "an unhardened point"
+                };
+                lines.push(format!(
+                    "A spear with {point} is carried by {who}, {}.",
+                    self.cover_phrase(cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no spear from here.".into()
         } else {
             lines.join("\n")
         }
@@ -830,6 +921,7 @@ impl World {
                 Material::Stone => "stone",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
+                Material::Spear => "spear",
                 Material::Water => "water",
             };
             format!("You see no {name} from here.")
@@ -1227,6 +1319,11 @@ impl World {
         if self.worst_loose(cell, Material::Bowl).is_some() {
             marks.push('v');
         }
+        if self.pile_count(cell, Material::Spear) > 0
+            || self.worst_loose(cell, Material::Spear).is_some()
+        {
+            marks.push('j');
+        }
         if self.tracks.contains(&cell) {
             marks.push('"');
         }
@@ -1605,6 +1702,11 @@ impl World {
         {
             actions.push("gather bowl".into());
         }
+        if !self.ground_ids(actor.cell, Material::Spear).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather spear".into());
+        }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -1643,6 +1745,14 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Bowl).is_empty() {
             actions.push("drop bowl".into());
+        }
+        if !self.loose_ids(actor_id, Material::Spear).is_empty() {
+            actions.push("drop spear".into());
+        }
+        if !self.loose_ids(actor_id, Material::Stone).is_empty()
+            && !self.loose_ids(actor_id, Material::Branch).is_empty()
+        {
+            actions.push("bind spear".into());
         }
         if !self.loose_ids(actor_id, Material::Mud).is_empty() {
             actions.push("drop mud".into());
@@ -1740,6 +1850,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Clay, true) => "lump of clay",
         (Material::Clay, false) => "lumps of clay",
         (Material::Bowl, _) => "bowl",
+        (Material::Spear, _) => "spear",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
@@ -1758,6 +1869,7 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
         Material::Stone => ("stone", "is"),
         Material::Clay => ("clay", "is"),
         Material::Bowl => ("bowl", "is"),
+        Material::Spear => ("spear", "is"),
         Material::Water => ("water", "is"),
         _ => ("wood", "is"),
     }

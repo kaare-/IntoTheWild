@@ -31,6 +31,10 @@ warmth_hold = 4
 # ticks, if the fire is still burning. Unfired clay cannot boil water.
 # The fire still dies in the rain. There is no kiln.
 clay_ticks = 4
+# Holding a spear at a burning fire hardens the point after this many ticks.
+# The stone and the branch are already spent. Leaving the fire starts the
+# wait over. The deer is not hunted.
+spear_ticks = 4
 # From this tick, still water is frozen unless a fire burns on it.
 # The brook keeps running. A body in the open is already getting cold before this.
 chill_at = 12

@@ -53,6 +53,7 @@ pub enum Material {
     Stone,
     Clay,
     Bowl,
+    Spear,
 }
 
 impl Material {
@@ -70,6 +71,7 @@ impl Material {
             Material::Stone => "stone",
             Material::Clay => "clay",
             Material::Bowl => "bowl",
+            Material::Spear => "spear",
         }
     }
 
@@ -87,6 +89,7 @@ impl Material {
             Material::Stone => "stone",
             Material::Clay => "lump of clay",
             Material::Bowl => "bowl",
+            Material::Spear => "spear",
         }
     }
 
@@ -173,6 +176,7 @@ pub enum ExamineTarget {
     Stone,
     Clay,
     Bowl,
+    Spear,
     Fire,
     Water,
     Deer,
@@ -199,6 +203,7 @@ pub enum Attempt {
     Cook,
     Boil,
     SetClay,
+    BindSpear,
     Eat(Material),
     Smear,
 }
@@ -219,6 +224,7 @@ impl Attempt {
                 | Attempt::Cook
                 | Attempt::Boil
                 | Attempt::SetClay
+                | Attempt::BindSpear
                 | Attempt::Eat(_)
                 | Attempt::Smear
         )
@@ -313,9 +319,13 @@ pub struct Item {
     pub carrier: Option<ActorId>,
     pub role: Role,
     pub construction: Option<ConstructionId>,
-    /// When set, this lump of clay is waiting on a fire until this tick.
+    /// When set, this lump of clay is waiting on a fire until this tick,
+    /// or a carried spear is waiting for its point to harden.
     #[serde(default)]
     pub firing_ready_at: Option<u64>,
+    /// A spear's point. Other materials leave this false.
+    #[serde(default)]
+    pub hardened: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -378,6 +388,7 @@ pub enum Wake {
     Energy,
     Weather,
     Harden(ItemId),
+    HardenSpear(ItemId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -688,6 +699,20 @@ impl World {
         rows
     }
 
+    /// Each spear's id, who carries it, and whether the point has hardened.
+    /// Binding spends the stone and the branch. The id does not change when
+    /// the point hardens.
+    pub fn spears(&self) -> Vec<(ItemId, Option<ActorId>, bool)> {
+        let mut rows: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| item.material == Material::Spear)
+            .map(|item| (item.id, item.carrier, item.hardened))
+            .collect();
+        rows.sort();
+        rows
+    }
+
     pub fn log_cell(&self) -> Option<(i32, i32)> {
         if let Some(item) = self.items.values().find(|i| i.material == Material::Log) {
             return Some(cell_xy(item.cell));
@@ -727,6 +752,7 @@ impl World {
     pub fn step(&mut self, intents: &[Intent]) -> StepReport {
         let time = self.time;
         let results = self.resolve(intents);
+        self.arm_spears();
         self.fire_due();
         self.normalize();
         self.trim_events();
@@ -835,6 +861,7 @@ impl World {
                 role,
                 construction: None,
                 firing_ready_at: None,
+                hardened: false,
             },
         );
         id

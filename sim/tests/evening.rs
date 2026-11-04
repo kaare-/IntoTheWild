@@ -611,6 +611,16 @@ fn parser_accepts_the_evening_commands() {
         Attempt::SetClay
     ));
     assert!(matches!(
+        parse_attempt("bind spear").unwrap(),
+        Attempt::BindSpear
+    ));
+    assert!(matches!(
+        parse_attempt("examine spear").unwrap(),
+        Attempt::Examine(ExamineTarget::Spear)
+    ));
+    assert!(parse_attempt("hunt").is_err());
+    assert!(parse_attempt("kill deer").is_err());
+    assert!(matches!(
         parse_attempt("examine bowl").unwrap(),
         Attempt::Examine(ExamineTarget::Bowl)
     ));
@@ -2251,4 +2261,95 @@ fn look_names_every_kind_and_the_map_marks_what_the_letter_hides() {
         .unwrap_or("");
     assert!(south.contains("a pot"), "{south}");
     assert!(south.contains("a sheet of bark"), "{south}");
+}
+
+#[test]
+fn a_stone_and_a_branch_bind_into_a_spear_whose_point_hardens() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 2, 0).unwrap();
+    let beside = world.spawn_at("Beside", "b", 5, 1).unwrap();
+    assert!(world.deer_cell().is_some());
+    world.step(&[cmd("stone", near, Attempt::Gather(Material::Stone))]);
+    let stone_id = world.material_items(Material::Stone)[0].0;
+    for step in 0..4 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let branch_id = world
+        .material_items(Material::Branch)
+        .into_iter()
+        .find(|item| item.1 == Some(near))
+        .unwrap()
+        .0;
+    let branches_before = world.material_tally(Material::Branch);
+    let bound = world.step(&[cmd("bind", near, Attempt::BindSpear)]);
+    assert_eq!(
+        bound.results[0].message,
+        "You bind a stone and a branch into a spear."
+    );
+    assert!(world.material_items(Material::Stone).is_empty());
+    assert!(world
+        .material_items(Material::Branch)
+        .iter()
+        .all(|item| item.0 != branch_id));
+    assert_eq!(world.material_tally(Material::Branch), branches_before - 1);
+    assert_eq!(world.material_tally(Material::Spear), 1);
+    let spear = world.spears();
+    assert_eq!(spear.len(), 1);
+    assert_ne!(spear[0].0, stone_id);
+    assert_ne!(spear[0].0, branch_id);
+    let spear_id = spear[0].0;
+    assert_eq!(spear[0].1, Some(near));
+    assert!(!spear[0].2);
+    let soft = world.examine(beside, ExamineTarget::Spear);
+    assert_eq!(
+        soft,
+        "A spear with an unhardened point is carried by Near, under the rock overhang."
+    );
+    assert!(world
+        .examine(beside, ExamineTarget::Person("Near".into()))
+        .contains("They carry a spear with an unhardened point."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("a spear with an unhardened point"));
+
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("tinder", near, Attempt::Gather(Material::Branch))]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let started = world.sim_time();
+    assert!(!world.spears()[0].2);
+    for _ in 0..3 {
+        world.step(&[]);
+        assert!(!world.spears()[0].2, "the point is not hardened yet");
+    }
+    world.step(&[]);
+    assert_eq!(world.sim_time(), started + 4);
+    assert_eq!(world.spears(), vec![(spear_id, Some(near), true)]);
+    let hard = world.examine(beside, ExamineTarget::Spear);
+    assert_eq!(
+        hard,
+        "A spear with a hardened point is carried by Near, under the rock overhang."
+    );
+    assert_ne!(soft, hard);
+    assert!(world
+        .examine(beside, ExamineTarget::Person("Near".into()))
+        .contains("They carry a spear with a hardened point."));
+    assert!(world
+        .observe(beside)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| { event.text.contains("The point of Near's spear hardens.") }));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("a spear with a hardened point"));
+    assert!(world.deer_cell().is_some());
+    assert_eq!(world.material_tally(Material::Spear), 1);
 }

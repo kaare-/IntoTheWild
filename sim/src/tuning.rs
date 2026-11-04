@@ -25,6 +25,9 @@ pub struct Tuning {
     /// Ticks a lump of clay sits at a burning fire before it becomes a bowl.
     #[serde(default = "default_clay_ticks")]
     pub clay_ticks: u64,
+    /// Ticks a carried spear must be held at a burning fire before the point hardens.
+    #[serde(default = "default_spear_ticks")]
+    pub spear_ticks: u64,
     pub body_rain: u32,
     pub brook_rain: u32,
     pub wade: u32,
@@ -118,6 +121,9 @@ fn default_warmth_hold() -> u64 {
 fn default_clay_ticks() -> u64 {
     4
 }
+fn default_spear_ticks() -> u64 {
+    4
+}
 fn default_season_at() -> u64 {
     18
 }
@@ -203,6 +209,7 @@ struct RawTime {
     fire_ticks: u64,
     warmth_hold: u64,
     clay_ticks: u64,
+    spear_ticks: u64,
     chill_at: u64,
 }
 
@@ -275,6 +282,7 @@ impl Tuning {
             || raw.time.rot_ticks == 0
             || raw.time.warmth_hold == 0
             || raw.time.clay_ticks == 0
+            || raw.time.spear_ticks == 0
         {
             return Err("work durations must be at least 1 tick".into());
         }
@@ -323,6 +331,7 @@ impl Tuning {
             fire_ticks: raw.time.fire_ticks,
             warmth_hold: raw.time.warmth_hold,
             clay_ticks: raw.time.clay_ticks,
+            spear_ticks: raw.time.spear_ticks,
             chill_at: raw.time.chill_at,
             body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
             brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,
@@ -394,6 +403,7 @@ impl Tuning {
             Material::Stone => 0,
             Material::Clay => 0,
             Material::Bowl => 0,
+            Material::Spear => 0,
         }
     }
 }

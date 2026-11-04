@@ -47,6 +47,7 @@ impl World {
         let mut eats = Vec::new();
         let mut smears = Vec::new();
         let mut sets = Vec::new();
+        let mut binds = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -83,6 +84,7 @@ impl World {
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
                         Attempt::SetClay => sets.push(intent),
+                        Attempt::BindSpear => binds.push(intent),
                     }
                 }
             }
@@ -163,6 +165,7 @@ impl World {
         self.apply_drinks(drinks, &mut results);
         self.apply_boils(boils, &mut results);
         self.apply_sets(sets, &mut results);
+        self.apply_binds(binds, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -233,6 +236,21 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::BindSpear => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Stone).is_empty() {
+                    Err("You are not carrying a stone.".into())
+                } else if self.loose_ids(actor.id, Material::Branch).is_empty() {
+                    Err("You are not carrying a branch.".into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::SetClay => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -273,6 +291,7 @@ impl World {
                             }
                         }
                         Material::Stone => Err("A stone is not food.".into()),
+                        Material::Spear => Err("A spear is not food.".into()),
                         Material::Clay => Err("Unfired clay is not food.".into()),
                         Material::Bowl => Err("A bowl is not food.".into()),
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
@@ -354,8 +373,10 @@ impl World {
                         return Err("There is no mud here to gather.".into());
                     }
                 } else if self.pile_count(actor.cell, *material) == 0
-                    && (!matches!(*material, Material::Stone | Material::Clay | Material::Bowl)
-                        || self.ground_ids(actor.cell, *material).is_empty())
+                    && (!matches!(
+                        *material,
+                        Material::Stone | Material::Clay | Material::Bowl | Material::Spear
+                    ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
                 }
@@ -470,7 +491,10 @@ impl World {
             self.gather_mud(intent, start_cells, results);
         }
         for ((cell, material), mut claims) in groups {
-            let ground = if matches!(material, Material::Stone | Material::Clay | Material::Bowl) {
+            let ground = if matches!(
+                material,
+                Material::Stone | Material::Clay | Material::Bowl | Material::Spear
+            ) {
                 self.ground_ids(cell, material)
             } else {
                 Vec::new()
@@ -1277,6 +1301,53 @@ impl World {
             "You gather a drink of water.",
             results,
         );
+    }
+
+    fn apply_binds(&mut self, binds: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in binds {
+            let stone = self
+                .loose_ids(intent.actor_id, Material::Stone)
+                .first()
+                .copied();
+            let branch = self
+                .loose_ids(intent.actor_id, Material::Branch)
+                .first()
+                .copied();
+            let (Some(stone), Some(branch)) = (stone, branch) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need a carried stone and a carried branch.",
+                    results,
+                );
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.items.remove(&stone);
+            self.items.remove(&branch);
+            let id = self.mint_item(Material::Spear, 0, cell, Some(intent.actor_id), Role::Loose);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                format!("{name} binds a stone and a branch into a spear."),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                "You bind a stone and a branch into a spear.",
+                results,
+            );
+        }
     }
 
     fn apply_sets(&mut self, sets: Vec<Intent>, results: &mut Vec<CommandResult>) {
