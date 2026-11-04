@@ -618,7 +618,8 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("examine spear").unwrap(),
         Attempt::Examine(ExamineTarget::Spear)
     ));
-    assert!(parse_attempt("hunt").is_err());
+    assert!(matches!(parse_attempt("hunt").unwrap(), Attempt::Hunt));
+    assert!(matches!(parse_attempt("hunt deer").unwrap(), Attempt::Hunt));
     assert!(parse_attempt("kill deer").is_err());
     assert!(matches!(
         parse_attempt("examine bowl").unwrap(),
@@ -2383,4 +2384,196 @@ fn a_stone_and_a_branch_bind_into_a_spear_whose_point_hardens() {
         .contains("a spear hardening in the fire"));
     assert!(world.deer_cell().is_some());
     assert_eq!(world.material_tally(Material::Spear), 1);
+}
+
+fn xy_dist(a: (i32, i32), b: (i32, i32)) -> i32 {
+    (a.0 - b.0).abs().max((a.1 - b.1).abs())
+}
+
+fn spear_bound_at_the_rock() -> (World, u32, u32) {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 2, 0).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    world.step(&[cmd("stone", near, Attempt::Gather(Material::Stone))]);
+    for step in 0..4 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("bind", near, Attempt::BindSpear)]);
+    (world, near, far)
+}
+
+fn harden_the_spear(world: &mut World, near: u32) {
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("tinder", near, Attempt::Gather(Material::Branch))]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert!(world.spears()[0].2);
+}
+
+#[test]
+fn a_hardened_spear_hunts_the_deer_and_the_carcass_cooks() {
+    let (mut world, near, _far) = spear_bound_at_the_rock();
+    let (mut quiet, _, _) = spear_bound_at_the_rock();
+    let refused = world.step(&[cmd("soft", near, Attempt::Hunt)]);
+    quiet.step(&[]);
+    assert_eq!(
+        refused.results[0].message,
+        "The spear's point is not hardened."
+    );
+    assert!(!refused.results[0].success);
+    assert_eq!(world.deer_cell(), quiet.deer_cell());
+    assert!(world.deer_cell().is_some());
+    assert_eq!(world.material_tally(Material::Carcass), 0);
+
+    let (mut world, near, _far) = spear_bound_at_the_rock();
+    harden_the_spear(&mut world, near);
+    let mut steps = 0;
+    while world
+        .deer_cell()
+        .is_some_and(|deer| xy_dist(world.actor_cell(near).unwrap(), deer) != 1)
+        && steps < 40
+    {
+        world.step(&[]);
+        steps += 1;
+    }
+    let deer_at = world.deer_cell().unwrap();
+    assert_eq!(xy_dist(world.actor_cell(near).unwrap(), deer_at), 1);
+    let time = world.sim_time();
+    let hash = contest_hash(
+        world.seed,
+        time,
+        "hunt",
+        &format!("{},{}:deer", deer_at.0, deer_at.1),
+        near,
+    );
+    let drawn = world.step(&[cmd("draw", near, Attempt::Hunt)]);
+    let recorded = world
+        .event_log()
+        .iter()
+        .filter_map(|event| event.draw.clone())
+        .find(|draw| draw.tag == "hunt")
+        .unwrap();
+    assert_eq!(recorded.value, hash);
+    assert_eq!(
+        recorded.subject,
+        format!("{},{}:deer", deer_at.0, deer_at.1)
+    );
+    match hash % 3 {
+        0 => {
+            assert_eq!(
+                drawn.results[0].message,
+                "You bring the deer down. A carcass lies where it stood."
+            );
+            assert!(world.deer_cell().is_none());
+            assert_eq!(world.material_tally(Material::Carcass), 1);
+        }
+        1 => {
+            assert_eq!(drawn.results[0].message, "You miss the deer. It moves off.");
+            assert_ne!(world.deer_cell(), Some(deer_at));
+            assert!(world.deer_cell().is_some());
+            assert_eq!(world.material_tally(Material::Carcass), 0);
+        }
+        _ => {
+            assert_eq!(
+                drawn.results[0].message,
+                "The deer bolts. Your spear does not land."
+            );
+            assert_ne!(world.deer_cell(), Some(deer_at));
+            assert!(world.deer_cell().is_some());
+            assert_eq!(world.material_tally(Material::Carcass), 0);
+        }
+    }
+    assert!(world
+        .observe(_far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("deer")));
+
+    let (mut again, again_near, _) = spear_bound_at_the_rock();
+    harden_the_spear(&mut again, again_near);
+    for _ in 0..steps {
+        again.step(&[]);
+    }
+    let repeated = again.step(&[cmd("draw", again_near, Attempt::Hunt)]);
+    assert_eq!(repeated.results[0].message, drawn.results[0].message);
+    assert_eq!(again.deer_cell(), world.deer_cell());
+    let again_draw = again
+        .event_log()
+        .iter()
+        .filter_map(|event| event.draw.clone())
+        .find(|draw| draw.tag == "hunt")
+        .unwrap();
+    assert_eq!(again_draw.value, hash);
+
+    let (mut kill, hunter, far) = spear_bound_at_the_rock();
+    harden_the_spear(&mut kill, hunter);
+    let mut waited = 0;
+    while kill.deer_cell() != Some((6, 1)) && waited < 40 {
+        kill.step(&[]);
+        waited += 1;
+    }
+    assert_eq!(kill.deer_cell(), Some((6, 1)));
+    assert_eq!(kill.actor_cell(hunter), Some((6, 1)));
+    let brought = kill.step(&[cmd("down", hunter, Attempt::Hunt)]);
+    assert_eq!(
+        brought.results[0].message,
+        "You bring the deer down. A carcass lies where it stood."
+    );
+    assert!(kill.deer_cell().is_none());
+    assert_eq!(kill.material_tally(Material::Carcass), 1);
+    assert_eq!(
+        (
+            kill.material_items(Material::Carcass)[0].2,
+            kill.material_items(Material::Carcass)[0].3
+        ),
+        (6, 1)
+    );
+    assert!(kill
+        .event_log()
+        .iter()
+        .all(|event| event.draw.as_ref().map(|draw| draw.tag.as_str()) != Some("hunt")));
+    assert!(kill
+        .observe(hunter)
+        .unwrap()
+        .text
+        .contains("A deer carcass lies here."));
+    let far_view = kill.observe(far).unwrap();
+    assert!(far_view
+        .events
+        .iter()
+        .all(|event| !event.text.contains("brings the deer down")));
+    assert_eq!(
+        kill.examine(far, ExamineTarget::Deer),
+        "You cannot see a deer from here."
+    );
+    assert_eq!(kill.spears().len(), 1);
+    assert!(kill.spears()[0].2);
+
+    kill.step(&[cmd("lift", hunter, Attempt::Gather(Material::Carcass))]);
+    let raw = kill.step(&[cmd("raw", hunter, Attempt::Eat(Material::Carcass))]);
+    assert_eq!(raw.results[0].message, "The carcass must be cooked.");
+    assert_eq!(kill.material_tally(Material::Carcass), 1);
+    kill.step(&[cmd("bark2", hunter, Attempt::Gather(Material::Bark))]);
+    kill.step(&[cmd("branch2", hunter, Attempt::Gather(Material::Branch))]);
+    let relit = kill.step(&[cmd("relight", hunter, Attempt::Light)]);
+    assert!(relit.results[0].success, "{}", relit.results[0].message);
+    let cooked = kill.step(&[cmd("cook", hunter, Attempt::Cook)]);
+    assert!(
+        cooked.results[0].message.contains("You cook the carcass."),
+        "{}",
+        cooked.results[0].message
+    );
+    assert!(
+        cooked.results[0].message.contains("The hunger eases."),
+        "{}",
+        cooked.results[0].message
+    );
+    assert_eq!(kill.material_tally(Material::Carcass), 0);
+    assert!(kill.deer_cell().is_none());
 }

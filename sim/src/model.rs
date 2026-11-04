@@ -54,6 +54,7 @@ pub enum Material {
     Clay,
     Bowl,
     Spear,
+    Carcass,
 }
 
 impl Material {
@@ -72,6 +73,7 @@ impl Material {
             Material::Clay => "clay",
             Material::Bowl => "bowl",
             Material::Spear => "spear",
+            Material::Carcass => "carcass",
         }
     }
 
@@ -90,6 +92,7 @@ impl Material {
             Material::Clay => "lump of clay",
             Material::Bowl => "bowl",
             Material::Spear => "spear",
+            Material::Carcass => "carcass",
         }
     }
 
@@ -98,6 +101,7 @@ impl Material {
             Material::Mushroom => "a mushroom",
             Material::BitterBerry => "a handful of poison berries",
             Material::Berry => "a handful of berries",
+            Material::Carcass => "the carcass",
             _ => "some food",
         }
     }
@@ -177,6 +181,7 @@ pub enum ExamineTarget {
     Clay,
     Bowl,
     Spear,
+    Carcass,
     Fire,
     Water,
     Deer,
@@ -204,6 +209,7 @@ pub enum Attempt {
     Boil,
     SetClay,
     BindSpear,
+    Hunt,
     Eat(Material),
     Smear,
 }
@@ -225,6 +231,7 @@ impl Attempt {
                 | Attempt::Boil
                 | Attempt::SetClay
                 | Attempt::BindSpear
+                | Attempt::Hunt
                 | Attempt::Eat(_)
                 | Attempt::Smear
         )
@@ -399,6 +406,9 @@ pub struct Deer {
     pub cell: CellId,
     pub route_at: usize,
     pub last_event: Option<EventId>,
+    /// A miss or a bolt already moved the deer this tick, so the route step waits.
+    #[serde(default)]
+    pub held: bool,
 }
 
 /// Trail the deer already uses, then a detour to the berries under the rock
@@ -546,6 +556,7 @@ impl World {
                 cell: cell_id(2, 3).unwrap(),
                 route_at: 0,
                 last_event: None,
+                held: false,
             }),
             tracks: BTreeSet::new(),
             grips: Vec::new(),
@@ -991,10 +1002,21 @@ impl World {
         &mut self,
         actor: ActorId,
     ) -> Result<(Option<ItemId>, Material), ()> {
+        if let Some(id) = self.loose_ids(actor, Material::Carcass).first().copied() {
+            self.items.remove(&id);
+            return Ok((Some(id), Material::Carcass));
+        }
         for material in [Material::Mushroom, Material::Berry] {
             if let Ok(item) = self.take_hand(actor, material) {
                 return Ok((item, material));
             }
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        if let Some(id) = self.ground_ids(cell, Material::Carcass).first().copied() {
+            self.items.remove(&id);
+            return Ok((Some(id), Material::Carcass));
         }
         Err(())
     }
@@ -1176,16 +1198,18 @@ impl World {
     }
 
     pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
-        [Material::Mushroom, Material::Berry]
-            .into_iter()
-            .any(|material| !self.loose_ids(actor, material).is_empty())
+        !self.loose_ids(actor, Material::Carcass).is_empty()
+            || [Material::Mushroom, Material::Berry]
+                .into_iter()
+                .any(|material| !self.loose_ids(actor, material).is_empty())
     }
 
     pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {
-        [Material::Mushroom, Material::Berry]
+        let piles: u32 = [Material::Mushroom, Material::Berry]
             .into_iter()
             .map(|material| self.pile_count(cell, material))
-            .sum()
+            .sum();
+        piles + self.ground_ids(cell, Material::Carcass).len() as u32
     }
 
     pub(crate) fn name_of(&self, id: ActorId) -> String {

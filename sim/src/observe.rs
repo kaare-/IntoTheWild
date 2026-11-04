@@ -16,7 +16,7 @@ m mushrooms    q poison berries
 k pot          u water
 s stone         c clay
 v bowl         j spear
-+ more than the letter shows
+a carcass      + more than the letter shows
 d deer         \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -93,6 +93,7 @@ pub struct CellView {
     pub clay_pile: u32,
     pub loose_clay: u32,
     pub bowl: u32,
+    pub carcass: u32,
     pub still: bool,
     pub frozen: bool,
     pub fire: bool,
@@ -180,6 +181,7 @@ impl World {
             ExamineTarget::Clay => self.examine_clay(actor_id),
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
             ExamineTarget::Spear => self.examine_spear(actor_id),
+            ExamineTarget::Carcass => self.examine_carcass(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -382,6 +384,9 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty() {
             parts.push("A fired bowl sits here. It can boil water over a fire.".into());
         }
+        if !self.ground_ids(actor.cell, Material::Carcass).is_empty() {
+            parts.push("A deer carcass lies here.".into());
+        }
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let hardened = self.item(id).is_some_and(|item| item.hardened);
             if hardened {
@@ -447,6 +452,8 @@ impl World {
                         "a lump of clay".into()
                     } else if item.material == "bowl" && item.count == 1 {
                         "a fired bowl".into()
+                    } else if item.material == "carcass" && item.count == 1 {
+                        "a deer carcass".into()
                     } else if item.material == "spear" && item.count == 1 {
                         let hardened = self
                             .loose_ids(actor_id, Material::Spear)
@@ -509,6 +516,15 @@ impl World {
             self.sun_word(actor.sunburn),
             self.mud_word(actor.mud)
         ) + &self.spear_clause(actor_id)
+            + &self.carcass_clause(actor_id)
+    }
+
+    fn carcass_clause(&self, actor_id: ActorId) -> String {
+        if self.loose_ids(actor_id, Material::Carcass).is_empty() {
+            String::new()
+        } else {
+            " They carry a deer carcass.".into()
+        }
     }
 
     fn spear_clause(&self, actor_id: ActorId) -> String {
@@ -604,6 +620,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Bowl).is_empty() {
             bits.push("a bowl".into());
+        }
+        if !self.ground_ids(dest, Material::Carcass).is_empty() {
+            bits.push("a carcass".into());
         }
         if self
             .actors
@@ -760,6 +779,42 @@ impl World {
         }
         if lines.is_empty() {
             "You see no bowl from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    fn examine_carcass(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for id in self.ground_ids(cell, Material::Carcass) {
+                let moisture = self.item(id).map(|item| item.moisture).unwrap_or(0);
+                lines.push(format!(
+                    "A deer carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.",
+                    self.place_phrase(origin, cell),
+                    self.condition_word(moisture),
+                    self.rain_reaches_phrase(cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            if self.loose_ids(other, Material::Carcass).is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            lines.push(format!(
+                "A deer carcass is carried by {who}, {}. It must be cooked before it feeds you.",
+                self.cover_phrase(cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no carcass from here.".into()
         } else {
             lines.join("\n")
         }
@@ -969,6 +1024,7 @@ impl World {
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
+                Material::Carcass => "carcass",
                 Material::Water => "water",
             };
             format!("You see no {name} from here.")
@@ -1366,6 +1422,11 @@ impl World {
         if self.worst_loose(cell, Material::Bowl).is_some() {
             marks.push('v');
         }
+        if self.ground_ids(cell, Material::Carcass).len() > 0
+            || self.worst_loose(cell, Material::Carcass).is_some()
+        {
+            marks.push('a');
+        }
         if self.pile_count(cell, Material::Spear) > 0
             || self.worst_loose(cell, Material::Spear).is_some()
         {
@@ -1490,6 +1551,7 @@ impl World {
             clay_pile: self.pile_count(cell, Material::Clay),
             loose_clay: self.ground_ids(cell, Material::Clay).len() as u32,
             bowl: self.ground_ids(cell, Material::Bowl).len() as u32,
+            carcass: self.ground_ids(cell, Material::Carcass).len() as u32,
             still: place.still,
             frozen: self.still_frozen(cell),
             fire: self.fire_at(cell).is_some(),
@@ -1754,6 +1816,11 @@ impl World {
         {
             actions.push("gather spear".into());
         }
+        if !self.ground_ids(actor.cell, Material::Carcass).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather carcass".into());
+        }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -1795,6 +1862,20 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Spear).is_empty() {
             actions.push("drop spear".into());
+        }
+        if !self.loose_ids(actor_id, Material::Carcass).is_empty() {
+            actions.push("drop carcass".into());
+        }
+        if self
+            .loose_ids(actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
+            && self
+                .deer
+                .as_ref()
+                .is_some_and(|deer| chebyshev(actor.cell, deer.cell) <= 1)
+        {
+            actions.push("hunt".into());
         }
         if !self.loose_ids(actor_id, Material::Stone).is_empty()
             && !self.loose_ids(actor_id, Material::Branch).is_empty()
@@ -1898,6 +1979,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Clay, false) => "lumps of clay",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
+        (Material::Carcass, _) => "carcass",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
@@ -1917,6 +1999,7 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
         Material::Clay => ("clay", "is"),
         Material::Bowl => ("bowl", "is"),
         Material::Spear => ("spear", "is"),
+        Material::Carcass => ("carcass", "is"),
         Material::Water => ("water", "is"),
         _ => ("wood", "is"),
     }

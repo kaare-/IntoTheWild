@@ -404,6 +404,7 @@ impl Tuning {
             Material::Clay => 0,
             Material::Bowl => 0,
             Material::Spear => 0,
+            Material::Carcass => 0,
         }
     }
 }

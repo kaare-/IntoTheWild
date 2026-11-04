@@ -5,11 +5,11 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|fire|deer|tracks|log|frame|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|carcass|fire|deer|tracks|log|frame|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear
-drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|carcass
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|carcass
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 grab                         take hold of the heavy log
@@ -20,7 +20,8 @@ lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them
-cook                         mushrooms or sweet berries; poison berries are not food
+cook                         mushrooms, sweet berries, or a carcass; poison berries are not food
+hunt                         a hardened spear; the deer on your cell or the next
 eat berries                  sweet berries only; poison berries sicken you
 smear mud                    mud on skin against the sun
 interrupt                    stop the work your body is in
@@ -76,6 +77,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "boil" => Ok(Attempt::Boil),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
         "bind" if rest == "spear" => Ok(Attempt::BindSpear),
+        "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
@@ -110,8 +112,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
+        "carcass" | "deer carcass" => Ok(Material::Carcass),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, clay, bowl, spear, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, clay, bowl, spear, carcass, or log."
                 .into(),
         ),
     }
@@ -147,6 +150,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "clay" => ExamineTarget::Clay,
         "bowl" => ExamineTarget::Bowl,
         "spear" | "spears" => ExamineTarget::Spear,
+        "carcass" | "deer carcass" => ExamineTarget::Carcass,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,

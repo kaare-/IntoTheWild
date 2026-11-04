@@ -48,6 +48,7 @@ impl World {
         let mut smears = Vec::new();
         let mut sets = Vec::new();
         let mut binds = Vec::new();
+        let mut hunts = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -85,6 +86,7 @@ impl World {
                         Attempt::Smear => smears.push(intent),
                         Attempt::SetClay => sets.push(intent),
                         Attempt::BindSpear => binds.push(intent),
+                        Attempt::Hunt => hunts.push(intent),
                     }
                 }
             }
@@ -166,6 +168,7 @@ impl World {
         self.apply_boils(boils, &mut results);
         self.apply_sets(sets, &mut results);
         self.apply_binds(binds, &mut results);
+        self.apply_hunts(hunts, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -251,6 +254,35 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::Hunt => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self
+                    .loose_ids(actor.id, Material::Spear)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
+                {
+                    if self.loose_ids(actor.id, Material::Spear).is_empty() {
+                        Err("You are not carrying a spear.".into())
+                    } else {
+                        Err("The spear's point is not hardened.".into())
+                    }
+                } else if self.deer.as_ref().is_none() {
+                    Err("There is no deer to hunt.".into())
+                } else if self
+                    .deer
+                    .as_ref()
+                    .is_some_and(|deer| crate::model::chebyshev(actor.cell, deer.cell) > 1)
+                {
+                    Err("The deer is not close enough to hunt.".into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::SetClay => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -292,6 +324,7 @@ impl World {
                         }
                         Material::Stone => Err("A stone is not food.".into()),
                         Material::Spear => Err("A spear is not food.".into()),
+                        Material::Carcass => Err("The carcass must be cooked.".into()),
                         Material::Clay => Err("Unfired clay is not food.".into()),
                         Material::Bowl => Err("A bowl is not food.".into()),
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
@@ -375,7 +408,11 @@ impl World {
                 } else if self.pile_count(actor.cell, *material) == 0
                     && (!matches!(
                         *material,
-                        Material::Stone | Material::Clay | Material::Bowl | Material::Spear
+                        Material::Stone
+                            | Material::Clay
+                            | Material::Bowl
+                            | Material::Spear
+                            | Material::Carcass
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -493,7 +530,11 @@ impl World {
         for ((cell, material), mut claims) in groups {
             let ground = if matches!(
                 material,
-                Material::Stone | Material::Clay | Material::Bowl | Material::Spear
+                Material::Stone
+                    | Material::Clay
+                    | Material::Bowl
+                    | Material::Spear
+                    | Material::Carcass
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1347,6 +1388,189 @@ impl World {
                 "You bind a stone and a branch into a spear.",
                 results,
             );
+        }
+    }
+
+    fn apply_hunts(&mut self, mut hunts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        hunts.sort_by_key(|intent| intent.actor_id);
+        for intent in hunts {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self
+                .loose_ids(actor.id, Material::Spear)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
+            {
+                let message = if self.loose_ids(actor.id, Material::Spear).is_empty() {
+                    "You are not carrying a spear."
+                } else {
+                    "The spear's point is not hardened."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            }
+            let Some(deer) = self.deer.clone() else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no deer to hunt.",
+                    results,
+                );
+                continue;
+            };
+            let dist = crate::model::chebyshev(actor.cell, deer.cell);
+            if dist > 1 {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The deer is not close enough to hunt.",
+                    results,
+                );
+                continue;
+            }
+            if dist == 0 {
+                self.bring_down(&intent, deer.cell, None, results);
+                continue;
+            }
+            let (x, y) = crate::model::cell_xy(deer.cell);
+            let subject = format!("{x},{y}:deer");
+            let hash = contest_hash(self.seed, self.time, "hunt", &subject, actor.id);
+            let draw = Some(Draw {
+                tag: "hunt".into(),
+                subject,
+                value: hash,
+            });
+            match hash % 3 {
+                0 => self.bring_down(&intent, deer.cell, draw, results),
+                1 => {
+                    self.flee_deer(actor.cell);
+                    let name = self.name_of(actor.id);
+                    self.emit(
+                        format!("{name} misses the deer. It moves off."),
+                        Scope::Cell(deer.cell),
+                        vec![actor.id],
+                        vec![deer.cell],
+                        vec![],
+                        vec![],
+                        draw,
+                    );
+                    self.finish(
+                        intent.command_id,
+                        actor.id,
+                        false,
+                        "You miss the deer. It moves off.",
+                        results,
+                    );
+                }
+                _ => {
+                    self.flee_deer(actor.cell);
+                    let name = self.name_of(actor.id);
+                    self.emit(
+                        format!("The deer bolts from {name}'s spear."),
+                        Scope::Cell(deer.cell),
+                        vec![actor.id],
+                        vec![deer.cell],
+                        vec![],
+                        vec![],
+                        draw,
+                    );
+                    self.finish(
+                        intent.command_id,
+                        actor.id,
+                        false,
+                        "The deer bolts. Your spear does not land.",
+                        results,
+                    );
+                }
+            }
+        }
+    }
+
+    /// A hardened spear on the deer's own cell. No draw: the point is already there.
+    /// The next cell is the even case, and that success carries the draw.
+    fn bring_down(
+        &mut self,
+        intent: &Intent,
+        deer_cell: crate::model::CellId,
+        draw: Option<Draw>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let name = self.name_of(intent.actor_id);
+        self.tracks.insert(deer_cell);
+        self.deer = None;
+        let id = self.mint_item(Material::Carcass, 0, deer_cell, None, Role::Loose);
+        self.emit(
+            format!("{name} brings the deer down."),
+            Scope::Cell(deer_cell),
+            vec![intent.actor_id],
+            vec![deer_cell],
+            vec![id],
+            vec![],
+            draw,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            intent.actor_id,
+            true,
+            "You bring the deer down. A carcass lies where it stood.",
+            results,
+        );
+    }
+
+    /// One step along the trail, away from the hunter when that choice is clear.
+    /// The route step for this tick does not also fire.
+    fn flee_deer(&mut self, hunter: crate::model::CellId) {
+        let Some(deer) = self.deer.clone() else {
+            return;
+        };
+        let n = crate::model::DEER_ROUTE.len();
+        let forward_at = (deer.route_at + 1) % n;
+        let back_at = (deer.route_at + n - 1) % n;
+        let forward = crate::model::cell_id(
+            crate::model::DEER_ROUTE[forward_at].0,
+            crate::model::DEER_ROUTE[forward_at].1,
+        );
+        let back = crate::model::cell_id(
+            crate::model::DEER_ROUTE[back_at].0,
+            crate::model::DEER_ROUTE[back_at].1,
+        );
+        let (Some(forward), Some(back)) = (forward, back) else {
+            return;
+        };
+        let mut dest_at = if crate::model::chebyshev(forward, hunter)
+            > crate::model::chebyshev(back, hunter)
+        {
+            forward_at
+        } else if crate::model::chebyshev(back, hunter) > crate::model::chebyshev(forward, hunter) {
+            back_at
+        } else {
+            forward_at
+        };
+        let mut dest = crate::model::cell_id(
+            crate::model::DEER_ROUTE[dest_at].0,
+            crate::model::DEER_ROUTE[dest_at].1,
+        )
+        .unwrap_or(deer.cell);
+        if dest == hunter {
+            dest_at = if dest_at == forward_at {
+                back_at
+            } else {
+                forward_at
+            };
+            dest = crate::model::cell_id(
+                crate::model::DEER_ROUTE[dest_at].0,
+                crate::model::DEER_ROUTE[dest_at].1,
+            )
+            .unwrap_or(deer.cell);
+        }
+        self.tracks.insert(deer.cell);
+        if let Some(deer) = self.deer.as_mut() {
+            deer.cell = dest;
+            deer.route_at = dest_at;
+            deer.held = true;
         }
     }
 
