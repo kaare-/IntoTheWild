@@ -2964,12 +2964,29 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         "{before}"
     );
     assert!(!before.contains("are gone"), "{before}");
+    let early = world.observe(near).unwrap().text;
+    assert!(early.contains("Berries lie here"), "{early}");
+    assert!(!early.contains("eating the berries"), "{early}");
+    let mut saw_eating = false;
     for _ in 0..12 {
         if world.material_tally(Material::Berry) == 0 {
             break;
         }
         world.step(&[]);
+        if world.deer_cell() == Some((6, 1)) && world.material_tally(Material::Berry) > 0 {
+            let text = world.observe(near).unwrap().text;
+            assert!(
+                text.contains("A deer is eating the berries here."),
+                "{text}"
+            );
+            assert!(!text.contains("Berries lie here"), "{text}");
+            assert!(!text.contains("A deer stands here."), "{text}");
+            let far_text = world.observe(far).unwrap().text;
+            assert!(!far_text.contains("eating the berries"), "{far_text}");
+            saw_eating = true;
+        }
     }
+    assert!(saw_eating);
     assert_eq!(world.material_tally(Material::Berry), 0);
     assert_eq!(world.deer_cell(), Some((6, 1)));
     let clock = world.sim_time();
@@ -2979,11 +2996,15 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     );
     assert_eq!(world.sim_time(), clock);
     assert_eq!(world.material_tally(Material::Berry), 0);
+    let gone = world.observe(near).unwrap().text;
+    assert!(!gone.contains("Berries lie here"), "{gone}");
+    assert!(!gone.contains("eating the berries"), "{gone}");
+    assert!(gone.contains("A deer stands here."), "{gone}");
     assert!(!world
-        .observe(near)
+        .observe(far)
         .unwrap()
         .text
-        .contains("Berries lie here"));
+        .contains("eating the berries"));
     assert_eq!(
         world.examine(far, ExamineTarget::Berries),
         "You see no berries from here."

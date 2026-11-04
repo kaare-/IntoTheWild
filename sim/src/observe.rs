@@ -307,7 +307,14 @@ impl World {
         {
             parts.push("The heat of the fire does not reach you.".into());
         }
-        if self.pile_count(actor.cell, Material::Berry) > 0 {
+        let deer_here = self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| deer.cell == actor.cell);
+        let berries_here = self.pile_count(actor.cell, Material::Berry) > 0;
+        if deer_here && berries_here {
+            parts.push("A deer is eating the berries here.".into());
+        } else if berries_here {
             parts.push(format!(
                 "Berries lie here, {}. They are good to eat raw.",
                 self.condition_word(self.pile_moisture(actor.cell, Material::Berry))
@@ -397,11 +404,7 @@ impl World {
                 parts.push("A spear lies here. The point is not hardened.".into());
             }
         }
-        if self
-            .deer
-            .as_ref()
-            .is_some_and(|deer| deer.cell == actor.cell)
-        {
+        if deer_here && !berries_here {
             parts.push("A deer stands here.".into());
         }
         if self.tracks.contains(&actor.cell) {
