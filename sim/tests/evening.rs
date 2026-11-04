@@ -651,6 +651,10 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Examine(ExamineTarget::Rock)
     ));
     assert!(matches!(
+        parse_attempt("examine slope").unwrap(),
+        Attempt::Examine(ExamineTarget::Slope)
+    ));
+    assert!(matches!(
         parse_attempt("gather berries").unwrap(),
         Attempt::Gather(Material::Berry)
     ));
@@ -2817,4 +2821,41 @@ fn examine_rock_names_the_shelter_you_can_see() {
         .allowed_actions
         .iter()
         .any(|action| action == "examine rock"));
+}
+
+#[test]
+fn examine_slope_names_the_open_ground_you_can_see() {
+    let mut world = world_at(10_000);
+    let under = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let clock = world.sim_time();
+    let looked = world.observe(under).unwrap();
+    assert!(looked.text.contains("North: slope."), "{}", looked.text);
+    let slope = world.examine(under, ExamineTarget::Slope);
+    assert_eq!(world.sim_time(), clock);
+    assert_eq!(
+        slope,
+        "The slope is open ground. It runs north from where you stand."
+    );
+    assert!(looked
+        .allowed_actions
+        .iter()
+        .any(|action| action == "examine slope"));
+
+    let on_it = world.spawn_at("On", "o", 2, 0).unwrap();
+    assert_eq!(
+        world.examine(on_it, ExamineTarget::Slope),
+        "The slope is open ground. It runs east and west from where you stand."
+    );
+
+    let far = world.spawn_at("Far", "f", 4, 3).unwrap();
+    assert_eq!(
+        world.examine(far, ExamineTarget::Slope),
+        "You cannot see a slope from here."
+    );
+    assert!(!world
+        .observe(far)
+        .unwrap()
+        .allowed_actions
+        .iter()
+        .any(|action| action == "examine slope"));
 }

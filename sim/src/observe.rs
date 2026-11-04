@@ -187,6 +187,7 @@ impl World {
             ExamineTarget::Deer => self.examine_deer(actor_id),
             ExamineTarget::Tracks => self.examine_tracks(actor_id),
             ExamineTarget::Rock => self.examine_rock(actor_id),
+            ExamineTarget::Slope => self.examine_slope(actor_id),
             ExamineTarget::Person(name) => {
                 if actor.name.eq_ignore_ascii_case(&name) {
                     return self.self_text(actor_id);
@@ -1206,6 +1207,65 @@ impl World {
         }
     }
 
+    fn examine_slope(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let visible = self.visible_cell_ids(viewer);
+        if !visible
+            .iter()
+            .any(|cell| self.cell(*cell).region == crate::model::Region::Slope)
+        {
+            return "You cannot see a slope from here.".into();
+        }
+        let (ox, oy) = cell_xy(origin);
+        let mut ways = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(ox + dx, oy + dy) else {
+                continue;
+            };
+            if visible.contains(&dest) && self.cell(dest).region == crate::model::Region::Slope {
+                ways.push(dir.word());
+            }
+        }
+        if ways.is_empty() {
+            let mut north = false;
+            let mut east = false;
+            let mut south = false;
+            let mut west = false;
+            for cell in &visible {
+                if self.cell(*cell).region != crate::model::Region::Slope {
+                    continue;
+                }
+                let (x, y) = cell_xy(*cell);
+                north |= y < oy;
+                east |= x > ox;
+                south |= y > oy;
+                west |= x < ox;
+            }
+            for (on, word) in [
+                (north, "north"),
+                (east, "east"),
+                (south, "south"),
+                (west, "west"),
+            ] {
+                if on {
+                    ways.push(word);
+                }
+            }
+        }
+        let way = match ways.len() {
+            0 => "here".to_string(),
+            1 => ways[0].to_string(),
+            2 => format!("{} and {}", ways[0], ways[1]),
+            _ => format!(
+                "{}, and {}",
+                ways[..ways.len() - 1].join(", "),
+                ways[ways.len() - 1]
+            ),
+        };
+        format!("The slope is open ground. It runs {way} from where you stand.")
+    }
+
     fn examine_deer(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let Some(deer) = self.deer.as_ref() else {
@@ -1777,6 +1837,13 @@ impl World {
             .any(|cell| self.cell(*cell).rock)
         {
             actions.push("examine rock".into());
+        }
+        if self
+            .visible_cell_ids(actor_id)
+            .iter()
+            .any(|cell| self.cell(*cell).region == crate::model::Region::Slope)
+        {
+            actions.push("examine slope".into());
         }
         if self
             .visible_cell_ids(actor_id)

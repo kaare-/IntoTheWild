@@ -5,7 +5,7 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|carcass|fire|deer|tracks|log|frame|rock|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|carcass|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
 gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|clay|bowl|spear|carcass
@@ -160,6 +160,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "log" => ExamineTarget::Log,
         "frame" | "shelter" | "roof" => ExamineTarget::Frame,
         "rock" | "overhang" | "rock overhang" => ExamineTarget::Rock,
+        "slope" | "the slope" => ExamineTarget::Slope,
         other => ExamineTarget::Person(other.to_string()),
     }
 }

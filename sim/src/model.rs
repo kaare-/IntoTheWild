@@ -187,6 +187,7 @@ pub enum ExamineTarget {
     Deer,
     Tracks,
     Rock,
+    Slope,
     Person(String),
 }
 
