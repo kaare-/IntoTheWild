@@ -2983,6 +2983,25 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
             assert!(!text.contains("A deer stands here."), "{text}");
             let far_text = world.observe(far).unwrap().text;
             assert!(!far_text.contains("eating the berries"), "{far_text}");
+            let count = world.material_tally(Material::Berry);
+            let berries = world.examine(near, ExamineTarget::Berries);
+            assert!(berries.contains("A deer is eating them."), "{berries}");
+            if count == 1 {
+                assert!(
+                    berries.starts_with("A handful of berries is in contact with the ground here"),
+                    "{berries}"
+                );
+                assert!(!berries.contains("pile"), "{berries}");
+            } else {
+                assert!(
+                    berries.contains(&format!("A pile of {count} handfuls of berries")),
+                    "{berries}"
+                );
+            }
+            assert_eq!(
+                world.examine(far, ExamineTarget::Berries),
+                "You see no berries from here."
+            );
             saw_eating = true;
         }
     }
@@ -3044,13 +3063,21 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
 fn examine_berries_does_not_blame_a_deer_that_did_not_eat_them() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();
-    for i in 0..4 {
+    for i in 0..3 {
         world.step(&[cmd(
             &format!("g{i}"),
             near,
             Attempt::Gather(Material::Berry),
         )]);
     }
+    let one = world.examine(near, ExamineTarget::Berries);
+    assert!(
+        one.starts_with("A handful of berries is in contact with the ground here"),
+        "{one}"
+    );
+    assert!(!one.contains("pile"), "{one}");
+    assert!(!one.contains("deer"), "{one}");
+    world.step(&[cmd("g3", near, Attempt::Gather(Material::Berry))]);
     for (i, dir) in [Dir::West, Dir::West, Dir::West].into_iter().enumerate() {
         world.step(&[cmd(&format!("w{i}"), near, Attempt::Move(dir))]);
     }

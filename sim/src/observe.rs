@@ -931,6 +931,33 @@ impl World {
                         self.condition_word(self.pile_moisture(cell, material)),
                         self.rain_reaches_phrase(cell)
                     ));
+                } else if material == Material::Berry {
+                    let eating = if self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
+                        " A deer is eating them."
+                    } else {
+                        ""
+                    };
+                    let (kind, verb) = food_kind(material);
+                    let head = if count == 1 {
+                        format!(
+                            "A handful of berries is in contact with the ground {}",
+                            self.place_phrase(origin, cell)
+                        )
+                    } else {
+                        format!(
+                            "A pile of {count} {} is in contact with the ground {}",
+                            pile_noun(material, count),
+                            self.place_phrase(origin, cell)
+                        )
+                    };
+                    lines.push(format!(
+                        "{head}.{eating} The {kind} {verb} {}. {}{}{}{}",
+                        self.condition_word(self.pile_moisture(cell, material)),
+                        self.rain_reaches_phrase(cell),
+                        self.heavier_rain_clause(cell, material),
+                        self.rotting_clause(cell, material),
+                        food_clause(material)
+                    ));
                 } else {
                     let noun = pile_noun(material, count);
                     let (kind, verb) = food_kind(material);
