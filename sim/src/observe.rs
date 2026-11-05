@@ -975,7 +975,7 @@ impl World {
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
                             line.push_str(&format!(
-                                ", and the line of them crosses the {from} floor, which is still in sight, and passes on out of view."
+                                ", cross the {from} floor, which is still in sight, and pass on out of view."
                             ));
                         }
                         break;
