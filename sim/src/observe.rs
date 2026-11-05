@@ -1178,7 +1178,7 @@ impl World {
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
-    /// The deer is the first thing on this line. The next step is a floor, not a list.
+    /// The deer is the first thing on this line. The step you take is not named a floor.
     fn deer_leads_this_way(&self, origin: CellId, dir: Dir) -> Option<String> {
         if !self.open_wood_keeps_its_way(origin) {
             return None;
@@ -1198,16 +1198,14 @@ impl World {
         let (x, y) = cell_xy(origin);
         let (dx, dy) = dir.delta();
         let dest = cell_id(x + dx, y + dy)?;
-        let step = self.cell(dest).region.word();
-        let prints = if self.tracks.contains(&dest) {
-            " with hoofprints on it"
+        let taken = if self.tracks.contains(&dest) {
+            "The step you take has hoofprints on it"
         } else {
-            ""
+            "The step you take"
         };
         Some(format!(
-            "{}: past that wood, the deer stands on the {way} floor, and hoofprints mark that floor. The next step {} is a {step}{prints}, and the same wood is {side} of that step.",
-            capitalize(dir.word()),
-            dir.word()
+            "{}: past that wood, the deer stands on the {way} floor, and hoofprints mark that floor. {taken}, and the same wood is {side} of that step.",
+            capitalize(dir.word())
         ))
     }
 
@@ -1250,7 +1248,7 @@ impl World {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if let Some((_, way)) = self.deer_stands_past_this_wood(origin, corner) {
                 line.push_str(&format!(
-                    " Past that wood, to its {way}, is the {way} floor. Hoofprints mark that floor. The deer stands there."
+                    " Past that wood is the {way} floor. Hoofprints mark that floor. The deer stands there."
                 ));
                 return Some(line);
             }
@@ -1260,7 +1258,7 @@ impl World {
                     let left_sight = self.deer_entered_west_of_this_wood(origin, corner);
                     if standing.is_some() || left_sight {
                         line.push_str(&format!(
-                            " Past that wood, to its {wood_side}, is the {wood_side} floor. The deer has left it. Hoofprints mark that ground."
+                            " Past that wood is the {wood_side} floor. The deer has left it. Hoofprints mark that ground."
                         ));
                         if let Some(step) = standing {
                             line.push_str(&format!(
