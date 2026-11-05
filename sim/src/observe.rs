@@ -1155,8 +1155,9 @@ impl World {
         self.deer_past_the_wood(origin).is_some()
     }
 
-    /// Where the deer stands past the wood, without naming that floor again.
-    fn deer_past_the_wood(&self, origin: CellId) -> Option<String> {
+    /// Where the deer stands past the wood. The ground is open ground.
+    /// "In the open" is the sky, so this phrase does not say it.
+    fn deer_past_the_wood(&self, origin: CellId) -> Option<&'static str> {
         Dir::all().into_iter().find_map(|dir| {
             let (wood, _) = self.corner_wood(origin, dir)?;
             let named_earlier = Dir::all()
@@ -1169,9 +1170,8 @@ impl World {
             if named_earlier {
                 return None;
             }
-            let (stood, way) = self.deer_stands_past_this_wood(origin, wood)?;
-            let cover = self.cover_phrase(stood);
-            Some(format!("past that wood, to its {way}, {cover}"))
+            self.deer_stands_past_this_wood(origin, wood)?;
+            Some("on open ground")
         })
     }
 
@@ -1213,10 +1213,9 @@ impl World {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
-            if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
-                let cover = self.cover_phrase(stood);
+            if let Some((_, way)) = self.deer_stands_past_this_wood(origin, corner) {
                 line.push_str(&format!(
-                    " Past that wood, to its {way}, the deer stands {cover}."
+                    " Past that wood, to its {way}, the deer stands on open ground."
                 ));
                 return Some(line);
             }
