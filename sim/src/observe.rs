@@ -974,16 +974,16 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
-                            let marked = "mark the deer's walk";
+                            let marked = "mark the deer's walk ";
                             if let Some(at) = line.find(marked) {
-                                line.insert_str(at + marked.len(), ", which goes");
+                                let rest = line[at + marked.len()..].to_string();
+                                if let Some((go, place)) = rest.split_once(" off the ") {
+                                    line.truncate(at + "mark the deer's walk".len());
+                                    line.push_str(&format!(
+                                        ", which, from the {place}, goes {go} across the {from} floor and turns {dir} out of sight."
+                                    ));
+                                }
                             }
-                            if let Some(at) = line.find(" off ") {
-                                line.replace_range(at..at + " off ".len(), " from ");
-                            }
-                            line.push_str(&format!(
-                                " across the {from} floor and turns {dir} out of sight."
-                            ));
                         }
                         break;
                     }
