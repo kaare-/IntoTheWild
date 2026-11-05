@@ -977,7 +977,9 @@ impl World {
                             let marked = "mark the deer's walk";
                             if let Some(at) = line.find(marked) {
                                 line.truncate(at + marked.len());
-                                line.push_str(&format!(", which turns {dir} out of sight."));
+                                line.push_str(&format!(
+                                    ", which turns {dir} off the floor still in sight, out of sight."
+                                ));
                             }
                         }
                         break;
