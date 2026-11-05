@@ -3687,18 +3687,24 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_south.text
     );
-    let gone = on_south
-        .text
-        .find("The berries that were here are gone.")
-        .expect(&on_south.text);
     let ate_floor = on_south
         .text
-        .find("The deer ate the berries that were here, under the rock overhang.")
+        .find("The deer ate the berries that were here.")
         .expect(&on_south.text);
     let pot = on_south.text.find("A pot sits here").expect(&on_south.text);
     let around = on_south.text.find("Around you:").expect(&on_south.text);
+    assert!(ate_floor < pot && ate_floor < around, "{}", on_south.text);
     assert!(
-        gone < ate_floor && ate_floor < pot && ate_floor < around,
+        !on_south
+            .text
+            .contains("The berries that were here are gone"),
+        "{}",
+        on_south.text
+    );
+    assert!(
+        !on_south
+            .text
+            .contains("ate the berries that were here, under the rock"),
         "{}",
         on_south.text
     );
@@ -3748,7 +3754,12 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         unseen
             .text
-            .contains("The berries that were here are gone. A deer ate them."),
+            .contains("A deer ate the berries that were here."),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        !unseen.text.contains("The berries that were here are gone"),
         "{}",
         unseen.text
     );

@@ -377,14 +377,13 @@ impl World {
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
-                    if self.direction_names_deer(actor.cell, deer_cell)
+                    if let Some(meal) = self.deer_on_the_named_floor_ate(actor.cell) {
+                        parts.push(meal);
+                    } else if self.direction_names_deer(actor.cell, deer_cell)
                         || self.neighbor_line_names_deer(actor.cell, deer_cell)
                         || self.south_line_stands_the_deer(actor.cell)
                     {
                         parts.push("The berries that were here are gone.".into());
-                        if let Some(meal) = self.deer_on_the_named_floor_ate(actor.cell) {
-                            parts.push(meal);
-                        }
                     } else {
                         let place = self.cell_offset(actor.cell, deer_cell);
                         parts.push(format!(
@@ -400,7 +399,7 @@ impl World {
                         }
                     }
                 } else {
-                    parts.push("The berries that were here are gone. A deer ate them.".into());
+                    parts.push("A deer ate the berries that were here.".into());
                 }
             } else {
                 parts.push("The berries that were here are gone.".into());
@@ -1152,10 +1151,7 @@ impl World {
         {
             return None;
         }
-        Some(format!(
-            "The deer ate the berries that were here, {}.",
-            self.cover_phrase(origin)
-        ))
+        Some("The deer ate the berries that were here.".into())
     }
 
     /// South already says this deer stands on the south floor, so the look
