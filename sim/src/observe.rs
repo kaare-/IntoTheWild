@@ -993,8 +993,9 @@ impl World {
                 }) else {
                     return format!("{placed}.");
                 };
+                let after_meal = self.walk_after_the_berries_here(origin);
                 line = format!(
-                    "{placed}, and walked {dir} off the {from_ground} on the wood's {wood_side} side, onto the {dir} floor"
+                    "{placed}, and {after_meal}walked {dir} off the {from_ground} on the wood's {wood_side} side, onto the {dir} floor"
                 );
                 if left_sight {
                     if deer_here {
@@ -1144,6 +1145,18 @@ impl World {
         Some(step)
     }
 
+    /// The walk from this cell began after the deer ate the berries here.
+    fn walk_after_the_berries_here(&self, origin: CellId) -> &'static str {
+        if self.pile_count(origin, Material::Berry) == 0
+            && self.spent_berries.contains(&origin)
+            && self.deer_ate_berries.contains(&origin)
+        {
+            "after the deer ate the berries here, "
+        } else {
+            ""
+        }
+    }
+
     /// South has named the floor the deer stands on. The eating sentence
     /// points at that floor and does not count the cells.
     fn deer_on_the_named_floor_ate(&self, origin: CellId) -> Option<String> {
@@ -1159,7 +1172,8 @@ impl World {
             self.deer_stands_on_next_floor(origin, entered)
         })?;
         Some(format!(
-            "The deer on the {step} floor ate the berries that were here."
+            "The deer ate the berries that were here, {}, and then walked to the {step} floor.",
+            self.cover_phrase(origin)
         ))
     }
 

@@ -3693,7 +3693,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&on_south.text);
     let ate_floor = on_south
         .text
-        .find("The deer on the south floor ate the berries that were here.")
+        .find("The deer ate the berries that were here, under the rock overhang, and then walked to the south floor.")
         .expect(&on_south.text);
     let onto = on_south
         .text
@@ -3746,7 +3746,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on that wood, and walked south off the valley floor on the wood's west side, onto the south floor, still in sight. The deer went on from the south floor onto the valley floor on the south floor's west side, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
+        .find("The deer left hoofprints on that wood, and after the deer ate the berries here, walked south off the valley floor on the wood's west side, onto the south floor, still in sight. The deer went on from the south floor onto the valley floor on the south floor's west side, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3803,8 +3803,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     let after_compass = unseen.text.split("Around you:").nth(1).unwrap_or("");
+    let after_without_the_meal = after_compass
+        .replace("there", "")
+        .replace("ate the berries here", "");
     assert!(
-        !after_compass.replace("there", "").contains("here"),
+        !after_without_the_meal.contains("here"),
         "{}",
         unseen.text
     );
