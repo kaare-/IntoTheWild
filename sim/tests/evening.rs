@@ -3642,7 +3642,21 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     assert!(
-        !unseen.text.contains("Hoofprints mark the ground."),
+        unseen.text.contains("Hoofprints mark the ground here."),
+        "{}",
+        unseen.text
+    );
+    let ground_prints = unseen
+        .text
+        .find("Hoofprints mark the ground here.")
+        .expect(&unseen.text);
+    let bark_at = unseen
+        .text
+        .find("A pile of bark lies here.")
+        .expect(&unseen.text);
+    let around_at = unseen.text.find("Around you:").expect(&unseen.text);
+    assert!(
+        bark_at < ground_prints && ground_prints < around_at && around_at < prints_gone,
         "{}",
         unseen.text
     );

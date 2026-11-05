@@ -500,7 +500,9 @@ impl World {
                 parts.push("A spear lies here. The point is not hardened.".into());
             }
         }
-        if self.tracks.contains(&actor.cell) && !self.prints_stay_on_the_wood(actor.cell) {
+        if self.tracks.contains(&actor.cell) && self.prints_stay_on_the_wood(actor.cell) {
+            parts.push("Hoofprints mark the ground here.".into());
+        } else if self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
         let others = self.others_here(actor_id);
