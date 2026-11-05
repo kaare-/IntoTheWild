@@ -925,7 +925,7 @@ impl World {
                     .strip_prefix("west, then ")
                     .map(|rest| {
                         format!(
-                            "one step farther west than the valley floor just named, then {rest}"
+                            "onto the cell west of the wood, not the open cell west of that valley floor, then {rest}"
                         )
                     })
                     .unwrap_or(way);
