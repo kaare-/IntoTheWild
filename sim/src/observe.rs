@@ -977,7 +977,7 @@ impl World {
                             let head = "Hoofprints on that wood mark";
                             if let Some(rest) = line.strip_prefix(head) {
                                 line = format!(
-                                    "Hoofprints on that wood and on the {from} floor mark{rest}."
+                                    "Hoofprints on that wood and on the {from} floor mark{rest}, onto the {from} floor."
                                 );
                             }
                         }
