@@ -975,7 +975,7 @@ impl World {
                         if line.ends_with(still) {
                             line.truncate(line.len() - still.len());
                             line.push_str(&format!(
-                                ".\nPast the {from} floor, you lose sight of the deer."
+                                ".\nOne step {dir} of the {from} floor, you lose sight of the deer."
                             ));
                         }
                         break;

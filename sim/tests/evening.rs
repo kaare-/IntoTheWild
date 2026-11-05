@@ -3809,7 +3809,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor.\nPast the south floor, you lose sight of the deer.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor.\nOne step west of the south floor, you lose sight of the deer.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3835,7 +3835,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(
         unseen
             .text
-            .matches("Past the south floor, you lose sight of the deer")
+            .matches("One step west of the south floor, you lose sight of the deer")
             .count(),
         1
     );
@@ -3851,6 +3851,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert_eq!(unseen.text.matches("the deer went on").count(), 0);
     assert!(!unseen.text.contains("From there"), "{}", unseen.text);
+    assert!(
+        !unseen.text.to_lowercase().contains("past the south floor"),
+        "{}",
+        unseen.text
+    );
     assert!(
         !unseen.text.contains("went on out of sight"),
         "{}",
@@ -3900,7 +3905,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor.\nPast the south floor, you lose sight of the deer.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor.\nOne step west of the south floor, you lose sight of the deer.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
