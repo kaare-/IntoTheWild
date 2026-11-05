@@ -937,14 +937,12 @@ impl World {
             if let Some(from) = seen_floor {
                 if left_sight {
                     line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the floor {dir} of the {from} floor"
+                        " The deer went on from the {from} floor onto the floor {dir} of the {from} floor, out of sight"
                     ));
-                    if deer_here {
-                        line.push_str(&format!(
-                            ", and the deer is on the floor {dir} of the {from} floor, out of sight."
-                        ));
+                    if self.tracks.contains(&cell) && self.cell(cell).trail {
+                        line.push_str(", and left hoofprints on a trail there.");
                     } else {
-                        line.push_str(", out of sight.");
+                        line.push('.');
                     }
                     break;
                 }
