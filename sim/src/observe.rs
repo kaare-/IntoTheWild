@@ -1200,8 +1200,10 @@ impl World {
         let ground = self.cell(stood).region.word();
         let step = bits.join(", ");
         Some(format!(
-            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side. This way is {step}. To the {side}, that ground reaches the same wood.",
-            capitalize(dir.word())
+            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side. One step {} is {step}. {} of that step is the same wood.",
+            capitalize(dir.word()),
+            dir.word(),
+            capitalize(side)
         ))
     }
 
