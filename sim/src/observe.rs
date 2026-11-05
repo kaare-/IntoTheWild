@@ -971,11 +971,6 @@ impl World {
                     let ground = self.cell(cell).region.word();
                     let same_walk = line.ends_with("still in sight.");
                     if same_walk {
-                        let onto = format!(", onto the {from} floor, still in sight.");
-                        if line.ends_with(&onto) {
-                            line.truncate(line.len() - onto.len());
-                            line.push('.');
-                        }
                         break;
                     }
                     line.push_str(&format!(
