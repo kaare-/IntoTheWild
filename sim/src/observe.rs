@@ -971,11 +971,11 @@ impl World {
                     let ground = self.cell(cell).region.word();
                     let same_walk = line.ends_with("still in sight.");
                     if same_walk {
-                        let still = ", still in sight.";
-                        if line.ends_with(still) {
-                            line.truncate(line.len() - still.len());
+                        let onto = format!(", onto the {from} floor, still in sight.");
+                        if line.ends_with(&onto) {
+                            line.truncate(line.len() - onto.len());
                             line.push_str(&format!(
-                                ", which is still in sight, then into the open {dir} of that floor, and the deer is no longer in sight."
+                                ", as far as the {from} floor, which is still in sight.\nThe deer is no longer in sight."
                             ));
                         }
                         break;
