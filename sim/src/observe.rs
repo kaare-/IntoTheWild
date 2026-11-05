@@ -919,10 +919,16 @@ impl World {
 
     fn prints_left_behind(&self, origin: CellId) -> String {
         match self.walked_off_the_wood(origin) {
-            Some(way) => format!(
-                "The deer left hoofprints on that rotting wood, south of that west, as well as under this rock, and from that wood it walked off to the {way}."
-            ),
-            None => "The deer left hoofprints on that rotting wood, south of that west, as well as under this rock.".into(),
+            Some(way) => {
+                let onward = way
+                    .strip_prefix("west, then ")
+                    .map(|rest| format!("away from them, west of the wood, then {rest}"))
+                    .unwrap_or(way);
+                format!(
+                    "The deer left hoofprints on that rotting wood, south of those prints, and from that wood it walked off {onward}."
+                )
+            }
+            None => "The deer left hoofprints on that rotting wood, south of those prints.".into(),
         }
     }
 
