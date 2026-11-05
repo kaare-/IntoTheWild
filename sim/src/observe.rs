@@ -925,28 +925,39 @@ impl World {
         if steps.len() < 2 {
             return format!("{placed}.");
         }
-        let mut onward = String::new();
+        let mut line = String::new();
         let mut prev = steps[0];
+        let mut first = true;
         for cell in steps.iter().copied().skip(1) {
             let Some(dir) = orthogonal_step(prev, cell) else {
                 return format!("{placed}.");
             };
             let ground = self.cell(cell).region.word();
-            if onward.is_empty() {
-                onward = format!("{dir} onto {ground}");
+            let left_sight = chebyshev(origin, cell) > self.tuning.sight;
+            if first {
+                line =
+                    format!("{placed}, and from that valley floor it walked {dir} onto {ground}");
+                first = false;
             } else {
-                onward.push_str(", then ");
-                onward.push_str(dir);
-                onward.push_str(" onto ");
-                onward.push_str(ground);
+                line.push_str(&format!(" Then it walked {dir} onto {ground}"));
             }
-            prev = cell;
-            if chebyshev(origin, cell) > self.tuning.sight {
-                onward.push_str(", out of sight");
+            if left_sight {
+                line.push_str(", out of sight.");
                 break;
             }
+            line.push_str(" that is still in sight.");
+            if self.tracks.contains(&cell)
+                && self.deer.as_ref().is_some_and(|deer| deer.cell != cell)
+            {
+                line.push_str(" Hoofprints mark that ground, and the deer is not there.");
+            }
+            prev = cell;
         }
-        format!("{placed}, and from that valley floor it walked {onward}.")
+        if line.is_empty() {
+            format!("{placed}.")
+        } else {
+            line
+        }
     }
 
     /// Cells the deer stepped after the rotting wood, through the step that

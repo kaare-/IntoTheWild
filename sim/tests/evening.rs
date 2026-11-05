@@ -3643,7 +3643,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on that wood, and from that valley floor it walked south onto valley floor, then west onto valley floor, out of sight.")
+        .find("The deer left hoofprints on that wood, and from that valley floor it walked south onto valley floor that is still in sight. Hoofprints mark that ground, and the deer is not there. Then it walked west onto valley floor, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3699,13 +3699,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
+    let after_compass = unseen.text.split("Around you:").nth(1).unwrap_or("");
     assert!(
-        !unseen
-            .text
-            .split("Around you:")
-            .nth(1)
-            .unwrap_or("")
-            .contains("here"),
+        !after_compass.replace("there", "").contains("here"),
         "{}",
         unseen.text
     );
@@ -3727,6 +3723,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         !unseen.text.contains("one step farther west"),
+        "{}",
+        unseen.text
+    );
+    assert_eq!(unseen.text.matches("out of sight").count(), 1);
+    assert_eq!(unseen.text.matches("that is still in sight").count(), 1);
+    assert!(
+        !unseen.text.contains("onto valley floor, then"),
         "{}",
         unseen.text
     );
