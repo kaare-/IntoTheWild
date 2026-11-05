@@ -975,8 +975,12 @@ impl World {
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
                             line.push_str(&format!(
-                                ", cross the {from} floor, which is still in sight, and pass on out of view."
+                                ", crosses the {from} floor, which is still in sight, and passes on out of view."
                             ));
+                            let plural = "Hoofprints on that wood mark ";
+                            if let Some(rest) = line.strip_prefix(plural) {
+                                line = format!("A line of hoofprints on that wood marks {rest}");
+                            }
                         }
                         break;
                     }
