@@ -937,7 +937,7 @@ impl World {
             let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if let Some(from) = seen_floor {
                 line.push_str(&format!(
-                    " The deer went on from the {from} floor, {dir}, onto {ground}"
+                    " The deer went on from the {from} floor, {dir}, onto the {dir} floor"
                 ));
             } else {
                 line =
@@ -945,7 +945,9 @@ impl World {
             }
             if left_sight {
                 if deer_here {
-                    line.push_str(", and the deer is there, out of sight.");
+                    line.push_str(&format!(
+                        ", and the deer is on the {dir} floor, out of sight."
+                    ));
                 } else {
                     line.push_str(", out of sight.");
                 }
