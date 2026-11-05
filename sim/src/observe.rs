@@ -219,12 +219,23 @@ impl World {
         if let Some(work) = self.work_view(actor_id) {
             lines.push(work.detail);
         }
+        let postpone_deer = self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| self.look_already_turns_toward(actor.cell, deer.cell));
         if let Some(deer) = self.deer_look_line(actor_id) {
-            lines.push(deer);
+            if !postpone_deer {
+                lines.push(deer);
+            }
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
+        }
+        if postpone_deer {
+            if let Some(deer) = self.deer_look_line(actor_id) {
+                lines.push(deer);
+            }
         }
         lines.join("\n")
     }
@@ -683,7 +694,7 @@ impl World {
         if self.open_loose_branches(deer.cell) {
             let place = if self.look_already_turns_toward(origin, deer.cell) {
                 format!(
-                    "on the rotting wood there, {}",
+                    "on the rotting wood in that corner, {}",
                     self.cover_phrase(deer.cell)
                 )
             } else {
@@ -834,7 +845,37 @@ impl World {
                 if people == 1 { "person" } else { "people" }
             ));
         }
-        format!("{}: {}.", capitalize(dir.word()), bits.join(", "))
+        let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
+        match self.corner_beyond(origin, dir) {
+            Some(corner) => format!("{line} {corner}"),
+            None => line,
+        }
+    }
+
+    /// The deer and the rotting wood share the diagonal just past this edge.
+    fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
+        let (x, y) = cell_xy(origin);
+        let (dx, dy) = dir.delta();
+        let sides: [(i32, i32, &str); 2] = if dx != 0 {
+            [(0, -1, "north"), (0, 1, "south")]
+        } else {
+            [(-1, 0, "west"), (1, 0, "east")]
+        };
+        for (px, py, side) in sides {
+            let Some(corner) = cell_id(x + dx + px, y + dy + py) else {
+                continue;
+            };
+            let deer_there = self
+                .deer
+                .as_ref()
+                .is_some_and(|deer| deer.cell == corner && self.open_loose_branches(corner));
+            if deer_there && chebyshev(origin, corner) <= self.tuning.sight {
+                return Some(format!(
+                    "The corner beyond, to the {side}, has the rotting wood and the deer."
+                ));
+            }
+        }
+        None
     }
 
     fn examine_clay(&self, viewer: ActorId) -> String {
