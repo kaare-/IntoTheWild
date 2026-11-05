@@ -3625,7 +3625,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         unseen.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the cell the deer entered."
+            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is valley floor. The deer has left it. Hoofprints mark that ground."
         ),
         "{}",
         unseen.text
@@ -3727,6 +3727,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         !unseen.text.contains("one step farther west"),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        !unseen.text.contains("the cell the deer entered"),
         "{}",
         unseen.text
     );

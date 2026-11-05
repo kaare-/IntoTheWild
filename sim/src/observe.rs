@@ -1034,7 +1034,9 @@ impl World {
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if self.deer_entered_west_of_this_wood(origin, corner) {
-                line.push_str(" Past that wood, to its west, is the cell the deer entered.");
+                line.push_str(
+                    " Past that wood, to its west, is valley floor. The deer has left it. Hoofprints mark that ground.",
+                );
             }
             Some(line)
         }
@@ -1057,7 +1059,7 @@ impl World {
         let Some(west_of_wood) = cell_id(wx - 1, wy) else {
             return false;
         };
-        if entered != west_of_wood {
+        if entered != west_of_wood || !self.tracks.contains(&entered) {
             return false;
         }
         let (ox, oy) = cell_xy(origin);
