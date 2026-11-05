@@ -256,7 +256,7 @@ impl World {
 
     fn rot_line(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
-        let deer_on_the_empty_rock = self.deer_stands_on_the_empty_rock(origin);
+        let deer_on_the_empty_rock = self.open_wood_keeps_its_way(origin);
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             let deer_on_it = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
@@ -855,14 +855,23 @@ impl World {
         }
     }
 
-    fn deer_stands_on_the_empty_rock(&self, origin: CellId) -> bool {
-        self.deer.as_ref().is_some_and(|deer| {
-            deer.cell == origin
-                && self.cell(origin).rock
-                && self.pile_count(origin, Material::Berry) == 0
-                && self.spent_berries.contains(&origin)
-                && self.deer_ate_berries.contains(&origin)
-        })
+    /// The deer is on the empty rock, or one cell west of it.
+    fn open_wood_keeps_its_way(&self, origin: CellId) -> bool {
+        if !self.cell(origin).rock
+            || self.pile_count(origin, Material::Berry) > 0
+            || !self.spent_berries.contains(&origin)
+            || !self.deer_ate_berries.contains(&origin)
+        {
+            return false;
+        }
+        let Some(deer) = &self.deer else {
+            return false;
+        };
+        if deer.cell == origin {
+            return true;
+        }
+        let (x, y) = cell_xy(origin);
+        cell_id(x - 1, y).is_some_and(|west| deer.cell == west)
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
@@ -888,7 +897,7 @@ impl World {
                 "The corner beyond, to the {side}, has the rotting wood and the deer."
             ));
         }
-        if !self.deer_stands_on_the_empty_rock(origin) {
+        if !self.open_wood_keeps_its_way(origin) {
             return None;
         }
         let (corner, side) = self.corner_wood(origin, dir)?;
