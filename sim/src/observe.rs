@@ -1157,22 +1157,18 @@ impl World {
         }
     }
 
-    /// South has named the floor the deer stands on. The eating sentence
-    /// points at that floor and does not count the cells.
+    /// South has named the floor the deer stands on. This sentence is the
+    /// meal under the rock. The passage is the one walk.
     fn deer_on_the_named_floor_ate(&self, origin: CellId) -> Option<String> {
         if self.pile_count(origin, Material::Berry) > 0
             || !self.spent_berries.contains(&origin)
             || !self.deer_ate_berries.contains(&origin)
+            || !self.south_line_stands_the_deer(origin)
         {
             return None;
         }
-        let step = Dir::all().into_iter().find_map(|dir| {
-            let (wood, _) = self.corner_wood(origin, dir)?;
-            let entered = self.floor_west_of_this_wood(origin, wood)?;
-            self.deer_stands_on_next_floor(origin, entered)
-        })?;
         Some(format!(
-            "The deer ate the berries that were here, {}, and then walked to the {step} floor.",
+            "The deer ate the berries that were here, {}.",
             self.cover_phrase(origin)
         ))
     }

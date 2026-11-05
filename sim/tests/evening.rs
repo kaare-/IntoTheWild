@@ -3693,13 +3693,18 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&on_south.text);
     let ate_floor = on_south
         .text
-        .find("The deer ate the berries that were here, under the rock overhang, and then walked to the south floor.")
+        .find("The deer ate the berries that were here, under the rock overhang.")
         .expect(&on_south.text);
     let onto = on_south
         .text
         .find("onto the south floor")
         .expect(&on_south.text);
     assert!(named < ate_floor && ate_floor < onto, "{}", on_south.text);
+    assert!(
+        !on_south.text.contains("walked to the south floor"),
+        "{}",
+        on_south.text
+    );
     assert!(
         !on_south
             .text
@@ -3806,11 +3811,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let after_without_the_meal = after_compass
         .replace("there", "")
         .replace("ate the berries here", "");
-    assert!(
-        !after_without_the_meal.contains("here"),
-        "{}",
-        unseen.text
-    );
+    assert!(!after_without_the_meal.contains("here"), "{}", unseen.text);
     assert!(!unseen.text.contains("West just showed"), "{}", unseen.text);
     assert!(
         !unseen.text.contains("on the valley floor to the west"),
