@@ -348,7 +348,11 @@ impl World {
                     parts.push(format!(
                         "The berries that were here are gone. The deer {place} ate them."
                     ));
-                    parts.push(format!("The deer {place} stands there."));
+                    if self.open_loose_branches(deer_cell) {
+                        parts.push("The deer on that rotting wood stands there.".into());
+                    } else {
+                        parts.push(format!("The deer {place} stands there."));
+                    }
                 } else {
                     parts.push("The berries that were here are gone. A deer ate them.".into());
                 }
