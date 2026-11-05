@@ -345,6 +345,13 @@ impl World {
                     parts.push(
                         "The berries that were here are gone. The deer here ate them.".into(),
                     );
+                } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
+                    (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
+                }) {
+                    parts.push(format!(
+                        "The berries that were here are gone. The deer {} ate them.",
+                        self.cell_offset(actor.cell, deer_cell)
+                    ));
                 } else {
                     parts.push("The berries that were here are gone. A deer ate them.".into());
                 }
