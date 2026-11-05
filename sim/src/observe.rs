@@ -974,12 +974,9 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
-                            let head = "Hoofprints on that wood mark";
-                            if let Some(rest) = line.strip_prefix(head) {
-                                line = format!(
-                                    "Hoofprints mark{rest}, across the {from} floor and on out of sight."
-                                );
-                            }
+                            line.push_str(&format!(
+                                ", across the {from} floor and onto the ground beyond."
+                            ));
                         }
                         break;
                     }
