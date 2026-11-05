@@ -3643,7 +3643,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on that wood, and from that wood it walked off onto the cell west of the wood, not the open cell west of that valley floor, then south, then west, out of sight.")
+        .find("The deer left hoofprints on that wood, and from that valley floor it walked south onto valley floor, then west onto valley floor, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3730,11 +3730,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert!(
-        !unseen.text.contains("the cell the deer entered"),
-        "{}",
-        unseen.text
-    );
+    assert!(!unseen.text.contains("the cell"), "{}", unseen.text);
+    assert!(!unseen.text.contains("open cell west"), "{}", unseen.text);
     assert!(!unseen.text.contains("underfoot"), "{}", unseen.text);
     assert!(!unseen.text.contains("first west"), "{}", unseen.text);
     assert!(

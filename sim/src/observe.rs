@@ -919,25 +919,39 @@ impl World {
 
     fn prints_left_behind(&self, origin: CellId) -> String {
         let placed = "The deer left hoofprints on that wood";
-        match self.walked_off_the_wood(origin) {
-            Some(way) => {
-                let onward = way
-                    .strip_prefix("west, then ")
-                    .map(|rest| {
-                        format!(
-                            "onto the cell west of the wood, not the open cell west of that valley floor, then {rest}"
-                        )
-                    })
-                    .unwrap_or(way);
-                format!("{placed}, and from that wood it walked off {onward}.")
-            }
-            None => format!("{placed}."),
+        let Some(steps) = self.steps_off_the_wood(origin) else {
+            return format!("{placed}.");
+        };
+        if steps.len() < 2 {
+            return format!("{placed}.");
         }
+        let mut onward = String::new();
+        let mut prev = steps[0];
+        for cell in steps.iter().copied().skip(1) {
+            let Some(dir) = orthogonal_step(prev, cell) else {
+                return format!("{placed}.");
+            };
+            let ground = self.cell(cell).region.word();
+            if onward.is_empty() {
+                onward = format!("{dir} onto {ground}");
+            } else {
+                onward.push_str(", then ");
+                onward.push_str(dir);
+                onward.push_str(" onto ");
+                onward.push_str(ground);
+            }
+            prev = cell;
+            if chebyshev(origin, cell) > self.tuning.sight {
+                onward.push_str(", out of sight");
+                break;
+            }
+        }
+        format!("{placed}, and from that valley floor it walked {onward}.")
     }
 
-    /// Steps from the rotting wood along the deer's route, through the step
-    /// that leaves sight.
-    fn walked_off_the_wood(&self, origin: CellId) -> Option<String> {
+    /// Cells the deer stepped after the rotting wood, through the step that
+    /// leaves sight. The first is the valley floor South already described.
+    fn steps_off_the_wood(&self, origin: CellId) -> Option<Vec<CellId>> {
         let deer = self.deer.as_ref()?;
         let wood = Dir::all().into_iter().find_map(|dir| {
             self.corner_wood(origin, dir).and_then(|(cell, _)| {
@@ -970,29 +984,14 @@ impl World {
             return None;
         }
         back.reverse();
-        let mut prev = wood;
-        let mut words = Vec::new();
-        let mut left_sight = false;
+        let mut steps = Vec::new();
         for cell in back {
-            words.push(orthogonal_step(prev, cell)?);
-            prev = cell;
+            steps.push(cell);
             if chebyshev(origin, cell) > self.tuning.sight {
-                left_sight = true;
                 break;
             }
         }
-        if words.is_empty() {
-            return None;
-        }
-        let mut way = words[0].to_string();
-        for word in &words[1..] {
-            way.push_str(", then ");
-            way.push_str(word);
-        }
-        if left_sight {
-            way.push_str(", out of sight");
-        }
-        Some(way)
+        Some(steps)
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
