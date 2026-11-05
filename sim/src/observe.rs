@@ -938,7 +938,7 @@ impl World {
                 if left_sight {
                     let ground = self.cell(cell).region.word();
                     line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the {ground} to the {from} floor's {dir}"
+                        " The deer went on from the {from} floor onto the {ground} on the {from} floor's {dir} side"
                     ));
                     if self.exposure_millis(cell) >= 1000 {
                         line.push_str(", in the open");
@@ -985,7 +985,7 @@ impl World {
                     return format!("{placed}.");
                 };
                 line = format!(
-                    "{placed}, and walked {dir} from the {from_ground} to the wood's {wood_side}, onto the {dir} floor"
+                    "{placed}, and walked {dir} off the {from_ground} on the wood's {wood_side} side, onto the {dir} floor"
                 );
                 if left_sight {
                     if deer_here {
