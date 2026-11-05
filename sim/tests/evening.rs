@@ -3696,10 +3696,18 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_left.text
     );
-    assert!(
-        on_left.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, the deer stands on open ground."
-        ),
+    let south = on_left
+        .text
+        .lines()
+        .find(|line| line.starts_with("South:"))
+        .unwrap_or("");
+    assert_eq!(
+        south,
+        "South: valley floor. The corner beyond, to the west, has that wood."
+    );
+    assert_eq!(
+        on_left.text.matches("stands on open ground").count(),
+        1,
         "{}",
         on_left.text
     );
@@ -3717,7 +3725,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let examined = world.examine(near, ExamineTarget::Deer);
     assert_eq!(world.sim_time(), wood_clock + 1);
-    assert_eq!(examined, "A deer stands on open ground, west of that wood.");
+    assert_eq!(
+        examined,
+        "A deer stands on open ground, west of the rotting wood."
+    );
+    assert!(!examined.contains("that wood"), "{examined}");
     assert!(!examined.contains("Past that wood"), "{examined}");
     assert!(!examined.contains("in the open"), "{examined}");
     assert!(!examined.contains("past that wood"), "{examined}");

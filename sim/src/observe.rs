@@ -1221,12 +1221,6 @@ impl World {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
-            if let Some((_, way)) = self.deer_stands_past_this_wood(origin, corner) {
-                line.push_str(&format!(
-                    " Past that wood, to its {way}, the deer stands on open ground."
-                ));
-                return Some(line);
-            }
             if let Some(entered) = self.floor_west_of_this_wood(origin, corner) {
                 if let Some(wood_side) = orthogonal_step(corner, entered) {
                     let standing = self.deer_stands_on_next_floor(origin, entered);
@@ -2107,7 +2101,7 @@ impl World {
             return "You cannot see a deer from here.".into();
         }
         if let Some(way) = self.deer_past_the_wood(origin) {
-            return format!("A deer stands on open ground, {way} of that wood.");
+            return format!("A deer stands on open ground, {way} of the rotting wood.");
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."
