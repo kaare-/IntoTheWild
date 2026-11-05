@@ -975,7 +975,7 @@ impl World {
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
                             line.push_str(&format!(
-                                ", across the {from} floor, then onto the valley floor to its {dir}."
+                                ", across the {from} floor, then onto another valley floor {dir} of the {from} floor."
                             ));
                         }
                         break;
