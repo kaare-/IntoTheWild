@@ -972,7 +972,11 @@ impl World {
                     let same_walk = line.ends_with("still in sight.");
                     if same_walk {
                         line.pop();
-                        line.push_str(&format!(", then into the open {dir} of the {from} floor."));
+                        line.push_str(&format!(", then into the open {dir} of the {from} floor"));
+                        if deer_here {
+                            line.push_str(", where the deer is now");
+                        }
+                        line.push('.');
                         break;
                     }
                     line.push_str(&format!(

@@ -3740,6 +3740,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         on_south.text
     );
     assert!(
+        !on_south.text.contains("where the deer is now"),
+        "{}",
+        on_south.text
+    );
+    assert!(
         !on_south.text.contains("on the south floor ate"),
         "{}",
         on_south.text
@@ -3799,7 +3804,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let joined = unseen
         .text
-        .find("onto the south floor, still in sight, then into the open west of the south floor.")
+        .find("onto the south floor, still in sight, then into the open west of the south floor, where the deer is now.")
         .expect(&unseen.text);
     assert!(
         ate_after < prints_at && prints_at < joined,
@@ -3851,7 +3856,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight, then into the open west of the south floor.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight, then into the open west of the south floor, where the deer is now.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3911,7 +3916,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let after_without_the_meal = after_compass
         .replace("there", "")
         .replace("ate the berries here", "")
-        .replace("the berries that were here", "");
+        .replace("the berries that were here", "")
+        .replace("where the deer is now", "");
     assert!(!after_without_the_meal.contains("here"), "{}", unseen.text);
     assert!(!unseen.text.contains("West just showed"), "{}", unseen.text);
     assert!(
