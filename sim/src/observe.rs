@@ -978,7 +978,7 @@ impl World {
                             if let Some(at) = line.find(marked) {
                                 line.truncate(at + marked.len());
                                 line.push_str(&format!(
-                                    ", and the prints on the {from} floor turn {dir} out of sight."
+                                    ", and on the {from} floor they turn {dir} out of sight."
                                 ));
                             }
                         }

@@ -3839,7 +3839,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk, and the prints on the south floor turn west out of sight.")
+        .find("Hoofprints on that wood mark the deer's walk, and on the south floor they turn west out of sight.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3887,7 +3887,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(
         unseen
             .text
-            .matches("and the prints on the south floor turn west out of sight")
+            .matches("and on the south floor they turn west out of sight")
             .count(),
         1
     );
@@ -3906,9 +3906,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .map(|(_, last)| last)
         .unwrap_or(unseen.text.trim_end());
     assert!(
-        last_line.contains("and the prints on the south floor turn west out of sight")
+        last_line.contains("and on the south floor they turn west out of sight")
             && last_line.matches("the south floor").count() == 1
             && last_line.matches("Hoofprints").count() == 1
+            && last_line.matches("they").count() == 1
+            && last_line.matches("the prints").count() == 0
             && !last_line.contains("which")
             && !last_line.contains("turns")
             && !last_line.contains("still in sight")
@@ -3946,7 +3948,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!unseen.text.contains("those"), "{}", unseen.text);
     assert!(!unseen.text.contains("the same walk"), "{}", unseen.text);
     assert_eq!(unseen.text.matches("and by the south floor").count(), 0);
-    assert_eq!(unseen.text.matches("and on the south floor").count(), 0);
+    assert_eq!(unseen.text.matches("and on the south floor").count(), 1);
     assert_eq!(
         unseen.text.matches("hoofprints on the south floor").count(),
         0
@@ -4016,13 +4018,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!prints_line.contains("the ground"), "{prints_line}");
     assert!(!prints_line.contains("one step"), "{prints_line}");
     assert!(
-        prints_line.contains(", and the prints on the south floor turn west out of sight")
+        prints_line.contains(", and on the south floor they turn west out of sight")
             && !prints_line.contains("which")
             && !prints_line.contains("turns")
             && !prints_line.contains("goes")
             && !prints_line.contains("from the valley floor")
             && prints_line.matches("the south floor").count() == 1
-            && prints_line.matches("the prints").count() == 1
+            && prints_line.matches("the prints").count() == 0
+            && prints_line.matches("they").count() == 1
             && prints_line.matches("Hoofprints").count() == 1
             && !prints_line.contains("off the south floor")
             && !prints_line.contains("still in sight")
@@ -4116,7 +4119,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk, and the prints on the south floor turn west out of sight.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk, and on the south floor they turn west out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -4279,7 +4282,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
                 == 0
             && after_south.matches("which turns").count() == 0
             && after_south
-                .matches("and the prints on the south floor turn west out of sight")
+                .matches("and on the south floor they turn west out of sight")
                 .count()
                 == 1
             && after_south.matches("turning west there").count() == 0
