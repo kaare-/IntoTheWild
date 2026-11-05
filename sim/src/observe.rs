@@ -973,7 +973,7 @@ impl World {
                     if same_walk {
                         line.pop();
                         line.push_str(&format!(
-                            ", and from the {from} floor onto the {ground} on the {from} floor's {dir} side"
+                            ", then onto the {ground} on the {from} floor's {dir} side"
                         ));
                     } else {
                         line.push_str(&format!(
