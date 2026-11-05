@@ -3155,6 +3155,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         !snapped.contains("handful"),
         "no handful went on the snap: {snapped}"
     );
+    let snap_look = world.observe(near).unwrap();
+    assert_eq!(world.sim_time(), snapped_clock);
+    assert!(
+        snap_look.text.contains("A deer stands on these branches."),
+        "{}",
+        snap_look.text
+    );
+    assert!(
+        !snap_look.text.contains("eating the berries"),
+        "{}",
+        snap_look.text
+    );
+    assert!(!world.observe(far).unwrap().text.contains("these branches"));
     let open_on_snap = snapped
         .lines()
         .find(|line| line.contains("in the open"))
@@ -3174,6 +3187,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     ));
     assert!(!eating.contains("last handful"), "{eating}");
     assert!(!eating.contains("these branches"), "{eating}");
+    let eat_look = world.observe(near).unwrap();
+    assert!(
+        eat_look.text.contains("A deer is eating the berries here."),
+        "{}",
+        eat_look.text
+    );
+    assert!(
+        !eat_look.text.contains("these branches"),
+        "{}",
+        eat_look.text
+    );
     for _ in 0..3 {
         world.step(&[]);
     }
@@ -3210,17 +3234,26 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         if world.material_tally(Material::Berry) == 0 {
             break;
         }
+        let before = world.material_tally(Material::Berry);
         world.step(&[]);
-        if world.deer_cell() == Some((6, 1)) && world.material_tally(Material::Berry) > 0 {
+        let after = world.material_tally(Material::Berry);
+        if world.deer_cell() == Some((6, 1)) && after > 0 {
             let text = world.observe(near).unwrap().text;
-            assert!(
-                text.contains("A deer is eating the berries here."),
-                "{text}"
-            );
+            if after < before {
+                assert!(
+                    text.contains("A deer is eating the berries here."),
+                    "{text}"
+                );
+                assert!(!text.contains("these branches"), "{text}");
+            } else {
+                assert!(text.contains("A deer stands on these branches."), "{text}");
+                assert!(!text.contains("eating the berries"), "{text}");
+            }
             assert!(!text.contains("Berries lie here"), "{text}");
             assert!(!text.contains("A deer stands here."), "{text}");
             let far_text = world.observe(far).unwrap().text;
             assert!(!far_text.contains("eating the berries"), "{far_text}");
+            assert!(!far_text.contains("these branches"), "{far_text}");
             let count = world.material_tally(Material::Berry);
             let berries = world.examine(near, ExamineTarget::Berries);
             assert!(berries.contains("A deer is eating them."), "{berries}");

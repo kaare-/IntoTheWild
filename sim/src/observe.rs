@@ -321,8 +321,11 @@ impl World {
             .as_ref()
             .is_some_and(|deer| deer.cell == actor.cell);
         let berries_here = self.pile_count(actor.cell, Material::Berry) > 0;
-        if deer_here && berries_here {
+        let handful_gone = deer_here && self.deer_meal_this_tick(actor.cell).is_some();
+        if deer_here && berries_here && handful_gone {
             parts.push("A deer is eating the berries here.".into());
+        } else if deer_here && berries_here {
+            parts.push("A deer stands on these branches.".into());
         } else if berries_here {
             parts.push(format!(
                 "Berries lie here, {}. They are good to eat raw.",
@@ -627,6 +630,16 @@ impl World {
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return None;
         }
+        if origin != deer.cell
+            && self.pile_count(deer.cell, Material::Branch) > 0
+            && self.pile_count(deer.cell, Material::Berry) > 0
+            && self.deer_meal_this_tick(deer.cell).is_none()
+        {
+            return Some(format!(
+                "A deer stands on these branches {}.",
+                self.mark_place(origin, deer.cell)
+            ));
+        }
         if self.open_loose_branches(deer.cell) {
             return Some(format!(
                 "A deer stands {}{}.",
@@ -670,6 +683,12 @@ impl World {
             .deer
             .as_ref()
             .is_some_and(|deer| deer.cell == dest && self.open_loose_branches(dest));
+        let deer_just_arrived = self.deer.as_ref().is_some_and(|deer| {
+            deer.cell == dest
+                && self.pile_count(dest, Material::Branch) > 0
+                && self.pile_count(dest, Material::Berry) > 0
+                && self.deer_meal_this_tick(dest).is_none()
+        });
         if self.pile_count(dest, Material::Branch) > 0 && !deer_on_this_wood {
             bits.push("a pile of branches".into());
         }
@@ -737,7 +756,10 @@ impl World {
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
         }
-        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) && !deer_on_this_wood {
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest)
+            && !deer_on_this_wood
+            && !deer_just_arrived
+        {
             bits.push("a deer".into());
         }
         if self.tracks.contains(&dest) {
