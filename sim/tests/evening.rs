@@ -3806,7 +3806,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side.\nHoofprints mark the south floor, which is still in sight, and past that floor no more hoofprints show.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3868,7 +3868,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side.\nHoofprints mark the south floor, which is still in sight, and past that floor no more hoofprints show.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3953,13 +3953,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     assert_eq!(unseen.text.matches("out of sight").count(), 0);
-    assert_eq!(unseen.text.matches("still in sight").count(), 2);
+    assert_eq!(unseen.text.matches("still in sight").count(), 1);
     assert_eq!(
         unseen
             .text
             .matches("Hoofprints mark the south floor")
             .count(),
-        2
+        1
     );
     assert!(
         !unseen.text.contains("that is still in sight"),
@@ -4001,7 +4001,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         after_south
             .matches("past that floor no more hoofprints show")
             .count(),
-        1
+        0
     );
     assert!(!after_south.contains(" row"), "{}", unseen.text);
     assert!(!after_south.contains("line"), "{}", unseen.text);

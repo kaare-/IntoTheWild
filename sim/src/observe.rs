@@ -975,10 +975,6 @@ impl World {
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
                             line.push('.');
-                            line.push('\n');
-                            line.push_str(&format!(
-                                "Hoofprints mark the {from} floor, which is still in sight, and past that floor no more hoofprints show."
-                            ));
                         }
                         break;
                     }
