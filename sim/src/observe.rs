@@ -258,8 +258,9 @@ impl World {
             let deer_on_it = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if self.open_loose_branches(cell) && !deer_on_it {
                 lines.push(format!(
-                    "Wood left in the open is rotting {}.",
-                    self.cell_offset(origin, cell)
+                    "Wood left in the open is rotting {}{}.",
+                    self.cell_offset(origin, cell),
+                    self.hoofprints_on_wood(origin, cell)
                 ));
             }
         }
@@ -628,8 +629,9 @@ impl World {
         }
         if self.open_loose_branches(deer.cell) {
             return Some(format!(
-                "A deer stands {}.",
-                self.deer_place(origin, deer.cell)
+                "A deer stands {}{}.",
+                self.deer_place(origin, deer.cell),
+                self.hoofprints_on_wood(origin, deer.cell)
             ));
         }
         if origin == deer.cell {
@@ -1411,6 +1413,16 @@ impl World {
             self.deer_place(origin, deer.cell),
             eating
         )
+    }
+
+    fn hoofprints_on_wood(&self, origin: CellId, cell: CellId) -> &'static str {
+        if !self.tracks.contains(&cell) {
+            ""
+        } else if origin == cell {
+            ", and hoofprints mark the ground"
+        } else {
+            ", and hoofprints mark the ground there"
+        }
     }
 
     fn deer_place(&self, origin: CellId, deer_cell: CellId) -> String {

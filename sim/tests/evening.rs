@@ -1122,6 +1122,7 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         .unwrap()
         .text
         .contains("Wood left in the open is rotting one cell north and one cell east."));
+    assert!(!world.observe(sera).unwrap().text.contains("hoofprints"));
     assert!(!world.observe(otto).unwrap().text.contains("rotting"));
     assert_eq!(
         world.examine(otto, ExamineTarget::Wood),
@@ -1336,12 +1337,12 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
         .observe(mid)
         .unwrap()
         .text
-        .contains("Wood left in the open is rotting one cell north and two cells east."));
+        .contains("Wood left in the open is rotting one cell north and two cells east, and hoofprints mark the ground there."));
     assert!(world
         .observe(under)
         .unwrap()
         .text
-        .contains("Wood left in the open is rotting one cell south and one cell west."));
+        .contains("Wood left in the open is rotting one cell south and one cell west, and hoofprints mark the ground there."));
     assert!(!world.observe(otto).unwrap().text.contains("rotting"));
     assert_eq!(
         world
@@ -3082,9 +3083,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((5, 1)));
     let apart = world.observe(near).unwrap();
-    assert!(apart
-        .text
-        .contains("Wood left in the open is rotting one cell south and one cell west."));
+    assert!(apart.text.contains(
+        "Wood left in the open is rotting one cell south and one cell west, and hoofprints mark the ground there."
+    ));
     assert!(apart.text.contains("a deer"));
     assert!(!apart.text.contains("on the rotting wood"));
     let left = world.examine(near, ExamineTarget::Deer);
