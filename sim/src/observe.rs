@@ -916,7 +916,7 @@ impl World {
                 if people == 1 { "person" } else { "people" }
             ));
         }
-        if let Some(line) = self.deer_leads_this_way(origin, dir, &bits) {
+        if let Some(line) = self.deer_leads_this_way(origin, dir) {
             return line;
         }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
@@ -1180,8 +1180,8 @@ impl World {
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
-    /// The deer is the first thing on this line. The ground you step on comes after.
-    fn deer_leads_this_way(&self, origin: CellId, dir: Dir, bits: &[String]) -> Option<String> {
+    /// The deer is the first thing on this line. The next step is a floor, not a list.
+    fn deer_leads_this_way(&self, origin: CellId, dir: Dir) -> Option<String> {
         if !self.open_wood_keeps_its_way(origin) {
             return None;
         }
@@ -1198,12 +1198,19 @@ impl World {
         }
         let (stood, way) = self.deer_stands_past_this_wood(origin, corner)?;
         let ground = self.cell(stood).region.word();
-        let step = bits.join(", ");
+        let (x, y) = cell_xy(origin);
+        let (dx, dy) = dir.delta();
+        let dest = cell_id(x + dx, y + dy)?;
+        let step = self.cell(dest).region.word();
+        let prints = if self.tracks.contains(&dest) {
+            " with hoofprints on it"
+        } else {
+            ""
+        };
         Some(format!(
-            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side. One step {} is {step}. {} of that step is the same wood.",
+            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side. The next step {} is a {step}{prints}, and the same wood is {side} of that step.",
             capitalize(dir.word()),
-            dir.word(),
-            capitalize(side)
+            dir.word()
         ))
     }
 
