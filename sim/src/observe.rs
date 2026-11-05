@@ -937,10 +937,12 @@ impl World {
             if let Some(from) = seen_floor {
                 if left_sight {
                     line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the far floor, {dir} of the {from} floor"
+                        " The deer went on from the {from} floor onto the floor {dir} of the {from} floor"
                     ));
                     if deer_here {
-                        line.push_str(", and the deer is on the far floor, out of sight.");
+                        line.push_str(&format!(
+                            ", and the deer is on the floor {dir} of the {from} floor, out of sight."
+                        ));
                     } else {
                         line.push_str(", out of sight.");
                     }
