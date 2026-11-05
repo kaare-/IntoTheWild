@@ -3761,6 +3761,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && !on_south.text.contains("west of that floor")
             && !on_south.text.contains("the valley floor to its west")
             && !on_south.text.contains("another valley floor")
+            && !on_south.text.contains("the open valley floor")
             && !on_south.text.contains("The deer has left the south floor")
             && !on_south.text.contains("no longer stands")
             && !on_south.text.contains("continue that walk")
@@ -3825,7 +3826,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then onto another valley floor west of the south floor.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then onto the open valley floor.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3934,11 +3935,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert_eq!(
         prints_line.matches("south floor").count(),
-        2,
+        1,
         "{prints_line}"
     );
     assert!(
-        prints_line.ends_with("another valley floor west of the south floor."),
+        prints_line.ends_with("the open valley floor."),
+        "{prints_line}"
+    );
+    assert!(!prints_line.ends_with("the south floor."), "{prints_line}");
+    assert!(!prints_line.contains("another"), "{prints_line}");
+    assert!(
+        !prints_line.contains("west of the south floor"),
         "{prints_line}"
     );
     assert!(!prints_line.contains("its"), "{prints_line}");
@@ -3952,11 +3959,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         0,
         "{prints_line}"
     );
-    assert_eq!(
-        prints_line.matches("another valley floor").count(),
-        1,
-        "{prints_line}"
-    );
+    assert_eq!(prints_line.matches("another").count(), 0, "{prints_line}");
     assert_eq!(
         prints_line.matches("that floor").count(),
         0,
@@ -3967,7 +3970,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!prints_line.contains("one step"), "{prints_line}");
     assert!(!prints_line.contains("out of sight"), "{prints_line}");
     assert!(
-        prints_line.contains("onto another valley floor west of the south floor"),
+        prints_line.contains("onto the open valley floor"),
         "{prints_line}"
     );
     assert!(
@@ -4044,7 +4047,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then onto another valley floor west of the south floor.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then onto the open valley floor.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -4143,8 +4146,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .text
             .matches("another valley floor west of the south floor")
             .count(),
-        1
+        0
     );
+    assert_eq!(unseen.text.matches("the open valley floor").count(), 1);
     assert_eq!(unseen.text.matches("and on.").count(), 0);
     assert_eq!(unseen.text.matches("still in sight").count(), 1);
     assert_eq!(
@@ -4189,7 +4193,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!after_south.contains("the west floor"), "{}", unseen.text);
     assert!(!after_south.contains("far floor"), "{}", unseen.text);
     assert!(
-        !after_south.contains("open valley floor"),
+        after_south.matches("the open valley floor").count() == 1,
         "{}",
         unseen.text
     );

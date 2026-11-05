@@ -974,8 +974,13 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
+                            let named = if self.exposure_millis(cell) >= 1000 {
+                                "the open valley floor".to_string()
+                            } else {
+                                format!("the {ground}")
+                            };
                             line.push_str(&format!(
-                                ", across the {from} floor, then onto another valley floor {dir} of the {from} floor."
+                                ", across the {from} floor, then onto {named}."
                             ));
                         }
                         break;
