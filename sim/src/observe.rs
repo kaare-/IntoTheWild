@@ -974,8 +974,12 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
+                            let marked = "mark the deer's walk";
+                            if let Some(at) = line.find(marked) {
+                                line.insert_str(at + marked.len(), ", which goes");
+                            }
                             line.push_str(&format!(
-                                ", across the {from} floor and {dir} out of sight."
+                                " across the {from} floor and turns {dir} out of sight."
                             ));
                         }
                         break;
