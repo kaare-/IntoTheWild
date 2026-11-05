@@ -972,14 +972,12 @@ impl World {
                     let same_walk = line.ends_with("still in sight.");
                     if same_walk {
                         line.pop();
-                        line.push_str(&format!(
-                            ", then onto the {ground} on the {from} floor's {dir} side"
-                        ));
-                    } else {
-                        line.push_str(&format!(
-                            " The deer went on from the {from} floor onto the {ground} on the {from} floor's {dir} side"
-                        ));
+                        line.push_str(&format!(", then into the open {dir} of the {from} floor."));
+                        break;
                     }
+                    line.push_str(&format!(
+                        " The deer went on from the {from} floor onto the {ground} on the {from} floor's {dir} side"
+                    ));
                     if self.exposure_millis(cell) >= 1000 {
                         line.push_str(", in the open");
                     }

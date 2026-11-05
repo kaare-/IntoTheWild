@@ -3799,7 +3799,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let joined = unseen
         .text
-        .find("onto the south floor, still in sight, then onto the valley floor on the south floor's west side, in the open, not the valley floor one step to your west.")
+        .find("onto the south floor, still in sight, then into the open west of the south floor.")
         .expect(&unseen.text);
     assert!(
         ate_after < prints_at && prints_at < joined,
@@ -3851,7 +3851,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight, then onto the valley floor on the south floor's west side, in the open, not the valley floor one step to your west.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight, then into the open west of the south floor.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3975,8 +3975,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
+    assert_eq!(
+        after_south
+            .matches("into the open west of the south floor")
+            .count(),
+        1
+    );
     assert!(
-        !after_south.contains("west of the south floor"),
+        !after_south.contains("not the valley floor one step"),
         "{}",
         unseen.text
     );
@@ -4016,11 +4022,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         after_south
             .matches("on the south floor's west side")
             .count(),
-        1
+        0
     );
     assert_eq!(after_south.matches("on the wood's west side").count(), 2);
     assert_eq!(after_south.matches("that valley floor").count(), 0);
-    assert_eq!(after_south.matches(", in the open,").count(), 1);
+    assert_eq!(after_south.matches(", in the open,").count(), 0);
     assert_eq!(after_south.matches("on that floor").count(), 0);
     assert!(!after_south.contains("the ground"), "{}", unseen.text);
     assert!(
