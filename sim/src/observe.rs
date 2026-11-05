@@ -230,7 +230,10 @@ impl World {
             lines.push("The deer on that wood ate them.".into());
         }
         if self.prints_stay_on_the_wood(actor.cell) {
-            lines.push("Hoofprints mark that rotting wood.".into());
+            lines.push(
+                "The deer left hoofprints on the ground here, on the valley floor to the west, and on that rotting wood."
+                    .into(),
+            );
         }
         lines.join("\n")
     }
@@ -273,7 +276,7 @@ impl World {
                     let prints =
                         if !self.cell(origin).rock && origin != cell && self.tracks.contains(&cell)
                         {
-                            ", and hoofprints mark the rotting wood"
+                            ", and the deer left hoofprints on the rotting wood"
                         } else {
                             self.hoofprints_on_wood(origin, cell)
                         };
@@ -480,7 +483,7 @@ impl World {
         if deer_here && !berries_here && !self.open_loose_branches(actor.cell) && !still_eating {
             parts.push("A deer stands here.".into());
         }
-        if self.tracks.contains(&actor.cell) {
+        if self.tracks.contains(&actor.cell) && !self.prints_stay_on_the_wood(actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
         let others = self.others_here(actor_id);
@@ -838,7 +841,9 @@ impl World {
         {
             bits.push("a deer".into());
         }
-        if self.tracks.contains(&dest) {
+        if self.tracks.contains(&dest)
+            && !(dir == Dir::West && self.prints_stay_on_the_wood(origin))
+        {
             bits.push("hoofprints".into());
         }
         if self.fire_at(dest).is_some() {
