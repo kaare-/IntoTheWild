@@ -3758,6 +3758,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && !on_south.text.contains("out of sight")
             && !on_south.text.contains("the ground beyond")
             && !on_south.text.contains("then west")
+            && !on_south.text.contains("west of that floor")
             && !on_south.text.contains("The deer has left the south floor")
             && !on_south.text.contains("no longer stands")
             && !on_south.text.contains("continue that walk")
@@ -3822,7 +3823,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then west.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then west of that floor.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3934,7 +3935,16 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         1,
         "{prints_line}"
     );
-    assert!(prints_line.ends_with(", then west."), "{prints_line}");
+    assert!(
+        prints_line.ends_with("west of that floor."),
+        "{prints_line}"
+    );
+    assert!(!prints_line.ends_with(", then west."), "{prints_line}");
+    assert_eq!(
+        prints_line.matches("that floor").count(),
+        1,
+        "{prints_line}"
+    );
     assert!(!prints_line.contains("beyond"), "{prints_line}");
     assert!(!prints_line.contains("the ground"), "{prints_line}");
     assert!(!prints_line.contains("one step"), "{prints_line}");
@@ -4011,7 +4021,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then west.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor, then west of that floor.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
