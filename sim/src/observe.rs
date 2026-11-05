@@ -1208,7 +1208,7 @@ impl World {
             ""
         };
         Some(format!(
-            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side. The next step {} is a {step}{prints}, and the same wood is {side} of that step.",
+            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side, and hoofprints mark that floor. The next step {} is a {step}{prints}, and the same wood is {side} of that step.",
             capitalize(dir.word()),
             dir.word()
         ))
@@ -1254,7 +1254,7 @@ impl World {
             if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
                 let ground = self.cell(stood).region.word();
                 line.push_str(&format!(
-                    " Past that wood, to its {way}, is the {ground} on the wood's {way} side. The deer stands there."
+                    " Past that wood, to its {way}, is the {ground} on the wood's {way} side. Hoofprints mark that floor. The deer stands there."
                 ));
                 return Some(line);
             }
@@ -2138,7 +2138,7 @@ impl World {
             return "You cannot see a deer from here.".into();
         }
         if let Some(floor) = self.deer_past_the_wood(origin) {
-            return format!("A deer stands on {floor}.");
+            return format!("A deer stands on {floor}. Hoofprints mark that floor.");
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."

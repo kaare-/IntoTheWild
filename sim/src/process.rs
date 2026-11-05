@@ -324,6 +324,16 @@ impl World {
         let dir = step_dir(deer.cell, dest);
         let origin = deer.cell;
         self.tracks.insert(origin);
+        // The same hoofprints, written when the deer steps onto the floor
+        // west of the wood, so they are there while the deer stands. A cell
+        // that already has them, including the old trail, is not marked again.
+        if cell_xy(origin).0 - 1 == cell_xy(dest).0
+            && cell_xy(origin).1 == cell_xy(dest).1
+            && self.pile_count(origin, Material::Branch) > 0
+            && !self.cell(origin).rock
+        {
+            self.tracks.insert(dest);
+        }
         let snapped = self.pile_count(dest, Material::Branch) > 0
             && self.take_from_pile(dest, Material::Branch, 1).is_some();
         let text = if snapped {
