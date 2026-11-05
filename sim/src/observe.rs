@@ -937,11 +937,37 @@ impl World {
             if let Some(from) = seen_floor {
                 if left_sight {
                     line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the floor {dir} of the {from} floor, out of sight"
+                        " The deer went on from the {from} floor onto the floor {dir} of the {from} floor."
                     ));
-                    if self.tracks.contains(&cell) && self.cell(cell).trail {
-                        line.push_str(", and left hoofprints on a trail there.");
+                    let mut facts = Vec::new();
+                    if self.cell(cell).trail {
+                        facts.push("A deer trail passes on that floor");
+                    }
+                    if self.tracks.contains(&cell) {
+                        facts.push("hoofprints mark the ground");
+                    }
+                    if deer_here {
+                        facts.push("the deer stands on that floor, out of sight");
+                    }
+                    if facts.is_empty() {
+                        line.push_str(" Out of sight.");
                     } else {
+                        line.push(' ');
+                        let last = facts.len() - 1;
+                        for (i, fact) in facts.iter().enumerate() {
+                            if i == 0 {
+                                line.push_str(fact);
+                            } else if i == last {
+                                line.push_str(", and ");
+                                line.push_str(fact);
+                            } else {
+                                line.push_str(", ");
+                                line.push_str(fact);
+                            }
+                        }
+                        if !deer_here {
+                            line.push_str(", out of sight");
+                        }
                         line.push('.');
                     }
                     break;
