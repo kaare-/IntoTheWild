@@ -229,6 +229,9 @@ impl World {
         if self.deer_named_on_corner(actor.cell) {
             lines.push("The deer on that wood ate them.".into());
         }
+        if self.prints_stay_on_the_wood(actor.cell) {
+            lines.push("Hoofprints mark that rotting wood.".into());
+        }
         lines.join("\n")
     }
 
@@ -267,10 +270,17 @@ impl World {
                         self.relative(origin, cell)
                     )
                 } else {
+                    let prints =
+                        if !self.cell(origin).rock && origin != cell && self.tracks.contains(&cell)
+                        {
+                            ", and hoofprints mark the rotting wood"
+                        } else {
+                            self.hoofprints_on_wood(origin, cell)
+                        };
                     format!(
                         "Wood left in the open is rotting {}{}.",
                         self.cell_offset(origin, cell),
-                        self.hoofprints_on_wood(origin, cell)
+                        prints
                     )
                 };
                 if !lines.contains(&line) {
@@ -855,23 +865,34 @@ impl World {
         }
     }
 
-    /// The deer is on the empty rock, or one cell west of it.
+    /// The viewer is on the rock after the deer ate the berries there.
     fn open_wood_keeps_its_way(&self, origin: CellId) -> bool {
-        if !self.cell(origin).rock
-            || self.pile_count(origin, Material::Berry) > 0
-            || !self.spent_berries.contains(&origin)
-            || !self.deer_ate_berries.contains(&origin)
-        {
+        self.cell(origin).rock
+            && self.pile_count(origin, Material::Berry) == 0
+            && self.spent_berries.contains(&origin)
+            && self.deer_ate_berries.contains(&origin)
+            && self.deer.is_some()
+    }
+
+    /// The deer has left the rock and the corner, and the prints stay on the wood.
+    fn prints_stay_on_the_wood(&self, origin: CellId) -> bool {
+        if !self.open_wood_keeps_its_way(origin) {
             return false;
         }
         let Some(deer) = &self.deer else {
             return false;
         };
         if deer.cell == origin {
-            return true;
+            return false;
         }
         let (x, y) = cell_xy(origin);
-        cell_id(x - 1, y).is_some_and(|west| deer.cell == west)
+        if cell_id(x - 1, y).is_some_and(|west| deer.cell == west) {
+            return false;
+        }
+        Dir::all().into_iter().any(|dir| {
+            self.corner_wood(origin, dir)
+                .is_some_and(|(cell, _)| self.tracks.contains(&cell) && deer.cell != cell)
+        })
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.

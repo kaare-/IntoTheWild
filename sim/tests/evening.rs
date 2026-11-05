@@ -1345,7 +1345,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
         .observe(mid)
         .unwrap()
         .text
-        .contains("Wood left in the open is rotting one cell north and two cells east, and hoofprints mark the ground there."));
+        .contains("Wood left in the open is rotting one cell north and two cells east, and hoofprints mark the rotting wood."));
     assert!(world
         .observe(under)
         .unwrap()
@@ -3567,6 +3567,52 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
+    assert!(
+        unseen
+            .text
+            .contains("Wood left in the open is rotting to the south and west."),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        unseen
+            .text
+            .contains("South: valley floor. The corner beyond, to the west, has that wood."),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        unseen.text.contains(
+            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
+        ),
+        "{}",
+        unseen.text
+    );
+    let south_gone = unseen
+        .text
+        .find("The corner beyond, to the west, has that wood")
+        .expect(&unseen.text);
+    let prints_gone = unseen
+        .text
+        .find("Hoofprints mark that rotting wood.")
+        .expect(&unseen.text);
+    assert!(south_gone < prints_gone, "{}", unseen.text);
+    assert!(
+        !unseen.text.contains("one cell south and one cell west"),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        !unseen.text.contains("hoofprints mark the ground there"),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        !unseen.text.contains("has the rotting wood and the deer"),
+        "{}",
+        unseen.text
+    );
+    assert!(!unseen.text.contains("on that wood"), "{}", unseen.text);
     assert!(
         !unseen.text.contains("The deer one cell"),
         "{}",
