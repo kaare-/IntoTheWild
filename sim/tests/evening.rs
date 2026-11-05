@@ -3373,32 +3373,26 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         wood_look.text.contains(
-            "South: valley floor. The corner beyond, to the west, has the rotting wood and the deer."
+            "South: valley floor. The corner beyond, to the west, has the rotting wood and the deer, in the open, and hoofprints mark the wood under the deer."
         ),
         "{}",
         wood_look.text
     );
     assert!(
         wood_look.text.contains(
-            "West: valley floor, hoofprints. The corner beyond, to the south, has the rotting wood and the deer."
+            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
         ),
         "{}",
         wood_look.text
     );
-    let south_at = wood_look
+    let west_line = wood_look
         .text
-        .find("South: valley floor. The corner beyond")
+        .lines()
+        .find(|line| line.starts_with("West:"))
         .unwrap();
-    let west_at = wood_look
-        .text
-        .find("West: valley floor, hoofprints. The corner beyond")
-        .unwrap();
-    let corner_wood = wood_look
-        .text
-        .find("That corner is in the open, and hoofprints mark the rotting wood under the deer.")
-        .expect(&wood_look.text);
+    assert!(!west_line.contains("corner"), "{west_line}");
     assert!(
-        south_at < corner_wood && west_at < corner_wood,
+        !wood_look.text.contains("That corner"),
         "{}",
         wood_look.text
     );
