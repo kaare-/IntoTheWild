@@ -229,6 +229,8 @@ impl World {
         }
         if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
             lines.push(ate);
+        } else if self.meal_follows_the_prints(actor.cell) {
+            lines.push("The deer ate the berries that were here.".into());
         }
         if self.deer_named_on_corner(actor.cell) {
             lines.push("The deer on that wood ate the berries.".into());
@@ -926,8 +928,8 @@ impl World {
         })
     }
 
-    /// At sim time 15 the prints have already named the deer. The meal
-    /// follows that sentence, once the walk continues past the south floor.
+    /// At sim time 15 the prints name the walk after the meal. The meal
+    /// comes first, once the walk continues past the south floor.
     fn meal_follows_the_prints(&self, origin: CellId) -> bool {
         if !self.open_wood_keeps_its_way(origin) {
             return false;
@@ -935,7 +937,16 @@ impl World {
         let Some(steps) = self.steps_off_the_wood(origin) else {
             return false;
         };
-        steps.len() >= 3 && chebyshev(origin, steps[1]) <= self.tuning.sight
+        if steps.len() < 3 || chebyshev(origin, steps[1]) > self.tuning.sight {
+            return false;
+        }
+        let Some(wood) = Dir::all().into_iter().find_map(|dir| {
+            self.corner_wood(origin, dir)
+                .and_then(|(cell, _)| self.tracks.contains(&cell).then_some(cell))
+        }) else {
+            return false;
+        };
+        self.floor_west_of_this_wood(origin, wood) == Some(steps[0])
     }
 
     fn prints_left_behind(&self, origin: CellId) -> String {
@@ -956,9 +967,6 @@ impl World {
             let left_sight = chebyshev(origin, cell) > self.tuning.sight;
             let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if let Some(from) = seen_floor {
-                if self.meal_follows_the_prints(origin) && line.ends_with("still in sight.") {
-                    line.push_str(" The deer ate the berries that were here.");
-                }
                 if left_sight {
                     let ground = self.cell(cell).region.word();
                     line.push_str(&format!(
