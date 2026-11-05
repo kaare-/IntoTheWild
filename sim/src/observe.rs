@@ -628,8 +628,8 @@ impl World {
         }
         if self.open_loose_branches(deer.cell) {
             return Some(format!(
-                "A deer stands on the rotting wood {}.",
-                self.mark_place(origin, deer.cell)
+                "A deer stands {}.",
+                self.deer_place(origin, deer.cell)
             ));
         }
         if origin == deer.cell {
@@ -1408,9 +1408,17 @@ impl World {
         };
         format!(
             "A deer stands {}.{}",
-            self.mark_place(origin, deer.cell),
+            self.deer_place(origin, deer.cell),
             eating
         )
+    }
+
+    fn deer_place(&self, origin: CellId, deer_cell: CellId) -> String {
+        if self.open_loose_branches(deer_cell) {
+            format!("on the rotting wood {}", self.mark_place(origin, deer_cell))
+        } else {
+            self.mark_place(origin, deer_cell)
+        }
     }
 
     fn examine_tracks(&self, viewer: ActorId) -> String {

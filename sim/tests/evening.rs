@@ -3061,7 +3061,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(world.sim_time(), clock);
     assert_eq!(
         text,
-        "A deer stands one cell south and one cell west, in the open."
+        "A deer stands on the rotting wood one cell south and one cell west, in the open."
     );
     assert!(!text.contains("to the south and west"), "{text}");
     let look = world.observe(near).unwrap();
@@ -3087,6 +3087,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .contains("Wood left in the open is rotting one cell south and one cell west."));
     assert!(apart.text.contains("a deer"));
     assert!(!apart.text.contains("on the rotting wood"));
+    let left = world.examine(near, ExamineTarget::Deer);
+    assert_eq!(left, "A deer stands one cell west, in the open.");
+    assert!(!left.contains("rotting"), "{left}");
+    assert_eq!(
+        world.examine(far, ExamineTarget::Deer),
+        "You cannot see a deer from here."
+    );
 }
 
 #[test]
