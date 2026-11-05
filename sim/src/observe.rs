@@ -997,16 +997,20 @@ impl World {
                         line.push_str(&format!(", not the {ground} one step to your {dir}"));
                     }
                     line.push('.');
-                    let trail = self.cell(cell).trail;
-                    let prints = self.tracks.contains(&cell);
-                    if trail && prints && deer_here {
-                        line.push_str(&format!(
-                            " A deer trail passes on that {ground}, hoofprints mark that {ground}, and the deer stands on that {ground}, out of sight."
-                        ));
-                    } else if deer_here {
-                        line.push_str(&format!(" The deer stands on that {ground}, out of sight."));
-                    } else {
-                        line.push_str(" Out of sight.");
+                    if !same_walk {
+                        let trail = self.cell(cell).trail;
+                        let prints = self.tracks.contains(&cell);
+                        if trail && prints && deer_here {
+                            line.push_str(&format!(
+                                " A deer trail passes on that {ground}, hoofprints mark that {ground}, and the deer stands on that {ground}, out of sight."
+                            ));
+                        } else if deer_here {
+                            line.push_str(&format!(
+                                " The deer stands on that {ground}, out of sight."
+                            ));
+                        } else {
+                            line.push_str(" Out of sight.");
+                        }
                     }
                     break;
                 }
