@@ -936,39 +936,25 @@ impl World {
             let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if let Some(from) = seen_floor {
                 if left_sight {
-                    line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the floor {dir} of the {from} floor."
-                    ));
-                    let mut facts = Vec::new();
-                    if self.cell(cell).trail {
-                        facts.push("A deer trail passes on that floor");
-                    }
-                    if self.tracks.contains(&cell) {
-                        facts.push("hoofprints mark the ground");
-                    }
-                    if deer_here {
-                        facts.push("the deer stands on that floor, out of sight");
-                    }
-                    if facts.is_empty() {
-                        line.push_str(" Out of sight.");
+                    let ground = self.cell(cell).region.word();
+                    let place = if self.exposure_millis(cell) >= 1000 {
+                        format!("open {ground}")
                     } else {
-                        line.push(' ');
-                        let last = facts.len() - 1;
-                        for (i, fact) in facts.iter().enumerate() {
-                            if i == 0 {
-                                line.push_str(fact);
-                            } else if i == last {
-                                line.push_str(", and ");
-                                line.push_str(fact);
-                            } else {
-                                line.push_str(", ");
-                                line.push_str(fact);
-                            }
-                        }
-                        if !deer_here {
-                            line.push_str(", out of sight");
-                        }
-                        line.push('.');
+                        ground.to_string()
+                    };
+                    line.push_str(&format!(
+                        " The deer went on from the {from} floor onto {place} {dir} of the {from} floor."
+                    ));
+                    let trail = self.cell(cell).trail;
+                    let prints = self.tracks.contains(&cell);
+                    if trail && prints && deer_here {
+                        line.push_str(&format!(
+                            " A deer trail passes on that {place}, hoofprints mark it, and the deer stands on it, out of sight."
+                        ));
+                    } else if deer_here {
+                        line.push_str(" The deer stands on it, out of sight.");
+                    } else {
+                        line.push_str(" Out of sight.");
                     }
                     break;
                 }
