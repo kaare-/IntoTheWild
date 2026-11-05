@@ -3672,8 +3672,33 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let on_left = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), wood_clock + 1);
     assert!(
+        on_left
+            .text
+            .contains("The berries that were here are gone. The deer ate them."),
+        "{}",
+        on_left.text
+    );
+    assert_eq!(on_left.text.matches("The deer ate them.").count(), 1);
+    assert_eq!(
+        on_left
+            .text
+            .matches("one cell south and two cells west")
+            .count(),
+        0,
+        "{}",
+        on_left.text
+    );
+    assert!(!on_left.text.contains("stands there"), "{}", on_left.text);
+    assert!(
+        !on_left
+            .text
+            .contains("A deer stands one cell south and two cells west"),
+        "{}",
+        on_left.text
+    );
+    assert!(
         on_left.text.contains(
-            "The berries that were here are gone. The deer one cell south and two cells west ate them and stands there, in the open."
+            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, the deer stands on the valley floor, in the open."
         ),
         "{}",
         on_left.text
@@ -3681,23 +3706,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(
         on_left
             .text
-            .matches("one cell south and two cells west")
+            .matches("the deer stands on the valley floor, in the open")
             .count(),
-        1,
-        "{}",
-        on_left.text
+        1
     );
     assert!(
-        !on_left
-            .text
-            .contains("The deer one cell south and two cells west stands there."),
-        "{}",
-        on_left.text
-    );
-    assert!(
-        !on_left
-            .text
-            .contains("A deer stands one cell south and two cells west"),
+        on_left.text.contains(
+            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
+        ),
         "{}",
         on_left.text
     );
@@ -3709,10 +3725,12 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_left.text
     );
-    let ending = on_left.text.trim_end().lines().last().unwrap_or("");
     assert!(
-        !ending.contains("one cell south and two cells west"),
-        "{ending}"
+        on_left
+            .text
+            .contains("Wood left in the open is rotting to the south and west."),
+        "{}",
+        on_left.text
     );
     assert!(
         !on_left.text.contains("the south floor"),

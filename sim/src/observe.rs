@@ -397,6 +397,10 @@ impl World {
                                 "The deer stands to the {}.",
                                 self.relative(actor.cell, deer_cell)
                             ));
+                        } else if self.deer_stands_past_the_wood(actor.cell) {
+                            parts.push(
+                                "The berries that were here are gone. The deer ate them.".into(),
+                            );
                         } else {
                             let place = self.cell_offset(actor.cell, deer_cell);
                             let cover = self.cover_phrase(deer_cell);
@@ -1123,6 +1127,46 @@ impl World {
         Some(steps)
     }
 
+    /// The deer is standing on the open floor just past this wood, still in sight.
+    /// South names that animal. The place line does not count the cells.
+    fn deer_stands_past_this_wood(
+        &self,
+        origin: CellId,
+        wood: CellId,
+    ) -> Option<(CellId, &'static str)> {
+        if !self.open_wood_keeps_its_way(origin) {
+            return None;
+        }
+        let deer = self.deer.as_ref()?;
+        if deer.cell == wood || chebyshev(origin, deer.cell) > self.tuning.sight {
+            return None;
+        }
+        let (wx, wy) = cell_xy(wood);
+        let stood = cell_id(wx - 1, wy)?;
+        if deer.cell != stood || self.first_cell_off_this_wood(wood) != Some(stood) {
+            return None;
+        }
+        let way = orthogonal_step(wood, stood)?;
+        Some((stood, way))
+    }
+
+    /// South will say where this deer stands, past the wood.
+    fn deer_stands_past_the_wood(&self, origin: CellId) -> bool {
+        Dir::all().into_iter().any(|dir| {
+            let Some((wood, _)) = self.corner_wood(origin, dir) else {
+                return false;
+            };
+            let named_earlier = Dir::all()
+                .into_iter()
+                .take_while(|earlier| *earlier != dir)
+                .any(|earlier| {
+                    self.corner_wood(origin, earlier)
+                        .is_some_and(|(cell, _)| cell == wood)
+                });
+            !named_earlier && self.deer_stands_past_this_wood(origin, wood).is_some()
+        })
+    }
+
     /// The deer and the rotting wood share the diagonal just past this edge.
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
         if let Some((corner, side)) = self.corner_deer(origin, dir) {
@@ -1161,6 +1205,14 @@ impl World {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
+            if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
+                let ground = self.cell(stood).region.word();
+                let cover = self.cover_phrase(stood);
+                line.push_str(&format!(
+                    " Past that wood, to its {way}, the deer stands on the {ground}, {cover}."
+                ));
+                return Some(line);
+            }
             if let Some(entered) = self.floor_west_of_this_wood(origin, corner) {
                 if let Some(wood_side) = orthogonal_step(corner, entered) {
                     let standing = self.deer_stands_on_next_floor(origin, entered);
