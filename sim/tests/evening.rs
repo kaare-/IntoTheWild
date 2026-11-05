@@ -3688,7 +3688,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_left.text
     );
-    assert!(!on_left.text.contains("stands there"), "{}", on_left.text);
+    assert_eq!(on_left.text.matches("The deer stands there.").count(), 1);
     assert!(
         !on_left
             .text
@@ -3703,8 +3703,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         south,
-        "South: valley floor. The corner beyond, to the west, has that wood."
+        "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the valley floor on the wood's west side. The deer stands there."
     );
+    assert!(!south.contains("hoofprint"), "{south}");
     assert!(!on_left.text.contains("open ground"), "{}", on_left.text);
     assert!(
         !on_left.text.contains("That deer stands"),
@@ -3725,10 +3726,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_left.text
     );
-    assert!(
-        !south.contains("the valley floor on the wood's west side"),
-        "{south}"
-    );
+    assert!(!south.contains("west of the rotting wood"), "{south}");
     let examined = world.examine(near, ExamineTarget::Deer);
     assert_eq!(world.sim_time(), wood_clock + 1);
     assert_eq!(
@@ -3757,14 +3755,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let ending = on_left.text.trim_end().lines().last().unwrap_or("");
     assert_eq!(
         ending,
-        "The deer stands on the valley floor on the wood's west side."
+        "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
     );
-    assert!(!ending.contains("west of the rotting wood"), "{ending}");
-    assert!(!ending.contains("hoofprints"), "{ending}");
-    assert!(!ending.contains("on it"), "{ending}");
-    assert_eq!(ending.matches('.').count(), 1, "{ending}");
-    assert!(!ending.contains("past that wood"), "{ending}");
-    assert!(!ending.contains("in the open"), "{ending}");
+    assert!(
+        !on_left
+            .text
+            .contains("The deer stands on the valley floor on the wood's west side."),
+        "{}",
+        on_left.text
+    );
     assert!(
         on_left
             .text

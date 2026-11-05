@@ -238,7 +238,8 @@ impl World {
         if self.deer_named_next_door(actor.cell) {
             lines.push("That deer ate the berries that were here.".into());
         }
-        if self.prints_stay_on_the_wood(actor.cell) {
+        if self.prints_stay_on_the_wood(actor.cell) && self.deer_past_the_wood(actor.cell).is_none()
+        {
             lines.push(self.prints_left_behind(actor.cell));
         }
         lines.join("\n")
@@ -973,22 +974,13 @@ impl World {
         self.floor_west_of_this_wood(origin, wood) == Some(steps[0])
     }
 
-    /// One sentence: the deer stands past the wood and left the prints on it.
-    fn prints_close_on_the_deer(&self, origin: CellId, placed: &str) -> String {
-        if let Some(floor) = self.deer_past_the_wood(origin) {
-            format!("The deer stands on {floor}.")
-        } else {
-            format!("{placed}.")
-        }
-    }
-
     fn prints_left_behind(&self, origin: CellId) -> String {
         let placed = "The deer left hoofprints on that wood";
         let Some(steps) = self.steps_off_the_wood(origin) else {
-            return self.prints_close_on_the_deer(origin, placed);
+            return format!("{placed}.");
         };
         if steps.len() < 2 {
-            return self.prints_close_on_the_deer(origin, placed);
+            return format!("{placed}.");
         }
         let mut line = String::new();
         let mut prev = steps[0];
@@ -1222,6 +1214,13 @@ impl World {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
+            if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
+                let ground = self.cell(stood).region.word();
+                line.push_str(&format!(
+                    " Past that wood, to its {way}, is the {ground} on the wood's {way} side. The deer stands there."
+                ));
+                return Some(line);
+            }
             if let Some(entered) = self.floor_west_of_this_wood(origin, corner) {
                 if let Some(wood_side) = orthogonal_step(corner, entered) {
                     let standing = self.deer_stands_on_next_floor(origin, entered);
