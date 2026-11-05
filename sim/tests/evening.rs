@@ -3340,6 +3340,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         last_look.text
     );
     assert!(
+        !last_look.text.contains("the south floor"),
+        "{}",
+        last_look.text
+    );
+    assert!(
         last_look.text.contains(
             "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
         ),
@@ -3430,6 +3435,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         left_look.text
     );
     assert!(
+        !left_look.text.contains("the south floor"),
+        "{}",
+        left_look.text
+    );
+    assert!(
         left_look.text.contains(
             "West: valley floor, a deer, hoofprints. That way, to the south, reaches the same wood."
         ),
@@ -3496,6 +3506,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!wood_look.text.contains("ate them"), "{}", wood_look.text);
     assert!(
         !wood_look.text.contains("Past that wood"),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("the south floor"),
         "{}",
         wood_look.text
     );
@@ -3625,7 +3640,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         unseen.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is valley floor. The deer has left it. Hoofprints mark that ground."
+            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the valley floor on the wood's west side. The deer has left it. Hoofprints mark that ground. South of the valley floor on the wood's west side is the south floor, still in sight. Hoofprints mark the south floor."
         ),
         "{}",
         unseen.text
@@ -3727,7 +3742,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     assert_eq!(unseen.text.matches("out of sight").count(), 1);
-    assert_eq!(unseen.text.matches("still in sight").count(), 1);
+    assert_eq!(unseen.text.matches("still in sight").count(), 2);
     assert!(
         !unseen.text.contains("that is still in sight"),
         "{}",
@@ -3803,7 +3818,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .count(),
         1
     );
-    assert_eq!(after_south.matches("on the wood's west side").count(), 1);
+    assert_eq!(after_south.matches("on the wood's west side").count(), 2);
     assert_eq!(after_south.matches("that valley floor").count(), 3);
     assert_eq!(after_south.matches(", in the open,").count(), 1);
     assert_eq!(after_south.matches("on that floor").count(), 0);

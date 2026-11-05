@@ -1094,12 +1094,41 @@ impl World {
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if self.deer_entered_west_of_this_wood(origin, corner) {
-                line.push_str(
-                    " Past that wood, to its west, is valley floor. The deer has left it. Hoofprints mark that ground.",
-                );
+                if let Some(entered) = self.first_cell_off_this_wood(corner) {
+                    if let Some(wood_side) = orthogonal_step(corner, entered) {
+                        let ground = self.cell(entered).region.word();
+                        line.push_str(&format!(
+                            " Past that wood, to its {wood_side}, is the {ground} on the wood's {wood_side} side. The deer has left it. Hoofprints mark that ground."
+                        ));
+                        if let Some(step) = self.next_floor_still_in_sight(origin, entered) {
+                            line.push_str(&format!(
+                                " {} of the {ground} on the wood's {wood_side} side is the {step} floor, still in sight. Hoofprints mark the {step} floor.",
+                                capitalize(step)
+                            ));
+                        }
+                    }
+                }
             }
             Some(line)
         }
+    }
+
+    /// The next floor the deer stepped onto after leaving the wood, while that
+    /// floor is still in sight and the deer has left it.
+    fn next_floor_still_in_sight(&self, origin: CellId, from: CellId) -> Option<&'static str> {
+        let steps = self.steps_off_the_wood(origin)?;
+        if steps.first().copied() != Some(from) {
+            return None;
+        }
+        let next = *steps.get(1)?;
+        let step = orthogonal_step(from, next)?;
+        if chebyshev(origin, next) > self.tuning.sight || !self.tracks.contains(&next) {
+            return None;
+        }
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == next) {
+            return None;
+        }
+        Some(step)
     }
 
     /// The deer has left sight after stepping from this wood onto the cell
