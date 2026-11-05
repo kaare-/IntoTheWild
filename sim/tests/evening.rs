@@ -3224,12 +3224,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!last.contains("these branches"), "{last}");
     let last_look = world.observe(near).unwrap();
     assert!(
-        last_look
-            .text
-            .contains("A deer is eating the berries here. The last handful is gone."),
+        last_look.text.contains("The last handful is gone."),
         "{}",
         last_look.text
     );
+    assert!(!last_look.text.contains("eating"), "{}", last_look.text);
     assert!(
         last_look
             .text
@@ -3382,10 +3381,8 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert_eq!(world.material_tally(Material::Berry), 0);
     let gone = world.observe(near).unwrap().text;
     assert!(!gone.contains("Berries lie here"), "{gone}");
-    assert!(
-        gone.contains("A deer is eating the berries here. The last handful is gone."),
-        "{gone}"
-    );
+    assert!(gone.contains("The last handful is gone."), "{gone}");
+    assert!(!gone.contains("eating"), "{gone}");
     assert!(
         gone.contains("The berries that were here are gone. The deer here ate them."),
         "{gone}"

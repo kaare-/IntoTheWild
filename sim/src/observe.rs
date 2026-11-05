@@ -322,9 +322,7 @@ impl World {
             .is_some_and(|deer| deer.cell == actor.cell);
         let berries_here = self.pile_count(actor.cell, Material::Berry) > 0;
         match self.deer_meal_this_tick(actor.cell) {
-            Some(true) if deer_here => {
-                parts.push("A deer is eating the berries here. The last handful is gone.".into())
-            }
+            Some(true) if deer_here => parts.push("The last handful is gone.".into()),
             Some(false) if deer_here => {
                 parts.push("A deer is eating the berries here. A handful is gone.".into())
             }
@@ -668,6 +666,9 @@ impl World {
                 } else {
                     "A handful is gone."
                 };
+                if last {
+                    return Some(gone.into());
+                }
                 return Some(format!("A deer is eating the berries there. {gone}"));
             }
         }
