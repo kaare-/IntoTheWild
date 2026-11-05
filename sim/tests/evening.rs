@@ -1117,6 +1117,10 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         open_line.contains("It is rotting in the open."),
         "{open_line}"
     );
+    assert!(
+        !open_line.contains("hoofprints"),
+        "no prints on this wood yet: {open_line}"
+    );
     assert!(world
         .observe(sera)
         .unwrap()
@@ -1316,7 +1320,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     assert_eq!(world.sim_time(), clock);
     assert!(
         from_mid.contains(
-            "A pile of 2 branches is in contact with the ground one cell north and two cells east, in the open."
+            "A pile of 2 branches is in contact with the ground one cell north and two cells east, in the open, and hoofprints mark the ground there."
         ),
         "{from_mid}"
     );
@@ -1324,7 +1328,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let from_rock = world.examine(under, ExamineTarget::Wood);
     assert!(
         from_rock.contains(
-            "A pile of 2 branches is in contact with the ground one cell south and one cell west, in the open."
+            "A pile of 2 branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
         ),
         "{from_rock}"
     );
@@ -3072,6 +3076,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "A deer stands on the rotting wood one cell south and one cell west, in the open."
     ));
     assert!(!look.text.contains("Wood left in the open is rotting"));
+    let wood_while = world.examine(near, ExamineTarget::Wood);
+    assert_eq!(world.sim_time(), clock);
+    assert!(wood_while.contains(
+        "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open."
+    ));
+    assert!(
+        !wood_while.contains("hoofprints"),
+        "the deer has not left this wood: {wood_while}"
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Wood),
+        "You see no wood from here."
+    );
     assert!(!look
         .text
         .contains("A deer stands one cell south and one cell west, in the open."));
@@ -3088,6 +3105,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     ));
     assert!(apart.text.contains("a deer"));
     assert!(!apart.text.contains("on the rotting wood"));
+    let wood_after = world.examine(near, ExamineTarget::Wood);
+    assert!(wood_after.contains(
+        "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
+    ));
+    assert_eq!(
+        world.examine(far, ExamineTarget::Wood),
+        "You see no wood from here."
+    );
     let left = world.examine(near, ExamineTarget::Deer);
     assert_eq!(left, "A deer stands one cell west, in the open.");
     assert!(!left.contains("rotting"), "{left}");
