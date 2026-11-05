@@ -1020,14 +1020,15 @@ impl World {
                     let noun = pile_noun(material, count);
                     let (kind, verb) = food_kind(material);
                     lines.push(format!(
-                        "A pile of {count} {noun} is in contact with the ground {}{}. The {kind} {verb} {}. {}{}{}{}",
+                        "A pile of {count} {noun} is in contact with the ground {}{}. The {kind} {verb} {}. {}{}{}{}{}",
                         self.mark_place(origin, cell),
                         self.hoofprints_on_wood(origin, cell),
                         self.condition_word(self.pile_moisture(cell, material)),
                         self.rain_reaches_phrase(cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material)
+                        food_clause(material),
+                        self.deer_on_this_wood(origin, cell)
                     ));
                 } else {
                     let noun = pile_noun(material, count);
@@ -1080,7 +1081,7 @@ impl World {
                     ));
                 } else if material == Material::Branch {
                     lines.push(format!(
-                        "{} loose {} {} in contact with the ground {}{}. {}{}{}{}",
+                        "{} loose {} {} in contact with the ground {}{}. {}{}{}{}{}",
                         loose.len(),
                         pile_noun(material, loose.len() as u32),
                         if loose.len() == 1 { "is" } else { "are" },
@@ -1089,7 +1090,8 @@ impl World {
                         self.condition_sentence(worst, cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material)
+                        food_clause(material),
+                        self.deer_on_this_wood(origin, cell)
                     ));
                 } else {
                     lines.push(format!(
@@ -1415,6 +1417,23 @@ impl World {
             self.deer_place(origin, deer.cell),
             eating
         )
+    }
+
+    fn deer_on_this_wood(&self, origin: CellId, cell: CellId) -> &'static str {
+        if !self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
+            return "";
+        }
+        if self.pile_count(cell, Material::Berry) > 0 {
+            if origin == cell {
+                " A deer is eating the berries here."
+            } else {
+                " A deer is eating the berries there."
+            }
+        } else if self.exposure_millis(cell) >= 1000 {
+            " A deer stands on the rotting branches."
+        } else {
+            " A deer stands on the wood."
+        }
     }
 
     fn hoofprints_on_wood(&self, origin: CellId, cell: CellId) -> &'static str {

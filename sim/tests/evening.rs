@@ -1121,6 +1121,10 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
         !open_line.contains("hoofprints"),
         "no prints on this wood yet: {open_line}"
     );
+    assert!(
+        !open_line.contains("deer"),
+        "no deer on this wood yet: {open_line}"
+    );
     assert!(world
         .observe(sera)
         .unwrap()
@@ -3081,6 +3085,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(wood_while.contains(
         "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open."
     ));
+    assert!(wood_while.contains("A deer stands on the rotting branches."));
+    let rock_while = wood_while
+        .lines()
+        .find(|line| line.contains("under the rock overhang"))
+        .unwrap();
+    assert!(
+        !rock_while.contains("deer"),
+        "the deer is on the open pile: {rock_while}"
+    );
     assert!(
         !wood_while.contains("hoofprints"),
         "the deer has not left this wood: {wood_while}"
@@ -3109,6 +3122,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(wood_after.contains(
         "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
     ));
+    assert!(
+        !wood_after.contains("A deer"),
+        "the deer has left the wood: {wood_after}"
+    );
     assert_eq!(
         world.examine(far, ExamineTarget::Wood),
         "You see no wood from here."
@@ -3119,6 +3136,26 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(
         world.examine(far, ExamineTarget::Deer),
         "You cannot see a deer from here."
+    );
+    world.step(&[]);
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    let eating_clock = world.sim_time();
+    let eating = world.examine(near, ExamineTarget::Wood);
+    assert_eq!(world.sim_time(), eating_clock);
+    assert!(eating.contains(
+        "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer is eating the berries here."
+    ));
+    let open_while_eating = eating
+        .lines()
+        .find(|line| line.contains("in the open"))
+        .unwrap();
+    assert!(
+        !open_while_eating.contains("A deer"),
+        "the deer has left the open pile: {open_while_eating}"
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Wood),
+        "You see no wood from here."
     );
 }
 
