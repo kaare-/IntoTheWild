@@ -3643,7 +3643,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on that wood, and walked south from the valley floor past the wood, onto the south floor, still in sight. Hoofprints mark the south floor. The deer went on from the south floor onto the valley floor to the south floor's west, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
+        .find("The deer left hoofprints on that wood, and walked south from the valley floor to the wood's west, onto the south floor, still in sight. Hoofprints mark the south floor. The deer went on from the south floor onto the valley floor to the south floor's west, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3781,8 +3781,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
+    assert!(!after_south.contains("past the wood"), "{}", unseen.text);
+    assert!(
+        !after_south.contains("walked south from the valley floor past the wood"),
+        "{}",
+        unseen.text
+    );
     assert_eq!(after_south.matches("the south floor's west").count(), 1);
-    assert_eq!(after_south.matches("past the wood").count(), 1);
+    assert_eq!(after_south.matches("the wood's west").count(), 1);
     assert_eq!(after_south.matches("that valley floor").count(), 3);
     assert_eq!(after_south.matches(", in the open,").count(), 1);
     assert_eq!(after_south.matches("on that floor").count(), 0);

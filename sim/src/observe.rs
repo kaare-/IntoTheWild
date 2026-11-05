@@ -975,8 +975,17 @@ impl World {
                 ));
             } else {
                 let from_ground = self.cell(prev).region.word();
+                let Some(wood_side) = Dir::all().into_iter().find_map(|way| {
+                    let (wood, _) = self.corner_wood(origin, way)?;
+                    if !self.tracks.contains(&wood) {
+                        return None;
+                    }
+                    orthogonal_step(wood, prev)
+                }) else {
+                    return format!("{placed}.");
+                };
                 line = format!(
-                    "{placed}, and walked {dir} from the {from_ground} past the wood, onto the {dir} floor"
+                    "{placed}, and walked {dir} from the {from_ground} to the wood's {wood_side}, onto the {dir} floor"
                 );
                 if left_sight {
                     if deer_here {
