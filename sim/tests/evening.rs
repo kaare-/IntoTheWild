@@ -3754,6 +3754,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && !on_south.text.contains("went on out of sight")
             && !on_south.text.contains("you lose sight")
             && !on_south.text.contains("across the south floor")
+            && !on_south.text.contains("and on")
             && !on_south.text.contains("The deer has left the south floor")
             && !on_south.text.contains("no longer stands")
             && !on_south.text.contains("continue that walk")
@@ -3818,7 +3819,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side to the south floor.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor and on.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3861,7 +3862,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert!(!unseen.text.contains("across"), "{}", unseen.text);
+    assert!(
+        !unseen.text.contains("to the south floor"),
+        "{}",
+        unseen.text
+    );
     assert!(
         !unseen.text.contains("The deer has left the south floor"),
         "{}",
@@ -3921,10 +3926,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         1,
         "{prints_line}"
     );
-    assert!(
-        prints_line.ends_with("to the south floor."),
-        "{prints_line}"
-    );
+    assert!(prints_line.ends_with("and on."), "{prints_line}");
+    assert_eq!(prints_line.matches("and on").count(), 1, "{prints_line}");
+    assert!(!prints_line.ends_with("south floor."), "{prints_line}");
     assert!(
         !unseen.text.contains("The deer went on from"),
         "{}",
@@ -3991,7 +3995,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side to the south floor.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, across the south floor and on.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(

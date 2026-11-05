@@ -974,7 +974,7 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
-                            line.push_str(&format!(" to the {from} floor."));
+                            line.push_str(&format!(", across the {from} floor and on."));
                         }
                         break;
                     }
