@@ -937,22 +937,34 @@ impl World {
             if let Some(from) = seen_floor {
                 if left_sight {
                     let ground = self.cell(cell).region.word();
-                    let place = if self.exposure_millis(cell) >= 1000 {
-                        format!("open {ground}")
-                    } else {
-                        ground.to_string()
-                    };
                     line.push_str(&format!(
-                        " The deer went on from the {from} floor onto {place} {dir} of the {from} floor."
+                        " The deer went on from the {from} floor onto the {ground} past the {from} floor"
                     ));
+                    if self.exposure_millis(cell) >= 1000 {
+                        line.push_str(", in the open");
+                    }
+                    let beside = Dir::all()
+                        .into_iter()
+                        .find(|way| way.word() == dir)
+                        .and_then(|way| {
+                            let (ox, oy) = cell_xy(origin);
+                            let (dx, dy) = way.delta();
+                            cell_id(ox + dx, oy + dy)
+                        });
+                    if beside.is_some_and(|beside| {
+                        beside != cell && self.cell(beside).region.word() == ground
+                    }) {
+                        line.push_str(&format!(", not the {ground} one step to your {dir}"));
+                    }
+                    line.push('.');
                     let trail = self.cell(cell).trail;
                     let prints = self.tracks.contains(&cell);
                     if trail && prints && deer_here {
                         line.push_str(&format!(
-                            " A deer trail passes on that {place}, hoofprints mark it, and the deer stands on it, out of sight."
+                            " A deer trail passes on that {ground}, hoofprints mark that {ground}, and the deer stands on that {ground}, out of sight."
                         ));
                     } else if deer_here {
-                        line.push_str(" The deer stands on it, out of sight.");
+                        line.push_str(&format!(" The deer stands on that {ground}, out of sight."));
                     } else {
                         line.push_str(" Out of sight.");
                     }

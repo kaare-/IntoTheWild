@@ -3643,7 +3643,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on that wood, and from that valley floor it walked south onto the south floor, still in sight. Hoofprints mark the south floor. The deer went on from the south floor onto open valley floor west of the south floor. A deer trail passes on that open valley floor, hoofprints mark it, and the deer stands on it, out of sight.")
+        .find("The deer left hoofprints on that wood, and from that valley floor it walked south onto the south floor, still in sight. Hoofprints mark the south floor. The deer went on from the south floor onto the valley floor past the south floor, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3755,13 +3755,24 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!after_south.contains("that ground"), "{}", unseen.text);
     assert!(!after_south.contains("the west floor"), "{}", unseen.text);
     assert!(!after_south.contains("far floor"), "{}", unseen.text);
-    assert_eq!(
-        after_south
-            .matches("open valley floor west of the south floor")
-            .count(),
-        1
+    assert!(
+        !after_south.contains("open valley floor"),
+        "{}",
+        unseen.text
     );
-    assert_eq!(after_south.matches("on that open valley floor").count(), 1);
+    assert!(
+        !after_south.contains("west of the south floor"),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        !after_south.contains("hoofprints mark it"),
+        "{}",
+        unseen.text
+    );
+    assert!(!after_south.contains("stands on it"), "{}", unseen.text);
+    assert_eq!(after_south.matches("that valley floor").count(), 4);
+    assert_eq!(after_south.matches(", in the open,").count(), 1);
     assert_eq!(after_south.matches("on that floor").count(), 0);
     assert!(!after_south.contains("the ground"), "{}", unseen.text);
     assert!(
@@ -3783,7 +3794,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!after_south.contains("a trail there"), "{}", unseen.text);
     assert_eq!(
         after_south
-            .matches("A deer trail passes on that open valley floor")
+            .matches("A deer trail passes on that valley floor")
             .count(),
         1
     );
