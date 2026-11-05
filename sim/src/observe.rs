@@ -977,7 +977,7 @@ impl World {
                             line.push('.');
                             line.push('\n');
                             line.push_str(&format!(
-                                "The row of hoofprints crosses the {from} floor, which is still in sight, and passes on out of view."
+                                "Hoofprints mark the {from} floor, which is still in sight, and past that floor no more hoofprints show."
                             ));
                         }
                         break;
