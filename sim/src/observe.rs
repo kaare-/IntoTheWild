@@ -971,6 +971,11 @@ impl World {
                     let ground = self.cell(cell).region.word();
                     let same_walk = line.ends_with("still in sight.");
                     if same_walk {
+                        let still = ", still in sight.";
+                        if line.ends_with(still) {
+                            line.truncate(line.len() - still.len());
+                            line.push_str(".\nThat floor is still in sight.\nThe deer is not.");
+                        }
                         break;
                     }
                     line.push_str(&format!(
