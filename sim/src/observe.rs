@@ -323,9 +323,7 @@ impl World {
         let berries_here = self.pile_count(actor.cell, Material::Berry) > 0;
         match self.deer_meal_this_tick(actor.cell) {
             Some(true) if deer_here => parts.push("The last handful is gone.".into()),
-            Some(false) if deer_here => {
-                parts.push("A deer is eating the berries here. A handful is gone.".into())
-            }
+            Some(false) if deer_here => parts.push(self.eating_handful_line(actor.cell, true)),
             _ if deer_here && berries_here => {
                 parts.push("A deer stands on these branches.".into());
             }
@@ -661,15 +659,10 @@ impl World {
         }
         if origin != deer.cell {
             if let Some(last) = self.deer_meal_this_tick(deer.cell) {
-                let gone = if last {
-                    "The last handful is gone."
-                } else {
-                    "A handful is gone."
-                };
                 if last {
-                    return Some(gone.into());
+                    return Some("The last handful is gone.".into());
                 }
-                return Some(format!("A deer is eating the berries there. {gone}"));
+                return Some(self.eating_handful_line(deer.cell, false));
             }
         }
         if origin != deer.cell
@@ -1486,6 +1479,15 @@ impl World {
             self.deer_place(origin, deer.cell),
             eating
         )
+    }
+
+    fn eating_handful_line(&self, cell: CellId, here: bool) -> String {
+        let place = if here { "here" } else { "there" };
+        if self.pile_count(cell, Material::Berry) == 1 {
+            format!("A deer is eating the berries {place}. This handful is the last.")
+        } else {
+            format!("A deer is eating the berries {place}. A handful is gone. More are left.")
+        }
     }
 
     /// `Some(true)` when the handful that went on this tick was the last.
