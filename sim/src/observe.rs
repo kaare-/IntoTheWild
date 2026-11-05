@@ -696,7 +696,7 @@ impl World {
                 return Some(format!(
                     "That corner is {}{}.",
                     self.cover_phrase(deer.cell),
-                    self.hoofprints_on_wood(origin, deer.cell)
+                    self.corner_hoofprints(origin, deer.cell)
                 ));
             }
             return Some(format!(
@@ -1596,6 +1596,22 @@ impl World {
             None if self.exposure_millis(cell) >= 1000 => " A deer stands on the rotting branches.",
             None => " A deer stands on these branches.",
         }
+    }
+
+    /// West already listed its own prints, so these belong on the wood.
+    fn corner_hoofprints(&self, origin: CellId, cell: CellId) -> &'static str {
+        if !self.tracks.contains(&cell) {
+            ""
+        } else if self.west_floor_has_hoofprints(origin) {
+            ", and hoofprints mark the rotting wood under the deer"
+        } else {
+            self.hoofprints_on_wood(origin, cell)
+        }
+    }
+
+    fn west_floor_has_hoofprints(&self, origin: CellId) -> bool {
+        let (x, y) = cell_xy(origin);
+        cell_id(x - 1, y).is_some_and(|west| self.tracks.contains(&west))
     }
 
     fn hoofprints_on_wood(&self, origin: CellId, cell: CellId) -> &'static str {
