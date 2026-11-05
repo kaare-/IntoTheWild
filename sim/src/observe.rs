@@ -1152,11 +1152,11 @@ impl World {
 
     /// South will say where this deer stands, past the wood.
     fn deer_stands_past_the_wood(&self, origin: CellId) -> bool {
-        self.named_floor_past_the_wood(origin).is_some()
+        self.deer_past_the_wood(origin).is_some()
     }
 
-    /// The floor just past the wood, by the name South already uses at sim time 14.
-    fn named_floor_past_the_wood(&self, origin: CellId) -> Option<String> {
+    /// Where the deer stands past the wood, without naming that floor again.
+    fn deer_past_the_wood(&self, origin: CellId) -> Option<String> {
         Dir::all().into_iter().find_map(|dir| {
             let (wood, _) = self.corner_wood(origin, dir)?;
             let named_earlier = Dir::all()
@@ -1170,9 +1170,8 @@ impl World {
                 return None;
             }
             let (stood, way) = self.deer_stands_past_this_wood(origin, wood)?;
-            let ground = self.cell(stood).region.word();
             let cover = self.cover_phrase(stood);
-            Some(format!("the {ground} on the wood's {way} side, {cover}"))
+            Some(format!("past that wood, to its {way}, {cover}"))
         })
     }
 
@@ -1215,10 +1214,9 @@ impl World {
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
-                let ground = self.cell(stood).region.word();
                 let cover = self.cover_phrase(stood);
                 line.push_str(&format!(
-                    " Past that wood, to its {way}, the deer stands on the {ground} on the wood's {way} side, {cover}."
+                    " Past that wood, to its {way}, the deer stands {cover}."
                 ));
                 return Some(line);
             }
@@ -2101,8 +2099,8 @@ impl World {
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return "You cannot see a deer from here.".into();
         }
-        if let Some(floor) = self.named_floor_past_the_wood(origin) {
-            return format!("A deer stands on {floor}.");
+        if let Some(place) = self.deer_past_the_wood(origin) {
+            return format!("A deer stands {place}.");
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."
