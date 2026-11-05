@@ -973,10 +973,10 @@ impl World {
         self.floor_west_of_this_wood(origin, wood) == Some(steps[0])
     }
 
-    /// The short print line, then the living deer, when it still stands past the wood.
+    /// One sentence: the deer stands past the wood and left the prints on it.
     fn prints_close_on_the_deer(&self, origin: CellId, placed: &str) -> String {
-        if self.deer_past_the_wood(origin).is_some() {
-            format!("{placed}. That deer stands on open ground.")
+        if let Some(way) = self.deer_past_the_wood(origin) {
+            format!("The deer stands {way} of the rotting wood and left hoofprints on it.")
         } else {
             format!("{placed}.")
         }
@@ -2101,7 +2101,7 @@ impl World {
             return "You cannot see a deer from here.".into();
         }
         if let Some(way) = self.deer_past_the_wood(origin) {
-            return format!("A deer stands on open ground, {way} of the rotting wood.");
+            return format!("A deer stands {way} of the rotting wood.");
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."
