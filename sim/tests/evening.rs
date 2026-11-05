@@ -3167,6 +3167,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         snap_look.text
     );
+    assert!(
+        !snap_look.text.contains("handful is gone"),
+        "{}",
+        snap_look.text
+    );
     assert!(!world.observe(far).unwrap().text.contains("these branches"));
     let open_on_snap = snapped
         .lines()
@@ -3189,10 +3194,18 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!eating.contains("these branches"), "{eating}");
     let eat_look = world.observe(near).unwrap();
     assert!(
-        eat_look.text.contains("A deer is eating the berries here."),
+        eat_look
+            .text
+            .contains("A deer is eating the berries here. A handful is gone."),
         "{}",
         eat_look.text
     );
+    assert!(
+        !eat_look.text.contains("The last handful"),
+        "{}",
+        eat_look.text
+    );
+    assert!(!world.observe(far).unwrap().text.contains("handful is gone"));
     assert!(
         !eat_look.text.contains("these branches"),
         "{}",
@@ -3209,6 +3222,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{last}"
     );
     assert!(!last.contains("these branches"), "{last}");
+    let last_look = world.observe(near).unwrap();
+    assert!(
+        last_look
+            .text
+            .contains("A deer is eating the berries here. The last handful is gone."),
+        "{}",
+        last_look.text
+    );
+    assert!(!world.observe(far).unwrap().text.contains("last handful"));
     assert_eq!(
         world.examine(far, ExamineTarget::Wood),
         "You see no wood from here."
@@ -3241,9 +3263,10 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
             let text = world.observe(near).unwrap().text;
             if after < before {
                 assert!(
-                    text.contains("A deer is eating the berries here."),
+                    text.contains("A deer is eating the berries here. A handful is gone."),
                     "{text}"
                 );
+                assert!(!text.contains("The last handful"), "{text}");
                 assert!(!text.contains("these branches"), "{text}");
             } else {
                 assert!(text.contains("A deer stands on these branches."), "{text}");
@@ -3288,13 +3311,12 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert_eq!(world.material_tally(Material::Berry), 0);
     let gone = world.observe(near).unwrap().text;
     assert!(!gone.contains("Berries lie here"), "{gone}");
-    assert!(!gone.contains("eating the berries"), "{gone}");
-    assert!(gone.contains("A deer stands here."), "{gone}");
-    assert!(!world
-        .observe(far)
-        .unwrap()
-        .text
-        .contains("eating the berries"));
+    assert!(
+        gone.contains("A deer is eating the berries here. The last handful is gone."),
+        "{gone}"
+    );
+    assert!(!gone.contains("A deer stands here."), "{gone}");
+    assert!(!world.observe(far).unwrap().text.contains("last handful"));
     assert_eq!(
         world.examine(far, ExamineTarget::Berries),
         "You see no berries from here."

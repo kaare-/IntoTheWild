@@ -321,16 +321,23 @@ impl World {
             .as_ref()
             .is_some_and(|deer| deer.cell == actor.cell);
         let berries_here = self.pile_count(actor.cell, Material::Berry) > 0;
-        let handful_gone = deer_here && self.deer_meal_this_tick(actor.cell).is_some();
-        if deer_here && berries_here && handful_gone {
-            parts.push("A deer is eating the berries here.".into());
-        } else if deer_here && berries_here {
-            parts.push("A deer stands on these branches.".into());
-        } else if berries_here {
-            parts.push(format!(
-                "Berries lie here, {}. They are good to eat raw.",
-                self.condition_word(self.pile_moisture(actor.cell, Material::Berry))
-            ));
+        match self.deer_meal_this_tick(actor.cell) {
+            Some(true) if deer_here => {
+                parts.push("A deer is eating the berries here. The last handful is gone.".into())
+            }
+            Some(false) if deer_here => {
+                parts.push("A deer is eating the berries here. A handful is gone.".into())
+            }
+            _ if deer_here && berries_here => {
+                parts.push("A deer stands on these branches.".into());
+            }
+            _ if berries_here => {
+                parts.push(format!(
+                    "Berries lie here, {}. They are good to eat raw.",
+                    self.condition_word(self.pile_moisture(actor.cell, Material::Berry))
+                ));
+            }
+            _ => {}
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(
@@ -417,7 +424,11 @@ impl World {
                 parts.push("A spear lies here. The point is not hardened.".into());
             }
         }
-        if deer_here && !berries_here && !self.open_loose_branches(actor.cell) {
+        if deer_here
+            && !berries_here
+            && !self.open_loose_branches(actor.cell)
+            && self.deer_meal_this_tick(actor.cell).is_none()
+        {
             parts.push("A deer stands here.".into());
         }
         if self.tracks.contains(&actor.cell) {
@@ -630,6 +641,16 @@ impl World {
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return None;
         }
+        if origin != deer.cell {
+            if let Some(last) = self.deer_meal_this_tick(deer.cell) {
+                let gone = if last {
+                    "The last handful is gone."
+                } else {
+                    "A handful is gone."
+                };
+                return Some(format!("A deer is eating the berries there. {gone}"));
+            }
+        }
         if origin != deer.cell
             && self.pile_count(deer.cell, Material::Branch) > 0
             && self.pile_count(deer.cell, Material::Berry) > 0
@@ -689,6 +710,10 @@ impl World {
                 && self.pile_count(dest, Material::Berry) > 0
                 && self.deer_meal_this_tick(dest).is_none()
         });
+        let deer_eating = self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| deer.cell == dest && self.deer_meal_this_tick(dest).is_some());
         if self.pile_count(dest, Material::Branch) > 0 && !deer_on_this_wood {
             bits.push("a pile of branches".into());
         }
@@ -759,6 +784,7 @@ impl World {
         if self.deer.as_ref().is_some_and(|deer| deer.cell == dest)
             && !deer_on_this_wood
             && !deer_just_arrived
+            && !deer_eating
         {
             bits.push("a deer".into());
         }
