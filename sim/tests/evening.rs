@@ -3375,27 +3375,35 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         left_look
             .text
-            .contains("The berries that were here are gone. The deer one cell west ate them."),
+            .contains("The berries that were here are gone."),
         "{}",
         left_look.text
     );
     assert!(
-        !left_look.text.contains("A deer ate them."),
+        !left_look.text.contains("one cell west"),
         "{}",
         left_look.text
     );
     assert!(
-        !left_look.text.contains("The deer here"),
+        !left_look.text.contains("stands there"),
         "{}",
         left_look.text
     );
-    assert!(!left_look.text.contains("eating"), "{}", left_look.text);
-    assert!(
+    let west_at = left_look
+        .text
+        .find("West: valley floor, a deer, hoofprints. That way, to the south, reaches the same wood.")
+        .expect(&left_look.text);
+    let ate_west = left_look
+        .text
+        .find("That deer ate the berries that were here.")
+        .expect(&left_look.text);
+    assert!(west_at < ate_west, "{}", left_look.text);
+    assert_eq!(
         left_look
             .text
-            .contains("The deer one cell west stands there."),
-        "{}",
-        left_look.text
+            .matches("That deer ate the berries that were here.")
+            .count(),
+        1
     );
     assert!(
         left_look

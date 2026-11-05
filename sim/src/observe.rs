@@ -229,6 +229,9 @@ impl World {
         if self.deer_named_on_corner(actor.cell) {
             lines.push("The deer on that wood ate the berries.".into());
         }
+        if self.deer_named_next_door(actor.cell) {
+            lines.push("That deer ate the berries that were here.".into());
+        }
         if self.prints_stay_on_the_wood(actor.cell) {
             lines.push(
                 "The deer left hoofprints on the ground here, on the valley floor to the west, and on that rotting wood."
@@ -376,7 +379,9 @@ impl World {
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
-                    if self.direction_names_deer(actor.cell, deer_cell) {
+                    if self.direction_names_deer(actor.cell, deer_cell)
+                        || self.neighbor_line_names_deer(actor.cell, deer_cell)
+                    {
                         parts.push("The berries that were here are gone.".into());
                     } else {
                         let place = self.cell_offset(actor.cell, deer_cell);
@@ -966,6 +971,35 @@ impl World {
             && self.spent_berries.contains(&origin)
             && self.deer_ate_berries.contains(&origin)
             && self.direction_names_deer(origin, deer.cell)
+    }
+
+    fn deer_named_next_door(&self, origin: CellId) -> bool {
+        let Some(deer) = &self.deer else {
+            return false;
+        };
+        deer.cell != origin
+            && self.pile_count(origin, Material::Berry) == 0
+            && self.spent_berries.contains(&origin)
+            && self.deer_ate_berries.contains(&origin)
+            && self.neighbor_line_names_deer(origin, deer.cell)
+    }
+
+    /// The neighbor line already says "a deer" for this cell.
+    fn neighbor_line_names_deer(&self, origin: CellId, deer_cell: CellId) -> bool {
+        let (x1, y1) = cell_xy(origin);
+        let (x2, y2) = cell_xy(deer_cell);
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let next_door = (dx == 0 && dy.abs() == 1) || (dy == 0 && dx.abs() == 1);
+        if !next_door {
+            return false;
+        }
+        let just_arrived = self.pile_count(deer_cell, Material::Branch) > 0
+            && self.pile_count(deer_cell, Material::Berry) > 0
+            && self.deer_meal_this_tick(deer_cell).is_none();
+        !self.open_loose_branches(deer_cell)
+            && !just_arrived
+            && self.deer_meal_this_tick(deer_cell).is_none()
     }
 
     fn direction_names_deer(&self, origin: CellId, deer_cell: CellId) -> bool {
