@@ -692,16 +692,16 @@ impl World {
             ));
         }
         if self.open_loose_branches(deer.cell) {
-            let place = if self.look_already_turns_toward(origin, deer.cell) {
-                format!(
-                    "on the rotting wood in that corner, {}",
-                    self.cover_phrase(deer.cell)
-                )
-            } else {
-                self.deer_place(origin, deer.cell)
-            };
+            if self.look_already_turns_toward(origin, deer.cell) {
+                return Some(format!(
+                    "That corner is {}{}.",
+                    self.cover_phrase(deer.cell),
+                    self.hoofprints_on_wood(origin, deer.cell)
+                ));
+            }
             return Some(format!(
-                "A deer stands {place}{}.",
+                "A deer stands {}{}.",
+                self.deer_place(origin, deer.cell),
                 self.hoofprints_on_wood(origin, deer.cell)
             ));
         }

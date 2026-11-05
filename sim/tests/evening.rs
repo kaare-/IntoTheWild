@@ -3395,10 +3395,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap();
     let corner_wood = wood_look
         .text
-        .find("A deer stands on the rotting wood in that corner, in the open, and hoofprints mark the ground there.")
+        .find("That corner is in the open, and hoofprints mark the ground there.")
         .expect(&wood_look.text);
     assert!(
         south_at < corner_wood && west_at < corner_wood,
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("A deer stands on the rotting wood"),
         "{}",
         wood_look.text
     );
