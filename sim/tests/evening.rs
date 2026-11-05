@@ -3278,7 +3278,28 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!last.contains("these branches"), "{last}");
     let last_look = world.observe(near).unwrap();
     assert!(
-        last_look.text.contains("The last handful is gone."),
+        !last_look.text.contains("The last handful is gone."),
+        "{}",
+        last_look.text
+    );
+    let stand_at = last_look
+        .text
+        .find("A deer stands here.")
+        .expect(&last_look.text);
+    let pot_at = last_look
+        .text
+        .find("A pot sits here.")
+        .expect(&last_look.text);
+    let branches_at = last_look
+        .text
+        .find("A pile of branches lies here.")
+        .expect(&last_look.text);
+    let bark_at = last_look
+        .text
+        .find("A pile of bark lies here.")
+        .expect(&last_look.text);
+    assert!(
+        stand_at < pot_at && pot_at < branches_at && branches_at < bark_at,
         "{}",
         last_look.text
     );
@@ -3752,7 +3773,7 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert_eq!(world.material_tally(Material::Berry), 0);
     let gone = world.observe(near).unwrap().text;
     assert!(!gone.contains("Berries lie here"), "{gone}");
-    assert!(gone.contains("The last handful is gone."), "{gone}");
+    assert!(!gone.contains("The last handful is gone."), "{gone}");
     assert!(!gone.contains("eating"), "{gone}");
     assert!(
         gone.contains("The berries that were here are gone. The deer here ate them."),

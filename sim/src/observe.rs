@@ -349,7 +349,14 @@ impl World {
             .is_some_and(|deer| deer.cell == actor.cell);
         let berries_here = self.pile_count(actor.cell, Material::Berry) > 0;
         match self.deer_meal_this_tick(actor.cell) {
-            Some(true) if deer_here => parts.push("The last handful is gone.".into()),
+            Some(true) if deer_here => {
+                let names_the_empty_pile = !berries_here
+                    && self.spent_berries.contains(&actor.cell)
+                    && self.deer_ate_berries.contains(&actor.cell);
+                if !names_the_empty_pile {
+                    parts.push("The last handful is gone.".into());
+                }
+            }
             Some(false) if deer_here => parts.push(self.eating_handful_line(actor.cell, true)),
             _ if deer_here && berries_here => {
                 parts.push("A deer stands on these branches.".into());
@@ -393,6 +400,10 @@ impl World {
             } else {
                 parts.push("The berries that were here are gone.".into());
             }
+        }
+        let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
+        if deer_here && !berries_here && !self.open_loose_branches(actor.cell) && !still_eating {
+            parts.push("A deer stands here.".into());
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(
@@ -478,10 +489,6 @@ impl World {
             } else {
                 parts.push("A spear lies here. The point is not hardened.".into());
             }
-        }
-        let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
-        if deer_here && !berries_here && !self.open_loose_branches(actor.cell) && !still_eating {
-            parts.push("A deer stands here.".into());
         }
         if self.tracks.contains(&actor.cell) && !self.prints_stay_on_the_wood(actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
