@@ -1211,7 +1211,14 @@ impl World {
                     .is_some_and(|(cell, _)| cell == corner)
             });
         if named_earlier {
-            Some(format!("That way, to the {side}, reaches the same wood."))
+            let mut line = format!("That way, to the {side}, reaches the same wood.");
+            if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
+                let ground = self.cell(stood).region.word();
+                line.push_str(&format!(
+                    " Past that wood, to its {way}, the deer stands on the {ground} on the wood's {way} side."
+                ));
+            }
+            Some(line)
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {

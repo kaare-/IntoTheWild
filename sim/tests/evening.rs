@@ -3722,7 +3722,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .text
             .matches("the valley floor on the wood's west side")
             .count(),
-        1,
+        2,
         "{}",
         on_left.text
     );
@@ -3745,22 +3745,33 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{examined}"
     );
     assert!(!examined.contains("ate"), "{examined}");
+    let west = on_left
+        .text
+        .lines()
+        .find(|line| line.starts_with("West:"))
+        .unwrap_or("");
+    assert_eq!(
+        west,
+        "West: valley floor, hoofprints. That way, to the south, reaches the same wood. Past that wood, to its west, the deer stands on the valley floor on the wood's west side."
+    );
+    assert!(west.starts_with("West: valley floor, hoofprints."));
+    assert!(!west.contains("a deer"));
+    let past = west.split("Past that wood").nth(1).unwrap_or("");
+    assert!(!past.contains("hoofprint"), "{west}");
+    assert!(!west.contains("open ground"), "{west}");
+    assert!(!west.contains("in the open"), "{west}");
     assert!(
-        on_left.text.contains(
-            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
-        ),
-        "{}",
-        on_left.text
+        !west.contains("one cell south and two cells west"),
+        "{west}"
     );
     let ending = on_left.text.trim_end().lines().last().unwrap_or("");
+    assert_eq!(ending, west);
     assert_eq!(
-        ending,
-        "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
-    );
-    assert!(
-        !on_left
+        on_left
             .text
-            .contains("The deer stands on the valley floor on the wood's west side."),
+            .matches("the deer stands on the valley floor on the wood's west side")
+            .count(),
+        1,
         "{}",
         on_left.text
     );
@@ -3815,13 +3826,16 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_south.text
     );
-    assert!(
-        on_south.text.contains(
-            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
-        ),
-        "{}",
-        on_south.text
+    let west_later = on_south
+        .text
+        .lines()
+        .find(|line| line.starts_with("West:"))
+        .unwrap_or("");
+    assert_eq!(
+        west_later,
+        "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
     );
+    assert!(!west_later.contains("the deer stands"), "{west_later}");
     let look_lines: Vec<_> = on_south.text.lines().collect();
     let south_at = look_lines
         .iter()
