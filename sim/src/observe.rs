@@ -924,7 +924,9 @@ impl World {
                 let onward = way
                     .strip_prefix("west, then ")
                     .map(|rest| {
-                        format!("away from the prints on that floor, west of the wood, then {rest}")
+                        format!(
+                            "away from the hoofprints to the north of it, first west, then {rest}"
+                        )
                     })
                     .unwrap_or(way);
                 format!("{placed}, and from that wood it walked off {onward}.")
