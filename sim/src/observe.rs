@@ -1178,7 +1178,7 @@ impl World {
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
-    /// The deer is the first thing on this line. The step you take is not named a floor.
+    /// The deer is the first thing on this line. The step you take says its ground.
     fn deer_leads_this_way(&self, origin: CellId, dir: Dir) -> Option<String> {
         if !self.open_wood_keeps_its_way(origin) {
             return None;
@@ -1198,10 +1198,11 @@ impl World {
         let (x, y) = cell_xy(origin);
         let (dx, dy) = dir.delta();
         let dest = cell_id(x + dx, y + dy)?;
+        let ground = self.cell(dest).region.word();
         let taken = if self.tracks.contains(&dest) {
-            "The step you take has hoofprints on it"
+            format!("The step you take is {ground}, with hoofprints on it")
         } else {
-            "The step you take"
+            format!("The step you take is {ground}")
         };
         Some(format!(
             "{}: past that wood, the deer stands on the {way} floor, and hoofprints mark that floor. {taken}, and the same wood is {side} of that step.",
