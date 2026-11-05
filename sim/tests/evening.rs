@@ -3373,10 +3373,34 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         wood_look.text.contains(
-            "A deer stands on the rotting wood one cell south and one cell west, in the open"
+            "A deer stands on the rotting wood there, in the open, and hoofprints mark the ground there."
         ),
         "{}",
         wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("on the rotting wood one cell"),
+        "{}",
+        wood_look.text
+    );
+    let corner = world.spawn_at("Corner", "c", 3, 3).unwrap();
+    let corner_look = world.observe(corner).unwrap();
+    assert!(
+        corner_look.text.contains(
+            "A deer stands on the rotting wood one cell north and two cells east, in the open"
+        ),
+        "{}",
+        corner_look.text
+    );
+    assert!(
+        !corner_look.text.contains("on the rotting wood there"),
+        "{}",
+        corner_look.text
+    );
+    assert!(
+        !corner_look.text.contains("berries that were here are gone"),
+        "{}",
+        corner_look.text
     );
     assert!(!world
         .observe(far)

@@ -681,9 +681,16 @@ impl World {
             ));
         }
         if self.open_loose_branches(deer.cell) {
+            let place = if self.look_already_turns_toward(origin, deer.cell) {
+                format!(
+                    "on the rotting wood there, {}",
+                    self.cover_phrase(deer.cell)
+                )
+            } else {
+                self.deer_place(origin, deer.cell)
+            };
             return Some(format!(
-                "A deer stands {}{}.",
-                self.deer_place(origin, deer.cell),
+                "A deer stands {place}{}.",
                 self.hoofprints_on_wood(origin, deer.cell)
             ));
         }
@@ -1558,6 +1565,16 @@ impl World {
         } else {
             ", and hoofprints mark the ground there"
         }
+    }
+
+    /// The place line already said which way to turn toward this deer.
+    fn look_already_turns_toward(&self, origin: CellId, deer_cell: CellId) -> bool {
+        origin != deer_cell
+            && self.pile_count(origin, Material::Berry) == 0
+            && self.spent_berries.contains(&origin)
+            && self.deer_ate_berries.contains(&origin)
+            && self.open_loose_branches(deer_cell)
+            && chebyshev(origin, deer_cell) <= self.tuning.sight
     }
 
     fn deer_place(&self, origin: CellId, deer_cell: CellId) -> String {
