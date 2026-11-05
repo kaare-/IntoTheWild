@@ -702,7 +702,7 @@ impl World {
             return Some(format!(
                 "A deer stands {}{}.",
                 self.deer_place(origin, deer.cell),
-                self.hoofprints_on_wood(origin, deer.cell)
+                self.off_rock_wood_hoofprints(viewer, origin, deer.cell)
             ));
         }
         if origin == deer.cell {
@@ -1596,6 +1596,26 @@ impl World {
             None if self.exposure_millis(cell) >= 1000 => " A deer stands on the rotting branches.",
             None => " A deer stands on these branches.",
         }
+    }
+
+    /// Someone who cannot see the rock still has the deer on the open wood.
+    fn off_rock_wood_hoofprints(
+        &self,
+        viewer: ActorId,
+        origin: CellId,
+        cell: CellId,
+    ) -> &'static str {
+        if self.tracks.contains(&cell) && !self.sees_rock(viewer) {
+            ", and hoofprints mark the rotting wood under the deer"
+        } else {
+            self.hoofprints_on_wood(origin, cell)
+        }
+    }
+
+    fn sees_rock(&self, viewer: ActorId) -> bool {
+        self.visible_cell_ids(viewer)
+            .into_iter()
+            .any(|cell| self.cell(cell).rock)
     }
 
     /// West already listed its own prints, so these belong on the wood.

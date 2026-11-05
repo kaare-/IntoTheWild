@@ -3426,8 +3426,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let corner_look = world.observe(corner).unwrap();
     assert!(
         corner_look.text.contains(
-            "A deer stands on the rotting wood one cell north and two cells east, in the open"
+            "A deer stands on the rotting wood one cell north and two cells east, in the open, and hoofprints mark the rotting wood under the deer."
         ),
+        "{}",
+        corner_look.text
+    );
+    assert!(
+        !corner_look
+            .text
+            .contains("hoofprints mark the ground there"),
         "{}",
         corner_look.text
     );
