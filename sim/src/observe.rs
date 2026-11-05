@@ -501,7 +501,7 @@ impl World {
             }
         }
         if self.tracks.contains(&actor.cell) && self.prints_stay_on_the_wood(actor.cell) {
-            parts.push("Hoofprints mark the ground here.".into());
+            parts.push("The deer left hoofprints on the ground here.".into());
         } else if self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
@@ -919,10 +919,8 @@ impl World {
 
     fn prints_left_behind(&self, origin: CellId) -> String {
         match self.walked_off_the_wood(origin) {
-            Some(way) => format!(
-                "The deer left hoofprints on the ground here and on that rotting wood, and from that wood walked off {way}."
-            ),
-            None => "The deer left hoofprints on the ground here and on that rotting wood.".into(),
+            Some(way) => format!("And on that rotting wood, and from that wood walked off {way}."),
+            None => "And on that rotting wood.".into(),
         }
     }
 
