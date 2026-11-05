@@ -975,7 +975,7 @@ impl World {
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
                             line.push_str(&format!(
-                                ", across the {from} floor.\nThe walk turns {dir}."
+                                " and across the {from} floor, turning {dir} there."
                             ));
                         }
                         break;
