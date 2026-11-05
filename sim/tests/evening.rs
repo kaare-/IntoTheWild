@@ -3628,7 +3628,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on that rotting wood. That wood is south of the prints on the valley floor to the west, the ones West just showed. From that wood it walked off away from those prints, west of the wood, then south, then west, out of sight.")
+        .find("The deer left hoofprints on that wood, and from that wood it walked off away from the prints on that floor, west of the wood, then south, then west, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3666,11 +3666,6 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .find("West: valley floor, hoofprints. That way, to the south, reaches the same wood.")
         .expect(&unseen.text);
     assert!(west_gone < prints_gone, "{}", unseen.text);
-    let floor_prints = unseen
-        .text
-        .find("on the valley floor to the west")
-        .expect(&unseen.text);
-    assert!(west_gone < floor_prints, "{}", unseen.text);
     assert!(!unseen.text.contains("as well as here"), "{}", unseen.text);
     assert!(!unseen.text.contains("rotting wood too"), "{}", unseen.text);
     assert!(!unseen.text.contains("walked off west"), "{}", unseen.text);
@@ -3699,17 +3694,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
+    assert!(!unseen.text.contains("West just showed"), "{}", unseen.text);
     assert!(
-        !unseen.text.contains("south of those prints"),
+        !unseen.text.contains("on the valley floor to the west"),
         "{}",
         unseen.text
     );
-    assert_eq!(
-        unseen
-            .text
-            .matches("on the valley floor to the west")
-            .count(),
-        1,
+    assert!(
+        !unseen.text.contains("south of the prints"),
         "{}",
         unseen.text
     );
@@ -3718,7 +3710,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert!(!unseen.text.contains("on that wood"), "{}", unseen.text);
+    assert!(
+        !unseen.text.contains("The deer on that wood"),
+        "{}",
+        unseen.text
+    );
     assert!(
         !unseen.text.contains("The deer one cell"),
         "{}",
