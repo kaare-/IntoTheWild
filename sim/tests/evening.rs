@@ -3350,7 +3350,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         wood_look
             .text
-            .contains("The deer on that rotting wood stands there."),
+            .contains("The deer stands to the south and west."),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("stands there"),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("that rotting wood"),
         "{}",
         wood_look.text
     );
@@ -3372,7 +3382,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .observe(far)
         .unwrap()
         .text
-        .contains("The deer on that rotting wood"));
+        .contains("The deer stands to the south and west"));
     assert!(
         !wood_look.text.contains("A deer stands here."),
         "{}",
