@@ -3748,10 +3748,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         on_left.text
     );
     let ending = on_left.text.trim_end().lines().last().unwrap_or("");
-    assert_eq!(
-        ending,
-        "The deer stands west of the rotting wood and left hoofprints on it."
-    );
+    assert_eq!(ending, "The deer stands west of the rotting wood.");
+    assert!(!ending.contains("hoofprints"), "{ending}");
+    assert!(!ending.contains("on it"), "{ending}");
     assert_eq!(ending.matches('.').count(), 1, "{ending}");
     assert!(!ending.contains("past that wood"), "{ending}");
     assert!(!ending.contains("in the open"), "{ending}");

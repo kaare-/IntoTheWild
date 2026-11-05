@@ -976,7 +976,7 @@ impl World {
     /// One sentence: the deer stands past the wood and left the prints on it.
     fn prints_close_on_the_deer(&self, origin: CellId, placed: &str) -> String {
         if let Some(way) = self.deer_past_the_wood(origin) {
-            format!("The deer stands {way} of the rotting wood and left hoofprints on it.")
+            format!("The deer stands {way} of the rotting wood.")
         } else {
             format!("{placed}.")
         }
