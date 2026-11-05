@@ -373,7 +373,7 @@ impl World {
             if self.deer_ate_berries.contains(&actor.cell) {
                 if deer_here {
                     parts.push(
-                        "The berries that were here are gone. The deer here ate them.".into(),
+                        "The berries that were here are gone. The deer standing here ate the berries that were here.".into(),
                     );
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
@@ -402,7 +402,16 @@ impl World {
             }
         }
         let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
-        if deer_here && !berries_here && !self.open_loose_branches(actor.cell) && !still_eating {
+        let deer_named_standing_here = deer_here
+            && !berries_here
+            && self.spent_berries.contains(&actor.cell)
+            && self.deer_ate_berries.contains(&actor.cell);
+        if deer_here
+            && !berries_here
+            && !self.open_loose_branches(actor.cell)
+            && !still_eating
+            && !deer_named_standing_here
+        {
             parts.push("A deer stands here.".into());
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {

@@ -3282,10 +3282,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         last_look.text
     );
-    let stand_at = last_look
-        .text
-        .find("A deer stands here.")
-        .expect(&last_look.text);
+    let deer_sentence = "The deer standing here ate the berries that were here.";
+    let stand_at = last_look.text.find(deer_sentence).expect(&last_look.text);
     let pot_at = last_look
         .text
         .find("A pot sits here.")
@@ -3303,16 +3301,22 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         last_look.text
     );
+    assert_eq!(last_look.text.matches(deer_sentence).count(), 1);
     assert!(!last_look.text.contains("eating"), "{}", last_look.text);
     assert!(
-        last_look.text.contains("A deer stands here."),
+        !last_look.text.contains("A deer stands here."),
         "{}",
         last_look.text
     );
     assert!(
-        last_look
-            .text
-            .contains("The berries that were here are gone. The deer here ate them."),
+        !last_look.text.contains("The deer here ate them"),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        last_look.text.contains(
+            "The berries that were here are gone. The deer standing here ate the berries that were here."
+        ),
         "{}",
         last_look.text
     );
@@ -3776,10 +3780,13 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert!(!gone.contains("The last handful is gone."), "{gone}");
     assert!(!gone.contains("eating"), "{gone}");
     assert!(
-        gone.contains("The berries that were here are gone. The deer here ate them."),
+        gone.contains(
+            "The berries that were here are gone. The deer standing here ate the berries that were here."
+        ),
         "{gone}"
     );
-    assert!(gone.contains("A deer stands here."), "{gone}");
+    assert!(!gone.contains("The deer here ate them"), "{gone}");
+    assert!(!gone.contains("A deer stands here."), "{gone}");
     assert!(!world.observe(far).unwrap().text.contains("last handful"));
     assert_eq!(
         world.examine(far, ExamineTarget::Berries),
