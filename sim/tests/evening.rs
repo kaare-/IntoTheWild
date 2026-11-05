@@ -3086,6 +3086,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open."
     ));
     assert!(wood_while.contains("A deer stands on the rotting branches."));
+    assert!(
+        !wood_while.contains("handful"),
+        "no handful went on the open pile: {wood_while}"
+    );
     let rock_while = wood_while
         .lines()
         .find(|line| line.contains("under the rock overhang"))
@@ -3147,6 +3151,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer stands on these branches."
     ));
     assert!(!snapped.contains("eating"), "{snapped}");
+    assert!(
+        !snapped.contains("handful"),
+        "no handful went on the snap: {snapped}"
+    );
     let open_on_snap = snapped
         .lines()
         .find(|line| line.contains("in the open"))
@@ -3162,8 +3170,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let eating = world.examine(near, ExamineTarget::Wood);
     assert_eq!(world.sim_time(), eating_clock);
     assert!(eating.contains(
-        "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer is eating the berries here."
+        "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer is eating the berries here. A handful is gone."
     ));
+    assert!(!eating.contains("last handful"), "{eating}");
     assert!(!eating.contains("these branches"), "{eating}");
     for _ in 0..3 {
         world.step(&[]);
@@ -3172,7 +3181,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(world.material_tally(Material::Berry), 0);
     let last = world.examine(near, ExamineTarget::Wood);
     assert!(
-        last.contains("A deer is eating the berries here."),
+        last.contains("A deer is eating the berries here. The last handful is gone."),
         "{last}"
     );
     assert!(!last.contains("these branches"), "{last}");

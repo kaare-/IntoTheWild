@@ -1419,33 +1419,43 @@ impl World {
         )
     }
 
-    fn deer_ate_on_this_tick(&self, cell: CellId) -> bool {
+    /// `Some(true)` when the handful that went on this tick was the last.
+    fn deer_meal_this_tick(&self, cell: CellId) -> Option<bool> {
         if self.time == 0 {
-            return false;
+            return None;
         }
         let tick = self.time - 1;
-        self.events.iter().any(|event| {
-            event.time == tick
-                && event.affected_cells.contains(&cell)
-                && (event.text == "A deer eats a handful of berries."
-                    || event.text == "A deer eats the last handful of berries.")
-        })
+        let mut ate = false;
+        let mut last = false;
+        for event in &self.events {
+            if event.time != tick || !event.affected_cells.contains(&cell) {
+                continue;
+            }
+            if event.text == "A deer eats the last handful of berries." {
+                ate = true;
+                last = true;
+            } else if event.text == "A deer eats a handful of berries." {
+                ate = true;
+            }
+        }
+        ate.then_some(last)
     }
 
     fn deer_on_this_wood(&self, origin: CellId, cell: CellId) -> &'static str {
         if !self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
             return "";
         }
-        if self.deer_ate_on_this_tick(cell) {
-            if origin == cell {
-                " A deer is eating the berries here."
-            } else {
-                " A deer is eating the berries there."
+        match self.deer_meal_this_tick(cell) {
+            Some(true) if origin == cell => {
+                " A deer is eating the berries here. The last handful is gone."
             }
-        } else if self.exposure_millis(cell) >= 1000 {
-            " A deer stands on the rotting branches."
-        } else {
-            " A deer stands on these branches."
+            Some(true) => " A deer is eating the berries there. The last handful is gone.",
+            Some(false) if origin == cell => {
+                " A deer is eating the berries here. A handful is gone."
+            }
+            Some(false) => " A deer is eating the berries there. A handful is gone.",
+            None if self.exposure_millis(cell) >= 1000 => " A deer stands on the rotting branches.",
+            None => " A deer stands on these branches.",
         }
     }
 
