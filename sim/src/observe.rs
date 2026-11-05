@@ -919,13 +919,12 @@ impl World {
         if let Some(line) = self.deer_leads_this_way(origin, dir) {
             return line;
         }
-        if let Some(place) = self.one_step_past_the_wood(origin, dir) {
-            if let Some(first) = bits.first_mut() {
-                *first = place;
-            }
-            if let Some(prints) = bits.iter_mut().find(|bit| bit.as_str() == "hoofprints") {
-                *prints = "hoofprints mark the ground".into();
-            }
+        if self.near_floor_past_the_wood(origin, dir, dest) {
+            let named = format!("{}: the near floor has hoofprints.", capitalize(dir.word()));
+            return match self.corner_beyond(origin, dir) {
+                Some(corner) => format!("{named} {corner}"),
+                None => named,
+            };
         }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
         match self.corner_beyond(origin, dir) {
@@ -1186,7 +1185,7 @@ impl World {
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
-    /// The deer is the first thing on this line. The step you take is one step that way.
+    /// The deer is the first thing on this line. The step you take is the near floor.
     fn deer_leads_this_way(&self, origin: CellId, dir: Dir) -> Option<String> {
         if !self.open_wood_keeps_its_way(origin) {
             return None;
@@ -1207,9 +1206,9 @@ impl World {
         let (dx, dy) = dir.delta();
         let dest = cell_id(x + dx, y + dy)?;
         let taken = if self.tracks.contains(&dest) {
-            format!("One step {}, hoofprints mark the ground", dir.word())
+            "The near floor has hoofprints"
         } else {
-            format!("One step {}", dir.word())
+            "The near floor"
         };
         Some(format!(
             "{}: past that wood, the deer stands on the {way} floor, and hoofprints mark that floor. {taken}.",
@@ -1217,12 +1216,14 @@ impl World {
         ))
     }
 
-    /// The same square, once the deer has left the west floor, at sim time 14 and 15.
-    fn one_step_past_the_wood(&self, origin: CellId, dir: Dir) -> Option<String> {
-        if !self.open_wood_keeps_its_way(origin) {
-            return None;
+    /// The square one step this way, once the deer has left the west floor.
+    fn near_floor_past_the_wood(&self, origin: CellId, dir: Dir, dest: CellId) -> bool {
+        if !self.tracks.contains(&dest) || !self.open_wood_keeps_its_way(origin) {
+            return false;
         }
-        let (corner, _) = self.corner_wood(origin, dir)?;
+        let Some((corner, _)) = self.corner_wood(origin, dir) else {
+            return false;
+        };
         let named_earlier = Dir::all()
             .into_iter()
             .take_while(|earlier| *earlier != dir)
@@ -1231,15 +1232,13 @@ impl World {
                     .is_some_and(|(cell, _)| cell == corner)
             });
         if !named_earlier {
-            return None;
+            return false;
         }
-        let entered = self.floor_west_of_this_wood(origin, corner)?;
-        if self.deer_stands_on_next_floor(origin, entered).is_none()
-            && self.next_floor_still_in_sight(origin, entered).is_none()
-        {
-            return None;
-        }
-        Some(format!("one step {}", dir.word()))
+        let Some(entered) = self.floor_west_of_this_wood(origin, corner) else {
+            return false;
+        };
+        self.deer_stands_on_next_floor(origin, entered).is_some()
+            || self.next_floor_still_in_sight(origin, entered).is_some()
     }
 
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
