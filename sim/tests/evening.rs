@@ -3716,25 +3716,32 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_left.text
     );
-    assert!(
-        !on_left
+    assert_eq!(
+        on_left
             .text
-            .contains("the valley floor on the wood's west side"),
+            .matches("the valley floor on the wood's west side")
+            .count(),
+        1,
         "{}",
         on_left.text
     );
+    assert!(
+        !south.contains("the valley floor on the wood's west side"),
+        "{south}"
+    );
     let examined = world.examine(near, ExamineTarget::Deer);
     assert_eq!(world.sim_time(), wood_clock + 1);
-    assert_eq!(examined, "A deer stands west of the rotting wood.");
+    assert_eq!(
+        examined,
+        "A deer stands on the valley floor on the wood's west side."
+    );
+    assert!(!examined.contains("west of the rotting wood"), "{examined}");
+    assert!(!examined.contains("hoofprint"), "{examined}");
     assert!(!examined.contains("open ground"), "{examined}");
     assert!(!examined.contains("that wood"), "{examined}");
     assert!(!examined.contains("Past that wood"), "{examined}");
     assert!(!examined.contains("in the open"), "{examined}");
     assert!(!examined.contains("past that wood"), "{examined}");
-    assert!(
-        !examined.contains("the valley floor on the wood's west side"),
-        "{examined}"
-    );
     assert!(
         !examined.contains("one cell south and two cells west"),
         "{examined}"
@@ -3748,7 +3755,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         on_left.text
     );
     let ending = on_left.text.trim_end().lines().last().unwrap_or("");
-    assert_eq!(ending, "The deer stands west of the rotting wood.");
+    assert_eq!(
+        ending,
+        "The deer stands on the valley floor on the wood's west side."
+    );
+    assert!(!ending.contains("west of the rotting wood"), "{ending}");
     assert!(!ending.contains("hoofprints"), "{ending}");
     assert!(!ending.contains("on it"), "{ending}");
     assert_eq!(ending.matches('.').count(), 1, "{ending}");

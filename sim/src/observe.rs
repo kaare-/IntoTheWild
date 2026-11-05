@@ -975,8 +975,8 @@ impl World {
 
     /// One sentence: the deer stands past the wood and left the prints on it.
     fn prints_close_on_the_deer(&self, origin: CellId, placed: &str) -> String {
-        if let Some(way) = self.deer_past_the_wood(origin) {
-            format!("The deer stands {way} of the rotting wood.")
+        if let Some(floor) = self.deer_past_the_wood(origin) {
+            format!("The deer stands on {floor}.")
         } else {
             format!("{placed}.")
         }
@@ -1164,8 +1164,8 @@ impl World {
         self.deer_past_the_wood(origin).is_some()
     }
 
-    /// The direction from the wood to the deer standing just past it.
-    fn deer_past_the_wood(&self, origin: CellId) -> Option<&'static str> {
+    /// The floor under the deer standing just past the wood, the name sim time 14 already uses.
+    fn deer_past_the_wood(&self, origin: CellId) -> Option<String> {
         Dir::all().into_iter().find_map(|dir| {
             let (wood, _) = self.corner_wood(origin, dir)?;
             let named_earlier = Dir::all()
@@ -1178,8 +1178,9 @@ impl World {
             if named_earlier {
                 return None;
             }
-            let (_stood, way) = self.deer_stands_past_this_wood(origin, wood)?;
-            Some(way)
+            let (stood, way) = self.deer_stands_past_this_wood(origin, wood)?;
+            let ground = self.cell(stood).region.word();
+            Some(format!("the {ground} on the wood's {way} side"))
         })
     }
 
@@ -2100,8 +2101,8 @@ impl World {
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return "You cannot see a deer from here.".into();
         }
-        if let Some(way) = self.deer_past_the_wood(origin) {
-            return format!("A deer stands {way} of the rotting wood.");
+        if let Some(floor) = self.deer_past_the_wood(origin) {
+            return format!("A deer stands on {floor}.");
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."
