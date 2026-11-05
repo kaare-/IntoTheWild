@@ -3748,6 +3748,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && !on_south.text.contains("passes on out of view")
             && !on_south.text.contains("pass on out of view")
             && !on_south.text.contains("A line of hoofprints")
+            && !on_south.text.contains("The row of hoofprints")
             && !on_south.text.contains("the line of them"),
         "{}",
         on_south.text
@@ -3804,7 +3805,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("A line of hoofprints on that wood marks the deer's walk south off the valley floor on the wood's west side, crosses the south floor, which is still in sight, and passes on out of view.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side.\nThe row of hoofprints crosses the south floor, which is still in sight, and passes on out of view.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3813,6 +3814,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(ate_after < prints_at, "{}", unseen.text);
     assert!(
         !unseen.text.contains("The deer is no longer in sight"),
+        "{}",
+        unseen.text
+    );
+    assert!(
+        !unseen.text.to_lowercase().contains("a line of hoofprints"),
         "{}",
         unseen.text
     );
@@ -3861,7 +3867,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nA line of hoofprints on that wood marks the deer's walk south off the valley floor on the wood's west side, crosses the south floor, which is still in sight, and passes on out of view.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side.\nThe row of hoofprints crosses the south floor, which is still in sight, and passes on out of view.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(

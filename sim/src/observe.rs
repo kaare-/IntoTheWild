@@ -974,13 +974,11 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
+                            line.push('.');
+                            line.push('\n');
                             line.push_str(&format!(
-                                ", crosses the {from} floor, which is still in sight, and passes on out of view."
+                                "The row of hoofprints crosses the {from} floor, which is still in sight, and passes on out of view."
                             ));
-                            let plural = "Hoofprints on that wood mark ";
-                            if let Some(rest) = line.strip_prefix(plural) {
-                                line = format!("A line of hoofprints on that wood marks {rest}");
-                            }
                         }
                         break;
                     }
