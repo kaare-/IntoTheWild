@@ -996,9 +996,6 @@ impl World {
                     break;
                 }
                 line.push_str(", still in sight.");
-                if self.tracks.contains(&cell) && !deer_here {
-                    line.push_str(&format!(" Hoofprints mark the {dir} floor."));
-                }
             }
             seen_floor = Some(dir);
             prev = cell;
@@ -1093,14 +1090,21 @@ impl World {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
-            if self.deer_entered_west_of_this_wood(origin, corner) {
-                if let Some(entered) = self.first_cell_off_this_wood(corner) {
-                    if let Some(wood_side) = orthogonal_step(corner, entered) {
+            if let Some(entered) = self.floor_west_of_this_wood(origin, corner) {
+                if let Some(wood_side) = orthogonal_step(corner, entered) {
+                    let standing = self.deer_stands_on_next_floor(origin, entered);
+                    let left_sight = self.deer_entered_west_of_this_wood(origin, corner);
+                    if standing.is_some() || left_sight {
                         let ground = self.cell(entered).region.word();
                         line.push_str(&format!(
                             " Past that wood, to its {wood_side}, is the {ground} on the wood's {wood_side} side. The deer has left it. Hoofprints mark that ground."
                         ));
-                        if let Some(step) = self.next_floor_still_in_sight(origin, entered) {
+                        if let Some(step) = standing {
+                            line.push_str(&format!(
+                                " {} of the {ground} on the wood's {wood_side} side is the {step} floor, still in sight. The deer stands on the {step} floor.",
+                                capitalize(step)
+                            ));
+                        } else if let Some(step) = self.next_floor_still_in_sight(origin, entered) {
                             line.push_str(&format!(
                                 " {} of the {ground} on the wood's {wood_side} side is the {step} floor, still in sight. Hoofprints mark the {step} floor.",
                                 capitalize(step)
@@ -1131,6 +1135,42 @@ impl World {
         Some(step)
     }
 
+    /// The deer is standing on the floor it stepped onto after the floor west
+    /// of this wood, and that floor is still in sight.
+    fn deer_stands_on_next_floor(&self, origin: CellId, from: CellId) -> Option<&'static str> {
+        let deer = self.deer.as_ref()?;
+        let steps = self.steps_off_the_wood(origin)?;
+        if steps.first().copied() != Some(from) {
+            return None;
+        }
+        let next = *steps.get(1)?;
+        if deer.cell != next {
+            return None;
+        }
+        let step = orthogonal_step(from, next)?;
+        if chebyshev(origin, next) > self.tuning.sight {
+            return None;
+        }
+        Some(step)
+    }
+
+    /// The cell immediately west of this wood, once the deer has stepped onto
+    /// it and left hoofprints, and it is not the open cell west of the floor
+    /// West names.
+    fn floor_west_of_this_wood(&self, origin: CellId, wood: CellId) -> Option<CellId> {
+        let entered = self.first_cell_off_this_wood(wood)?;
+        let (wx, wy) = cell_xy(wood);
+        let west_of_wood = cell_id(wx - 1, wy)?;
+        if entered != west_of_wood || !self.tracks.contains(&entered) {
+            return None;
+        }
+        let (ox, oy) = cell_xy(origin);
+        if cell_id(ox - 2, oy).is_some_and(|open_west_of_floor| entered == open_west_of_floor) {
+            return None;
+        }
+        Some(entered)
+    }
+
     /// The deer has left sight after stepping from this wood onto the cell
     /// immediately west of it, which is not the open cell west of the floor
     /// West names.
@@ -1141,18 +1181,7 @@ impl World {
         if chebyshev(origin, deer.cell) <= self.tuning.sight {
             return false;
         }
-        let Some(entered) = self.first_cell_off_this_wood(wood) else {
-            return false;
-        };
-        let (wx, wy) = cell_xy(wood);
-        let Some(west_of_wood) = cell_id(wx - 1, wy) else {
-            return false;
-        };
-        if entered != west_of_wood || !self.tracks.contains(&entered) {
-            return false;
-        }
-        let (ox, oy) = cell_xy(origin);
-        cell_id(ox - 2, oy).is_none_or(|open_west_of_floor| entered != open_west_of_floor)
+        self.floor_west_of_this_wood(origin, wood).is_some()
     }
 
     fn first_cell_off_this_wood(&self, wood: CellId) -> Option<CellId> {
