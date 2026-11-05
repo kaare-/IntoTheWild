@@ -339,6 +339,9 @@ impl World {
             }
             _ => {}
         }
+        if !berries_here && self.spent_berries.contains(&actor.cell) {
+            parts.push("The berries that were here are gone.".into());
+        }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(
                 "Poison berries lie here, {}. They are poisonous.",

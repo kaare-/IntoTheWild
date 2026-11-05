@@ -3230,6 +3230,32 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         last_look.text
     );
+    assert!(
+        last_look
+            .text
+            .contains("The berries that were here are gone."),
+        "{}",
+        last_look.text
+    );
+    world.step(&[]);
+    assert_eq!(world.deer_cell(), Some((5, 1)));
+    assert_eq!(world.material_tally(Material::Berry), 0);
+    let left_clock = world.sim_time();
+    let left_look = world.observe(near).unwrap();
+    assert_eq!(world.sim_time(), left_clock);
+    assert!(
+        left_look
+            .text
+            .contains("The berries that were here are gone."),
+        "{}",
+        left_look.text
+    );
+    assert!(!left_look.text.contains("eating"), "{}", left_look.text);
+    assert!(!world
+        .observe(far)
+        .unwrap()
+        .text
+        .contains("berries that were here are gone"));
     assert!(!world.observe(far).unwrap().text.contains("last handful"));
     assert_eq!(
         world.examine(far, ExamineTarget::Wood),
@@ -3313,6 +3339,10 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert!(!gone.contains("Berries lie here"), "{gone}");
     assert!(
         gone.contains("A deer is eating the berries here. The last handful is gone."),
+        "{gone}"
+    );
+    assert!(
+        gone.contains("The berries that were here are gone."),
         "{gone}"
     );
     assert!(!gone.contains("A deer stands here."), "{gone}");
