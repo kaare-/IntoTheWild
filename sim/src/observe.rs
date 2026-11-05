@@ -925,7 +925,7 @@ impl World {
                     .strip_prefix("west, then ")
                     .map(|rest| {
                         format!(
-                            "away from the hoofprints to the north of it, first west, then {rest}"
+                            "away from the hoofprints you see to the west, not the ones underfoot, first west, then {rest}"
                         )
                     })
                     .unwrap_or(way);
