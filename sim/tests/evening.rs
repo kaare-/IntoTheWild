@@ -3759,6 +3759,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && !on_south.text.contains("continue that walk")
             && !on_south.text.contains("the same walk")
             && !on_south.text.contains("and by the south floor")
+            && !on_south.text.contains("and on the south floor")
             && !on_south.text.contains("the line of them"),
         "{}",
         on_south.text
@@ -3815,7 +3816,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side and by the south floor.")
+        .find("Hoofprints on that wood and on the south floor mark the deer's walk south off the valley floor on the wood's west side.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3873,9 +3874,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!unseen.text.contains("shows"), "{}", unseen.text);
     assert!(!unseen.text.contains("those"), "{}", unseen.text);
     assert!(!unseen.text.contains("the same walk"), "{}", unseen.text);
-    assert_eq!(unseen.text.matches("and by the south floor").count(), 1);
+    assert_eq!(unseen.text.matches("and by the south floor").count(), 0);
+    assert_eq!(unseen.text.matches("and on the south floor").count(), 1);
     assert!(
-        unseen.text.trim_end().ends_with("and by the south floor."),
+        unseen.text.trim_end().ends_with("on the wood's west side."),
         "{}",
         unseen.text
     );
@@ -3945,7 +3947,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side and by the south floor.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood and on the south floor mark the deer's walk south off the valley floor on the wood's west side.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
