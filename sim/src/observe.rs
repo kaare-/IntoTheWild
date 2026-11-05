@@ -372,9 +372,7 @@ impl World {
         if !berries_here && self.spent_berries.contains(&actor.cell) {
             if self.deer_ate_berries.contains(&actor.cell) {
                 if deer_here {
-                    parts.push(
-                        "The berries that were here are gone. The deer standing here ate the berries that were here.".into(),
-                    );
+                    parts.push("The deer standing here ate the berries that were here.".into());
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
