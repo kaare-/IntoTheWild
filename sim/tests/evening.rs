@@ -3619,6 +3619,29 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         wood_look.text
     );
     world.step(&[]);
+    assert_eq!(world.sim_time(), wood_clock + 1);
+    assert_eq!(world.deer_cell(), Some((4, 2)));
+    let on_left = world.observe(near).unwrap();
+    assert_eq!(world.sim_time(), wood_clock + 1);
+    assert!(
+        on_left
+            .text
+            .contains("The deer one cell south and two cells west ate them."),
+        "{}",
+        on_left.text
+    );
+    assert!(
+        on_left
+            .text
+            .contains("The deer one cell south and two cells west stands there."),
+        "{}",
+        on_left.text
+    );
+    assert!(
+        !on_left.text.contains("the south floor"),
+        "{}",
+        on_left.text
+    );
     world.step(&[]);
     assert_eq!(world.sim_time(), wood_clock + 2);
     assert_eq!(world.deer_cell(), Some((4, 3)));
@@ -3668,11 +3691,22 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .text
         .find("is the south floor, still in sight. The deer stands on the south floor.")
         .expect(&on_south.text);
+    let ate_floor = on_south
+        .text
+        .find("The deer on the south floor ate the berries that were here.")
+        .expect(&on_south.text);
     let onto = on_south
         .text
         .find("onto the south floor")
         .expect(&on_south.text);
-    assert!(named < onto, "{}", on_south.text);
+    assert!(named < ate_floor && ate_floor < onto, "{}", on_south.text);
+    assert!(
+        !on_south
+            .text
+            .contains("The deer two cells south and two cells west ate them"),
+        "{}",
+        on_south.text
+    );
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((3, 3)));
     let gone_clock = world.sim_time();

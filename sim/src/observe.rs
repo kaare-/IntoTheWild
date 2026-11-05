@@ -226,6 +226,11 @@ impl World {
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
+            if dir == Dir::South {
+                if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
+                    lines.push(ate);
+                }
+            }
         }
         if self.deer_named_on_corner(actor.cell) {
             lines.push("The deer on that wood ate the berries.".into());
@@ -379,6 +384,7 @@ impl World {
                 }) {
                     if self.direction_names_deer(actor.cell, deer_cell)
                         || self.neighbor_line_names_deer(actor.cell, deer_cell)
+                        || self.south_line_stands_the_deer(actor.cell)
                     {
                         parts.push("The berries that were here are gone.".into());
                     } else {
@@ -1136,6 +1142,25 @@ impl World {
             return None;
         }
         Some(step)
+    }
+
+    /// South has named the floor the deer stands on. The eating sentence
+    /// points at that floor and does not count the cells.
+    fn deer_on_the_named_floor_ate(&self, origin: CellId) -> Option<String> {
+        if self.pile_count(origin, Material::Berry) > 0
+            || !self.spent_berries.contains(&origin)
+            || !self.deer_ate_berries.contains(&origin)
+        {
+            return None;
+        }
+        let step = Dir::all().into_iter().find_map(|dir| {
+            let (wood, _) = self.corner_wood(origin, dir)?;
+            let entered = self.floor_west_of_this_wood(origin, wood)?;
+            self.deer_stands_on_next_floor(origin, entered)
+        })?;
+        Some(format!(
+            "The deer on the {step} floor ate the berries that were here."
+        ))
     }
 
     /// South already says this deer stands on the south floor, so the look
