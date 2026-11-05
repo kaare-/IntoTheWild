@@ -3325,10 +3325,18 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(!left_look.text.contains("eating"), "{}", left_look.text);
     assert!(
+        left_look
+            .text
+            .contains("The deer one cell west stands there."),
+        "{}",
+        left_look.text
+    );
+    assert!(
         !left_look.text.contains("A deer stands here."),
         "{}",
         left_look.text
     );
+    assert!(!world.observe(far).unwrap().text.contains("stands there"));
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((5, 2)));
     let wood_look = world.observe(near).unwrap();
@@ -3336,6 +3344,18 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         wood_look.text.contains(
             "The berries that were here are gone. The deer one cell south and one cell west ate them."
         ),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        wood_look
+            .text
+            .contains("The deer one cell south and one cell west stands there."),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("A deer stands here."),
         "{}",
         wood_look.text
     );
@@ -3363,6 +3383,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
+    assert!(!unseen.text.contains("stands there"), "{}", unseen.text);
+    assert!(!unseen.text.contains("stands here"), "{}", unseen.text);
     assert!(!unseen.text.contains("eating"), "{}", unseen.text);
     assert!(!world
         .observe(far)

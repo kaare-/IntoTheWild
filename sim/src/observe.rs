@@ -344,10 +344,11 @@ impl World {
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
+                    let place = self.cell_offset(actor.cell, deer_cell);
                     parts.push(format!(
-                        "The berries that were here are gone. The deer {} ate them.",
-                        self.cell_offset(actor.cell, deer_cell)
+                        "The berries that were here are gone. The deer {place} ate them."
                     ));
+                    parts.push(format!("The deer {place} stands there."));
                 } else {
                     parts.push("The berries that were here are gone. A deer ate them.".into());
                 }
