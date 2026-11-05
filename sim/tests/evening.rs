@@ -3769,15 +3769,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         west,
-        "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor. The step you take is valley floor, with hoofprints on it, and the same wood is south of that step."
+        "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor. The step you take is the floor north of that wood, and hoofprints mark it."
     );
     assert!(west.starts_with(
         "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor."
     ));
-    assert!(west.contains(
-        "The step you take is valley floor, with hoofprints on it, and the same wood is south of that step."
-    ));
+    assert!(
+        west.contains("The step you take is the floor north of that wood, and hoofprints mark it.")
+    );
+    assert!(!west.contains("valley floor"), "{west}");
     assert!(!west.contains("a valley floor"), "{west}");
+    assert!(!west.contains("is valley floor"), "{west}");
     assert!(!west.contains("the next step west"), "{west}");
     assert_eq!(west.matches("the west floor").count(), 1, "{west}");
     assert!(
@@ -3880,8 +3882,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         west_later,
-        "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
+        "West: the floor north of that wood, hoofprints. That way, to the south, reaches the same wood."
     );
+    assert!(!west_later.contains("valley floor"), "{west_later}");
     assert!(!west_later.contains("the deer stands"), "{west_later}");
     assert!(!west_later.contains("one step west"), "{west_later}");
     assert!(
