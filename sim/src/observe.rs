@@ -226,6 +226,9 @@ impl World {
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
         }
+        if self.deer_named_on_corner(actor.cell) {
+            lines.push("The deer on that wood ate them.".into());
+        }
         lines.join("\n")
     }
 
@@ -344,17 +347,21 @@ impl World {
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
-                    let place = self.cell_offset(actor.cell, deer_cell);
-                    parts.push(format!(
-                        "The berries that were here are gone. The deer {place} ate them."
-                    ));
-                    if self.open_loose_branches(deer_cell) {
-                        parts.push(format!(
-                            "The deer stands to the {}.",
-                            self.relative(actor.cell, deer_cell)
-                        ));
+                    if self.direction_names_deer(actor.cell, deer_cell) {
+                        parts.push("The berries that were here are gone.".into());
                     } else {
-                        parts.push(format!("The deer {place} stands there."));
+                        let place = self.cell_offset(actor.cell, deer_cell);
+                        parts.push(format!(
+                            "The berries that were here are gone. The deer {place} ate them."
+                        ));
+                        if self.open_loose_branches(deer_cell) {
+                            parts.push(format!(
+                                "The deer stands to the {}.",
+                                self.relative(actor.cell, deer_cell)
+                            ));
+                        } else {
+                            parts.push(format!("The deer {place} stands there."));
+                        }
                     }
                 } else {
                     parts.push("The berries that were here are gone. A deer ate them.".into());
@@ -859,6 +866,26 @@ impl World {
         Some(format!(
             "The corner beyond, to the {side}, has the rotting wood and the deer."
         ))
+    }
+
+    /// South has already named this deer on the corner wood.
+    fn deer_named_on_corner(&self, origin: CellId) -> bool {
+        let Some(deer) = &self.deer else {
+            return false;
+        };
+        deer.cell != origin
+            && chebyshev(origin, deer.cell) <= self.tuning.sight
+            && self.pile_count(origin, Material::Berry) == 0
+            && self.spent_berries.contains(&origin)
+            && self.deer_ate_berries.contains(&origin)
+            && self.direction_names_deer(origin, deer.cell)
+    }
+
+    fn direction_names_deer(&self, origin: CellId, deer_cell: CellId) -> bool {
+        Dir::all().into_iter().any(|dir| {
+            self.corner_deer(origin, dir)
+                .is_some_and(|(cell, _)| cell == deer_cell)
+        })
     }
 
     fn corner_deer(&self, origin: CellId, dir: Dir) -> Option<(CellId, &'static str)> {

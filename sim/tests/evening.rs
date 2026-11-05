@@ -3341,19 +3341,33 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(world.deer_cell(), Some((5, 2)));
     let wood_look = world.observe(near).unwrap();
     assert!(
-        wood_look.text.contains(
-            "The berries that were here are gone. The deer one cell south and one cell west ate them."
-        ),
+        wood_look
+            .text
+            .contains("The berries that were here are gone."),
         "{}",
         wood_look.text
     );
     assert!(
-        wood_look
+        !wood_look.text.contains("one cell south and one cell west"),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look
             .text
             .contains("The deer stands to the south and west."),
         "{}",
         wood_look.text
     );
+    let south_at = wood_look
+        .text
+        .find("The corner beyond, to the west, has the rotting wood and the deer")
+        .expect(&wood_look.text);
+    let ate_at = wood_look
+        .text
+        .find("The deer on that wood ate them.")
+        .expect(&wood_look.text);
+    assert!(south_at < ate_at, "{}", wood_look.text);
     assert!(
         !wood_look.text.contains("stands there"),
         "{}",
