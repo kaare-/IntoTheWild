@@ -975,7 +975,7 @@ impl World {
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
                             line.push_str(&format!(
-                                ", and the last you can see are on the {from} floor, which is still in sight.\nThe deer is no longer in sight."
+                                ", and the line of them crosses the {from} floor, which is still in sight, and passes on out of view.\nThe deer is no longer in sight."
                             ));
                         }
                         break;
