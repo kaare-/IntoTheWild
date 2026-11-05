@@ -3743,7 +3743,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         !on_south.text.contains("where the deer is now")
             && !on_south.text.contains("which is still in sight")
             && !on_south.text.contains("no longer in sight")
-            && !on_south.text.contains("as far as"),
+            && !on_south.text.contains("as far as")
+            && !on_south.text.contains("the last you can see"),
         "{}",
         on_south.text
     );
@@ -3799,7 +3800,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, as far as the south floor, which is still in sight.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, and the last you can see are on the south floor, which is still in sight.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3859,7 +3860,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, as far as the south floor, which is still in sight.\nThe deer is no longer in sight.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, and the last you can see are on the south floor, which is still in sight.\nThe deer is no longer in sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3984,7 +3985,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert_eq!(after_south.matches("as far as the south floor").count(), 1);
+    assert_eq!(
+        after_south
+            .matches("the last you can see are on the south floor")
+            .count(),
+        1
+    );
+    assert_eq!(after_south.matches("as far as the south floor").count(), 0);
     assert!(
         !after_south.contains("into the open west of that floor"),
         "{}",
