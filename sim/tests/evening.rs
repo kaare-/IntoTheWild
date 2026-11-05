@@ -3699,13 +3699,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert_eq!(
         look_lines[south_at + 2],
-        "The deer on the south floor ate the berries that were here.",
+        "That deer ate the berries that were here.",
         "{}",
         on_south.text
     );
     let ate_floor = on_south
         .text
-        .find("The deer on the south floor ate the berries that were here.")
+        .find("That deer ate the berries that were here.")
         .expect(&on_south.text);
     let around = on_south.text.find("Around you:").expect(&on_south.text);
     assert!(around < ate_floor, "{}", on_south.text);
@@ -3728,6 +3728,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&on_south.text);
     assert!(
         around < named && named < ate_floor && ate_floor < onto,
+        "{}",
+        on_south.text
+    );
+    assert!(
+        !on_south.text.contains("on the south floor ate"),
         "{}",
         on_south.text
     );

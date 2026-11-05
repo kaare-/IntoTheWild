@@ -1153,14 +1153,12 @@ impl World {
         {
             return None;
         }
-        let step = Dir::all().into_iter().find_map(|dir| {
+        Dir::all().into_iter().find_map(|dir| {
             let (wood, _) = self.corner_wood(origin, dir)?;
             let entered = self.floor_west_of_this_wood(origin, wood)?;
             self.deer_stands_on_next_floor(origin, entered)
         })?;
-        Some(format!(
-            "The deer on the {step} floor ate the berries that were here."
-        ))
+        Some("That deer ate the berries that were here.".into())
     }
 
     /// South already says this deer stands on the south floor, so the look
