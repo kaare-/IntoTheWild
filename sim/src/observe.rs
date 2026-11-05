@@ -978,6 +978,9 @@ impl World {
                             if let Some(at) = line.find(marked) {
                                 line.insert_str(at + marked.len(), ", which goes");
                             }
+                            if let Some(at) = line.find(" off ") {
+                                line.replace_range(at..at + " off ".len(), " from ");
+                            }
                             line.push_str(&format!(
                                 " across the {from} floor and turns {dir} out of sight."
                             ));
