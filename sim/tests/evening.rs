@@ -3699,16 +3699,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert_eq!(
         look_lines[south_at + 2],
-        "That deer ate the berries that were here.",
+        "The deer ate the berries that were here.",
         "{}",
         on_south.text
     );
     let ate_floor = on_south
         .text
-        .find("That deer ate the berries that were here.")
+        .find("The deer ate the berries that were here.")
         .expect(&on_south.text);
     let around = on_south.text.find("Around you:").expect(&on_south.text);
     assert!(around < ate_floor, "{}", on_south.text);
+    assert!(!on_south.text.contains("That deer"), "{}", on_south.text);
     assert_eq!(
         on_south
             .text

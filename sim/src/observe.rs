@@ -1158,7 +1158,7 @@ impl World {
             let entered = self.floor_west_of_this_wood(origin, wood)?;
             self.deer_stands_on_next_floor(origin, entered)
         })?;
-        Some("That deer ate the berries that were here.".into())
+        Some("The deer ate the berries that were here.".into())
     }
 
     /// South already says this deer stands on the south floor, so the look
