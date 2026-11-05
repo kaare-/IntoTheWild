@@ -3201,6 +3201,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         eat_look.text
     );
     assert!(
+        !eat_look.text.contains("Another handful"),
+        "{}",
+        eat_look.text
+    );
+    assert!(
         !eat_look.text.contains("This handful is the last."),
         "{}",
         eat_look.text
@@ -3222,7 +3227,12 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let two = world.observe(near).unwrap();
     assert!(
         two.text
-            .contains("A deer is eating the berries here. A handful is gone. More are left."),
+            .contains("A deer is eating the berries here. Another handful is gone. More are left."),
+        "{}",
+        two.text
+    );
+    assert!(
+        !two.text.contains("A handful is gone. More are left."),
         "{}",
         two.text
     );
@@ -3231,6 +3241,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         two.text
     );
+    assert!(!world.observe(far).unwrap().text.contains("Another handful"));
     world.step(&[]);
     assert_eq!(world.material_tally(Material::Berry), 1);
     let one_left = world.observe(near).unwrap();
@@ -3365,6 +3376,7 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert!(early.contains("Berries lie here"), "{early}");
     assert!(!early.contains("eating the berries"), "{early}");
     let mut saw_eating = false;
+    let mut later_handful = false;
     for _ in 0..12 {
         if world.material_tally(Material::Berry) == 0 {
             break;
@@ -3384,6 +3396,18 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
                     );
                     assert!(!text.contains("More are left."), "{text}");
                     assert!(!text.contains("A handful is gone."), "{text}");
+                } else if later_handful {
+                    assert!(
+                        text.contains(
+                            "A deer is eating the berries here. Another handful is gone. More are left."
+                        ),
+                        "{text}"
+                    );
+                    assert!(
+                        !text.contains("A handful is gone. More are left."),
+                        "{text}"
+                    );
+                    assert!(!text.contains("This handful is the last."), "{text}");
                 } else {
                     assert!(
                         text.contains(
@@ -3391,7 +3415,9 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
                         ),
                         "{text}"
                     );
+                    assert!(!text.contains("Another handful"), "{text}");
                     assert!(!text.contains("This handful is the last."), "{text}");
+                    later_handful = true;
                 }
                 assert!(!text.contains("The last handful"), "{text}");
                 assert!(!text.contains("these branches"), "{text}");

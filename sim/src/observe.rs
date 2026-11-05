@@ -1485,9 +1485,24 @@ impl World {
         let place = if here { "here" } else { "there" };
         if self.pile_count(cell, Material::Berry) == 1 {
             format!("A deer is eating the berries {place}. This handful is the last.")
+        } else if self.earlier_deer_handfuls(cell) > 0 {
+            format!("A deer is eating the berries {place}. Another handful is gone. More are left.")
         } else {
             format!("A deer is eating the berries {place}. A handful is gone. More are left.")
         }
+    }
+
+    fn earlier_deer_handfuls(&self, cell: CellId) -> usize {
+        let tick = self.time.saturating_sub(1);
+        self.events
+            .iter()
+            .filter(|event| {
+                event.time < tick
+                    && event.affected_cells.contains(&cell)
+                    && (event.text == "A deer eats a handful of berries."
+                        || event.text == "A deer eats the last handful of berries.")
+            })
+            .count()
     }
 
     /// `Some(true)` when the handful that went on this tick was the last.
