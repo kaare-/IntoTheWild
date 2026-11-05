@@ -3839,7 +3839,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk, which turns west off the south floor and out of sight.")
+        .find("Hoofprints on that wood mark the deer's walk, and the prints on the south floor turn west out of sight.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3883,20 +3883,20 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .count(),
         0
     );
-    assert_eq!(unseen.text.matches("west out of sight").count(), 0);
+    assert_eq!(unseen.text.matches("west out of sight").count(), 1);
     assert_eq!(
         unseen
             .text
-            .matches("which turns west off the south floor and out of sight")
+            .matches("and the prints on the south floor turn west out of sight")
             .count(),
         1
     );
     assert_eq!(
         unseen
             .text
-            .matches("turns west off the south floor")
+            .matches("which turns west off the south floor")
             .count(),
-        1
+        0
     );
     assert!(!unseen.text.contains("you lose sight"), "{}", unseen.text);
     let last_line = unseen
@@ -3906,8 +3906,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .map(|(_, last)| last)
         .unwrap_or(unseen.text.trim_end());
     assert!(
-        last_line.contains("off the south floor and out of sight")
+        last_line.contains("and the prints on the south floor turn west out of sight")
             && last_line.matches("the south floor").count() == 1
+            && last_line.matches("Hoofprints").count() == 1
+            && !last_line.contains("which")
+            && !last_line.contains("turns")
             && !last_line.contains("still in sight")
             && !last_line.contains(", out of sight"),
         "{last_line}"
@@ -3977,7 +3980,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         1,
         "{prints_line}"
     );
-    assert!(prints_line.ends_with("and out of sight."), "{prints_line}");
+    assert!(
+        prints_line.ends_with("turn west out of sight."),
+        "{prints_line}"
+    );
     assert_eq!(
         prints_line.matches("turning west there").count(),
         0,
@@ -4010,15 +4016,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!prints_line.contains("the ground"), "{prints_line}");
     assert!(!prints_line.contains("one step"), "{prints_line}");
     assert!(
-        prints_line.contains(", which turns west off the south floor and out of sight")
-            && !prints_line.contains("which,")
+        prints_line.contains(", and the prints on the south floor turn west out of sight")
+            && !prints_line.contains("which")
+            && !prints_line.contains("turns")
             && !prints_line.contains("goes")
             && !prints_line.contains("from the valley floor")
             && prints_line.matches("the south floor").count() == 1
-            && prints_line.contains("off the south floor")
+            && prints_line.matches("the prints").count() == 1
+            && prints_line.matches("Hoofprints").count() == 1
+            && !prints_line.contains("off the south floor")
             && !prints_line.contains("still in sight")
             && !prints_line.contains(", out of sight")
-            && prints_line.contains("and out of sight")
             && prints_line.matches("and").count() == 1
             && prints_line.matches("the deer's walk").count() == 1
             && prints_line.matches("the walk").count() == 0
@@ -4108,7 +4116,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk, which turns west off the south floor and out of sight.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk, and the prints on the south floor turn west out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -4268,16 +4276,12 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && after_south
                 .matches("turns west off the south floor")
                 .count()
-                == 1
-            && after_south.matches("which turns west out of sight").count() == 0
-            && after_south
-                .matches("which turns west off the south floor and out of sight")
-                .count()
-                == 1
-            && after_south
-                .matches("which turns west off the floor still in sight, out of sight")
-                .count()
                 == 0
+            && after_south.matches("which turns").count() == 0
+            && after_south
+                .matches("and the prints on the south floor turn west out of sight")
+                .count()
+                == 1
             && after_south.matches("turning west there").count() == 0
             && after_south.matches("The walk turns west").count() == 0,
         "{}",
