@@ -920,9 +920,9 @@ impl World {
     fn prints_left_behind(&self, origin: CellId) -> String {
         match self.walked_off_the_wood(origin) {
             Some(way) => format!(
-                "The deer left hoofprints on that rotting wood too, and from that wood it walked off {way}."
+                "The deer left hoofprints on that rotting wood as well as here, and from that wood it walked off {way}."
             ),
-            None => "The deer left hoofprints on that rotting wood too.".into(),
+            None => "The deer left hoofprints on that rotting wood as well as here.".into(),
         }
     }
 
