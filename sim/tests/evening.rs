@@ -3295,6 +3295,21 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         last_look.text
     );
+    assert!(
+        last_look.text.contains("Wood left in the open is rotting."),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        !last_look.text.contains("one cell south and one cell west"),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        !last_look.text.contains("hoofprints mark the ground there"),
+        "{}",
+        last_look.text
+    );
     assert!(!world
         .observe(far)
         .unwrap()
@@ -3349,6 +3364,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         !wood_look.text.contains("one cell south and one cell west"),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look.text.contains("Wood left in the open is rotting"),
         "{}",
         wood_look.text
     );

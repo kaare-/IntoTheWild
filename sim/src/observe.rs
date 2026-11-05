@@ -256,15 +256,29 @@ impl World {
 
     fn rot_line(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
+        let deer_on_the_empty_rock = self.deer.as_ref().is_some_and(|deer| {
+            deer.cell == origin
+                && self.cell(origin).rock
+                && self.pile_count(origin, Material::Berry) == 0
+                && self.spent_berries.contains(&origin)
+                && self.deer_ate_berries.contains(&origin)
+        });
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             let deer_on_it = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if self.open_loose_branches(cell) && !deer_on_it {
-                lines.push(format!(
-                    "Wood left in the open is rotting {}{}.",
-                    self.cell_offset(origin, cell),
-                    self.hoofprints_on_wood(origin, cell)
-                ));
+                let line = if deer_on_the_empty_rock {
+                    "Wood left in the open is rotting.".to_string()
+                } else {
+                    format!(
+                        "Wood left in the open is rotting {}{}.",
+                        self.cell_offset(origin, cell),
+                        self.hoofprints_on_wood(origin, cell)
+                    )
+                };
+                if !lines.contains(&line) {
+                    lines.push(line);
+                }
             }
         }
         if lines.is_empty() {
