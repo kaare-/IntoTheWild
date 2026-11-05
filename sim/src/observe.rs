@@ -935,18 +935,20 @@ impl World {
             let left_sight = chebyshev(origin, cell) > self.tuning.sight;
             let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if let Some(from) = seen_floor {
-                line.push_str(&format!(
-                    " The deer went on from the {from} floor onto the floor {dir} of the {from} floor"
-                ));
                 if left_sight {
+                    line.push_str(&format!(
+                        " The deer went on from the {from} floor onto the far floor, {dir} of the {from} floor"
+                    ));
                     if deer_here {
-                        line.push_str(", and the deer is on that floor, out of sight.");
+                        line.push_str(", and the deer is on the far floor, out of sight.");
                     } else {
                         line.push_str(", out of sight.");
                     }
                     break;
                 }
-                line.push('.');
+                line.push_str(&format!(
+                    " The deer went on from the {from} floor onto the floor {dir} of the {from} floor."
+                ));
             } else {
                 line = format!(
                     "{placed}, and from that valley floor it walked {dir} onto the {dir} floor"
