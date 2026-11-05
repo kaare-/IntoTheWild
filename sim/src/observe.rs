@@ -1032,8 +1032,67 @@ impl World {
         if named_earlier {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
-            Some(format!("The corner beyond, to the {side}, has that wood."))
+            let mut line = format!("The corner beyond, to the {side}, has that wood.");
+            if self.deer_entered_west_of_this_wood(origin, corner) {
+                line.push_str(" Past that wood, to its west, is the cell the deer entered.");
+            }
+            Some(line)
         }
+    }
+
+    /// The deer has left sight after stepping from this wood onto the cell
+    /// immediately west of it, which is not the open cell west of the floor
+    /// West names.
+    fn deer_entered_west_of_this_wood(&self, origin: CellId, wood: CellId) -> bool {
+        let Some(deer) = &self.deer else {
+            return false;
+        };
+        if chebyshev(origin, deer.cell) <= self.tuning.sight {
+            return false;
+        }
+        let Some(entered) = self.first_cell_off_this_wood(wood) else {
+            return false;
+        };
+        let (wx, wy) = cell_xy(wood);
+        let Some(west_of_wood) = cell_id(wx - 1, wy) else {
+            return false;
+        };
+        if entered != west_of_wood {
+            return false;
+        }
+        let (ox, oy) = cell_xy(origin);
+        cell_id(ox - 2, oy).is_none_or(|open_west_of_floor| entered != open_west_of_floor)
+    }
+
+    fn first_cell_off_this_wood(&self, wood: CellId) -> Option<CellId> {
+        let deer = self.deer.as_ref()?;
+        let n = DEER_ROUTE.len();
+        let (dx, dy) = cell_xy(deer.cell);
+        let mut idx = if DEER_ROUTE.get(deer.route_at) == Some(&(dx, dy)) {
+            deer.route_at
+        } else {
+            DEER_ROUTE
+                .iter()
+                .position(|&cell| cell == (dx, dy))
+                .unwrap_or(deer.route_at)
+        };
+        let mut back = Vec::new();
+        let mut found = false;
+        for _ in 0..n {
+            let (x, y) = DEER_ROUTE[idx];
+            let cell = cell_id(x, y)?;
+            if cell == wood {
+                found = true;
+                break;
+            }
+            back.push(cell);
+            idx = (idx + n - 1) % n;
+        }
+        if !found || back.is_empty() {
+            return None;
+        }
+        back.reverse();
+        Some(back[0])
     }
 
     /// South has already named this deer on the corner wood.

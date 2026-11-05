@@ -3335,6 +3335,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         last_look.text
     );
     assert!(
+        !last_look.text.contains("Past that wood"),
+        "{}",
+        last_look.text
+    );
+    assert!(
         last_look.text.contains(
             "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
         ),
@@ -3420,6 +3425,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         left_look.text
     );
     assert!(
+        !left_look.text.contains("Past that wood"),
+        "{}",
+        left_look.text
+    );
+    assert!(
         left_look.text.contains(
             "West: valley floor, a deer, hoofprints. That way, to the south, reaches the same wood."
         ),
@@ -3484,6 +3494,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&wood_look.text);
     assert!(south_at < ate_at, "{}", wood_look.text);
     assert!(!wood_look.text.contains("ate them"), "{}", wood_look.text);
+    assert!(
+        !wood_look.text.contains("Past that wood"),
+        "{}",
+        wood_look.text
+    );
     assert!(
         !wood_look.text.contains("stands there"),
         "{}",
@@ -3609,9 +3624,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     assert!(
-        unseen
-            .text
-            .contains("South: valley floor. The corner beyond, to the west, has that wood."),
+        unseen.text.contains(
+            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the cell the deer entered."
+        ),
         "{}",
         unseen.text
     );
