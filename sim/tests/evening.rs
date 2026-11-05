@@ -3628,7 +3628,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer left hoofprints on the ground here and on that rotting wood, and walked off west, then south, then west, out of sight.")
+        .find("The deer left hoofprints on the ground here and on that rotting wood, and from that wood walked off west, then south, then west, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
