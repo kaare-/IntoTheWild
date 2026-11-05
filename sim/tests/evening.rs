@@ -3760,6 +3760,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             && !on_south.text.contains("then west")
             && !on_south.text.contains("The walk turns")
             && !on_south.text.contains("turning west there")
+            && !on_south.text.contains("you cannot see where the deer went")
             && !on_south.text.contains("west of that floor")
             && !on_south.text.contains("the valley floor to its west")
             && !on_south.text.contains("another valley floor")
@@ -3829,7 +3830,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let prints_at = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side and across the south floor, turning west there, the deer out of sight.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side and across the south floor, turning west there, and you cannot see where the deer went.")
         .expect(&unseen.text);
     let ate_after = unseen
         .text
@@ -3865,7 +3866,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert_eq!(unseen.text.matches("the deer out of sight").count(), 1);
+    assert_eq!(unseen.text.matches("the deer out of sight").count(), 0);
+    assert_eq!(
+        unseen
+            .text
+            .matches("you cannot see where the deer went")
+            .count(),
+        1
+    );
     assert!(!unseen.text.contains("you lose sight"), "{}", unseen.text);
     assert!(
         !unseen
@@ -3944,7 +3952,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{prints_line}"
     );
     assert!(
-        prints_line.ends_with("the deer out of sight."),
+        prints_line.ends_with("you cannot see where the deer went."),
         "{prints_line}"
     );
     assert_eq!(
@@ -3979,7 +3987,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!prints_line.contains("the ground"), "{prints_line}");
     assert!(!prints_line.contains("one step"), "{prints_line}");
     assert!(
-        prints_line.contains("turning west there, the deer out of sight"),
+        prints_line.contains("turning west there, and you cannot see where the deer went"),
         "{prints_line}"
     );
     assert!(
@@ -4060,7 +4068,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side and across the south floor, turning west there, the deer out of sight.")
+        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side and across the south floor, turning west there, and you cannot see where the deer went.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -4122,7 +4130,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .replace("ate the berries here", "")
         .replace("the berries that were here", "")
         .replace("where the deer is now", "")
-        .replace("where the deer no longer stands", "");
+        .replace("where the deer no longer stands", "")
+        .replace("where the deer went", "");
     assert!(!after_without_the_meal.contains("here"), "{}", unseen.text);
     assert!(!unseen.text.contains("West just showed"), "{}", unseen.text);
     assert!(
@@ -4145,7 +4154,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert_eq!(unseen.text.matches("out of sight").count(), 1);
+    assert_eq!(unseen.text.matches("out of sight").count(), 0);
     assert_eq!(unseen.text.matches("Hoofprints on that wood").count(), 1);
     assert_eq!(unseen.text.matches("the ground beyond").count(), 0);
     assert_eq!(unseen.text.matches("then west").count(), 0);
