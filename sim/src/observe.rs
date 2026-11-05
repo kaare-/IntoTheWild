@@ -860,9 +860,7 @@ impl World {
         {
             bits.push("a deer".into());
         }
-        if self.tracks.contains(&dest)
-            && !(dir == Dir::West && self.prints_stay_on_the_wood(origin))
-        {
+        if self.tracks.contains(&dest) {
             bits.push("hoofprints".into());
         }
         if self.fire_at(dest).is_some() {

@@ -3616,9 +3616,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     assert!(
-        unseen
-            .text
-            .contains("West: valley floor. That way, to the south, reaches the same wood."),
+        unseen.text.contains(
+            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
+        ),
         "{}",
         unseen.text
     );
@@ -3646,16 +3646,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    assert!(
-        !unseen
-            .text
-            .lines()
-            .find(|line| line.starts_with("West:"))
-            .unwrap()
-            .contains("hoofprints"),
-        "{}",
-        unseen.text
-    );
+    let west_gone = unseen
+        .text
+        .find("West: valley floor, hoofprints. That way, to the south, reaches the same wood.")
+        .expect(&unseen.text);
+    assert!(west_gone < prints_gone, "{}", unseen.text);
     assert!(
         !unseen.text.contains("has the rotting wood and the deer"),
         "{}",
