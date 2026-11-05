@@ -3712,9 +3712,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         south,
-        "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the valley floor on the wood's west side. Hoofprints mark that floor. The deer stands there."
+        "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the west floor. Hoofprints mark that floor. The deer stands there."
     );
     assert!(south.contains("Hoofprints mark that floor."), "{south}");
+    assert!(
+        !south.contains("the valley floor on the wood's west side"),
+        "{south}"
+    );
     assert!(!on_left.text.contains("open ground"), "{}", on_left.text);
     assert!(
         !on_left.text.contains("That deer stands"),
@@ -3731,7 +3735,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .text
             .matches("the valley floor on the wood's west side")
             .count(),
-        2,
+        0,
         "{}",
         on_left.text
     );
@@ -3740,7 +3744,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(world.sim_time(), wood_clock + 1);
     assert_eq!(
         examined,
-        "A deer stands on the valley floor on the wood's west side. Hoofprints mark that floor."
+        "A deer stands on the west floor. Hoofprints mark that floor."
     );
     assert!(!examined.contains("west of the rotting wood"), "{examined}");
     assert!(
@@ -3764,14 +3768,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         west,
-        "West: past that wood, the deer stands on the valley floor on the wood's west side, and hoofprints mark that floor. The next step west is a valley floor with hoofprints on it, and the same wood is south of that step."
+        "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor. The next step west is a valley floor with hoofprints on it, and the same wood is south of that step."
     );
     assert!(west.starts_with(
-        "West: past that wood, the deer stands on the valley floor on the wood's west side, and hoofprints mark that floor."
+        "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor."
     ));
     assert!(west.contains(
         "The next step west is a valley floor with hoofprints on it, and the same wood is south of that step."
     ));
+    assert_eq!(west.matches("the west floor").count(), 1, "{west}");
+    assert!(
+        !west.contains("the valley floor on the wood's west side"),
+        "{west}"
+    );
     assert!(!west.contains("valley floor, hoofprints"), "{west}");
     assert!(
         !west.contains("one step west is valley floor, hoofprints"),
@@ -3804,7 +3813,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(
         on_left
             .text
-            .matches("the deer stands on the valley floor on the wood's west side")
+            .matches("the deer stands on the west floor")
             .count(),
         1,
         "{}",
@@ -3830,7 +3839,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(world.sim_time(), wood_clock + 2);
     assert!(
         on_south.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the valley floor on the wood's west side. The deer has left it. Hoofprints mark that ground. South of the valley floor on the wood's west side is the south floor, still in sight. The deer stands on the south floor."
+            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the west floor. The deer has left it. Hoofprints mark that ground. South of the west floor is the south floor, still in sight. The deer stands on the south floor."
         ),
         "{}",
         on_south.text
@@ -3878,9 +3887,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         on_south.text
     );
     assert!(
-        !on_south
-            .text
-            .contains("the deer stands on the valley floor on the wood's west side"),
+        !on_south.text.contains("stands on the west floor"),
         "{}",
         on_south.text
     );
@@ -3922,7 +3929,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&on_south.text);
     let onto = on_south
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight.")
+        .find("Hoofprints on that wood mark the deer's walk south off the west floor, onto the south floor, still in sight.")
         .expect(&on_south.text);
     assert!(
         around < named && named < ate_floor && ate_floor < onto,
@@ -4293,7 +4300,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         unseen.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the valley floor on the wood's west side. The deer has left it. Hoofprints mark that ground. South of the valley floor on the wood's west side is the south floor, still in sight. Hoofprints mark the south floor."
+            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood, to its west, is the west floor. The deer has left it. Hoofprints mark that ground. South of the west floor is the south floor, still in sight. Hoofprints mark the south floor."
         ),
         "{}",
         unseen.text
@@ -4461,7 +4468,11 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .nth(1)
         .unwrap_or("");
     assert!(!after_south.contains("that ground"), "{}", unseen.text);
-    assert!(!after_south.contains("the west floor"), "{}", unseen.text);
+    assert!(
+        after_south.contains("South of the west floor is the south floor"),
+        "{}",
+        unseen.text
+    );
     assert!(!after_south.contains("far floor"), "{}", unseen.text);
     assert!(
         after_south.matches("the valley floor, in the open").count() == 0
@@ -4576,7 +4587,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .count(),
         0
     );
-    assert_eq!(after_south.matches("on the wood's west side").count(), 1);
+    assert_eq!(after_south.matches("on the wood's west side").count(), 0);
     assert_eq!(after_south.matches("that valley floor").count(), 0);
     assert_eq!(after_south.matches(", in the open,").count(), 0);
     assert_eq!(after_south.matches("on that floor").count(), 0);

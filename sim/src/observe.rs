@@ -1053,7 +1053,6 @@ impl World {
                     " The deer went on from the {from} floor onto the floor {dir} of the {from} floor."
                 ));
             } else {
-                let from_ground = self.cell(prev).region.word();
                 let Some(wood_side) = Dir::all().into_iter().find_map(|way| {
                     let (wood, _) = self.corner_wood(origin, way)?;
                     if !self.tracks.contains(&wood) {
@@ -1064,7 +1063,7 @@ impl World {
                     return format!("{placed}.");
                 };
                 line = format!(
-                    "Hoofprints on that wood mark the deer's walk {dir} off the {from_ground} on the wood's {wood_side} side, onto the {dir} floor"
+                    "Hoofprints on that wood mark the deer's walk {dir} off the {wood_side} floor, onto the {dir} floor"
                 );
                 if left_sight {
                     if deer_here {
@@ -1173,9 +1172,8 @@ impl World {
             if named_earlier {
                 return None;
             }
-            let (stood, way) = self.deer_stands_past_this_wood(origin, wood)?;
-            let ground = self.cell(stood).region.word();
-            Some(format!("the {ground} on the wood's {way} side"))
+            let (_, way) = self.deer_stands_past_this_wood(origin, wood)?;
+            Some(format!("the {way} floor"))
         })
     }
 
@@ -1196,8 +1194,7 @@ impl World {
         if !named_earlier {
             return None;
         }
-        let (stood, way) = self.deer_stands_past_this_wood(origin, corner)?;
-        let ground = self.cell(stood).region.word();
+        let (_, way) = self.deer_stands_past_this_wood(origin, corner)?;
         let (x, y) = cell_xy(origin);
         let (dx, dy) = dir.delta();
         let dest = cell_id(x + dx, y + dy)?;
@@ -1208,7 +1205,7 @@ impl World {
             ""
         };
         Some(format!(
-            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side, and hoofprints mark that floor. The next step {} is a {step}{prints}, and the same wood is {side} of that step.",
+            "{}: past that wood, the deer stands on the {way} floor, and hoofprints mark that floor. The next step {} is a {step}{prints}, and the same wood is {side} of that step.",
             capitalize(dir.word()),
             dir.word()
         ))
@@ -1251,10 +1248,9 @@ impl World {
             Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
-            if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
-                let ground = self.cell(stood).region.word();
+            if let Some((_, way)) = self.deer_stands_past_this_wood(origin, corner) {
                 line.push_str(&format!(
-                    " Past that wood, to its {way}, is the {ground} on the wood's {way} side. Hoofprints mark that floor. The deer stands there."
+                    " Past that wood, to its {way}, is the {way} floor. Hoofprints mark that floor. The deer stands there."
                 ));
                 return Some(line);
             }
@@ -1263,18 +1259,17 @@ impl World {
                     let standing = self.deer_stands_on_next_floor(origin, entered);
                     let left_sight = self.deer_entered_west_of_this_wood(origin, corner);
                     if standing.is_some() || left_sight {
-                        let ground = self.cell(entered).region.word();
                         line.push_str(&format!(
-                            " Past that wood, to its {wood_side}, is the {ground} on the wood's {wood_side} side. The deer has left it. Hoofprints mark that ground."
+                            " Past that wood, to its {wood_side}, is the {wood_side} floor. The deer has left it. Hoofprints mark that ground."
                         ));
                         if let Some(step) = standing {
                             line.push_str(&format!(
-                                " {} of the {ground} on the wood's {wood_side} side is the {step} floor, still in sight. The deer stands on the {step} floor.",
+                                " {} of the {wood_side} floor is the {step} floor, still in sight. The deer stands on the {step} floor.",
                                 capitalize(step)
                             ));
                         } else if let Some(step) = self.next_floor_still_in_sight(origin, entered) {
                             line.push_str(&format!(
-                                " {} of the {ground} on the wood's {wood_side} side is the {step} floor, still in sight. Hoofprints mark the {step} floor.",
+                                " {} of the {wood_side} floor is the {step} floor, still in sight. Hoofprints mark the {step} floor.",
                                 capitalize(step)
                             ));
                         }
