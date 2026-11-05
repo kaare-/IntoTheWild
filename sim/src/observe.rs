@@ -994,7 +994,7 @@ impl World {
                     return format!("{placed}.");
                 };
                 line = format!(
-                    "{placed}, and walked {dir} off the {from_ground} on the wood's {wood_side} side, onto the {dir} floor"
+                    "Hoofprints on that wood mark the deer's walk {dir} off the {from_ground} on the wood's {wood_side} side, onto the {dir} floor"
                 );
                 if left_sight {
                     if deer_here {
