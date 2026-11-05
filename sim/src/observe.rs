@@ -976,10 +976,10 @@ impl World {
                             line.truncate(line.len() - onto.len());
                             let marked = "mark the deer's walk ";
                             if let Some(at) = line.find(marked) {
-                                line.insert_str(at + marked.len(), "as the walk goes ");
+                                line.insert_str(at + marked.len(), "going ");
                             }
                             line.push_str(&format!(
-                                " and crosses the {from} floor and turns {dir} out of sight."
+                                " and crossing the {from} floor and turning {dir} out of sight."
                             ));
                         }
                         break;
