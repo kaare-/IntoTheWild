@@ -3636,6 +3636,27 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_south.text
     );
+    assert_eq!(
+        on_south
+            .text
+            .matches("The deer stands on the south floor")
+            .count(),
+        1
+    );
+    assert!(
+        !on_south
+            .text
+            .contains("The deer two cells south and two cells west stands there"),
+        "{}",
+        on_south.text
+    );
+    assert!(
+        !on_south
+            .text
+            .contains("A deer stands two cells south and two cells west, in the open."),
+        "{}",
+        on_south.text
+    );
     assert!(
         on_south.text.contains(
             "West: valley floor, hoofprints. That way, to the south, reaches the same wood."

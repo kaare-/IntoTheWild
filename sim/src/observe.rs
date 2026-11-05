@@ -391,7 +391,7 @@ impl World {
                                 "The deer stands to the {}.",
                                 self.relative(actor.cell, deer_cell)
                             ));
-                        } else {
+                        } else if !self.south_line_stands_the_deer(actor.cell) {
                             parts.push(format!("The deer {place} stands there."));
                         }
                     }
@@ -710,6 +710,9 @@ impl World {
         let origin = self.actor(viewer)?.cell;
         let deer = self.deer.as_ref()?;
         if chebyshev(origin, deer.cell) > self.tuning.sight {
+            return None;
+        }
+        if self.south_line_stands_the_deer(origin) {
             return None;
         }
         if origin != deer.cell {
@@ -1133,6 +1136,19 @@ impl World {
             return None;
         }
         Some(step)
+    }
+
+    /// South already says this deer stands on the south floor, so the look
+    /// does not count the cells for another standing sentence.
+    fn south_line_stands_the_deer(&self, origin: CellId) -> bool {
+        Dir::all().into_iter().any(|dir| {
+            self.corner_wood(origin, dir).is_some_and(|(wood, _)| {
+                self.floor_west_of_this_wood(origin, wood)
+                    .is_some_and(|entered| {
+                        self.deer_stands_on_next_floor(origin, entered).is_some()
+                    })
+            })
+        })
     }
 
     /// The deer is standing on the floor it stepped onto after the floor west
