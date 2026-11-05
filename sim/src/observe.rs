@@ -974,13 +974,8 @@ impl World {
                         let onto = format!(", onto the {from} floor, still in sight.");
                         if line.ends_with(&onto) {
                             line.truncate(line.len() - onto.len());
-                            let open = if self.exposure_millis(cell) >= 1000 {
-                                ", in the open"
-                            } else {
-                                ""
-                            };
                             line.push_str(&format!(
-                                ", across the {from} floor, then {dir} onto the {ground}{open}."
+                                ", across the {from} floor.\nThe walk turns {dir}."
                             ));
                         }
                         break;
