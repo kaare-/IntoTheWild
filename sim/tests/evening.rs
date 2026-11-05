@@ -3687,27 +3687,6 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_south.text
     );
-    let ate_floor = on_south
-        .text
-        .find("The deer ate the berries that were here.")
-        .expect(&on_south.text);
-    let pot = on_south.text.find("A pot sits here").expect(&on_south.text);
-    let around = on_south.text.find("Around you:").expect(&on_south.text);
-    assert!(ate_floor < pot && ate_floor < around, "{}", on_south.text);
-    assert!(
-        !on_south
-            .text
-            .contains("The berries that were here are gone"),
-        "{}",
-        on_south.text
-    );
-    assert!(
-        !on_south
-            .text
-            .contains("ate the berries that were here, under the rock"),
-        "{}",
-        on_south.text
-    );
     let look_lines: Vec<_> = on_south.text.lines().collect();
     let south_at = look_lines
         .iter()
@@ -3718,15 +3697,47 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_south.text
     );
+    assert_eq!(
+        look_lines[south_at + 2],
+        "The deer on the south floor ate the berries that were here.",
+        "{}",
+        on_south.text
+    );
+    let ate_floor = on_south
+        .text
+        .find("The deer on the south floor ate the berries that were here.")
+        .expect(&on_south.text);
+    let around = on_south.text.find("Around you:").expect(&on_south.text);
+    assert!(around < ate_floor, "{}", on_south.text);
+    assert_eq!(
+        on_south
+            .text
+            .matches("ate the berries that were here")
+            .count(),
+        1,
+        "{}",
+        on_south.text
+    );
     let named = on_south
         .text
         .find("is the south floor, still in sight. The deer stands on the south floor.")
         .expect(&on_south.text);
     let onto = on_south
         .text
-        .find("onto the south floor")
+        .find("The deer left hoofprints on that wood, and walked south off the valley floor on the wood's west side, onto the south floor, still in sight.")
         .expect(&on_south.text);
-    assert!(around < named && named < onto, "{}", on_south.text);
+    assert!(
+        around < named && named < ate_floor && ate_floor < onto,
+        "{}",
+        on_south.text
+    );
+    assert!(
+        !on_south
+            .text
+            .contains("The berries that were here are gone"),
+        "{}",
+        on_south.text
+    );
     assert!(
         !on_south.text.contains("walked to the south floor"),
         "{}",

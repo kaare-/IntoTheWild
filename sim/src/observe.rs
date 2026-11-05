@@ -227,6 +227,9 @@ impl World {
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
         }
+        if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
+            lines.push(ate);
+        }
         if self.deer_named_on_corner(actor.cell) {
             lines.push("The deer on that wood ate the berries.".into());
         }
@@ -377,25 +380,25 @@ impl World {
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
-                    if let Some(meal) = self.deer_on_the_named_floor_ate(actor.cell) {
-                        parts.push(meal);
-                    } else if self.direction_names_deer(actor.cell, deer_cell)
-                        || self.neighbor_line_names_deer(actor.cell, deer_cell)
-                        || self.south_line_stands_the_deer(actor.cell)
-                    {
-                        parts.push("The berries that were here are gone.".into());
-                    } else {
-                        let place = self.cell_offset(actor.cell, deer_cell);
-                        parts.push(format!(
-                            "The berries that were here are gone. The deer {place} ate them."
-                        ));
-                        if self.open_loose_branches(deer_cell) {
+                    if self.deer_on_the_named_floor_ate(actor.cell).is_none() {
+                        if self.direction_names_deer(actor.cell, deer_cell)
+                            || self.neighbor_line_names_deer(actor.cell, deer_cell)
+                            || self.south_line_stands_the_deer(actor.cell)
+                        {
+                            parts.push("The berries that were here are gone.".into());
+                        } else {
+                            let place = self.cell_offset(actor.cell, deer_cell);
                             parts.push(format!(
-                                "The deer stands to the {}.",
-                                self.relative(actor.cell, deer_cell)
+                                "The berries that were here are gone. The deer {place} ate them."
                             ));
-                        } else if !self.south_line_stands_the_deer(actor.cell) {
-                            parts.push(format!("The deer {place} stands there."));
+                            if self.open_loose_branches(deer_cell) {
+                                parts.push(format!(
+                                    "The deer stands to the {}.",
+                                    self.relative(actor.cell, deer_cell)
+                                ));
+                            } else if !self.south_line_stands_the_deer(actor.cell) {
+                                parts.push(format!("The deer {place} stands there."));
+                            }
                         }
                     }
                 } else {
@@ -1141,17 +1144,23 @@ impl World {
         Some(step)
     }
 
-    /// The meal sits with the berries, before the compass. The passage is
-    /// the path, and it does not repeat the meal.
+    /// After West has followed South. The deer South named ate the berries
+    /// that were here. The passage after this sentence does not repeat it.
     fn deer_on_the_named_floor_ate(&self, origin: CellId) -> Option<String> {
         if self.pile_count(origin, Material::Berry) > 0
             || !self.spent_berries.contains(&origin)
             || !self.deer_ate_berries.contains(&origin)
-            || !self.south_line_stands_the_deer(origin)
         {
             return None;
         }
-        Some("The deer ate the berries that were here.".into())
+        let step = Dir::all().into_iter().find_map(|dir| {
+            let (wood, _) = self.corner_wood(origin, dir)?;
+            let entered = self.floor_west_of_this_wood(origin, wood)?;
+            self.deer_stands_on_next_floor(origin, entered)
+        })?;
+        Some(format!(
+            "The deer on the {step} floor ate the berries that were here."
+        ))
     }
 
     /// South already says this deer stands on the south floor, so the look
