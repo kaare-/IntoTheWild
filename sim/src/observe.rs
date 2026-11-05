@@ -973,13 +973,22 @@ impl World {
         self.floor_west_of_this_wood(origin, wood) == Some(steps[0])
     }
 
+    /// The short print line, then the living deer, when it still stands past the wood.
+    fn prints_close_on_the_deer(&self, origin: CellId, placed: &str) -> String {
+        if self.deer_past_the_wood(origin).is_some() {
+            format!("{placed}. That deer stands on open ground.")
+        } else {
+            format!("{placed}.")
+        }
+    }
+
     fn prints_left_behind(&self, origin: CellId) -> String {
         let placed = "The deer left hoofprints on that wood";
         let Some(steps) = self.steps_off_the_wood(origin) else {
-            return format!("{placed}.");
+            return self.prints_close_on_the_deer(origin, placed);
         };
         if steps.len() < 2 {
-            return format!("{placed}.");
+            return self.prints_close_on_the_deer(origin, placed);
         }
         let mut line = String::new();
         let mut prev = steps[0];
@@ -1155,8 +1164,7 @@ impl World {
         self.deer_past_the_wood(origin).is_some()
     }
 
-    /// Where the deer stands past the wood. The ground is open ground.
-    /// "In the open" is the sky, so this phrase does not say it.
+    /// The direction from the wood to the deer standing just past it.
     fn deer_past_the_wood(&self, origin: CellId) -> Option<&'static str> {
         Dir::all().into_iter().find_map(|dir| {
             let (wood, _) = self.corner_wood(origin, dir)?;
@@ -1170,8 +1178,8 @@ impl World {
             if named_earlier {
                 return None;
             }
-            self.deer_stands_past_this_wood(origin, wood)?;
-            Some("on open ground")
+            let (_stood, way) = self.deer_stands_past_this_wood(origin, wood)?;
+            Some(way)
         })
     }
 
@@ -2098,8 +2106,8 @@ impl World {
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return "You cannot see a deer from here.".into();
         }
-        if let Some(place) = self.deer_past_the_wood(origin) {
-            return format!("A deer stands {place}.");
+        if let Some(way) = self.deer_past_the_wood(origin) {
+            return format!("A deer stands on open ground, {way} of that wood.");
         }
         let eating = if self.pile_count(deer.cell, Material::Berry) > 0 {
             " It is eating the berries."
