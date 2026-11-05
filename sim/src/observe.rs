@@ -1419,11 +1419,24 @@ impl World {
         )
     }
 
+    fn deer_ate_on_this_tick(&self, cell: CellId) -> bool {
+        if self.time == 0 {
+            return false;
+        }
+        let tick = self.time - 1;
+        self.events.iter().any(|event| {
+            event.time == tick
+                && event.affected_cells.contains(&cell)
+                && (event.text == "A deer eats a handful of berries."
+                    || event.text == "A deer eats the last handful of berries.")
+        })
+    }
+
     fn deer_on_this_wood(&self, origin: CellId, cell: CellId) -> &'static str {
         if !self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
             return "";
         }
-        if self.pile_count(cell, Material::Berry) > 0 {
+        if self.deer_ate_on_this_tick(cell) {
             if origin == cell {
                 " A deer is eating the berries here."
             } else {
@@ -1432,7 +1445,7 @@ impl World {
         } else if self.exposure_millis(cell) >= 1000 {
             " A deer stands on the rotting branches."
         } else {
-            " A deer stands on the wood."
+            " A deer stands on these branches."
         }
     }
 

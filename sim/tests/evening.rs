@@ -3139,20 +3139,43 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((6, 1)));
+    assert_eq!(world.material_tally(Material::Berry), 4);
+    let snapped_clock = world.sim_time();
+    let snapped = world.examine(near, ExamineTarget::Wood);
+    assert_eq!(world.sim_time(), snapped_clock);
+    assert!(snapped.contains(
+        "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer stands on these branches."
+    ));
+    assert!(!snapped.contains("eating"), "{snapped}");
+    let open_on_snap = snapped
+        .lines()
+        .find(|line| line.contains("in the open"))
+        .unwrap();
+    assert!(
+        !open_on_snap.contains("A deer"),
+        "the deer has left the open pile: {open_on_snap}"
+    );
+    world.step(&[]);
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    assert_eq!(world.material_tally(Material::Berry), 3);
     let eating_clock = world.sim_time();
     let eating = world.examine(near, ExamineTarget::Wood);
     assert_eq!(world.sim_time(), eating_clock);
     assert!(eating.contains(
         "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer is eating the berries here."
     ));
-    let open_while_eating = eating
-        .lines()
-        .find(|line| line.contains("in the open"))
-        .unwrap();
+    assert!(!eating.contains("these branches"), "{eating}");
+    for _ in 0..3 {
+        world.step(&[]);
+    }
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    assert_eq!(world.material_tally(Material::Berry), 0);
+    let last = world.examine(near, ExamineTarget::Wood);
     assert!(
-        !open_while_eating.contains("A deer"),
-        "the deer has left the open pile: {open_while_eating}"
+        last.contains("A deer is eating the berries here."),
+        "{last}"
     );
+    assert!(!last.contains("these branches"), "{last}");
     assert_eq!(
         world.examine(far, ExamineTarget::Wood),
         "You see no wood from here."
