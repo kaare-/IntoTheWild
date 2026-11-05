@@ -440,11 +440,8 @@ impl World {
                 parts.push("A spear lies here. The point is not hardened.".into());
             }
         }
-        if deer_here
-            && !berries_here
-            && !self.open_loose_branches(actor.cell)
-            && self.deer_meal_this_tick(actor.cell).is_none()
-        {
+        let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
+        if deer_here && !berries_here && !self.open_loose_branches(actor.cell) && !still_eating {
             parts.push("A deer stands here.".into());
         }
         if self.tracks.contains(&actor.cell) {
