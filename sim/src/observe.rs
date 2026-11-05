@@ -227,7 +227,7 @@ impl World {
             lines.push(self.adjacent_line(actor.cell, dir));
         }
         if self.deer_named_on_corner(actor.cell) {
-            lines.push("The deer on that wood ate them.".into());
+            lines.push("The deer on that wood ate the berries.".into());
         }
         if self.prints_stay_on_the_wood(actor.cell) {
             lines.push(

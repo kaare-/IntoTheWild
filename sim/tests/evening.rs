@@ -3447,9 +3447,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&wood_look.text);
     let ate_at = wood_look
         .text
-        .find("The deer on that wood ate them.")
+        .find("The deer on that wood ate the berries.")
         .expect(&wood_look.text);
     assert!(south_at < ate_at, "{}", wood_look.text);
+    assert!(!wood_look.text.contains("ate them"), "{}", wood_look.text);
     assert!(
         !wood_look.text.contains("stands there"),
         "{}",
