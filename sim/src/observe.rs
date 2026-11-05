@@ -938,7 +938,7 @@ impl World {
                 if left_sight {
                     let ground = self.cell(cell).region.word();
                     line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the {ground} past the {from} floor"
+                        " The deer went on from the {from} floor onto the {ground} to the {from} floor's {dir}"
                     ));
                     if self.exposure_millis(cell) >= 1000 {
                         line.push_str(", in the open");
@@ -974,8 +974,9 @@ impl World {
                     " The deer went on from the {from} floor onto the floor {dir} of the {from} floor."
                 ));
             } else {
+                let from_ground = self.cell(prev).region.word();
                 line = format!(
-                    "{placed}, and from that valley floor it walked {dir} onto the {dir} floor"
+                    "{placed}, and walked {dir} from the {from_ground} past the wood, onto the {dir} floor"
                 );
                 if left_sight {
                     if deer_here {
