@@ -226,11 +226,6 @@ impl World {
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
-            if dir == Dir::South {
-                if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
-                    lines.push(ate);
-                }
-            }
         }
         if self.deer_named_on_corner(actor.cell) {
             lines.push("The deer on that wood ate the berries.".into());
@@ -387,6 +382,9 @@ impl World {
                         || self.south_line_stands_the_deer(actor.cell)
                     {
                         parts.push("The berries that were here are gone.".into());
+                        if let Some(meal) = self.deer_on_the_named_floor_ate(actor.cell) {
+                            parts.push(meal);
+                        }
                     } else {
                         let place = self.cell_offset(actor.cell, deer_cell);
                         parts.push(format!(
@@ -1144,9 +1142,8 @@ impl World {
         Some(step)
     }
 
-    /// South has named the floor the deer stands on. This sentence is the
-    /// meal under the rock. The passage is the path, and it does not repeat
-    /// the meal.
+    /// The meal sits with the berries, before the compass. The passage is
+    /// the path, and it does not repeat the meal.
     fn deer_on_the_named_floor_ate(&self, origin: CellId) -> Option<String> {
         if self.pile_count(origin, Material::Berry) > 0
             || !self.spent_berries.contains(&origin)
