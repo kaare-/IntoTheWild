@@ -974,7 +974,9 @@ impl World {
                         let still = ", still in sight.";
                         if line.ends_with(still) {
                             line.truncate(line.len() - still.len());
-                            line.push_str(".\nThat floor is still in sight.\nThe deer is not.");
+                            line.push_str(
+                                ".\nThat floor is still in sight.\nThe deer is not in sight.",
+                            );
                         }
                         break;
                     }
