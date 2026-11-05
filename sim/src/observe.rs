@@ -421,7 +421,15 @@ impl World {
             && !still_eating
             && !deer_named_standing_here
         {
-            parts.push("A deer stands here.".into());
+            // A hoofprint is stored on the cell the deer leaves. While the
+            // deer stands on a trail, the marks underfoot, if any, were stored
+            // on an earlier pass. They are not a new step. The trail was
+            // already named in this line.
+            if cell.trail {
+                parts.push("A deer stands on that trail.".into());
+            } else {
+                parts.push("A deer stands here.".into());
+            }
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(

@@ -3053,6 +3053,45 @@ fn examine_tracks_names_each_visible_mark_once() {
 }
 
 #[test]
+fn deer_stands_on_the_trail_already_there() {
+    let mut world = world_at(10_000);
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    while world.sim_time() < 10 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 10);
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    assert!(world.hoofprints_at(3, 3));
+    assert_eq!(
+        world.examine(far, ExamineTarget::Here),
+        "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
+    );
+    while world.sim_time() < 14 {
+        world.step(&[]);
+    }
+    assert_eq!(world.deer_cell(), Some((4, 3)));
+    assert!(world.hoofprints_at(3, 3));
+    assert_eq!(
+        world.examine(far, ExamineTarget::Here),
+        "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
+    );
+    world.step(&[]);
+    assert_eq!(world.sim_time(), 15);
+    assert_eq!(world.deer_cell(), Some((3, 3)));
+    assert!(world.hoofprints_at(3, 3));
+    let here = world.examine(far, ExamineTarget::Here);
+    assert_eq!(
+        here,
+        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Hoofprints mark the ground."
+    );
+    assert!(!here.contains("fresh"), "{here}");
+    assert!(!here.contains("new hoofprints"), "{here}");
+    assert!(!here.contains("A deer stands here"), "{here}");
+    assert!(!here.contains("the south floor"), "{here}");
+    assert!(!here.contains("ate the berries"), "{here}");
+}
+
+#[test]
 fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();
@@ -3270,6 +3309,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((6, 1)));
     assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(world.sim_time(), 10);
+    assert!(world.hoofprints_at(3, 3));
     let last = world.examine(near, ExamineTarget::Wood);
     assert!(
         last.contains("A deer is eating the berries here. The last handful is gone."),
@@ -3652,6 +3693,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     world.step(&[]);
     assert_eq!(world.sim_time(), wood_clock + 2);
     assert_eq!(world.deer_cell(), Some((4, 3)));
+    assert!(world.hoofprints_at(3, 3));
     let on_south = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), wood_clock + 2);
     assert!(
@@ -3828,6 +3870,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((3, 3)));
     let gone_clock = world.sim_time();
+    assert_eq!(gone_clock, 15);
+    assert!(world.hoofprints_at(3, 3));
     let unseen = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), gone_clock);
     assert!(
