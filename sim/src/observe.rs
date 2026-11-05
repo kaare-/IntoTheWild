@@ -927,30 +927,35 @@ impl World {
         }
         let mut line = String::new();
         let mut prev = steps[0];
-        let mut first = true;
+        let mut seen_floor: Option<&str> = None;
         for cell in steps.iter().copied().skip(1) {
             let Some(dir) = orthogonal_step(prev, cell) else {
                 return format!("{placed}.");
             };
             let ground = self.cell(cell).region.word();
             let left_sight = chebyshev(origin, cell) > self.tuning.sight;
-            if first {
+            let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
+            if let Some(from) = seen_floor {
+                line.push_str(&format!(
+                    " The deer went on from the {from} floor, {dir}, onto {ground}"
+                ));
+            } else {
                 line =
                     format!("{placed}, and from that valley floor it walked {dir} onto {ground}");
-                first = false;
-            } else {
-                line.push_str(&format!(" Then it walked {dir} onto {ground}"));
             }
             if left_sight {
-                line.push_str(", out of sight.");
+                if deer_here {
+                    line.push_str(", and the deer is there, out of sight.");
+                } else {
+                    line.push_str(", out of sight.");
+                }
                 break;
             }
             line.push_str(" that is still in sight.");
-            if self.tracks.contains(&cell)
-                && self.deer.as_ref().is_some_and(|deer| deer.cell != cell)
-            {
-                line.push_str(" Hoofprints mark that ground, and the deer is not there.");
+            if self.tracks.contains(&cell) && !deer_here {
+                line.push_str(&format!(" Hoofprints mark the {dir} floor."));
             }
+            seen_floor = Some(dir);
             prev = cell;
         }
         if line.is_empty() {
