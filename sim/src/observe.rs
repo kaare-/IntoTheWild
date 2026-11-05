@@ -3,6 +3,7 @@
 
 use crate::model::{
     cell_id, cell_xy, chebyshev, ActorId, CellId, Dir, ExamineTarget, Material, Role, Scope, World,
+    DEER_ROUTE,
 };
 use serde::Serialize;
 
@@ -233,10 +234,7 @@ impl World {
             lines.push("That deer ate the berries that were here.".into());
         }
         if self.prints_stay_on_the_wood(actor.cell) {
-            lines.push(
-                "The deer left hoofprints on the ground here, on the valley floor to the west, and on that rotting wood."
-                    .into(),
-            );
+            lines.push(self.prints_left_behind(actor.cell));
         }
         lines.join("\n")
     }
@@ -915,6 +913,75 @@ impl World {
             self.corner_wood(origin, dir)
                 .is_some_and(|(cell, _)| self.tracks.contains(&cell) && deer.cell != cell)
         })
+    }
+
+    fn prints_left_behind(&self, origin: CellId) -> String {
+        match self.walked_off_the_wood(origin) {
+            Some(way) => format!(
+                "The deer left hoofprints on the ground here and on that rotting wood, and walked off {way}."
+            ),
+            None => "The deer left hoofprints on the ground here and on that rotting wood.".into(),
+        }
+    }
+
+    /// Steps from the rotting wood along the deer's route, through the step
+    /// that leaves sight.
+    fn walked_off_the_wood(&self, origin: CellId) -> Option<String> {
+        let deer = self.deer.as_ref()?;
+        let wood = Dir::all().into_iter().find_map(|dir| {
+            self.corner_wood(origin, dir).and_then(|(cell, _)| {
+                (self.tracks.contains(&cell) && deer.cell != cell).then_some(cell)
+            })
+        })?;
+        let n = DEER_ROUTE.len();
+        let (dx, dy) = cell_xy(deer.cell);
+        let mut idx = if DEER_ROUTE.get(deer.route_at) == Some(&(dx, dy)) {
+            deer.route_at
+        } else {
+            DEER_ROUTE
+                .iter()
+                .position(|&cell| cell == (dx, dy))
+                .unwrap_or(deer.route_at)
+        };
+        let mut back = Vec::new();
+        let mut found = false;
+        for _ in 0..n {
+            let (x, y) = DEER_ROUTE[idx];
+            let cell = cell_id(x, y)?;
+            if cell == wood {
+                found = true;
+                break;
+            }
+            back.push(cell);
+            idx = (idx + n - 1) % n;
+        }
+        if !found || back.is_empty() {
+            return None;
+        }
+        back.reverse();
+        let mut prev = wood;
+        let mut words = Vec::new();
+        let mut left_sight = false;
+        for cell in back {
+            words.push(orthogonal_step(prev, cell)?);
+            prev = cell;
+            if chebyshev(origin, cell) > self.tuning.sight {
+                left_sight = true;
+                break;
+            }
+        }
+        if words.is_empty() {
+            return None;
+        }
+        let mut way = words[0].to_string();
+        for word in &words[1..] {
+            way.push_str(", then ");
+            way.push_str(word);
+        }
+        if left_sight {
+            way.push_str(", out of sight");
+        }
+        Some(way)
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
@@ -2804,5 +2871,17 @@ fn capitalize(word: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+fn orthogonal_step(from: CellId, to: CellId) -> Option<&'static str> {
+    let (x1, y1) = cell_xy(from);
+    let (x2, y2) = cell_xy(to);
+    match (x2 - x1, y2 - y1) {
+        (-1, 0) => Some("west"),
+        (1, 0) => Some("east"),
+        (0, -1) => Some("north"),
+        (0, 1) => Some("south"),
+        _ => None,
     }
 }
