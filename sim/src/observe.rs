@@ -340,7 +340,17 @@ impl World {
             _ => {}
         }
         if !berries_here && self.spent_berries.contains(&actor.cell) {
-            parts.push("The berries that were here are gone.".into());
+            if self.deer_ate_berries.contains(&actor.cell) {
+                if deer_here {
+                    parts.push(
+                        "The berries that were here are gone. The deer here ate them.".into(),
+                    );
+                } else {
+                    parts.push("The berries that were here are gone. A deer ate them.".into());
+                }
+            } else {
+                parts.push("The berries that were here are gone.".into());
+            }
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(

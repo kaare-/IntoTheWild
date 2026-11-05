@@ -3233,7 +3233,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         last_look
             .text
-            .contains("The berries that were here are gone."),
+            .contains("The berries that were here are gone. The deer here ate them."),
         "{}",
         last_look.text
     );
@@ -3246,7 +3246,12 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         left_look
             .text
-            .contains("The berries that were here are gone."),
+            .contains("The berries that were here are gone. A deer ate them."),
+        "{}",
+        left_look.text
+    );
+    assert!(
+        !left_look.text.contains("The deer here"),
         "{}",
         left_look.text
     );
@@ -3342,7 +3347,7 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         "{gone}"
     );
     assert!(
-        gone.contains("The berries that were here are gone."),
+        gone.contains("The berries that were here are gone. The deer here ate them."),
         "{gone}"
     );
     assert!(!gone.contains("A deer stands here."), "{gone}");
