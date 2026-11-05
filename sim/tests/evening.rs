@@ -3776,9 +3776,26 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let unseen = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), gone_clock);
     assert!(
-        unseen
+        !unseen
             .text
             .contains("A deer ate the berries that were here."),
+        "{}",
+        unseen.text
+    );
+    let prints_at = unseen
+        .text
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight.")
+        .expect(&unseen.text);
+    let ate_after = unseen
+        .text
+        .find("The deer ate the berries that were here.")
+        .expect(&unseen.text);
+    let went_on = unseen
+        .text
+        .find("The deer went on from the south floor")
+        .expect(&unseen.text);
+    assert!(
+        prints_at < ate_after && ate_after < went_on,
         "{}",
         unseen.text
     );
@@ -3814,7 +3831,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight. The deer went on from the south floor onto the valley floor on the south floor's west side, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
+        .find("Hoofprints on that wood mark the deer's walk south off the valley floor on the wood's west side, onto the south floor, still in sight. The deer ate the berries that were here. The deer went on from the south floor onto the valley floor on the south floor's west side, in the open, not the valley floor one step to your west. A deer trail passes on that valley floor, hoofprints mark that valley floor, and the deer stands on that valley floor, out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -3873,7 +3890,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let after_compass = unseen.text.split("Around you:").nth(1).unwrap_or("");
     let after_without_the_meal = after_compass
         .replace("there", "")
-        .replace("ate the berries here", "");
+        .replace("ate the berries here", "")
+        .replace("the berries that were here", "");
     assert!(!after_without_the_meal.contains("here"), "{}", unseen.text);
     assert!(!unseen.text.contains("West just showed"), "{}", unseen.text);
     assert!(

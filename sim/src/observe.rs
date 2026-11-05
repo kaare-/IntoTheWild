@@ -401,7 +401,7 @@ impl World {
                             }
                         }
                     }
-                } else {
+                } else if !self.meal_follows_the_prints(actor.cell) {
                     parts.push("A deer ate the berries that were here.".into());
                 }
             } else {
@@ -926,6 +926,18 @@ impl World {
         })
     }
 
+    /// At sim time 15 the prints have already named the deer. The meal
+    /// follows that sentence, once the walk continues past the south floor.
+    fn meal_follows_the_prints(&self, origin: CellId) -> bool {
+        if !self.open_wood_keeps_its_way(origin) {
+            return false;
+        }
+        let Some(steps) = self.steps_off_the_wood(origin) else {
+            return false;
+        };
+        steps.len() >= 3 && chebyshev(origin, steps[1]) <= self.tuning.sight
+    }
+
     fn prints_left_behind(&self, origin: CellId) -> String {
         let placed = "The deer left hoofprints on that wood";
         let Some(steps) = self.steps_off_the_wood(origin) else {
@@ -944,6 +956,9 @@ impl World {
             let left_sight = chebyshev(origin, cell) > self.tuning.sight;
             let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if let Some(from) = seen_floor {
+                if self.meal_follows_the_prints(origin) && line.ends_with("still in sight.") {
+                    line.push_str(" The deer ate the berries that were here.");
+                }
                 if left_sight {
                     let ground = self.cell(cell).region.word();
                     line.push_str(&format!(
