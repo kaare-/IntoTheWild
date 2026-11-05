@@ -969,9 +969,17 @@ impl World {
             if let Some(from) = seen_floor {
                 if left_sight {
                     let ground = self.cell(cell).region.word();
-                    line.push_str(&format!(
-                        " The deer went on from the {from} floor onto the {ground} on the {from} floor's {dir} side"
-                    ));
+                    let same_walk = line.ends_with("still in sight.");
+                    if same_walk {
+                        line.pop();
+                        line.push_str(&format!(
+                            ", and from the {from} floor onto the {ground} on the {from} floor's {dir} side"
+                        ));
+                    } else {
+                        line.push_str(&format!(
+                            " The deer went on from the {from} floor onto the {ground} on the {from} floor's {dir} side"
+                        ));
+                    }
                     if self.exposure_millis(cell) >= 1000 {
                         line.push_str(", in the open");
                     }
