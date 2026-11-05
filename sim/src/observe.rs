@@ -256,19 +256,16 @@ impl World {
 
     fn rot_line(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
-        let deer_on_the_empty_rock = self.deer.as_ref().is_some_and(|deer| {
-            deer.cell == origin
-                && self.cell(origin).rock
-                && self.pile_count(origin, Material::Berry) == 0
-                && self.spent_berries.contains(&origin)
-                && self.deer_ate_berries.contains(&origin)
-        });
+        let deer_on_the_empty_rock = self.deer_stands_on_the_empty_rock(origin);
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             let deer_on_it = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if self.open_loose_branches(cell) && !deer_on_it {
                 let line = if deer_on_the_empty_rock {
-                    "Wood left in the open is rotting.".to_string()
+                    format!(
+                        "Wood left in the open is rotting to the {}.",
+                        self.relative(origin, cell)
+                    )
                 } else {
                     format!(
                         "Wood left in the open is rotting {}{}.",
@@ -858,28 +855,55 @@ impl World {
         }
     }
 
+    fn deer_stands_on_the_empty_rock(&self, origin: CellId) -> bool {
+        self.deer.as_ref().is_some_and(|deer| {
+            deer.cell == origin
+                && self.cell(origin).rock
+                && self.pile_count(origin, Material::Berry) == 0
+                && self.spent_berries.contains(&origin)
+                && self.deer_ate_berries.contains(&origin)
+        })
+    }
+
     /// The deer and the rotting wood share the diagonal just past this edge.
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
-        let (corner, side) = self.corner_deer(origin, dir)?;
+        if let Some((corner, side)) = self.corner_deer(origin, dir) {
+            let named_earlier = Dir::all()
+                .into_iter()
+                .take_while(|earlier| *earlier != dir)
+                .any(|earlier| {
+                    self.corner_deer(origin, earlier)
+                        .is_some_and(|(cell, _)| cell == corner)
+                });
+            if named_earlier {
+                return Some(format!("That way, to the {side}, reaches the same wood."));
+            }
+            if self.look_already_turns_toward(origin, corner) && self.tracks.contains(&corner) {
+                return Some(format!(
+                    "The corner beyond, to the {side}, has the rotting wood and the deer, {}, and hoofprints mark the wood under the deer.",
+                    self.cover_phrase(corner)
+                ));
+            }
+            return Some(format!(
+                "The corner beyond, to the {side}, has the rotting wood and the deer."
+            ));
+        }
+        if !self.deer_stands_on_the_empty_rock(origin) {
+            return None;
+        }
+        let (corner, side) = self.corner_wood(origin, dir)?;
         let named_earlier = Dir::all()
             .into_iter()
             .take_while(|earlier| *earlier != dir)
             .any(|earlier| {
-                self.corner_deer(origin, earlier)
+                self.corner_wood(origin, earlier)
                     .is_some_and(|(cell, _)| cell == corner)
             });
         if named_earlier {
-            return Some(format!("That way, to the {side}, reaches the same wood."));
+            Some(format!("That way, to the {side}, reaches the same wood."))
+        } else {
+            Some(format!("The corner beyond, to the {side}, has that wood."))
         }
-        if self.look_already_turns_toward(origin, corner) && self.tracks.contains(&corner) {
-            return Some(format!(
-                "The corner beyond, to the {side}, has the rotting wood and the deer, {}, and hoofprints mark the wood under the deer.",
-                self.cover_phrase(corner)
-            ));
-        }
-        Some(format!(
-            "The corner beyond, to the {side}, has the rotting wood and the deer."
-        ))
     }
 
     /// South has already named this deer on the corner wood.
@@ -903,6 +927,19 @@ impl World {
     }
 
     fn corner_deer(&self, origin: CellId, dir: Dir) -> Option<(CellId, &'static str)> {
+        self.corner_on(origin, dir, true)
+    }
+
+    fn corner_wood(&self, origin: CellId, dir: Dir) -> Option<(CellId, &'static str)> {
+        self.corner_on(origin, dir, false)
+    }
+
+    fn corner_on(
+        &self,
+        origin: CellId,
+        dir: Dir,
+        deer_required: bool,
+    ) -> Option<(CellId, &'static str)> {
         let (x, y) = cell_xy(origin);
         let (dx, dy) = dir.delta();
         let sides: [(i32, i32, &str); 2] = if dx != 0 {
@@ -914,13 +951,14 @@ impl World {
             let Some(corner) = cell_id(x + dx + px, y + dy + py) else {
                 continue;
             };
-            let deer_there = self
-                .deer
-                .as_ref()
-                .is_some_and(|deer| deer.cell == corner && self.open_loose_branches(corner));
-            if deer_there && chebyshev(origin, corner) <= self.tuning.sight {
-                return Some((corner, side));
+            if !self.open_loose_branches(corner) || chebyshev(origin, corner) > self.tuning.sight {
+                continue;
             }
+            let deer_there = self.deer.as_ref().is_some_and(|deer| deer.cell == corner);
+            if deer_required != deer_there {
+                continue;
+            }
+            return Some((corner, side));
         }
         None
     }

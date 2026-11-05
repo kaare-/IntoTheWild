@@ -3296,7 +3296,33 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         last_look.text
     );
     assert!(
-        last_look.text.contains("Wood left in the open is rotting."),
+        last_look
+            .text
+            .contains("Wood left in the open is rotting to the south and west."),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        last_look
+            .text
+            .contains("South: valley floor. The corner beyond, to the west, has that wood."),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        last_look.text.contains(
+            "West: valley floor, hoofprints. That way, to the south, reaches the same wood."
+        ),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        !last_look.text.contains("has the rotting wood and the deer"),
+        "{}",
+        last_look.text
+    );
+    assert!(
+        !last_look.text.contains("on that wood"),
         "{}",
         last_look.text
     );
