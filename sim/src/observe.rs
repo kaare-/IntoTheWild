@@ -971,12 +971,13 @@ impl World {
                     let ground = self.cell(cell).region.word();
                     let same_walk = line.ends_with("still in sight.");
                     if same_walk {
-                        line.pop();
-                        line.push_str(&format!(", then into the open {dir} of the {from} floor"));
-                        if deer_here {
-                            line.push_str(", where the deer is now");
+                        let still = ", still in sight.";
+                        if line.ends_with(still) {
+                            line.truncate(line.len() - still.len());
+                            line.push_str(&format!(
+                                ", which is still in sight, then into the open {dir} of that floor, and the deer is no longer in sight."
+                            ));
                         }
-                        line.push('.');
                         break;
                     }
                     line.push_str(&format!(
