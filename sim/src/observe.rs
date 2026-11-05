@@ -388,19 +388,21 @@ impl World {
                             || self.south_line_stands_the_deer(actor.cell)
                         {
                             parts.push("The berries that were here are gone.".into());
-                        } else {
+                        } else if self.open_loose_branches(deer_cell) {
                             let place = self.cell_offset(actor.cell, deer_cell);
                             parts.push(format!(
                                 "The berries that were here are gone. The deer {place} ate them."
                             ));
-                            if self.open_loose_branches(deer_cell) {
-                                parts.push(format!(
-                                    "The deer stands to the {}.",
-                                    self.relative(actor.cell, deer_cell)
-                                ));
-                            } else if !self.south_line_stands_the_deer(actor.cell) {
-                                parts.push(format!("The deer {place} stands there."));
-                            }
+                            parts.push(format!(
+                                "The deer stands to the {}.",
+                                self.relative(actor.cell, deer_cell)
+                            ));
+                        } else {
+                            let place = self.cell_offset(actor.cell, deer_cell);
+                            let cover = self.cover_phrase(deer_cell);
+                            parts.push(format!(
+                                "The berries that were here are gone. The deer {place} ate them and stands there, {cover}."
+                            ));
                         }
                     }
                 } else if !self.meal_follows_the_prints(actor.cell) {
@@ -768,6 +770,16 @@ impl World {
         let dy = y2 - y1;
         let next_door = (dx == 0 && dy.abs() == 1) || (dy == 0 && dx.abs() == 1);
         if next_door {
+            return None;
+        }
+        if self.spent_berries.contains(&origin)
+            && self.deer_ate_berries.contains(&origin)
+            && self.pile_count(origin, Material::Berry) == 0
+            && self.deer_on_the_named_floor_ate(origin).is_none()
+            && !self.direction_names_deer(origin, deer.cell)
+            && !self.neighbor_line_names_deer(origin, deer.cell)
+            && !self.south_line_stands_the_deer(origin)
+        {
             return None;
         }
         Some(format!(

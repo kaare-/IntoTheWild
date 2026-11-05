@@ -3672,18 +3672,47 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let on_left = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), wood_clock + 1);
     assert!(
+        on_left.text.contains(
+            "The berries that were here are gone. The deer one cell south and two cells west ate them and stands there, in the open."
+        ),
+        "{}",
+        on_left.text
+    );
+    assert_eq!(
         on_left
             .text
-            .contains("The deer one cell south and two cells west ate them."),
+            .matches("one cell south and two cells west")
+            .count(),
+        1,
+        "{}",
+        on_left.text
+    );
+    assert!(
+        !on_left
+            .text
+            .contains("The deer one cell south and two cells west stands there."),
+        "{}",
+        on_left.text
+    );
+    assert!(
+        !on_left
+            .text
+            .contains("A deer stands one cell south and two cells west"),
         "{}",
         on_left.text
     );
     assert!(
         on_left
             .text
-            .contains("The deer one cell south and two cells west stands there."),
+            .trim_end()
+            .ends_with("The deer left hoofprints on that wood."),
         "{}",
         on_left.text
+    );
+    let ending = on_left.text.trim_end().lines().last().unwrap_or("");
+    assert!(
+        !ending.contains("one cell south and two cells west"),
+        "{ending}"
     );
     assert!(
         !on_left.text.contains("the south floor"),
