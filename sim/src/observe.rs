@@ -932,30 +932,37 @@ impl World {
             let Some(dir) = orthogonal_step(prev, cell) else {
                 return format!("{placed}.");
             };
-            let ground = self.cell(cell).region.word();
             let left_sight = chebyshev(origin, cell) > self.tuning.sight;
             let deer_here = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if let Some(from) = seen_floor {
                 line.push_str(&format!(
-                    " The deer went on from the {from} floor, {dir}, onto the {dir} floor"
+                    " The deer went on from the {from} floor onto the floor {dir} of the {from} floor"
                 ));
-            } else {
-                line =
-                    format!("{placed}, and from that valley floor it walked {dir} onto {ground}");
-            }
-            if left_sight {
-                if deer_here {
-                    line.push_str(&format!(
-                        ", and the deer is on the {dir} floor, out of sight."
-                    ));
-                } else {
-                    line.push_str(", out of sight.");
+                if left_sight {
+                    if deer_here {
+                        line.push_str(", and the deer is on that floor, out of sight.");
+                    } else {
+                        line.push_str(", out of sight.");
+                    }
+                    break;
                 }
-                break;
-            }
-            line.push_str(" that is still in sight.");
-            if self.tracks.contains(&cell) && !deer_here {
-                line.push_str(&format!(" Hoofprints mark the {dir} floor."));
+                line.push('.');
+            } else {
+                line = format!(
+                    "{placed}, and from that valley floor it walked {dir} onto the {dir} floor"
+                );
+                if left_sight {
+                    if deer_here {
+                        line.push_str(", and the deer is on that floor, out of sight.");
+                    } else {
+                        line.push_str(", out of sight.");
+                    }
+                    break;
+                }
+                line.push_str(", still in sight.");
+                if self.tracks.contains(&cell) && !deer_here {
+                    line.push_str(&format!(" Hoofprints mark the {dir} floor."));
+                }
             }
             seen_floor = Some(dir);
             prev = cell;
