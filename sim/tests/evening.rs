@@ -3752,12 +3752,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         west,
-        "West: valley floor, hoofprints. That way, to the south, reaches the same wood. Past that wood, to its west, the deer stands on the valley floor on the wood's west side."
+        "West: past that wood, the deer stands on the valley floor on the wood's west side. This way is valley floor, hoofprints. To the south, that ground reaches the same wood."
     );
-    assert!(west.starts_with("West: valley floor, hoofprints."));
+    assert!(west.starts_with(
+        "West: past that wood, the deer stands on the valley floor on the wood's west side."
+    ));
+    assert!(west.contains("This way is valley floor, hoofprints."));
     assert!(!west.contains("a deer"));
-    let past = west.split("Past that wood").nth(1).unwrap_or("");
-    assert!(!past.contains("hoofprint"), "{west}");
+    assert!(
+        !west.contains("the deer stands on the hoofprints"),
+        "{west}"
+    );
+    let deer_clause = west.split(". This way").next().unwrap_or("");
+    assert!(!deer_clause.contains("hoofprint"), "{west}");
     assert!(!west.contains("open ground"), "{west}");
     assert!(!west.contains("in the open"), "{west}");
     assert!(

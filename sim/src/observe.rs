@@ -916,6 +916,9 @@ impl World {
                 if people == 1 { "person" } else { "people" }
             ));
         }
+        if let Some(line) = self.deer_leads_this_way(origin, dir, &bits) {
+            return line;
+        }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
         match self.corner_beyond(origin, dir) {
             Some(corner) => format!("{line} {corner}"),
@@ -1177,6 +1180,31 @@ impl World {
     }
 
     /// The deer and the rotting wood share the diagonal just past this edge.
+    /// The deer is the first thing on this line. The ground you step on comes after.
+    fn deer_leads_this_way(&self, origin: CellId, dir: Dir, bits: &[String]) -> Option<String> {
+        if !self.open_wood_keeps_its_way(origin) {
+            return None;
+        }
+        let (corner, side) = self.corner_wood(origin, dir)?;
+        let named_earlier = Dir::all()
+            .into_iter()
+            .take_while(|earlier| *earlier != dir)
+            .any(|earlier| {
+                self.corner_wood(origin, earlier)
+                    .is_some_and(|(cell, _)| cell == corner)
+            });
+        if !named_earlier {
+            return None;
+        }
+        let (stood, way) = self.deer_stands_past_this_wood(origin, corner)?;
+        let ground = self.cell(stood).region.word();
+        let step = bits.join(", ");
+        Some(format!(
+            "{}: past that wood, the deer stands on the {ground} on the wood's {way} side. This way is {step}. To the {side}, that ground reaches the same wood.",
+            capitalize(dir.word())
+        ))
+    }
+
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
         if let Some((corner, side)) = self.corner_deer(origin, dir) {
             let named_earlier = Dir::all()
@@ -1211,14 +1239,7 @@ impl World {
                     .is_some_and(|(cell, _)| cell == corner)
             });
         if named_earlier {
-            let mut line = format!("That way, to the {side}, reaches the same wood.");
-            if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
-                let ground = self.cell(stood).region.word();
-                line.push_str(&format!(
-                    " Past that wood, to its {way}, the deer stands on the {ground} on the wood's {way} side."
-                ));
-            }
-            Some(line)
+            Some(format!("That way, to the {side}, reaches the same wood."))
         } else {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if let Some((stood, way)) = self.deer_stands_past_this_wood(origin, corner) {
