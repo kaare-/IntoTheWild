@@ -1351,8 +1351,10 @@ impl World {
         } else {
             "the still water"
         };
+        let into_pot = !self.loose_ids(intent.actor_id, Material::Pot).is_empty();
+        let pot = if into_pot { " into the pot" } else { "" };
         self.emit(
-            format!("{name} gathers a drink of water from {source}."),
+            format!("{name} gathers a drink of water from {source}{pot}."),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -1364,7 +1366,11 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            "You gather a drink of water.",
+            if into_pot {
+                "You gather a drink of water into the pot."
+            } else {
+                "You gather a drink of water."
+            },
             results,
         );
     }
@@ -1703,11 +1709,20 @@ impl World {
                 .map(|fire| fire.lit_event)
                 .into_iter()
                 .collect();
-            self.emit(
+            let in_pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
+            let heard = if in_pot {
+                format!(
+                    "{} boils the drink in the pot over the fire and drinks it.",
+                    actor.name
+                )
+            } else {
                 format!(
                     "{} boils a drink of water over the fire and drinks it.",
                     actor.name
-                ),
+                )
+            };
+            self.emit(
+                heard,
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
@@ -1715,12 +1730,17 @@ impl World {
                 fire_event,
                 None,
             );
-            let message = if before == 0 {
-                "You boil a drink of water and drink it. You were not thirsty."
-            } else if after < self.tuning.thirsty_at {
-                "You boil a drink of water and drink it. The thirst eases."
+            let lead = if in_pot {
+                "You boil the drink in the pot and drink it."
             } else {
-                "You boil a drink of water and drink it. You are still thirsty."
+                "You boil a drink of water and drink it."
+            };
+            let message = if before == 0 {
+                format!("{lead} You were not thirsty.")
+            } else if after < self.tuning.thirsty_at {
+                format!("{lead} The thirst eases.")
+            } else {
+                format!("{lead} You are still thirsty.")
             };
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }

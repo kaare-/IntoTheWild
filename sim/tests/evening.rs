@@ -924,7 +924,7 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
     assert!(boiled
         .events
         .iter()
-        .any(|event| event.text.contains("boils a drink of water")));
+        .any(|event| event.text.contains("boils the drink in the pot")));
     assert!(boiled
         .events
         .iter()
@@ -936,6 +936,81 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
         .iter()
         .filter(|event| event.text.contains("boils"))
         .all(|event| event.draw.is_none()));
+}
+
+#[test]
+fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
+    let mut bare = world_at(10_000);
+    let hands = bare.spawn_at("Near", "n", 1, 1).unwrap();
+    let gathered = bare.step(&[cmd("bare", hands, Attempt::Gather(Material::Water))]);
+    assert_eq!(gathered.results[0].message, "You gather a drink of water.");
+    assert!(!gathered.results[0].message.contains("pot"));
+    let bare_event = bare
+        .observe(hands)
+        .unwrap()
+        .events
+        .iter()
+        .find(|event| event.text.contains("drink of water"))
+        .map(|event| event.text.clone())
+        .unwrap_or_default();
+    assert_eq!(bare_event, "Near gathers a drink of water from the brook.");
+    assert!(!bare_event.contains("pot"));
+
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    for step in 0..5 {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((1, 1)));
+    let filled = world.step(&[cmd("fill", near, Attempt::Gather(Material::Water))]);
+    assert_eq!(
+        filled.results[0].message,
+        "You gather a drink of water into the pot."
+    );
+    let fill_event = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .find(|event| event.text.contains("drink of water"))
+        .map(|event| event.text.clone())
+        .unwrap_or_default();
+    assert_eq!(
+        fill_event,
+        "Near gathers a drink of water from the brook into the pot."
+    );
+    for step in 0..5 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    let boiled = world.step(&[cmd("boil", near, Attempt::Boil)]);
+    assert_eq!(
+        boiled.results[0].message,
+        "You boil the drink in the pot and drink it. The thirst eases."
+    );
+    let boil_event = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .find(|event| event.text.contains("boils"))
+        .map(|event| event.text.clone())
+        .unwrap_or_default();
+    assert_eq!(
+        boil_event,
+        "Near boils the drink in the pot over the fire and drinks it."
+    );
+    assert!(world
+        .material_items(Material::Pot)
+        .iter()
+        .any(|item| item.1 == Some(near)));
+    assert!(world.material_items(Material::Water).is_empty());
+    let body = world.observe(near).unwrap();
+    assert_eq!(body.self_info.thirst, "not thirsty");
+    assert_eq!(body.self_info.illness, "well");
+    assert!(body.text.contains("A small fire burns here."));
 }
 
 #[test]
