@@ -908,8 +908,13 @@ impl World {
         };
         if let Some(floor) = self.outside_floor(origin) {
             if dest == floor.wood {
+                let name = if self.last_branch_is_still_there(dest) {
+                    "the last branch"
+                } else {
+                    "the rotting wood"
+                };
                 return format!(
-                    "{}: the rotting wood. Hoofprints mark that wood.",
+                    "{}: {name}. Hoofprints mark that wood.",
                     capitalize(dir.word())
                 );
             }
@@ -1066,8 +1071,16 @@ impl World {
             return line;
         }
         if let Some(side) = self.wood_south_of_these_prints(origin, dir, dest) {
+            let wood = self
+                .corner_wood(origin, dir)
+                .and_then(|(cell, _)| self.last_branch_is_still_there(cell).then_some(cell));
+            let name = if wood.is_some() {
+                "The last branch"
+            } else {
+                "The rotting wood"
+            };
             let mut line = format!(
-                "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor.",
+                "{}: hoofprints mark the outside floor. {name} is the next square {side} of that floor.",
                 capitalize(dir.word())
             );
             if let Some(past) = self.person_on_the_berries_off_this_floor(origin, dest) {
@@ -1083,6 +1096,11 @@ impl World {
             Some(corner) => format!("{line} {corner}"),
             None => line,
         }
+    }
+
+    /// The look at sim time 16, while one branch is still on the open wood.
+    fn last_branch_is_still_there(&self, cell: CellId) -> bool {
+        self.time == 16 && self.pile_count(cell, Material::Branch) == 1
     }
 
     /// The viewer is on the rock after the deer ate the berries there.
@@ -1412,7 +1430,7 @@ impl World {
         }
         let side = orthogonal_step(dest, woods[0])?;
         let mut line = format!(
-            "{}: hoofprints mark the outside floor. The rotting wood is gone from the next square {side}. Hoofprints mark that ground.",
+            "{}: hoofprints mark the outside floor. The last branch is gone from the next square {side}. Hoofprints mark that ground.",
             capitalize(dir.word())
         );
         if let Some(name) = self.name_standing_on(origin, dest) {

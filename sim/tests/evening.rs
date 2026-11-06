@@ -1625,6 +1625,36 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
     );
     let plain = world.step(&[cmd("out", step, Attempt::Move(Dir::East))]);
     assert_eq!(plain.results[0].message, "You walk east.");
+    assert_eq!(world.sim_time(), 16);
+    let at_sixteen = world.observe(step).unwrap();
+    let south_sixteen = at_sixteen
+        .text
+        .lines()
+        .find(|line| line.starts_with("South:"))
+        .unwrap_or("");
+    assert_eq!(
+        south_sixteen,
+        "South: the last branch. Hoofprints mark that wood."
+    );
+    assert_eq!(
+        at_sixteen
+            .visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        1
+    );
+    let near_sixteen = world.observe(near).unwrap();
+    let west_sixteen = near_sixteen
+        .text
+        .lines()
+        .find(|line| line.starts_with("West:"))
+        .unwrap_or("");
+    assert_eq!(
+        west_sixteen,
+        "West: hoofprints mark the outside floor. The last branch is the next square south of that floor."
+    );
     let arrived = world.step(&[cmd("in", step, Attempt::Move(Dir::East))]);
     assert_eq!(
         arrived.results[0].message,
@@ -1654,7 +1684,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_west,
-        "West: hoofprints mark the outside floor. The rotting wood is gone from the next square south. Hoofprints mark that ground."
+        "West: hoofprints mark the outside floor. The last branch is gone from the next square south. Hoofprints mark that ground."
     );
     assert_eq!(
         step_look
