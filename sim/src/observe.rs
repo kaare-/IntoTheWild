@@ -284,10 +284,17 @@ impl World {
                     .outside_floor(origin)
                     .is_some_and(|floor| floor.wood == cell)
                 {
-                    format!(
-                        "Wood left in the open is rotting to the {}, and the deer left hoofprints on the rotting wood.",
-                        self.relative(origin, cell)
-                    )
+                    if self.last_branch_is_still_there(cell) {
+                        format!(
+                            "Wood left in the open is rotting to the {}, and the deer left hoofprints on the ground by the last branch.",
+                            self.relative(origin, cell)
+                        )
+                    } else {
+                        format!(
+                            "Wood left in the open is rotting to the {}, and the deer left hoofprints on the rotting wood.",
+                            self.relative(origin, cell)
+                        )
+                    }
                 } else if let Some(side) = self.wood_south_of_the_outside_floor(origin, cell) {
                     format!(
                         "Wood left in the open is rotting {side} of the outside floor, and the deer left hoofprints on the rotting wood."
@@ -349,10 +356,12 @@ impl World {
                 "The rock overhang is the next square {}.",
                 floor.rock_side
             ));
-            parts.push(format!(
-                "The rotting wood is the next square {}.",
-                floor.wood_side
-            ));
+            let wood = if self.last_branch_is_still_there(floor.wood) {
+                "The last branch"
+            } else {
+                "The rotting wood"
+            };
+            parts.push(format!("{wood} is the next square {}.", floor.wood_side));
         } else {
             parts.push(format!(
                 "You are on the {}, {}.",
