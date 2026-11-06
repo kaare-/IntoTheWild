@@ -274,7 +274,15 @@ impl World {
         for cell in self.visible_cell_ids(viewer) {
             let deer_on_it = self.deer.as_ref().is_some_and(|deer| deer.cell == cell);
             if self.open_loose_branches(cell) && !deer_on_it {
-                let line = if deer_on_the_empty_rock {
+                let line = if self
+                    .outside_floor(origin)
+                    .is_some_and(|floor| floor.wood == cell)
+                {
+                    format!(
+                        "Wood left in the open is rotting to the {}, and the deer left hoofprints on the rotting wood.",
+                        self.relative(origin, cell)
+                    )
+                } else if deer_on_the_empty_rock {
                     format!(
                         "Wood left in the open is rotting to the {}.",
                         self.relative(origin, cell)
@@ -318,10 +326,19 @@ impl World {
     fn here_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let cell = self.cell(actor.cell);
-        let wood_side = self.rotting_wood_beside_these_prints(actor.cell);
+        let outside = self.outside_floor(actor.cell);
         let mut parts = Vec::new();
-        if wood_side.is_some() {
-            parts.push("You stand on this square.".into());
+        if let Some(floor) = outside {
+            parts.push("You stand on the outside floor.".into());
+            parts.push("Hoofprints mark the ground.".into());
+            parts.push(format!(
+                "The rock overhang is the next square {}.",
+                floor.rock_side
+            ));
+            parts.push(format!(
+                "The rotting wood is the next square {}.",
+                floor.wood_side
+            ));
         } else {
             parts.push(format!(
                 "You are on the {}, {}.",
@@ -531,10 +548,7 @@ impl World {
         }
         if self.tracks.contains(&actor.cell) && self.prints_stay_on_the_wood(actor.cell) {
             parts.push("The deer left hoofprints on the ground here.".into());
-        } else if let Some(side) = wood_side {
-            parts.push("Hoofprints mark it.".into());
-            parts.push(format!("The rotting wood is the next square {side}."));
-        } else if self.tracks.contains(&actor.cell) {
+        } else if outside.is_none() && self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
         let others = self.others_here(actor_id);
@@ -741,6 +755,15 @@ impl World {
     fn deer_look_line(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let deer = self.deer.as_ref()?;
+        if let Some(floor) = self.outside_floor(origin) {
+            if let Some(way) = orthogonal_step(floor.wood, deer.cell) {
+                if self.first_cell_off_this_wood(floor.wood) == Some(deer.cell) {
+                    return Some(format!(
+                        "A deer stands on the floor {way} of the rotting wood."
+                    ));
+                }
+            }
+        }
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return None;
         }
@@ -808,6 +831,14 @@ impl World {
         let Some(dest) = cell_id(x + dx, y + dy) else {
             return format!("{}: the valley ends.", capitalize(dir.word()));
         };
+        if let Some(floor) = self.outside_floor(origin) {
+            if dest == floor.wood {
+                return format!(
+                    "{}: the rotting wood. Hoofprints mark that wood.",
+                    capitalize(dir.word())
+                );
+            }
+        }
         let cell = self.cell(dest);
         let mut bits = vec![cell.region.word().to_string()];
         if cell.rock {
@@ -930,7 +961,7 @@ impl World {
         }
         if let Some(side) = self.wood_south_of_these_prints(origin, dir, dest) {
             return format!(
-                "{}: hoofprints mark the square. That square's next square {side} is the rotting wood.",
+                "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor.",
                 capitalize(dir.word())
             );
         }
@@ -1218,7 +1249,7 @@ impl World {
         }
         let side = orthogonal_step(dest, corner)?;
         Some(format!(
-            "{}: hoofprints mark the square. That square's next square {side} is the rotting wood. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
+            "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
             capitalize(dir.word())
         ))
     }
@@ -1254,8 +1285,8 @@ impl World {
         Some(side)
     }
 
-    /// The same prints and the same wood, read from the square itself.
-    fn rotting_wood_beside_these_prints(&self, here: CellId) -> Option<&'static str> {
+    /// The valley floor just outside the rock, once the deer has passed the wood.
+    fn outside_floor(&self, here: CellId) -> Option<OutsideFloor> {
         if !self.tracks.contains(&here) {
             return None;
         }
@@ -1274,7 +1305,7 @@ impl World {
             let Some((corner, _)) = self.corner_wood(rock, dir) else {
                 continue;
             };
-            let Some(side) = orthogonal_step(here, corner) else {
+            let Some(wood_side) = orthogonal_step(here, corner) else {
                 continue;
             };
             let deer_there = self.deer_stands_past_this_wood(rock, corner).is_some();
@@ -1285,7 +1316,11 @@ impl World {
                         || self.next_floor_still_in_sight(rock, entered).is_some()
                 });
             if deer_there || left {
-                return Some(side);
+                return Some(OutsideFloor {
+                    wood_side,
+                    rock_side: facing_back(dir),
+                    wood: corner,
+                });
             }
         }
         None
@@ -3337,6 +3372,22 @@ fn capitalize(word: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+#[derive(Clone, Copy)]
+struct OutsideFloor {
+    wood_side: &'static str,
+    rock_side: &'static str,
+    wood: CellId,
+}
+
+fn facing_back(dir: Dir) -> &'static str {
+    match dir {
+        Dir::North => "south",
+        Dir::South => "north",
+        Dir::East => "west",
+        Dir::West => "east",
     }
 }
 
