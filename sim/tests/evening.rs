@@ -3156,11 +3156,21 @@ fn deer_stands_on_the_trail_already_there() {
     }
     assert_eq!(world.deer_cell(), Some((4, 3)));
     assert!(world.hoofprints_at(3, 3));
+    let step = world.spawn_at("Step", "s", 4, 1).unwrap();
     assert_eq!(
         world.examine(far, ExamineTarget::Here),
         "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
     );
     let at_fourteen = world.observe(far).unwrap();
+    assert!(at_fourteen
+        .text
+        .contains("Step stands in the open, on the poison berries north of the west floor."));
+    assert!(!at_fourteen.text.contains("Near"), "{}", at_fourteen.text);
+    assert!(
+        !at_fourteen.text.contains("rock overhang"),
+        "{}",
+        at_fourteen.text
+    );
     let east_fourteen = at_fourteen
         .text
         .lines()
@@ -3171,10 +3181,9 @@ fn deer_stands_on_the_trail_already_there() {
         "East: the south floor. The deer stands on that floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor. East of that floor is the rotting wood. North of that wood is the outside floor. Hoofprints mark that floor."
     );
     assert!(!east_fourteen.contains("valley floor"), "{east_fourteen}");
-    assert!(
-        !east_fourteen.contains("stands on the west floor"),
-        "{east_fourteen}"
-    );
+    assert!(!east_fourteen.contains("Step"), "{east_fourteen}");
+    assert!(!east_fourteen.contains("rock"), "{east_fourteen}");
+    assert!(!east_fourteen.contains("Near"), "{east_fourteen}");
     assert_eq!(
         at_fourteen
             .text
@@ -3212,6 +3221,15 @@ fn deer_stands_on_the_trail_already_there() {
         "{}",
         at_fourteen.text
     );
+    let from_step = world.observe(step).unwrap();
+    assert_eq!(world.sim_time(), 14);
+    assert!(from_step
+        .text
+        .contains("Far stands on the deer trail west of the south floor."));
+    assert_eq!(from_step.text.matches("A deer stands").count(), 0);
+    assert!(from_step.text.contains(
+        "South: the west floor. Hoofprints mark that floor. South of that floor is the south floor, still in sight. The deer stands on the south floor."
+    ));
     world.step(&[]);
     assert_eq!(world.sim_time(), 15);
     assert_eq!(world.deer_cell(), Some((3, 3)));
@@ -3252,6 +3270,20 @@ fn deer_stands_on_the_trail_already_there() {
     );
     assert!(!far_east.contains("deer"), "{far_east}");
     assert!(!far_east.contains("valley floor"), "{far_east}");
+    assert!(!far_east.contains("Step"), "{far_east}");
+    assert!(!far_east.contains("rock"), "{far_east}");
+    assert!(!far_east.contains("Near"), "{far_east}");
+    assert!(!far_place.contains("Step"), "{far_place}");
+    assert!(far_look
+        .text
+        .contains("Step stands in the open, on the poison berries north of the west floor."));
+    let from_step_later = world.observe(step).unwrap();
+    assert!(from_step_later.text.contains(
+        "A deer stands in the open, on the deer trail west of the south floor. Far stands on that trail."
+    ));
+    assert!(from_step_later.text.contains(
+        "South: the west floor. Hoofprints mark that floor. South of that floor is the south floor, still in sight. Hoofprints mark the south floor."
+    ));
     assert_eq!(
         far_look
             .text
@@ -4226,6 +4258,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!aside_south.contains("valley floor"), "{aside_south}");
     assert!(!aside_south.contains("the outside floor"), "{aside_south}");
     assert_eq!(from_west.text.matches("A deer stands").count(), 0);
+    assert!(from_west
+        .text
+        .contains("Corner stands on the deer trail west of the south floor."));
     assert!(from_west.text.contains(
         "Wood left in the open is rotting south of the outside floor, and the deer left hoofprints on the rotting wood."
     ));
@@ -4728,9 +4763,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         !aside_south_later.contains("The deer stands"),
         "{aside_south_later}"
     );
-    assert!(from_west_later
-        .text
-        .contains("A deer stands in the open, on the deer trail west of the south floor."));
+    assert!(from_west_later.text.contains(
+        "A deer stands in the open, on the deer trail west of the south floor. Corner stands on that trail."
+    ));
     assert!(
         !from_west_later
             .text

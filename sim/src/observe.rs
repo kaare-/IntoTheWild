@@ -223,6 +223,12 @@ impl World {
         if let Some(deer) = self.deer_look_line(actor_id) {
             lines.push(deer);
         }
+        if let Some(person) = self.person_on_the_trail_west_of_the_south_floor(actor_id) {
+            lines.push(person);
+        }
+        if let Some(person) = self.person_on_the_berries_north_of_the_west_floor(actor_id) {
+            lines.push(person);
+        }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
@@ -778,7 +784,7 @@ impl World {
         if self.deer_stands_on_the_south_floor_from_here(origin) {
             return None;
         }
-        if let Some(line) = self.deer_on_the_trail_past_the_south_floor(origin) {
+        if let Some(line) = self.deer_on_the_trail_past_the_south_floor(viewer) {
             return Some(line);
         }
         if chebyshev(origin, deer.cell) > self.tuning.sight {
@@ -1679,7 +1685,9 @@ impl World {
     }
 
     /// The deer has left the south floor onto the trail still in sight.
-    fn deer_on_the_trail_past_the_south_floor(&self, origin: CellId) -> Option<String> {
+    /// A person standing on that trail is named from the person, not hardcoded.
+    fn deer_on_the_trail_past_the_south_floor(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
         let west = self.west_floor_from_here(origin)?;
         let steps = self.steps_off_the_wood(origin)?;
         if steps.first().copied() != Some(west) {
@@ -1698,9 +1706,78 @@ impl World {
             return None;
         }
         let way = orthogonal_step(south_floor, trail)?;
+        let mut line =
+            format!("A deer stands in the open, on the deer trail {way} of the south floor.");
+        if let Some(name) = self.other_name_on(viewer, trail) {
+            line.push_str(&format!(" {name} stands on that trail."));
+        }
+        Some(line)
+    }
+
+    /// At the south floor, before the deer arrives, the person on the trail is named.
+    fn person_on_the_trail_west_of_the_south_floor(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let floors = self.floors_off_the_rotting_wood()?;
+        if !self.deer_has_reached_the_south_floor(&floors) {
+            return None;
+        }
+        let west = self.west_floor_from_here(origin)?;
+        if west != floors.west {
+            return None;
+        }
+        if self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| deer.cell == floors.far)
+        {
+            return None;
+        }
+        let name = self.other_name_on(viewer, floors.far)?;
+        let way = orthogonal_step(floors.south, floors.far)?;
         Some(format!(
-            "A deer stands in the open, on the deer trail {way} of the south floor."
+            "{name} stands on the deer trail {way} of the south floor."
         ))
+    }
+
+    /// From the trail, the person on the poison berries north of the west floor.
+    /// The sentence stays out of East.
+    fn person_on_the_berries_north_of_the_west_floor(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let floors = self.floors_off_the_rotting_wood()?;
+        if origin != floors.far || !self.deer_has_reached_the_south_floor(&floors) {
+            return None;
+        }
+        let (x, y) = cell_xy(floors.west);
+        let berries = cell_id(x, y - 1)?;
+        if orthogonal_step(floors.west, berries) != Some("north")
+            || self.pile_count(berries, Material::BitterBerry) == 0
+            || chebyshev(origin, berries) > self.tuning.sight
+        {
+            return None;
+        }
+        let name = self.other_name_on(viewer, berries)?;
+        let cover = self.cover_phrase(berries);
+        Some(format!(
+            "{name} stands {cover}, on the poison berries north of the west floor."
+        ))
+    }
+
+    /// The other person standing on a cell in sight. One name, taken from that person.
+    fn other_name_on(&self, viewer: ActorId, cell: CellId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        if chebyshev(origin, cell) > self.tuning.sight {
+            return None;
+        }
+        let mut names: Vec<_> = self
+            .actors
+            .values()
+            .filter(|actor| actor.id != viewer && actor.cell == cell)
+            .map(|actor| actor.name.clone())
+            .collect();
+        if names.len() != 1 {
+            return None;
+        }
+        names.pop()
     }
 
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
