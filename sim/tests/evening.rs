@@ -1628,7 +1628,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
     let arrived = world.step(&[cmd("in", step, Attempt::Move(Dir::East))]);
     assert_eq!(
         arrived.results[0].message,
-        "You walk east, under the rock overhang, out of the wind."
+        "You walk east, under the rock overhang, out of the wind and the rain."
     );
     assert!(world.is_raining());
     assert_eq!(world.sim_time(), 17);
@@ -1645,7 +1645,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead. Near is here. The rain does not reach this ground. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let step_west = step_look
         .text
@@ -1673,14 +1673,17 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         near_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead. Step is here. The rain does not reach this ground. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let far_look = world.observe(far).unwrap();
     assert_eq!(far_look.self_info.cold, "cold");
     assert_eq!(far_look.self_info.wind, "in the wind");
     assert_eq!(far_look.self_info.wetness, "wet");
-    assert!(far_look.text.contains("Your clothes are wet."));
+    assert!(far_look.text.contains("The rain wets your clothes."));
+    assert!(!far_look.text.contains("Your clothes are wet."));
     assert!(!far_look.text.contains("Your clothes are dry."));
+    assert!(far_look.text.contains("You are cold."));
+    assert!(far_look.text.contains("You are in the wind."));
     assert!(far_look
         .text
         .contains("You are on the valley floor, in the rain."));

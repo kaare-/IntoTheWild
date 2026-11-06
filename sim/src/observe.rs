@@ -578,13 +578,14 @@ impl World {
 
     /// Under the rock the other person is named with the overhang, before the wood.
     fn rock_overhead(&self, actor_id: ActorId) -> String {
-        let mut line = "Rock leans overhead.".to_string();
+        let mut line = if self.raining {
+            "Rock leans overhead, and the rain does not reach this ground.".to_string()
+        } else {
+            "Rock leans overhead.".to_string()
+        };
         if let Some(company) = self.company_here(actor_id) {
             line.push(' ');
             line.push_str(&company);
-        }
-        if self.raining {
-            line.push_str(" The rain does not reach this ground.");
         }
         line.push_str(" Wood left here stays out of the weather.");
         line
@@ -603,10 +604,18 @@ impl World {
         }
     }
 
+    fn clothes_line(&self, moisture: u32) -> String {
+        if self.clothes_word(moisture) == "wet" {
+            "The rain wets your clothes.".into()
+        } else {
+            format!("Your clothes are {}.", self.clothes_word(moisture))
+        }
+    }
+
     fn self_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let mut parts = vec![
-            format!("Your clothes are {}.", self.clothes_word(actor.wetness)),
+            self.clothes_line(actor.wetness),
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
             format!("You are {}.", self.hunger_word(actor.hunger)),
             format!("You are {}.", self.illness_word(actor.illness)),
