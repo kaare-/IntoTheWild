@@ -3089,6 +3089,28 @@ fn deer_stands_on_the_trail_already_there() {
     assert!(!here.contains("A deer stands here"), "{here}");
     assert!(!here.contains("the south floor"), "{here}");
     assert!(!here.contains("ate the berries"), "{here}");
+    let far_look = world.observe(far).unwrap();
+    assert!(
+        !far_look.text.contains("the outside floor"),
+        "{}",
+        far_look.text
+    );
+    assert!(
+        !far_look.text.contains("the south floor"),
+        "{}",
+        far_look.text
+    );
+    assert!(
+        !far_look.text.contains("the west floor"),
+        "{}",
+        far_look.text
+    );
+    let far_east = far_look
+        .text
+        .lines()
+        .find(|line| line.starts_with("East:"))
+        .unwrap_or("");
+    assert!(!far_east.contains("the outside floor"), "{far_east}");
 }
 
 #[test]
@@ -3978,6 +4000,33 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         west_later,
         "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor."
     );
+    let aside = world.spawn_at("Aside", "a", 4, 1).unwrap();
+    let from_west = world.observe(aside).unwrap();
+    assert_eq!(world.sim_time(), wood_clock + 2);
+    assert_eq!(world.actor_cell(aside), Some((4, 1)));
+    let aside_place = from_west
+        .text
+        .lines()
+        .find(|line| line.starts_with("You are on the"))
+        .unwrap_or("");
+    assert!(
+        aside_place.starts_with("You are on the valley floor, in the open."),
+        "{aside_place}"
+    );
+    let aside_east = from_west
+        .text
+        .lines()
+        .find(|line| line.starts_with("East:"))
+        .unwrap_or("");
+    assert_eq!(
+        aside_east,
+        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor."
+    );
+    assert!(!aside_east.contains("valley floor"), "{aside_east}");
+    assert!(!aside_east.contains("a deer"), "{aside_east}");
+    assert!(!aside_east.contains("berries"), "{aside_east}");
+    assert!(!aside_east.contains("person"), "{aside_east}");
+    assert!(!aside_place.contains("the outside floor"), "{aside_place}");
     assert!(!west_later.contains("this square"), "{west_later}");
     assert!(!west_later.contains("that square"), "{west_later}");
     assert!(!west_later.contains("the deer"), "{west_later}");
@@ -4429,6 +4478,38 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
             .contains("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor."),
         "{}",
         unseen.text
+    );
+    let from_west_later = world.observe(aside).unwrap();
+    assert_eq!(world.actor_cell(aside), Some((4, 1)));
+    assert_eq!(world.sim_time(), 15);
+    let aside_place_later = from_west_later
+        .text
+        .lines()
+        .find(|line| line.starts_with("You are on the"))
+        .unwrap_or("");
+    assert!(
+        aside_place_later.starts_with("You are on the valley floor, in the open."),
+        "{aside_place_later}"
+    );
+    assert!(
+        !aside_place_later.contains("the outside floor"),
+        "{aside_place_later}"
+    );
+    let aside_east_later = from_west_later
+        .text
+        .lines()
+        .find(|line| line.starts_with("East:"))
+        .unwrap_or("");
+    assert_eq!(
+        aside_east_later,
+        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor."
+    );
+    assert!(
+        !from_west_later
+            .text
+            .contains("East: valley floor, hoofprints."),
+        "{}",
+        from_west_later.text
     );
     let south_gone = unseen
         .text

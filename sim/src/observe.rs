@@ -839,6 +839,15 @@ impl World {
                 );
             }
         }
+        if let Some(floor) = self.outside_floor(dest) {
+            if dir.word() == floor.rock_side {
+                return format!(
+                    "{}: the outside floor. Hoofprints mark that floor. The rock overhang is the next square {} of that floor.",
+                    capitalize(dir.word()),
+                    floor.rock_side
+                );
+            }
+        }
         let cell = self.cell(dest);
         let mut bits = vec![cell.region.word().to_string()];
         if cell.rock {
