@@ -1632,8 +1632,12 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .lines()
         .find(|line| line.starts_with("South:"))
         .unwrap_or("");
-    assert_eq!(south_sixteen, "South: the last branch.");
-    assert!(!south_sixteen.contains("Hoofprints"), "{south_sixteen}");
+    assert_eq!(
+        south_sixteen,
+        "South: the last branch. Hoofprints mark that branch."
+    );
+    assert!(!south_sixteen.contains("the ground"), "{south_sixteen}");
+    assert!(!south_sixteen.contains("that wood"), "{south_sixteen}");
     let place_sixteen = at_sixteen
         .text
         .lines()
@@ -1643,9 +1647,19 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         place_sixteen,
         "You stand on the outside floor. Hoofprints mark the ground. The rock overhang is the next square east. The last branch is the next square south."
     );
-    assert!(at_sixteen.text.contains(
-        "The last branch is rotting to the south, and the deer left hoofprints on that ground."
-    ));
+    assert!(at_sixteen
+        .text
+        .contains("The last branch is rotting to the south."));
+    assert!(
+        !at_sixteen.text.contains("that ground"),
+        "{}",
+        at_sixteen.text
+    );
+    assert!(
+        !at_sixteen.text.contains("on the ground"),
+        "{}",
+        at_sixteen.text
+    );
     assert!(
         !at_sixteen.text.contains("Wood left in the open"),
         "{}",
