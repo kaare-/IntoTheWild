@@ -286,6 +286,10 @@ impl World {
                     format!(
                         "Wood left in the open is rotting {side} of the outside floor, and the deer left hoofprints on the rotting wood."
                     )
+                } else if let Some(side) = self.wood_east_of_the_west_floor(origin, cell) {
+                    format!(
+                        "Wood left in the open is rotting {side} of the west floor, and the deer left hoofprints on the rotting wood."
+                    )
                 } else if deer_on_the_empty_rock {
                     format!(
                         "Wood left in the open is rotting to the {}.",
@@ -871,6 +875,9 @@ impl World {
             }
             return line;
         }
+        if let Some(line) = self.south_floor_to_the_east(origin, dest, dir) {
+            return line;
+        }
         let cell = self.cell(dest);
         let mut bits = vec![cell.region.word().to_string()];
         if cell.rock {
@@ -1417,6 +1424,90 @@ impl World {
             if dir.word() == floor.rock_side && floor.wood == cell {
                 return Some(floor.wood_side);
             }
+        }
+        None
+    }
+
+    /// The open wood, the floor west of it, the south floor, and the trail west of that.
+    fn floors_off_the_rotting_wood(&self) -> Option<FloorsOffWood> {
+        for y in 0..crate::model::HEIGHT {
+            for x in 0..crate::model::WIDTH {
+                let Some(wood) = cell_id(x, y) else {
+                    continue;
+                };
+                if !self.open_loose_branches(wood) {
+                    continue;
+                }
+                let Some(west) = cell_id(x - 1, y) else {
+                    continue;
+                };
+                let Some(south) = cell_id(x - 1, y + 1) else {
+                    continue;
+                };
+                let Some(far) = cell_id(x - 2, y + 1) else {
+                    continue;
+                };
+                if !self.cell(far).trail {
+                    continue;
+                }
+                let Some(side) = orthogonal_step(west, wood) else {
+                    continue;
+                };
+                return Some(FloorsOffWood {
+                    wood,
+                    west,
+                    south,
+                    far,
+                    side,
+                });
+            }
+        }
+        None
+    }
+
+    /// Far's square sees this rotting wood as east of the west floor.
+    fn wood_east_of_the_west_floor(&self, origin: CellId, cell: CellId) -> Option<&'static str> {
+        if self.time < 10 {
+            return None;
+        }
+        let floors = self.floors_off_the_rotting_wood()?;
+        (origin == floors.far && cell == floors.wood).then_some(floors.side)
+    }
+
+    /// The deer has walked off the west floor onto the south floor, or past it.
+    fn deer_has_reached_the_south_floor(&self, floors: &FloorsOffWood) -> bool {
+        let Some(deer) = self.deer.as_ref() else {
+            return false;
+        };
+        let (sx, sy) = cell_xy(floors.south);
+        let reached = DEER_ROUTE
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, step)| **step == (sx, sy))
+            .map(|(index, _)| index);
+        reached.is_some_and(|index| deer.route_at >= index)
+    }
+
+    /// East from the trail names the south floor once the deer has reached it.
+    fn south_floor_to_the_east(&self, origin: CellId, dest: CellId, dir: Dir) -> Option<String> {
+        let floors = self.floors_off_the_rotting_wood()?;
+        if origin != floors.far
+            || dest != floors.south
+            || !self.deer_has_reached_the_south_floor(&floors)
+        {
+            return None;
+        }
+        let way = capitalize(dir.word());
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
+            return Some(format!(
+                "{way}: the south floor. The deer stands on that floor. Hoofprints mark that floor."
+            ));
+        }
+        if self.tracks.contains(&dest) {
+            return Some(format!(
+                "{way}: the south floor. Hoofprints mark that floor."
+            ));
         }
         None
     }
@@ -2555,6 +2646,12 @@ impl World {
 
     fn deer_place(&self, origin: CellId, deer_cell: CellId) -> String {
         if self.open_loose_branches(deer_cell) {
+            if let Some(side) = self.wood_east_of_the_west_floor(origin, deer_cell) {
+                return format!(
+                    "on the rotting wood {side} of the west floor, {}",
+                    self.cover_phrase(deer_cell)
+                );
+            }
             format!("on the rotting wood {}", self.mark_place(origin, deer_cell))
         } else {
             self.mark_place(origin, deer_cell)
@@ -3561,6 +3658,15 @@ struct OutsideFloor {
     wood_side: &'static str,
     rock_side: &'static str,
     wood: CellId,
+}
+
+#[derive(Clone, Copy)]
+struct FloorsOffWood {
+    wood: CellId,
+    west: CellId,
+    south: CellId,
+    far: CellId,
+    side: &'static str,
 }
 
 fn facing_back(dir: Dir) -> &'static str {
