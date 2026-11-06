@@ -775,9 +775,7 @@ impl World {
         if let Some(floor) = self.outside_floor(origin) {
             if let Some(way) = orthogonal_step(floor.wood, deer.cell) {
                 if self.first_cell_off_this_wood(floor.wood) == Some(deer.cell) {
-                    return Some(format!(
-                        "A deer stands on the floor {way} of the rotting wood."
-                    ));
+                    return Some(format!("A deer stands on the {way} floor."));
                 }
             }
         }

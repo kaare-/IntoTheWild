@@ -4137,7 +4137,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     ));
     assert!(square_look
         .text
-        .contains("A deer stands on the floor west of the rotting wood."));
+        .lines()
+        .any(|line| line == "A deer stands on the west floor."));
+    assert!(
+        !square_look
+            .text
+            .contains("on the floor west of the rotting wood"),
+        "{}",
+        square_look.text
+    );
     assert!(
         !square_look.text.contains("one cell south"),
         "{}",
