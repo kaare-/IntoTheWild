@@ -3094,6 +3094,14 @@ fn deer_stands_on_the_trail_already_there() {
     );
     assert!(!at_eleven.text.contains("one cell"), "{}", at_eleven.text);
     assert!(!at_eleven.text.contains("two cells"), "{}", at_eleven.text);
+    assert_eq!(
+        at_eleven
+            .text
+            .lines()
+            .find(|line| line.starts_with("East:"))
+            .unwrap_or(""),
+        "East: valley floor, hoofprints."
+    );
     while world.sim_time() < 12 {
         world.step(&[]);
     }
@@ -3103,6 +3111,14 @@ fn deer_stands_on_the_trail_already_there() {
     ));
     assert!(!on_wood.text.contains("one cell"), "{}", on_wood.text);
     assert!(!on_wood.text.contains("two cells"), "{}", on_wood.text);
+    assert_eq!(
+        on_wood
+            .text
+            .lines()
+            .find(|line| line.starts_with("East:"))
+            .unwrap_or(""),
+        "East: valley floor, hoofprints."
+    );
     world.step(&[]);
     assert_eq!(world.sim_time(), 13);
     assert_eq!(world.deer_cell(), Some((4, 2)));
@@ -3127,6 +3143,14 @@ fn deer_stands_on_the_trail_already_there() {
         "{}",
         at_thirteen.text
     );
+    assert_eq!(
+        at_thirteen
+            .text
+            .lines()
+            .find(|line| line.starts_with("East:"))
+            .unwrap_or(""),
+        "East: valley floor, hoofprints."
+    );
     while world.sim_time() < 14 {
         world.step(&[]);
     }
@@ -3144,9 +3168,41 @@ fn deer_stands_on_the_trail_already_there() {
         .unwrap_or("");
     assert_eq!(
         east_fourteen,
-        "East: the south floor. The deer stands on that floor. Hoofprints mark that floor."
+        "East: the south floor. The deer stands on that floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor."
     );
     assert!(!east_fourteen.contains("valley floor"), "{east_fourteen}");
+    assert!(
+        !east_fourteen.contains("the outside floor"),
+        "{east_fourteen}"
+    );
+    assert!(
+        !east_fourteen.contains("stands on the west floor"),
+        "{east_fourteen}"
+    );
+    assert_eq!(
+        at_fourteen
+            .text
+            .lines()
+            .find(|line| line.starts_with("North:"))
+            .unwrap_or(""),
+        "North: valley floor, the heavy log."
+    );
+    assert_eq!(
+        at_fourteen
+            .text
+            .lines()
+            .find(|line| line.starts_with("South:"))
+            .unwrap_or(""),
+        "South: valley floor."
+    );
+    assert_eq!(
+        at_fourteen
+            .text
+            .lines()
+            .find(|line| line.starts_with("West:"))
+            .unwrap_or(""),
+        "West: valley floor, hoofprints."
+    );
     assert!(at_fourteen.text.contains(
         "Wood left in the open is rotting east of the west floor, and the deer left hoofprints on the rotting wood."
     ));
@@ -3196,10 +3252,35 @@ fn deer_stands_on_the_trail_already_there() {
         .unwrap_or("");
     assert_eq!(
         far_east,
-        "East: the south floor. Hoofprints mark that floor."
+        "East: the south floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor."
     );
     assert!(!far_east.contains("deer"), "{far_east}");
     assert!(!far_east.contains("valley floor"), "{far_east}");
+    assert!(!far_east.contains("the outside floor"), "{far_east}");
+    assert_eq!(
+        far_look
+            .text
+            .lines()
+            .find(|line| line.starts_with("North:"))
+            .unwrap_or(""),
+        "North: valley floor, the heavy log."
+    );
+    assert_eq!(
+        far_look
+            .text
+            .lines()
+            .find(|line| line.starts_with("South:"))
+            .unwrap_or(""),
+        "South: valley floor."
+    );
+    assert_eq!(
+        far_look
+            .text
+            .lines()
+            .find(|line| line.starts_with("West:"))
+            .unwrap_or(""),
+        "West: valley floor, hoofprints."
+    );
     assert!(far_look.text.contains(
         "Wood left in the open is rotting east of the west floor, and the deer left hoofprints on the rotting wood."
     ));

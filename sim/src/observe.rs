@@ -1524,7 +1524,9 @@ impl World {
         reached.is_some_and(|index| deer.route_at >= index)
     }
 
-    /// East from the trail names the south floor once the deer has reached it.
+    /// East from the trail names the south floor once the deer has reached it,
+    /// then the west floor north of that floor. The deer stays on the south
+    /// floor sentence. The outside floor stays out of this line.
     fn south_floor_to_the_east(&self, origin: CellId, dest: CellId, dir: Dir) -> Option<String> {
         let floors = self.floors_off_the_rotting_wood()?;
         if origin != floors.far
@@ -1534,17 +1536,31 @@ impl World {
             return None;
         }
         let way = capitalize(dir.word());
-        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
-            return Some(format!(
+        let mut line = if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
+            format!(
                 "{way}: the south floor. The deer stands on that floor. Hoofprints mark that floor."
-            ));
+            )
+        } else if self.tracks.contains(&dest) {
+            format!("{way}: the south floor. Hoofprints mark that floor.")
+        } else {
+            return None;
+        };
+        if let Some(past) = self.west_floor_north_of_the_south_floor(&floors) {
+            line.push_str(&past);
         }
-        if self.tracks.contains(&dest) {
-            return Some(format!(
-                "{way}: the south floor. Hoofprints mark that floor."
-            ));
+        Some(line)
+    }
+
+    /// The west floor is the square directly north of the south floor.
+    fn west_floor_north_of_the_south_floor(&self, floors: &FloorsOffWood) -> Option<String> {
+        if !self.tracks.contains(&floors.west) {
+            return None;
         }
-        None
+        let way = orthogonal_step(floors.south, floors.west)?;
+        let named = capitalize(way);
+        Some(format!(
+            " {named} of that floor is the west floor. Hoofprints mark that floor."
+        ))
     }
 
     /// The floor the deer stepped onto after the west floor, still in sight.
