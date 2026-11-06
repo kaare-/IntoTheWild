@@ -367,7 +367,7 @@ impl World {
             parts.push("A deer trail passes here.".into());
         }
         if cell.rock {
-            parts.push("Rock leans overhead. Wood left here stays out of the weather.".into());
+            parts.push(self.rock_overhead(actor_id));
         }
         if cell.region == crate::model::Region::Brook {
             parts.push("The water here is raw.".into());
@@ -568,15 +568,36 @@ impl World {
         } else if outside.is_none() && self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
+        if !cell.rock {
+            if let Some(company) = self.company_here(actor_id) {
+                parts.push(company);
+            }
+        }
+        parts.join(" ")
+    }
+
+    /// Under the rock the other person is named with the overhang, before the wood.
+    fn rock_overhead(&self, actor_id: ActorId) -> String {
+        let mut line = "Rock leans overhead.".to_string();
+        if let Some(company) = self.company_here(actor_id) {
+            line.push(' ');
+            line.push_str(&company);
+        }
+        line.push_str(" Wood left here stays out of the weather.");
+        line
+    }
+
+    fn company_here(&self, actor_id: ActorId) -> Option<String> {
         let others = self.others_here(actor_id);
-        if !others.is_empty() {
-            parts.push(format!(
+        if others.is_empty() {
+            None
+        } else {
+            Some(format!(
                 "{} {} here.",
                 self.names(&others),
                 if others.len() == 1 { "is" } else { "are" }
-            ));
+            ))
         }
-        parts.join(" ")
     }
 
     fn self_text(&self, actor_id: ActorId) -> String {

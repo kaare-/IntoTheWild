@@ -769,8 +769,14 @@ impl World {
                     actor.wetness = (actor.wetness + self.tuning.wade).min(1000);
                 }
             }
+            let entered_overhang = self.cell(dest).rock && !self.cell(origin).rock;
             let text = if brook {
                 format!("{name} wades {word}.", word = dir.word())
+            } else if entered_overhang {
+                format!(
+                    "{name} walks {word}, under the rock overhang, out of the wind.",
+                    word = dir.word()
+                )
             } else {
                 format!("{name} walks {word}.", word = dir.word())
             };
@@ -785,6 +791,11 @@ impl World {
             );
             let message = if brook {
                 format!("You wade {}.", dir.word())
+            } else if entered_overhang {
+                format!(
+                    "You walk {}, under the rock overhang, out of the wind.",
+                    dir.word()
+                )
             } else {
                 format!("You walk {}.", dir.word())
             };
