@@ -1552,6 +1552,45 @@ fn open_sky_chills_and_burns_while_shelter_and_mud_hold_them_off() {
 }
 
 #[test]
+fn the_rock_takes_the_cold_off() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let step = world.spawn_at("Step", "s", 5, 1).unwrap();
+    while world.observe(step).unwrap().self_info.cold != "cold" {
+        world.step(&[]);
+        assert!(world.sim_time() < 20, "open sky should make Step cold");
+    }
+    assert_eq!(world.observe(step).unwrap().self_info.wind, "in the wind");
+    assert_eq!(world.observe(near).unwrap().self_info.cold, "warm");
+    assert_eq!(
+        world.observe(near).unwrap().self_info.wind,
+        "out of the wind"
+    );
+    world.step(&[cmd("in", step, Attempt::Move(Dir::East))]);
+    assert_eq!(world.actor_cell(step), Some((6, 1)));
+    let look = world.observe(step).unwrap();
+    assert_eq!(look.self_info.cold, "warm");
+    assert_eq!(look.self_info.wind, "out of the wind");
+    assert!(look.text.contains("You are warm."));
+    assert!(look.text.contains("You are out of the wind."));
+    let place = look
+        .text
+        .lines()
+        .find(|line| line.starts_with("You are on the"))
+        .unwrap_or("");
+    assert!(
+        place.starts_with("You are on the valley floor, under the rock overhang."),
+        "{place}"
+    );
+    assert!(place.contains("Near is here."), "{place}");
+    assert!(place.contains("A pot sits here."), "{place}");
+    assert!(place.contains("bark"), "{place}");
+    assert!(place.contains("branch"), "{place}");
+    assert!(!place.contains("1 person"), "{place}");
+    assert!(!place.contains("cell"), "{place}");
+}
+
+#[test]
 fn poison_berries_are_not_food_and_still_water_freezes() {
     let mut cook = world_at(10_000);
     let sera = cook.spawn_at("Sera", "s", 6, 1).unwrap();

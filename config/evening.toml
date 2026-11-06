@@ -74,7 +74,8 @@ illness_hit = 1.0
 ill_at = 0.25
 illness_recovery = 0.05
 # Cold and sun use the same exposure as the rain. Open sky is 1. The wind
-# doubles the cold gain only there. A rock overhang is 0, so it feels neither.
+# doubles the cold gain only there. A rock overhang is 0, so it feels neither,
+# and the cold already on a body leaves once they stand under it.
 # A dry bark roof is a little. One smear of mud leaves a quarter of the sun.
 # Mud flakes off each tick. Rain in the open washes it faster. The sun does
 # not burn while rain is falling.

@@ -478,9 +478,11 @@ impl World {
     }
 
     /// Cold, wind, and sun on a body. Exposure is the shelter the valley
-    /// already has. Wind doubles the cold only under open sky. A body
-    /// standing on a burning fire loses cold that tick instead, and keeps
-    /// a few ticks of leftover heat after it steps off or the fire goes out.
+    /// already has. Wind doubles the cold only under open sky. Full shelter,
+    /// the rock, feels neither, and the cold already on the body leaves.
+    /// A body standing on a burning fire loses cold that tick instead, and
+    /// keeps a few ticks of leftover heat after it steps off or the fire
+    /// goes out.
     /// During those ticks the sky's cold is halved. Mud cuts the sun. Rain
     /// hides the sun and washes mud off exposed skin. Rain still puts an
     /// open fire out.
@@ -537,6 +539,8 @@ impl World {
             };
             let cold_after = if on_fire {
                 cold_before.saturating_sub(self.tuning.fire_warmth)
+            } else if exposure == 0 {
+                0
             } else {
                 (cold_before + cold_gain).min(1000)
             };
