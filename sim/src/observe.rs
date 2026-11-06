@@ -138,7 +138,7 @@ impl World {
                 y,
                 region: self.cell(actor.cell).region.word().into(),
                 under_roof: self.exposure_millis(actor.cell) < 1000,
-                wetness: self.condition_word(actor.wetness).into(),
+                wetness: self.clothes_word(actor.wetness).into(),
                 thirst: self.thirst_word(actor.thirst).into(),
                 hunger: self.hunger_word(actor.hunger).into(),
                 illness: self.illness_word(actor.illness).into(),
@@ -583,6 +583,9 @@ impl World {
             line.push(' ');
             line.push_str(&company);
         }
+        if self.raining {
+            line.push_str(" The rain does not reach this ground.");
+        }
         line.push_str(" Wood left here stays out of the weather.");
         line
     }
@@ -603,7 +606,7 @@ impl World {
     fn self_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let mut parts = vec![
-            format!("Your clothes are {}.", self.condition_word(actor.wetness)),
+            format!("Your clothes are {}.", self.clothes_word(actor.wetness)),
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
             format!("You are {}.", self.hunger_word(actor.hunger)),
             format!("You are {}.", self.illness_word(actor.illness)),
@@ -714,7 +717,7 @@ impl World {
             actor.name,
             self.cell(actor.cell).region.word(),
             self.cover_phrase(actor.cell),
-            self.condition_word(actor.wetness),
+            self.clothes_word(actor.wetness),
             self.thirst_sentence(actor.thirst),
             self.hunger_word(actor.hunger),
             self.illness_word(actor.illness),
@@ -1045,6 +1048,9 @@ impl World {
             }
             return line;
         }
+        if let Some(line) = self.outside_floor_after_the_wood_is_gone(origin, dir, dest) {
+            return line;
+        }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
         match self.corner_beyond(origin, dir) {
             Some(corner) => format!("{line} {corner}"),
@@ -1338,6 +1344,56 @@ impl World {
         line.push_str(&format!(
             " The rotting wood is the next square {side} of that floor. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor."
         ));
+        Some(line)
+    }
+
+    /// The outside floor and the rotting wood stay in West after the pile is gone.
+    /// Step is not named on the berries unless Step is standing there.
+    fn outside_floor_after_the_wood_is_gone(
+        &self,
+        origin: CellId,
+        dir: Dir,
+        dest: CellId,
+    ) -> Option<String> {
+        if !self.open_wood_keeps_its_way(origin)
+            || !self.tracks.contains(&dest)
+            || self.cell(dest).rock
+        {
+            return None;
+        }
+        let (x, y) = cell_xy(dest);
+        let (ox, oy) = cell_xy(origin);
+        let (dx, dy) = dir.delta();
+        if ox + dx != x || oy + dy != y {
+            return None;
+        }
+        let mut woods = Vec::new();
+        for (px, py) in [(0, -1), (0, 1), (-1, 0), (1, 0)] {
+            let Some(wood) = cell_id(x + px, y + py) else {
+                continue;
+            };
+            if wood == origin || self.cell(wood).rock || chebyshev(origin, wood) != 1 {
+                continue;
+            }
+            if !self.tracks.contains(&wood) || self.open_loose_branches(wood) {
+                continue;
+            }
+            woods.push(wood);
+        }
+        if woods.len() != 1 {
+            return None;
+        }
+        let side = orthogonal_step(dest, woods[0])?;
+        let mut line = format!(
+            "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor.",
+            capitalize(dir.word())
+        );
+        if let Some(name) = self.name_standing_on(origin, dest) {
+            line.push_str(&format!(" {name} stands on that floor."));
+        }
+        if let Some(past) = self.person_on_the_berries_off_this_floor(origin, dest) {
+            line.push_str(&past);
+        }
         Some(line)
     }
 

@@ -1604,6 +1604,92 @@ fn the_rock_takes_the_cold_off() {
 }
 
 #[test]
+fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let step = world.spawn_at("Step", "s", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    while world.sim_time() < 15 {
+        world.step(&[]);
+        assert!(world.sim_time() <= 15, "the evening should reach 15");
+    }
+    let before = world.observe(near).unwrap();
+    let west_before = before
+        .text
+        .lines()
+        .find(|line| line.starts_with("West:"))
+        .unwrap_or("");
+    assert_eq!(
+        west_before,
+        "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Step stands on the poison berries."
+    );
+    let plain = world.step(&[cmd("out", step, Attempt::Move(Dir::East))]);
+    assert_eq!(plain.results[0].message, "You walk east.");
+    let arrived = world.step(&[cmd("in", step, Attempt::Move(Dir::East))]);
+    assert_eq!(
+        arrived.results[0].message,
+        "You walk east, under the rock overhang, out of the wind."
+    );
+    assert!(world.is_raining());
+    assert_eq!(world.sim_time(), 17);
+    assert_eq!(world.actor_cell(step), Some((6, 1)));
+    let step_look = world.observe(step).unwrap();
+    assert_eq!(step_look.self_info.cold, "warm");
+    assert_eq!(step_look.self_info.wind, "out of the wind");
+    assert_eq!(step_look.self_info.wetness, "dry");
+    assert_eq!(step_look.self_info.sunburn, "burned");
+    let step_place = step_look
+        .text
+        .lines()
+        .find(|line| line.starts_with("You are on the"))
+        .unwrap_or("");
+    assert_eq!(
+        step_place,
+        "You are on the valley floor, under the rock overhang. Rock leans overhead. Near is here. The rain does not reach this ground. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+    );
+    let step_west = step_look
+        .text
+        .lines()
+        .find(|line| line.starts_with("West:"))
+        .unwrap_or("");
+    assert_eq!(
+        step_west,
+        "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor."
+    );
+    assert!(!step_west.contains("poison berries"), "{step_west}");
+    assert!(
+        !step_west.contains("valley floor, hoofprints"),
+        "{step_west}"
+    );
+    let near_look = world.observe(near).unwrap();
+    assert_eq!(near_look.self_info.cold, "warm");
+    assert_eq!(near_look.self_info.wind, "out of the wind");
+    assert_eq!(near_look.self_info.wetness, "dry");
+    assert_eq!(near_look.self_info.sunburn, "unburned");
+    let near_place = near_look
+        .text
+        .lines()
+        .find(|line| line.starts_with("You are on the"))
+        .unwrap_or("");
+    assert_eq!(
+        near_place,
+        "You are on the valley floor, under the rock overhang. Rock leans overhead. Step is here. The rain does not reach this ground. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+    );
+    let far_look = world.observe(far).unwrap();
+    assert_eq!(far_look.self_info.cold, "cold");
+    assert_eq!(far_look.self_info.wind, "in the wind");
+    assert_eq!(far_look.self_info.wetness, "wet");
+    assert!(far_look.text.contains("Your clothes are wet."));
+    assert!(!far_look.text.contains("Your clothes are dry."));
+    assert!(far_look
+        .text
+        .contains("You are on the valley floor, in the rain."));
+    assert!(!far_look.text.contains("Near"));
+    assert!(!far_look.text.contains("Step"));
+    assert!(!far_look.text.contains("rock overhang"));
+}
+
+#[test]
 fn poison_berries_are_not_food_and_still_water_freezes() {
     let mut cook = world_at(10_000);
     let sera = cook.spawn_at("Sera", "s", 6, 1).unwrap();

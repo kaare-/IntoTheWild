@@ -1104,6 +1104,20 @@ impl World {
         }
     }
 
+    /// Clothes take the rain as soon as it reaches the body. A dry word
+    /// means the rain has not touched them. Shade does not wipe a burn.
+    pub(crate) fn clothes_word(&self, moisture: u32) -> &'static str {
+        if moisture == 0 {
+            "dry"
+        } else if moisture >= self.tuning.soaked_at {
+            "soaked"
+        } else if moisture >= self.tuning.damp_at {
+            "damp"
+        } else {
+            "wet"
+        }
+    }
+
     pub(crate) fn thirst_word(&self, thirst: u32) -> &'static str {
         if thirst >= self.tuning.parched_at {
             "parched"
