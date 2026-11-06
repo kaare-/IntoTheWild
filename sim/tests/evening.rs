@@ -3769,12 +3769,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         west,
-        "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor. The near floor has hoofprints."
+        "West: hoofprints mark the ground, and the wood is south of them. Past that wood, the deer stands on the west floor, and hoofprints mark that floor."
     );
-    assert!(west.starts_with(
-        "West: past that wood, the deer stands on the west floor, and hoofprints mark that floor."
+    assert!(west.starts_with("West: hoofprints mark the ground, and the wood is south of them."));
+    assert!(west.contains(
+        "Past that wood, the deer stands on the west floor, and hoofprints mark that floor."
     ));
-    assert!(west.contains("The near floor has hoofprints."));
+    assert!(!west.contains("the near floor"), "{west}");
     assert!(!west.contains("one step west"), "{west}");
     assert!(!west.contains("the floor north of that wood"), "{west}");
     assert!(!west.contains("valley floor"), "{west}");
@@ -3798,7 +3799,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         !west.contains("the deer stands on the hoofprints"),
         "{west}"
     );
-    let deer_clause = west.split(". The near floor").next().unwrap_or("");
+    let deer_clause = west.split("Past that wood, ").nth(1).unwrap_or("");
+    let square = west.split(". Past that wood").next().unwrap_or("");
+    assert!(!square.contains("the deer stands"), "{square}");
     assert!(
         deer_clause.contains("hoofprints mark that floor"),
         "{deer_clause}"
@@ -3882,8 +3885,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         west_later,
-        "West: the near floor has hoofprints. That way, to the south, reaches the same wood."
+        "West: hoofprints mark the ground, and the wood is south of them."
     );
+    assert!(!west_later.contains("the near floor"), "{west_later}");
     assert!(!west_later.contains("one step west"), "{west_later}");
     assert!(!west_later.contains("valley floor"), "{west_later}");
     assert!(
@@ -4316,9 +4320,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         unseen.text
     );
     assert!(
-        unseen.text.contains(
-            "West: the near floor has hoofprints. That way, to the south, reaches the same wood."
-        ),
+        unseen
+            .text
+            .contains("West: hoofprints mark the ground, and the wood is south of them."),
         "{}",
         unseen.text
     );
@@ -4363,7 +4367,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let west_gone = unseen
         .text
-        .find("West: the near floor has hoofprints. That way, to the south, reaches the same wood.")
+        .find("West: hoofprints mark the ground, and the wood is south of them.")
         .expect(&unseen.text);
     assert!(west_gone < prints_gone, "{}", unseen.text);
     assert!(!unseen.text.contains("as well as here"), "{}", unseen.text);
@@ -4523,7 +4527,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!after_south.contains(" row"), "{}", unseen.text);
     assert!(!after_south.contains("line"), "{}", unseen.text);
     assert_eq!(after_south.matches("the line of them").count(), 0);
-    assert!(!after_south.contains(" them"), "{}", unseen.text);
+    assert!(
+        !after_south
+            .replace("hoofprints mark the ground, and the wood is south of them", "")
+            .contains(" them"),
+        "{}",
+        unseen.text
+    );
     assert_eq!(
         after_south
             .matches("the last you can see are on the south floor")
@@ -4601,7 +4611,16 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(after_south.matches("that valley floor").count(), 0);
     assert_eq!(after_south.matches(", in the open,").count(), 0);
     assert_eq!(after_south.matches("on that floor").count(), 0);
-    assert!(!after_south.contains("the ground"), "{}", unseen.text);
+    let after_without_the_square = after_south.replace(
+        "hoofprints mark the ground, and the wood is south of them",
+        "",
+    );
+    assert!(
+        !after_without_the_square.contains("the ground"),
+        "{}",
+        unseen.text
+    );
+    assert!(!after_south.contains("the near floor"), "{}", unseen.text);
     assert!(!after_south.contains("one step west"), "{}", unseen.text);
     assert!(!after_south.contains("beyond"), "{}", unseen.text);
     assert!(
