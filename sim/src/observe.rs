@@ -1489,7 +1489,7 @@ impl World {
     }
 
     /// East from the outside floor names the rock and the person on the valley floor under it.
-    /// The person is not a count.
+    /// The prints that follow mark that floor. The person is not a count.
     fn rock_from_the_outside_floor(&self, dir: Dir, rock: CellId, name: &str) -> String {
         let mut parts = vec![format!(
             "{}: the rock overhang. {name}",
@@ -1511,7 +1511,7 @@ impl World {
             parts.push("A sheet of bark lies there.".into());
         }
         if self.tracks.contains(&rock) {
-            parts.push("Hoofprints mark the ground.".into());
+            parts.push("Hoofprints mark that floor.".into());
         }
         parts.join(" ")
     }

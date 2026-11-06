@@ -4096,9 +4096,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         square_east,
-        "East: the rock overhang. Near stands on the valley floor under that rock. A pile of branches lies there. A pot sits there. A pile of bark lies there. Hoofprints mark the ground."
+        "East: the rock overhang. Near stands on the valley floor under that rock. A pile of branches lies there. A pot sits there. A pile of bark lies there. Hoofprints mark that floor."
     );
     assert!(!square_east.contains("1 person"), "{square_east}");
+    assert!(
+        !square_east.contains("Hoofprints mark the ground"),
+        "{square_east}"
+    );
     assert!(
         !square_east.contains("valley floor, rock overhang"),
         "{square_east}"
