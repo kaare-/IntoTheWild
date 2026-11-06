@@ -4197,9 +4197,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_east,
-        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. A person stands under that rock."
+        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. Near stands under that rock."
     );
-    assert!(!aside_east.contains("1 person"), "{aside_east}");
+    assert!(!aside_east.contains("person"), "{aside_east}");
     assert!(!aside_east.contains("valley floor"), "{aside_east}");
     assert!(!aside_east.contains("a deer"), "{aside_east}");
     assert!(!aside_east.contains("berries"), "{aside_east}");
@@ -4712,9 +4712,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_east_later,
-        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. A person stands under that rock."
+        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. Near stands under that rock."
     );
-    assert!(!aside_east_later.contains("1 person"), "{aside_east_later}");
+    assert!(!aside_east_later.contains("person"), "{aside_east_later}");
     let aside_south_later = from_west_later
         .text
         .lines()

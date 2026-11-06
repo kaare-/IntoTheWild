@@ -866,8 +866,8 @@ impl World {
                     capitalize(dir.word()),
                     floor.rock_side
                 );
-                if self.person_stands_under_that_rock(origin, dest, floor.rock_side) {
-                    line.push_str(" A person stands under that rock.");
+                if let Some(name) = self.name_under_that_rock(origin, dest, floor.rock_side) {
+                    line.push_str(&format!(" {name} stands under that rock."));
                 }
                 return line;
             }
@@ -1390,26 +1390,31 @@ impl World {
         None
     }
 
-    /// A person on the rock, in sight from the square that faces the outside floor.
-    /// The rock itself stays out of a look that cannot see it.
-    fn person_stands_under_that_rock(
+    /// The name of the person on the rock, in sight from the square that faces
+    /// the outside floor. The rock itself stays out of a look that cannot see it.
+    fn name_under_that_rock(
         &self,
         origin: CellId,
         floor_cell: CellId,
         rock_side: &str,
-    ) -> bool {
-        let Some(dir) = Dir::all().into_iter().find(|dir| dir.word() == rock_side) else {
-            return false;
-        };
+    ) -> Option<String> {
+        let dir = Dir::all().into_iter().find(|dir| dir.word() == rock_side)?;
         let (x, y) = cell_xy(floor_cell);
         let (dx, dy) = dir.delta();
-        let Some(rock) = cell_id(x + dx, y + dy) else {
-            return false;
-        };
+        let rock = cell_id(x + dx, y + dy)?;
         if !self.cell(rock).rock || chebyshev(origin, rock) > self.tuning.sight {
-            return false;
+            return None;
         }
-        self.actors.values().any(|actor| actor.cell == rock)
+        let mut names: Vec<_> = self
+            .actors
+            .values()
+            .filter(|actor| actor.cell == rock)
+            .map(|actor| actor.name.clone())
+            .collect();
+        if names.len() != 1 {
+            return None;
+        }
+        names.pop()
     }
 
     /// The west floor is the next square south, after the deer has left it.
