@@ -1174,7 +1174,7 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
     assert_eq!(rock.branch_pile, 3);
     assert!(seen.events.iter().any(|event| {
         event.text
-            == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
+            == "A branch rots away east of the west floor, in the open. You hear branches breaking."
     }));
     let far = world.observe(otto).unwrap();
     assert!(far.events.iter().all(|event| !event.text.contains("rots")));
@@ -1245,7 +1245,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let brush = world.observe(sera).unwrap();
     assert!(brush.events.iter().any(|event| {
         event.text
-            == "A deer steps east. A branch snapped under the deer one cell north and one cell east, in the open."
+            == "A deer steps east. A branch snapped under the deer east of the west floor, in the open."
     }));
     assert_eq!(
         brush
@@ -1290,12 +1290,12 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let rotted = world.observe(sera).unwrap();
     assert!(rotted.events.iter().any(|event| {
         event.text
-            == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
+            == "A branch rots away east of the west floor, in the open. You hear branches breaking."
     }));
     let under = world.spawn_at("Under", "u", 6, 1).unwrap();
     assert!(world.observe(under).unwrap().events.iter().any(|event| {
         event.text
-            == "A branch rots away one cell south and one cell west, in the open. You hear branches breaking."
+            == "A branch rots away on the rotting wood, the next square south of the outside floor, in the open. You hear branches breaking."
     }));
     let on_it = world.spawn_at("On", "on", 5, 2).unwrap();
     assert!(world.observe(on_it).unwrap().events.iter().any(|event| {
@@ -1654,8 +1654,21 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_west,
-        "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor."
+        "West: hoofprints mark the outside floor. Hoofprints mark the next square south."
     );
+    assert_eq!(
+        step_look
+            .visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 2)
+            .unwrap()
+            .branch_pile,
+        0
+    );
+    assert!(step_look
+        .text
+        .contains("The rain does not wet your clothes."));
+    assert!(!step_look.text.contains("Your clothes are dry."));
     assert!(!step_west.contains("poison berries"), "{step_west}");
     assert!(
         !step_west.contains("valley floor, hoofprints"),
@@ -1666,6 +1679,10 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
     assert_eq!(near_look.self_info.wind, "out of the wind");
     assert_eq!(near_look.self_info.wetness, "dry");
     assert_eq!(near_look.self_info.sunburn, "unburned");
+    assert!(near_look
+        .text
+        .contains("The rain does not wet your clothes."));
+    assert!(!near_look.text.contains("Your clothes are dry."));
     let near_place = near_look
         .text
         .lines()
@@ -1690,6 +1707,49 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
     assert!(!far_look.text.contains("Near"));
     assert!(!far_look.text.contains("Step"));
     assert!(!far_look.text.contains("rock overhang"));
+    let snap = far_look
+        .events
+        .iter()
+        .find(|event| event.time == 3 && event.text.contains("snapped"))
+        .map(|event| event.text.as_str())
+        .unwrap_or("");
+    assert_eq!(
+        snap,
+        "A deer steps east. A branch snapped under the deer east of the west floor, in the open."
+    );
+    assert!(!snap.contains("in the rain"), "{snap}");
+    assert!(!snap.contains("cell"), "{snap}");
+    let rot = far_look
+        .events
+        .iter()
+        .find(|event| event.time == 8 && event.text.contains("rots"))
+        .map(|event| event.text.as_str())
+        .unwrap_or("");
+    assert_eq!(
+        rot,
+        "A branch rots away east of the west floor, in the open. You hear branches breaking."
+    );
+    assert!(!rot.contains("in the rain"), "{rot}");
+    assert!(!rot.contains("cell"), "{rot}");
+    let rain = far_look
+        .events
+        .iter()
+        .find(|event| event.text.contains("rain") || event.text.contains("Rain"))
+        .map(|event| event.text.as_str())
+        .unwrap_or("");
+    assert_eq!(rain, "The rain wets your clothes.");
+    let step_rot = step_look
+        .events
+        .iter()
+        .find(|event| event.time == 16 && event.text.contains("rots"))
+        .map(|event| event.text.as_str())
+        .unwrap_or("");
+    assert_eq!(
+        step_rot,
+        "A branch rots away on the next square south of the outside floor, in the rain. You hear branches breaking."
+    );
+    assert!(!step_rot.contains("rotting wood"), "{step_rot}");
+    assert!(!step_rot.contains("cell"), "{step_rot}");
 }
 
 #[test]

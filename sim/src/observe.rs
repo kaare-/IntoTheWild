@@ -604,18 +604,26 @@ impl World {
         }
     }
 
-    fn clothes_line(&self, moisture: u32) -> String {
-        if self.clothes_word(moisture) == "wet" {
+    fn clothes_line(&self, actor_id: ActorId, moisture: u32) -> String {
+        let word = self.clothes_word(moisture);
+        if word == "wet" {
             "The rain wets your clothes.".into()
+        } else if word == "dry"
+            && self.raining
+            && self
+                .actor(actor_id)
+                .is_some_and(|actor| self.exposure_millis(actor.cell) == 0)
+        {
+            "The rain does not wet your clothes.".into()
         } else {
-            format!("Your clothes are {}.", self.clothes_word(moisture))
+            format!("Your clothes are {word}.")
         }
     }
 
     fn self_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let mut parts = vec![
-            self.clothes_line(actor.wetness),
+            self.clothes_line(actor_id, actor.wetness),
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
             format!("You are {}.", self.hunger_word(actor.hunger)),
             format!("You are {}.", self.illness_word(actor.illness)),
@@ -1356,7 +1364,7 @@ impl World {
         Some(line)
     }
 
-    /// The outside floor and the rotting wood stay in West after the pile is gone.
+    /// The outside floor stays in West after the pile is gone. Hoofprints mark the next square.
     /// Step is not named on the berries unless Step is standing there.
     fn outside_floor_after_the_wood_is_gone(
         &self,
@@ -1394,7 +1402,7 @@ impl World {
         }
         let side = orthogonal_step(dest, woods[0])?;
         let mut line = format!(
-            "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor.",
+            "{}: hoofprints mark the outside floor. Hoofprints mark the next square {side}.",
             capitalize(dir.word())
         );
         if let Some(name) = self.name_standing_on(origin, dest) {
@@ -3553,14 +3561,17 @@ impl World {
         views
     }
 
-    /// A rot is one stored sentence. Each hearer gets the cell count from
-    /// where they stand, the same way `examine tracks` does.
+    /// An event keeps the weather of its own tick. The wood is named, not counted.
     fn heard_text(&self, origin: CellId, event: &crate::model::Event) -> String {
+        if event.text.starts_with("Rain reaches the valley") && self.exposure_millis(origin) >= 1000
+        {
+            return "The rain wets your clothes.".into();
+        }
         if event.text == "A branch rots away in the open. You hear branches breaking." {
             if let Some(&cell) = event.affected_cells.first() {
                 return format!(
                     "A branch rots away {}. You hear branches breaking.",
-                    self.mark_place(origin, cell)
+                    self.event_place(origin, cell, event.time)
                 );
             }
         }
@@ -3569,12 +3580,99 @@ impl World {
                 if let Scope::Cell(cell) = event.scope {
                     return format!(
                         "A deer steps {dir}. A branch snapped under the deer {}.",
-                        self.mark_place(origin, cell)
+                        self.event_place(origin, cell, event.time)
                     );
                 }
             }
         }
         event.text.clone()
+    }
+
+    /// The open wood south of the outside floor, named from whoever hears it.
+    fn event_place(&self, origin: CellId, cell: CellId, time: u64) -> String {
+        let weather = self.weather_at(cell, time);
+        if origin == cell {
+            return format!("here, {weather}");
+        }
+        if let Some(floors) = self.named_wood_floors() {
+            if cell == floors.wood {
+                if self.cell(origin).rock {
+                    let (x, y) = cell_xy(floors.wood);
+                    let side = cell_id(x, y - 1)
+                        .and_then(|outside| orthogonal_step(outside, floors.wood))
+                        .unwrap_or("south");
+                    if self.open_loose_branches(cell) {
+                        return format!(
+                            "on the rotting wood, the next square {side} of the outside floor, {weather}"
+                        );
+                    }
+                    return format!("on the next square {side} of the outside floor, {weather}");
+                }
+                return format!("east of the west floor, {weather}");
+            }
+        }
+        format!("{}, {weather}", self.cell_offset(origin, cell))
+    }
+
+    fn weather_at(&self, cell: CellId, time: u64) -> &'static str {
+        if self.cell(cell).rock {
+            "under the rock overhang"
+        } else if time >= self.tuning.rain_starts_at {
+            "in the rain"
+        } else {
+            "in the open"
+        }
+    }
+
+    fn named_wood_floors(&self) -> Option<FloorsOffWood> {
+        self.floors_off_the_rotting_wood()
+            .or_else(|| self.tracked_wood_floors())
+    }
+
+    /// The same square after the pile is gone. The tracks still mark it.
+    fn tracked_wood_floors(&self) -> Option<FloorsOffWood> {
+        for y in 0..crate::model::HEIGHT {
+            for x in 0..crate::model::WIDTH {
+                let Some(wood) = cell_id(x, y) else {
+                    continue;
+                };
+                let Some(outside) = cell_id(x, y - 1) else {
+                    continue;
+                };
+                let Some(rock) = cell_id(x + 1, y - 1) else {
+                    continue;
+                };
+                if !self.cell(rock).rock
+                    || !self.tracks.contains(&wood)
+                    || !self.tracks.contains(&outside)
+                {
+                    continue;
+                }
+                let Some(west) = cell_id(x - 1, y) else {
+                    continue;
+                };
+                let Some(south) = cell_id(x - 1, y + 1) else {
+                    continue;
+                };
+                let Some(far) = cell_id(x - 2, y + 1) else {
+                    continue;
+                };
+                if !self.cell(far).trail {
+                    continue;
+                }
+                let Some(side) = orthogonal_step(west, wood) else {
+                    continue;
+                };
+                return Some(FloorsOffWood {
+                    wood,
+                    west,
+                    south,
+                    far,
+                    side,
+                });
+            }
+        }
+        None
     }
 
     fn event_visible(&self, viewer: ActorId, origin: CellId, event: &crate::model::Event) -> bool {
