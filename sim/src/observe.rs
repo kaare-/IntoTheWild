@@ -282,6 +282,10 @@ impl World {
                         "Wood left in the open is rotting to the {}, and the deer left hoofprints on the rotting wood.",
                         self.relative(origin, cell)
                     )
+                } else if let Some(side) = self.wood_south_of_the_outside_floor(origin, cell) {
+                    format!(
+                        "Wood left in the open is rotting {side} of the outside floor, and the deer left hoofprints on the rotting wood."
+                    )
                 } else if deer_on_the_empty_rock {
                     format!(
                         "Wood left in the open is rotting to the {}.",
@@ -767,6 +771,12 @@ impl World {
                 }
             }
         }
+        if self.deer_stands_on_the_south_floor_from_here(origin) {
+            return None;
+        }
+        if let Some(line) = self.deer_on_the_trail_past_the_south_floor(origin) {
+            return Some(line);
+        }
         if chebyshev(origin, deer.cell) > self.tuning.sight {
             return None;
         }
@@ -852,10 +862,14 @@ impl World {
             }
         }
         if self.west_floor_left_to_the_south(origin, dest) {
-            return format!(
+            let mut line = format!(
                 "{}: the west floor. Hoofprints mark that floor.",
                 capitalize(dir.word())
             );
+            if let Some(past) = self.floor_past_the_west_floor(origin, dest) {
+                line.push_str(&past);
+            }
+            return line;
         }
         let cell = self.cell(dest);
         let mut bits = vec![cell.region.word().to_string()];
@@ -1383,6 +1397,114 @@ impl World {
             return self.first_cell_off_this_wood(floor.wood) == Some(dest);
         }
         false
+    }
+
+    /// The rotting wood is the next square south of the outside floor.
+    fn wood_south_of_the_outside_floor(
+        &self,
+        origin: CellId,
+        cell: CellId,
+    ) -> Option<&'static str> {
+        let (x, y) = cell_xy(origin);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            let Some(floor) = self.outside_floor(next) else {
+                continue;
+            };
+            if dir.word() == floor.rock_side && floor.wood == cell {
+                return Some(floor.wood_side);
+            }
+        }
+        None
+    }
+
+    /// The floor the deer stepped onto after the west floor, still in sight.
+    fn floor_past_the_west_floor(&self, origin: CellId, west: CellId) -> Option<String> {
+        let steps = self.steps_off_the_wood(origin)?;
+        if steps.first().copied() != Some(west) {
+            return None;
+        }
+        let next = *steps.get(1)?;
+        if chebyshev(origin, next) > self.tuning.sight {
+            return None;
+        }
+        let way = orthogonal_step(west, next)?;
+        let named = capitalize(way);
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == next) {
+            return Some(format!(
+                " {named} of that floor is the {way} floor, still in sight. The deer stands on the {way} floor."
+            ));
+        }
+        if self.tracks.contains(&next) {
+            return Some(format!(
+                " {named} of that floor is the {way} floor, still in sight. Hoofprints mark the {way} floor."
+            ));
+        }
+        None
+    }
+
+    fn west_floor_from_here(&self, origin: CellId) -> Option<CellId> {
+        let (x, y) = cell_xy(origin);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            let Some(floor) = self.outside_floor(next) else {
+                continue;
+            };
+            if dir.word() != floor.rock_side {
+                continue;
+            }
+            return self.first_cell_off_this_wood(floor.wood);
+        }
+        None
+    }
+
+    /// South already says this deer stands on the south floor.
+    fn deer_stands_on_the_south_floor_from_here(&self, origin: CellId) -> bool {
+        let Some(west) = self.west_floor_from_here(origin) else {
+            return false;
+        };
+        let Some(steps) = self.steps_off_the_wood(origin) else {
+            return false;
+        };
+        if steps.first().copied() != Some(west) {
+            return false;
+        }
+        let Some(next) = steps.get(1).copied() else {
+            return false;
+        };
+        self.deer.as_ref().is_some_and(|deer| deer.cell == next)
+            && chebyshev(origin, next) <= self.tuning.sight
+    }
+
+    /// The deer has left the south floor onto the trail still in sight.
+    fn deer_on_the_trail_past_the_south_floor(&self, origin: CellId) -> Option<String> {
+        let west = self.west_floor_from_here(origin)?;
+        let steps = self.steps_off_the_wood(origin)?;
+        if steps.first().copied() != Some(west) {
+            return None;
+        }
+        let south_floor = *steps.get(1)?;
+        let trail = *steps.get(2)?;
+        let deer = self.deer.as_ref()?;
+        if deer.cell != trail || chebyshev(origin, trail) > self.tuning.sight {
+            return None;
+        }
+        if deer.cell == south_floor || deer.cell == west {
+            return None;
+        }
+        if !self.cell(trail).trail {
+            return None;
+        }
+        let way = orthogonal_step(south_floor, trail)?;
+        Some(format!(
+            "A deer stands in the open, on the deer trail {way} of the south floor."
+        ))
     }
 
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {

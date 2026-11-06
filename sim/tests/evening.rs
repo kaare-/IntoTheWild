@@ -3111,6 +3111,9 @@ fn deer_stands_on_the_trail_already_there() {
         .find(|line| line.starts_with("East:"))
         .unwrap_or("");
     assert!(!far_east.contains("the outside floor"), "{far_east}");
+    assert!(far_look.text.contains(
+        "Wood left in the open is rotting one cell north and two cells east, and the deer left hoofprints on the rotting wood."
+    ));
 }
 
 #[test]
@@ -4051,12 +4054,16 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(aside_north, "North: slope.");
     assert_eq!(
         aside_south,
-        "South: the west floor. Hoofprints mark that floor."
+        "South: the west floor. Hoofprints mark that floor. South of that floor is the south floor, still in sight. The deer stands on the south floor."
     );
     assert!(!aside_south.contains("valley floor"), "{aside_south}");
-    assert!(!aside_south.contains("deer"), "{aside_south}");
     assert!(!aside_south.contains("the outside floor"), "{aside_south}");
-    assert!(!aside_south.contains("the south floor"), "{aside_south}");
+    assert_eq!(from_west.text.matches("A deer stands").count(), 0);
+    assert!(from_west.text.contains(
+        "Wood left in the open is rotting south of the outside floor, and the deer left hoofprints on the rotting wood."
+    ));
+    assert!(!from_west.text.contains("one cell"), "{}", from_west.text);
+    assert!(!from_west.text.contains("two cells"), "{}", from_west.text);
     assert_eq!(aside_west, "West: valley floor, mushrooms.");
     assert!(!west_later.contains("this square"), "{west_later}");
     assert!(!west_later.contains("that square"), "{west_later}");
@@ -4547,12 +4554,39 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_south_later,
-        "South: the west floor. Hoofprints mark that floor."
+        "South: the west floor. Hoofprints mark that floor. South of that floor is the south floor, still in sight. Hoofprints mark the south floor."
     );
-    assert!(!aside_south_later.contains("deer"), "{aside_south_later}");
     assert!(
-        !aside_south_later.contains("the south floor"),
+        !aside_south_later.contains("The deer stands"),
         "{aside_south_later}"
+    );
+    assert!(from_west_later
+        .text
+        .contains("A deer stands in the open, on the deer trail west of the south floor."));
+    assert!(
+        !from_west_later
+            .text
+            .contains("A deer stands two cells south and one cell west, in the open."),
+        "{}",
+        from_west_later.text
+    );
+    assert!(from_west_later.text.contains(
+        "Wood left in the open is rotting south of the outside floor, and the deer left hoofprints on the rotting wood."
+    ));
+    assert!(
+        !from_west_later.text.contains("one cell"),
+        "{}",
+        from_west_later.text
+    );
+    assert!(
+        !from_west_later.text.contains("two cells"),
+        "{}",
+        from_west_later.text
+    );
+    assert!(
+        !from_west_later.text.contains("out of sight"),
+        "{}",
+        from_west_later.text
     );
     assert!(
         !from_west_later
