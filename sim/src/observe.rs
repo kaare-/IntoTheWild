@@ -919,7 +919,7 @@ impl World {
             if dest == floor.wood {
                 if self.last_branch_is_still_there(dest) {
                     return format!(
-                        "{}: the last branch. The deer left hoofprints on the ground under that branch.",
+                        "{}: the last branch. The deer left hoofprints on the ground there.",
                         capitalize(dir.word())
                     );
                 }
