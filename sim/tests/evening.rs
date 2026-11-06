@@ -3855,11 +3855,15 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let place = square_look
         .text
         .lines()
-        .find(|line| line.starts_with("Hoofprints mark the ground underfoot."))
+        .find(|line| line.starts_with("You stand on this square."))
         .unwrap_or("");
     assert_eq!(
         place,
-        "Hoofprints mark the ground underfoot. The rotting wood is the next square south."
+        "You stand on this square. Hoofprints mark it. The rotting wood is the next square south."
+    );
+    assert!(
+        !place.contains("Hoofprints mark the ground underfoot"),
+        "{place}"
     );
     assert!(
         !place.contains("You are on the square north of the rotting wood"),

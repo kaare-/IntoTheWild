@@ -320,7 +320,9 @@ impl World {
         let cell = self.cell(actor.cell);
         let wood_side = self.rotting_wood_beside_these_prints(actor.cell);
         let mut parts = Vec::new();
-        if wood_side.is_none() {
+        if wood_side.is_some() {
+            parts.push("You stand on this square.".into());
+        } else {
             parts.push(format!(
                 "You are on the {}, {}.",
                 cell.region.word(),
@@ -530,7 +532,7 @@ impl World {
         if self.tracks.contains(&actor.cell) && self.prints_stay_on_the_wood(actor.cell) {
             parts.push("The deer left hoofprints on the ground here.".into());
         } else if let Some(side) = wood_side {
-            parts.push("Hoofprints mark the ground underfoot.".into());
+            parts.push("Hoofprints mark it.".into());
             parts.push(format!("The rotting wood is the next square {side}."));
         } else if self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
