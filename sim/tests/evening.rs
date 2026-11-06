@@ -1645,7 +1645,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let step_west = step_look
         .text
@@ -1654,7 +1654,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_west,
-        "West: hoofprints mark the outside floor. Hoofprints mark the next square south."
+        "West: hoofprints mark the outside floor. The rotting wood is gone from the next square south. Hoofprints mark that ground."
     );
     assert_eq!(
         step_look
@@ -1690,7 +1690,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         near_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. Wood left here stays out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let far_look = world.observe(far).unwrap();
     assert_eq!(far_look.self_info.cold, "cold");

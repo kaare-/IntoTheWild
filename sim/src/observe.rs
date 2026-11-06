@@ -587,8 +587,18 @@ impl World {
             line.push(' ');
             line.push_str(&company);
         }
-        line.push_str(" Wood left here stays out of the weather.");
+        line.push_str(if self.open_wood_off_the_rock_is_gone() {
+            " The branches here stay out of the weather."
+        } else {
+            " Wood left here stays out of the weather."
+        });
         line
+    }
+
+    /// The open pile south of the outside floor has rotted away. Tracks still mark it.
+    fn open_wood_off_the_rock_is_gone(&self) -> bool {
+        self.tracked_wood_floors()
+            .is_some_and(|floors| !self.open_loose_branches(floors.wood))
     }
 
     fn company_here(&self, actor_id: ActorId) -> Option<String> {
@@ -1364,7 +1374,7 @@ impl World {
         Some(line)
     }
 
-    /// The outside floor stays in West after the pile is gone. Hoofprints mark the next square.
+    /// The outside floor stays in West after the pile is gone. The look says the wood is gone.
     /// Step is not named on the berries unless Step is standing there.
     fn outside_floor_after_the_wood_is_gone(
         &self,
@@ -1402,7 +1412,7 @@ impl World {
         }
         let side = orthogonal_step(dest, woods[0])?;
         let mut line = format!(
-            "{}: hoofprints mark the outside floor. Hoofprints mark the next square {side}.",
+            "{}: hoofprints mark the outside floor. The rotting wood is gone from the next square {side}. Hoofprints mark that ground.",
             capitalize(dir.word())
         );
         if let Some(name) = self.name_standing_on(origin, dest) {
