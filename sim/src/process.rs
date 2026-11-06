@@ -193,9 +193,15 @@ impl World {
         piles.sort_unstable();
         piles.dedup();
         for cell in piles {
+            let last = self.pile_count(cell, Material::Branch) == 1;
             if self.take_from_pile(cell, Material::Branch, 1).is_some() {
+                let text = if last {
+                    "The last branch rots away in the open. You hear a branch break."
+                } else {
+                    "A branch rots away in the open. You hear branches breaking."
+                };
                 self.emit(
-                    "A branch rots away in the open. You hear branches breaking.",
+                    text,
                     Scope::Cell(cell),
                     vec![],
                     vec![cell],

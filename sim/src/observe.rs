@@ -3577,10 +3577,17 @@ impl World {
         {
             return "The rain wets your clothes.".into();
         }
-        if event.text == "A branch rots away in the open. You hear branches breaking." {
+        if event.text == "A branch rots away in the open. You hear branches breaking."
+            || event.text == "The last branch rots away in the open. You hear a branch break."
+        {
             if let Some(&cell) = event.affected_cells.first() {
+                let (gone, sound) = if event.text.starts_with("The last branch") {
+                    ("The last branch rots away", "You hear a branch break.")
+                } else {
+                    ("A branch rots away", "You hear branches breaking.")
+                };
                 return format!(
-                    "A branch rots away {}. You hear branches breaking.",
+                    "{gone} {}. {sound}",
                     self.event_place(origin, cell, event.time)
                 );
             }

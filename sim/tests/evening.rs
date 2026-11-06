@@ -1746,9 +1746,10 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_rot,
-        "A branch rots away on the next square south of the outside floor, in the rain. You hear branches breaking."
+        "The last branch rots away on the next square south of the outside floor, in the rain. You hear a branch break."
     );
-    assert!(!step_rot.contains("rotting wood"), "{step_rot}");
+    assert!(!step_rot.contains("branches breaking"), "{step_rot}");
+    assert!(!step_rot.contains("A branch rots away"), "{step_rot}");
     assert!(!step_rot.contains("cell"), "{step_rot}");
 }
 
