@@ -3078,6 +3078,22 @@ fn deer_stands_on_the_trail_already_there() {
     ));
     assert!(!at_ten.text.contains("one cell"), "{}", at_ten.text);
     assert!(!at_ten.text.contains("two cells"), "{}", at_ten.text);
+    world.step(&[]);
+    assert_eq!(world.sim_time(), 11);
+    assert_eq!(world.deer_cell(), Some((5, 1)));
+    let at_eleven = world.observe(far).unwrap();
+    assert!(at_eleven
+        .text
+        .contains("A deer stands on the outside floor, in the open."));
+    assert!(
+        !at_eleven
+            .text
+            .contains("A deer stands two cells north and two cells east, in the open."),
+        "{}",
+        at_eleven.text
+    );
+    assert!(!at_eleven.text.contains("one cell"), "{}", at_eleven.text);
+    assert!(!at_eleven.text.contains("two cells"), "{}", at_eleven.text);
     while world.sim_time() < 12 {
         world.step(&[]);
     }
@@ -3087,6 +3103,30 @@ fn deer_stands_on_the_trail_already_there() {
     ));
     assert!(!on_wood.text.contains("one cell"), "{}", on_wood.text);
     assert!(!on_wood.text.contains("two cells"), "{}", on_wood.text);
+    world.step(&[]);
+    assert_eq!(world.sim_time(), 13);
+    assert_eq!(world.deer_cell(), Some((4, 2)));
+    let at_thirteen = world.observe(far).unwrap();
+    assert!(at_thirteen
+        .text
+        .contains("A deer stands on the west floor, in the open."));
+    assert!(
+        !at_thirteen
+            .text
+            .contains("A deer stands one cell north and one cell east, in the open."),
+        "{}",
+        at_thirteen.text
+    );
+    assert!(
+        !at_thirteen.text.contains("one cell"),
+        "{}",
+        at_thirteen.text
+    );
+    assert!(
+        !at_thirteen.text.contains("two cells"),
+        "{}",
+        at_thirteen.text
+    );
     while world.sim_time() < 14 {
         world.step(&[]);
     }

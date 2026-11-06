@@ -836,6 +836,9 @@ impl World {
         {
             return None;
         }
+        if let Some(line) = self.deer_on_named_ground_from_far(origin) {
+            return Some(line);
+        }
         Some(format!(
             "A deer stands {}.",
             self.mark_place(origin, deer.cell)
@@ -1472,6 +1475,38 @@ impl World {
         }
         let floors = self.floors_off_the_rotting_wood()?;
         (origin == floors.far && cell == floors.wood).then_some(floors.side)
+    }
+
+    /// The outside floor is the open square between the rock and the rotting wood.
+    fn outside_floor_cell(&self, floors: &FloorsOffWood) -> Option<CellId> {
+        let (x, y) = cell_xy(floors.wood);
+        let outside = cell_id(x, y - 1)?;
+        let (ox, oy) = cell_xy(outside);
+        let rock = cell_id(ox + 1, oy)?;
+        self.cell(rock).rock.then_some(outside)
+    }
+
+    /// From Far's trail, the deer stands on the outside floor or the west floor.
+    fn deer_on_named_ground_from_far(&self, origin: CellId) -> Option<String> {
+        if self.time < 10 {
+            return None;
+        }
+        let floors = self.floors_off_the_rotting_wood()?;
+        if origin != floors.far {
+            return None;
+        }
+        let deer = self.deer.as_ref()?;
+        if chebyshev(origin, deer.cell) > self.tuning.sight {
+            return None;
+        }
+        let cover = self.cover_phrase(deer.cell);
+        if self.outside_floor_cell(&floors) == Some(deer.cell) {
+            return Some(format!("A deer stands on the outside floor, {cover}."));
+        }
+        if deer.cell == floors.west {
+            return Some(format!("A deer stands on the west floor, {cover}."));
+        }
+        None
     }
 
     /// The deer has walked off the west floor onto the south floor, or past it.
