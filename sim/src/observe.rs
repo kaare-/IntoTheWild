@@ -864,6 +864,11 @@ impl World {
                     capitalize(dir.word())
                 );
             }
+            if dir.word() == floor.rock_side && self.cell(dest).rock {
+                if let Some(name) = self.name_under_that_rock(origin, origin, floor.rock_side) {
+                    return self.rock_from_the_outside_floor(dir, dest, &name);
+                }
+            }
         }
         if let Some(floor) = self.outside_floor(dest) {
             if dir.word() == floor.rock_side {
@@ -1421,6 +1426,34 @@ impl World {
             return None;
         }
         names.pop()
+    }
+
+    /// East from the outside floor names the rock and the person under it.
+    /// The ground is not called a valley floor, and the person is not a count.
+    fn rock_from_the_outside_floor(&self, dir: Dir, rock: CellId, name: &str) -> String {
+        let mut parts = vec![format!(
+            "{}: the rock overhang. {name} stands under that rock.",
+            capitalize(dir.word())
+        )];
+        if self.pile_count(rock, Material::Branch) > 0 {
+            parts.push("A pile of branches lies there.".into());
+        }
+        if self.pile_count(rock, Material::Pot) > 0
+            || !self.ground_ids(rock, Material::Pot).is_empty()
+        {
+            parts.push("A pot sits there.".into());
+        }
+        let bark = self.pile_count(rock, Material::Bark)
+            + self.ground_ids(rock, Material::Bark).len() as u32;
+        if bark > 1 {
+            parts.push("A pile of bark lies there.".into());
+        } else if bark == 1 {
+            parts.push("A sheet of bark lies there.".into());
+        }
+        if self.tracks.contains(&rock) {
+            parts.push("Hoofprints mark the ground.".into());
+        }
+        parts.join(" ")
     }
 
     /// The west floor is the next square south, after the deer has left it.

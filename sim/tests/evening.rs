@@ -4089,6 +4089,20 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         place,
         "You stand on the outside floor. Hoofprints mark the ground. The rock overhang is the next square east. The rotting wood is the next square south."
     );
+    let square_east = square_look
+        .text
+        .lines()
+        .find(|line| line.starts_with("East:"))
+        .unwrap_or("");
+    assert_eq!(
+        square_east,
+        "East: the rock overhang. Near stands under that rock. A pile of branches lies there. A pot sits there. A pile of bark lies there. Hoofprints mark the ground."
+    );
+    assert!(!square_east.contains("1 person"), "{square_east}");
+    assert!(
+        !square_east.contains("valley floor, rock overhang"),
+        "{square_east}"
+    );
     assert!(!place.contains("this square"), "{place}");
     assert!(!place.contains("that square"), "{place}");
     assert!(
