@@ -1525,8 +1525,8 @@ impl World {
     }
 
     /// East from the trail names the south floor once the deer has reached it,
-    /// then the west floor north of that floor. The deer stays on the south
-    /// floor sentence. The outside floor stays out of this line.
+    /// then the west floor, the rotting wood, and the outside floor. The deer
+    /// stays on the south-floor sentence.
     fn south_floor_to_the_east(&self, origin: CellId, dest: CellId, dir: Dir) -> Option<String> {
         let floors = self.floors_off_the_rotting_wood()?;
         if origin != floors.far
@@ -1552,14 +1552,37 @@ impl World {
     }
 
     /// The west floor is the square directly north of the south floor.
+    /// The rotting wood is east of that floor, and the outside floor is north of the wood.
     fn west_floor_north_of_the_south_floor(&self, floors: &FloorsOffWood) -> Option<String> {
         if !self.tracks.contains(&floors.west) {
             return None;
         }
         let way = orthogonal_step(floors.south, floors.west)?;
         let named = capitalize(way);
+        let mut line =
+            format!(" {named} of that floor is the west floor. Hoofprints mark that floor.");
+        if let Some(past) = self.wood_and_outside_floor_from_the_west_floor(floors) {
+            line.push_str(&past);
+        }
+        Some(line)
+    }
+
+    /// From the west floor, the rotting wood and the outside floor north of it.
+    /// The last "that floor" is the outside floor. The deer is not named here.
+    fn wood_and_outside_floor_from_the_west_floor(&self, floors: &FloorsOffWood) -> Option<String> {
+        if chebyshev(floors.far, floors.wood) > self.tuning.sight {
+            return None;
+        }
+        let outside = self.outside_floor_cell(floors)?;
+        if chebyshev(floors.far, outside) > self.tuning.sight || !self.tracks.contains(&outside) {
+            return None;
+        }
+        let to_wood = orthogonal_step(floors.west, floors.wood)?;
+        let to_outside = orthogonal_step(floors.wood, outside)?;
         Some(format!(
-            " {named} of that floor is the west floor. Hoofprints mark that floor."
+            " {} of that floor is the rotting wood. {} of that wood is the outside floor. Hoofprints mark that floor.",
+            capitalize(to_wood),
+            capitalize(to_outside)
         ))
     }
 

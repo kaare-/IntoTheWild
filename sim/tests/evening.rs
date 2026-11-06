@@ -3168,13 +3168,9 @@ fn deer_stands_on_the_trail_already_there() {
         .unwrap_or("");
     assert_eq!(
         east_fourteen,
-        "East: the south floor. The deer stands on that floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor."
+        "East: the south floor. The deer stands on that floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor. East of that floor is the rotting wood. North of that wood is the outside floor. Hoofprints mark that floor."
     );
     assert!(!east_fourteen.contains("valley floor"), "{east_fourteen}");
-    assert!(
-        !east_fourteen.contains("the outside floor"),
-        "{east_fourteen}"
-    );
     assert!(
         !east_fourteen.contains("stands on the west floor"),
         "{east_fourteen}"
@@ -3252,11 +3248,10 @@ fn deer_stands_on_the_trail_already_there() {
         .unwrap_or("");
     assert_eq!(
         far_east,
-        "East: the south floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor."
+        "East: the south floor. Hoofprints mark that floor. North of that floor is the west floor. Hoofprints mark that floor. East of that floor is the rotting wood. North of that wood is the outside floor. Hoofprints mark that floor."
     );
     assert!(!far_east.contains("deer"), "{far_east}");
     assert!(!far_east.contains("valley floor"), "{far_east}");
-    assert!(!far_east.contains("the outside floor"), "{far_east}");
     assert_eq!(
         far_look
             .text
