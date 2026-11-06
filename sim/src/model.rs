@@ -1,0 +1,1423 @@
+//! Valley state. Quantities stay piles until a person lifts them or builds
+//! them into a frame; after that they are items with stable ids.
+
+use crate::serde_map;
+use crate::tuning::Tuning;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+pub const WIDTH: i32 = 7;
+pub const HEIGHT: i32 = 5;
+const EVENT_CAP: usize = 20_000;
+
+pub type ActorId = u32;
+pub type ItemId = u32;
+pub type ConstructionId = u32;
+pub type WorkId = u32;
+pub type FireId = u32;
+pub type DeerId = u32;
+pub type EventId = u64;
+pub type CellId = u16;
+
+pub fn cell_id(x: i32, y: i32) -> Option<CellId> {
+    if x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT {
+        None
+    } else {
+        Some((y * WIDTH + x) as u16)
+    }
+}
+
+pub fn cell_xy(id: CellId) -> (i32, i32) {
+    let n = id as i32;
+    (n % WIDTH, n / WIDTH)
+}
+
+pub fn chebyshev(a: CellId, b: CellId) -> i32 {
+    let (x1, y1) = cell_xy(a);
+    let (x2, y2) = cell_xy(b);
+    (x1 - x2).abs().max((y1 - y2).abs())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum Material {
+    Branch,
+    Bark,
+    Log,
+    Berry,
+    Water,
+    Mushroom,
+    BitterBerry,
+    Pot,
+    Mud,
+    Stone,
+    Clay,
+    Bowl,
+    Spear,
+    Carcass,
+}
+
+impl Material {
+    pub fn word(self) -> &'static str {
+        match self {
+            Material::Branch => "branch",
+            Material::Bark => "bark",
+            Material::Log => "log",
+            Material::Berry => "berry",
+            Material::Water => "water",
+            Material::Mushroom => "mushroom",
+            Material::BitterBerry => "poison berry",
+            Material::Pot => "pot",
+            Material::Mud => "mud",
+            Material::Stone => "stone",
+            Material::Clay => "clay",
+            Material::Bowl => "bowl",
+            Material::Spear => "spear",
+            Material::Carcass => "carcass",
+        }
+    }
+
+    pub fn gather_noun(self) -> &'static str {
+        match self {
+            Material::Branch => "branch",
+            Material::Bark => "sheet of bark",
+            Material::Log => "log",
+            Material::Berry => "handful of berries",
+            Material::Water => "drink of water",
+            Material::Mushroom => "mushroom",
+            Material::BitterBerry => "handful of poison berries",
+            Material::Pot => "pot",
+            Material::Mud => "handful of mud",
+            Material::Stone => "stone",
+            Material::Clay => "lump of clay",
+            Material::Bowl => "bowl",
+            Material::Spear => "spear",
+            Material::Carcass => "carcass",
+        }
+    }
+
+    pub fn cooked_phrase(self) -> &'static str {
+        match self {
+            Material::Mushroom => "a mushroom",
+            Material::BitterBerry => "a handful of poison berries",
+            Material::Berry => "a handful of berries",
+            Material::Carcass => "the carcass",
+            _ => "some food",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Role {
+    Loose,
+    Support,
+    Beam,
+    BarkCover,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Region {
+    Slope,
+    Brook,
+    Floor,
+}
+
+impl Region {
+    pub fn word(self) -> &'static str {
+        match self {
+            Region::Slope => "slope",
+            Region::Brook => "brook",
+            Region::Floor => "valley floor",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Dir {
+    North,
+    East,
+    South,
+    West,
+}
+
+impl Dir {
+    pub fn delta(self) -> (i32, i32) {
+        match self {
+            Dir::North => (0, -1),
+            Dir::East => (1, 0),
+            Dir::South => (0, 1),
+            Dir::West => (-1, 0),
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Dir::North => "north",
+            Dir::East => "east",
+            Dir::South => "south",
+            Dir::West => "west",
+        }
+    }
+
+    pub fn all() -> [Dir; 4] {
+        [Dir::North, Dir::East, Dir::South, Dir::West]
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExamineTarget {
+    Here,
+    SelfBody,
+    Wood,
+    Bark,
+    Log,
+    Frame,
+    Berries,
+    BitterBerries,
+    Mushrooms,
+    Pot,
+    Mud,
+    Stone,
+    Clay,
+    Bowl,
+    Spear,
+    Carcass,
+    Fire,
+    Water,
+    Deer,
+    Tracks,
+    Rock,
+    Slope,
+    Person(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Attempt {
+    Look,
+    Examine(ExamineTarget),
+    Say(String),
+    Move(Dir),
+    Gather(Material),
+    Drop(Material),
+    Grab,
+    Drag(Dir),
+    Release,
+    Interrupt,
+    RaiseFrame,
+    LayBark,
+    Drink,
+    Light,
+    Cook,
+    Boil,
+    SetClay,
+    BindSpear,
+    Hunt,
+    Eat(Material),
+    Smear,
+}
+
+impl Attempt {
+    pub fn uses_body(&self) -> bool {
+        matches!(
+            self,
+            Attempt::Move(_)
+                | Attempt::Gather(_)
+                | Attempt::Drop(_)
+                | Attempt::Grab
+                | Attempt::Drag(_)
+                | Attempt::RaiseFrame
+                | Attempt::LayBark
+                | Attempt::Drink
+                | Attempt::Light
+                | Attempt::Cook
+                | Attempt::Boil
+                | Attempt::SetClay
+                | Attempt::BindSpear
+                | Attempt::Hunt
+                | Attempt::Eat(_)
+                | Attempt::Smear
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Intent {
+    pub command_id: String,
+    pub actor_id: ActorId,
+    pub attempt: Attempt,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandResult {
+    pub command_id: String,
+    pub actor_id: ActorId,
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepReport {
+    pub time: u64,
+    pub results: Vec<CommandResult>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cell {
+    pub id: CellId,
+    pub x: i32,
+    pub y: i32,
+    pub region: Region,
+    pub rock: bool,
+    pub trail: bool,
+    /// A pool that does not run. Drinking it is not the same as the brook.
+    #[serde(default)]
+    pub still: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pile {
+    pub cell: CellId,
+    pub material: Material,
+    pub count: u32,
+    pub moisture: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Actor {
+    pub id: ActorId,
+    pub name: String,
+    pub token: String,
+    pub cell: CellId,
+    pub wetness: u32,
+    #[serde(default)]
+    pub thirst: u32,
+    #[serde(default)]
+    pub hunger: u32,
+    #[serde(default)]
+    pub illness: u32,
+    /// Rises like hunger. Food brings it back down. The word stays on the observation.
+    #[serde(default)]
+    pub energy: u32,
+    /// Open sky and wind. Shelter brings the gain down with exposure.
+    #[serde(default)]
+    pub cold: u32,
+    /// Ticks of leftover fire heat. Charged while standing on a fire.
+    /// Each tick off the fire spends one, and the sky's cold is halved.
+    #[serde(default)]
+    pub warmth: u32,
+    /// The warm word is still the fire's. It lasts through the leftover
+    /// ticks and the open-wind ticks after them, until the word leaves warm
+    /// or shelter is what is holding it.
+    #[serde(default)]
+    pub warm_from_fire: bool,
+    /// Sun on bare skin. Mud on the skin brings the gain down. Rain hides the sun.
+    #[serde(default)]
+    pub sunburn: u32,
+    /// A smear of mud. It flakes off, and rain in the open washes it off.
+    #[serde(default)]
+    pub mud: u32,
+    pub busy: Option<WorkId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Item {
+    pub id: ItemId,
+    pub material: Material,
+    pub moisture: u32,
+    pub cell: CellId,
+    pub carrier: Option<ActorId>,
+    pub role: Role,
+    pub construction: Option<ConstructionId>,
+    /// When set, this lump of clay is waiting on a fire until this tick,
+    /// or a carried spear is waiting for its point to harden.
+    #[serde(default)]
+    pub firing_ready_at: Option<u64>,
+    /// A spear's point. Other materials leave this false.
+    #[serde(default)]
+    pub hardened: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Construction {
+    pub id: ConstructionId,
+    pub cell: CellId,
+    pub support_a: Option<ItemId>,
+    pub support_b: Option<ItemId>,
+    pub beam: Option<ItemId>,
+    pub bark: Option<ItemId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkKind {
+    Drag,
+    RaiseFrame,
+    LayBark,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Work {
+    pub id: WorkId,
+    pub kind: WorkKind,
+    pub actors: Vec<ActorId>,
+    pub completes_at: u64,
+    pub cause_events: Vec<EventId>,
+    pub item: Option<ItemId>,
+    pub dir: Option<Dir>,
+    pub phase_done: u8,
+    pub phases: u8,
+    pub construction: Option<ConstructionId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Grip {
+    pub actor: ActorId,
+    pub item: ItemId,
+    pub since_event: EventId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fire {
+    pub id: FireId,
+    pub cell: CellId,
+    pub lit_event: EventId,
+    pub goes_out_at: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Wake {
+    Rain,
+    Thirst,
+    Hunger,
+    Work(WorkId),
+    Fire(FireId),
+    Illness,
+    Deer,
+    Season,
+    Rot,
+    Energy,
+    Weather,
+    Harden(ItemId),
+    HardenSpear(ItemId),
+}
+
+/// One deer. It is not a sector and not a pile. `route_at` is the cell it
+/// is standing on in [`DEER_ROUTE`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deer {
+    pub id: DeerId,
+    pub cell: CellId,
+    pub route_at: usize,
+    pub last_event: Option<EventId>,
+    /// A miss or a bolt already moved the deer this tick, so the route step waits.
+    #[serde(default)]
+    pub held: bool,
+}
+
+/// Trail the deer already uses, then a detour to the berries under the rock
+/// and back. Orthogonal, so each step is one direction.
+pub(crate) const DEER_ROUTE: [(i32, i32); 12] = [
+    (2, 3),
+    (3, 3),
+    (4, 3),
+    (4, 2),
+    (5, 2),
+    (5, 1),
+    (6, 1),
+    (5, 1),
+    (5, 2),
+    (4, 2),
+    (4, 3),
+    (3, 3),
+];
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Scheduled {
+    pub at: u64,
+    pub seq: u32,
+    pub wake: Wake,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Scope {
+    Personal(ActorId),
+    Cell(CellId),
+    Valley,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Draw {
+    pub tag: String,
+    pub subject: String,
+    pub value: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Event {
+    pub id: EventId,
+    pub time: u64,
+    pub text: String,
+    pub scope: Scope,
+    pub affected_actors: Vec<ActorId>,
+    pub affected_cells: Vec<CellId>,
+    pub affected_items: Vec<ItemId>,
+    pub causes: Vec<EventId>,
+    pub draw: Option<Draw>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct World {
+    pub tuning: Tuning,
+    pub seed: u64,
+    pub time: u64,
+    pub raining: bool,
+    /// Open rain soaks wood twice as fast once this is set. Shelter does not change.
+    #[serde(default)]
+    pub wet_season: bool,
+    pub first_rain: Option<EventId>,
+    pub next_actor: ActorId,
+    pub next_item: ItemId,
+    pub next_construction: ConstructionId,
+    pub next_work: WorkId,
+    #[serde(default = "default_next_id")]
+    pub next_fire: FireId,
+    pub next_event: EventId,
+    pub next_seq: u32,
+    pub cells: Vec<Cell>,
+    #[serde(with = "serde_map")]
+    pub(crate) actors: BTreeMap<ActorId, Actor>,
+    #[serde(with = "serde_map")]
+    pub(crate) items: BTreeMap<ItemId, Item>,
+    #[serde(with = "serde_map")]
+    pub(crate) constructions: BTreeMap<ConstructionId, Construction>,
+    #[serde(with = "serde_map")]
+    pub(crate) works: BTreeMap<WorkId, Work>,
+    pub(crate) piles: Vec<Pile>,
+    #[serde(default)]
+    pub(crate) fires: BTreeMap<FireId, Fire>,
+    #[serde(default)]
+    pub(crate) deer: Option<Deer>,
+    /// Cells the deer has left. The marks stay; decay is not in this valley.
+    #[serde(default)]
+    pub(crate) tracks: BTreeSet<CellId>,
+    /// Cells where a berry pile reached zero. The pile is not put back.
+    #[serde(default)]
+    pub(crate) spent_berries: BTreeSet<CellId>,
+    /// Cells where the deer ate the last handful. A person taking the last
+    /// handful leaves this unset.
+    #[serde(default)]
+    pub(crate) deer_ate_berries: BTreeSet<CellId>,
+    pub(crate) grips: Vec<Grip>,
+    pub(crate) schedule: Vec<Scheduled>,
+    pub(crate) events: Vec<Event>,
+    pub(crate) applied: BTreeMap<String, CommandResult>,
+}
+
+const SPAWNS: [(i32, i32); 7] = [(4, 3), (3, 3), (5, 3), (4, 4), (2, 3), (6, 3), (3, 4)];
+
+impl World {
+    pub fn valley(tuning: Tuning, seed: u64) -> Self {
+        let mut cells = Vec::with_capacity((WIDTH * HEIGHT) as usize);
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let rock = x == 6 && y == 1;
+                let region = if y == 0 {
+                    Region::Slope
+                } else if x <= 1 && (y == 1 || y == 2) {
+                    Region::Brook
+                } else {
+                    Region::Floor
+                };
+                let trail = matches!((x, y), (2, 3) | (3, 3) | (4, 3) | (4, 2) | (5, 2));
+                cells.push(Cell {
+                    id: cell_id(x, y).unwrap(),
+                    x,
+                    y,
+                    region,
+                    rock,
+                    trail,
+                    still: x == 2 && y == 1,
+                });
+            }
+        }
+        let mut world = World {
+            tuning,
+            seed,
+            time: 0,
+            raining: false,
+            wet_season: false,
+            first_rain: None,
+            next_actor: 1,
+            next_item: 1,
+            next_construction: 1,
+            next_work: 1,
+            next_fire: 1,
+            next_event: 1,
+            next_seq: 1,
+            cells,
+            actors: BTreeMap::new(),
+            items: BTreeMap::new(),
+            constructions: BTreeMap::new(),
+            works: BTreeMap::new(),
+            piles: Vec::new(),
+            fires: BTreeMap::new(),
+            deer: Some(Deer {
+                id: 1,
+                cell: cell_id(2, 3).unwrap(),
+                route_at: 0,
+                last_event: None,
+                held: false,
+            }),
+            tracks: BTreeSet::new(),
+            spent_berries: BTreeSet::new(),
+            deer_ate_berries: BTreeSet::new(),
+            grips: Vec::new(),
+            schedule: Vec::new(),
+            events: Vec::new(),
+            applied: BTreeMap::new(),
+        };
+        let rain_at = world.tuning.rain_starts_at;
+        world.schedule(rain_at, Wake::Rain);
+        world.schedule(world.tuning.season_at, Wake::Season);
+        world.schedule(world.tuning.rot_ticks, Wake::Rot);
+        world.schedule(0, Wake::Thirst);
+        world.schedule(0, Wake::Hunger);
+        world.schedule(0, Wake::Illness);
+        world.schedule(0, Wake::Energy);
+        world.schedule(0, Wake::Weather);
+        world.schedule(0, Wake::Deer);
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Pot, 1, 0);
+        world.add_pile(cell_id(4, 1).unwrap(), Material::BitterBerry, 2, 0);
+        world.add_pile(cell_id(3, 1).unwrap(), Material::Mushroom, 2, 0);
+        world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
+        world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
+        world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
+        world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
+        world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
+        world.normalize();
+        world
+    }
+
+    pub fn join(&mut self, name: &str, token: &str) -> Result<ActorId, String> {
+        let name = clean_name(name)?;
+        if token.is_empty() || token.len() > 80 {
+            return Err("missing token".into());
+        }
+        if self.actors.values().any(|a| a.token == token) {
+            return Err("that token is already in the valley".into());
+        }
+        if self
+            .actors
+            .values()
+            .any(|a| a.name.eq_ignore_ascii_case(&name))
+        {
+            return Err(format!("{name} is already a name in the valley"));
+        }
+        let n = self.actors.len();
+        let (x, y) = if n < SPAWNS.len() {
+            SPAWNS[n]
+        } else {
+            let i = n as i32;
+            (i % WIDTH, (i / WIDTH) % HEIGHT)
+        };
+        self.spawn_at(&name, token, x, y)
+    }
+
+    pub fn spawn_at(&mut self, name: &str, token: &str, x: i32, y: i32) -> Result<ActorId, String> {
+        let name = clean_name(name)?;
+        let cell = cell_id(x, y).ok_or("that place is outside the valley")?;
+        if self.actors.values().any(|a| a.token == token) {
+            return Err("that token is already in the valley".into());
+        }
+        if self
+            .actors
+            .values()
+            .any(|a| a.name.eq_ignore_ascii_case(&name))
+        {
+            return Err(format!("{name} is already a name in the valley"));
+        }
+        let id = self.next_actor;
+        self.next_actor += 1;
+        self.actors.insert(
+            id,
+            Actor {
+                id,
+                name,
+                token: token.to_string(),
+                cell,
+                wetness: 0,
+                thirst: 0,
+                hunger: 0,
+                illness: 0,
+                energy: 0,
+                cold: 0,
+                warmth: 0,
+                warm_from_fire: false,
+                sunburn: 0,
+                mud: 0,
+                busy: None,
+            },
+        );
+        Ok(id)
+    }
+
+    pub fn actor_by_token(&self, token: &str) -> Option<ActorId> {
+        self.actors
+            .values()
+            .find(|a| a.token == token)
+            .map(|a| a.id)
+    }
+
+    pub fn actor_cell(&self, id: ActorId) -> Option<(i32, i32)> {
+        self.actor(id).map(|actor| cell_xy(actor.cell))
+    }
+
+    pub fn stored_result(&self, command_id: &str) -> Option<CommandResult> {
+        self.applied.get(command_id).cloned()
+    }
+
+    pub fn sim_time(&self) -> u64 {
+        self.time
+    }
+
+    pub fn is_raining(&self) -> bool {
+        self.raining
+    }
+
+    pub fn event_log(&self) -> &[Event] {
+        &self.events
+    }
+
+    pub fn material_tally(&self, material: Material) -> u32 {
+        let piles: u32 = self
+            .piles
+            .iter()
+            .filter(|p| p.material == material)
+            .map(|p| p.count)
+            .sum();
+        let items = self
+            .items
+            .values()
+            .filter(|i| i.material == material)
+            .count() as u32;
+        piles + items
+    }
+
+    /// One row per item of this material: id, carrier, x, y. The id stays
+    /// with the item when it is carried and when it is dropped.
+    pub fn material_items(&self, material: Material) -> Vec<(ItemId, Option<ActorId>, i32, i32)> {
+        let mut rows: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| item.material == material)
+            .map(|item| {
+                let (x, y) = cell_xy(item.cell);
+                (item.id, item.carrier, x, y)
+            })
+            .collect();
+        rows.sort();
+        rows
+    }
+
+    /// Each spear's id, who carries it, and whether the point has hardened.
+    /// Binding spends the stone and the branch. The id does not change when
+    /// the point hardens.
+    pub fn spears(&self) -> Vec<(ItemId, Option<ActorId>, bool)> {
+        let mut rows: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| item.material == Material::Spear)
+            .map(|item| (item.id, item.carrier, item.hardened))
+            .collect();
+        rows.sort();
+        rows
+    }
+
+    pub fn log_cell(&self) -> Option<(i32, i32)> {
+        if let Some(item) = self.items.values().find(|i| i.material == Material::Log) {
+            return Some(cell_xy(item.cell));
+        }
+        self.piles
+            .iter()
+            .find(|p| p.material == Material::Log && p.count > 0)
+            .map(|p| cell_xy(p.cell))
+    }
+
+    pub fn log_gripped_by(&self) -> Vec<String> {
+        let Some(item) = self.items.values().find(|i| i.material == Material::Log) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = self
+            .grips
+            .iter()
+            .filter(|g| g.item == item.id)
+            .filter_map(|g| self.actors.get(&g.actor).map(|a| a.name.clone()))
+            .collect();
+        names.sort();
+        names
+    }
+
+    pub fn deer_cell(&self) -> Option<(i32, i32)> {
+        self.deer.as_ref().map(|deer| cell_xy(deer.cell))
+    }
+
+    pub fn hoofprints_at(&self, x: i32, y: i32) -> bool {
+        cell_id(x, y).is_some_and(|id| self.tracks.contains(&id))
+    }
+
+    pub fn exposure_at(&self, x: i32, y: i32) -> Option<u32> {
+        cell_id(x, y).map(|id| self.exposure_millis(id))
+    }
+
+    pub fn step(&mut self, intents: &[Intent]) -> StepReport {
+        let time = self.time;
+        let results = self.resolve(intents);
+        self.arm_spears();
+        self.fire_due();
+        self.normalize();
+        self.trim_events();
+        self.time += 1;
+        StepReport { time, results }
+    }
+
+    pub(crate) fn schedule(&mut self, at: u64, wake: Wake) {
+        if self.schedule.iter().any(|s| s.at == at && s.wake == wake) {
+            return;
+        }
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        self.schedule.push(Scheduled { at, seq, wake });
+    }
+
+    pub(crate) fn actor(&self, id: ActorId) -> Option<&Actor> {
+        self.actors.get(&id)
+    }
+
+    pub(crate) fn cell(&self, id: CellId) -> &Cell {
+        &self.cells[id as usize]
+    }
+
+    pub(crate) fn item(&self, id: ItemId) -> Option<&Item> {
+        self.items.get(&id)
+    }
+
+    pub(crate) fn pile_count(&self, cell: CellId, material: Material) -> u32 {
+        self.piles
+            .iter()
+            .find(|p| p.cell == cell && p.material == material)
+            .map(|p| p.count)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn pile_moisture(&self, cell: CellId, material: Material) -> u32 {
+        self.piles
+            .iter()
+            .find(|p| p.cell == cell && p.material == material)
+            .map(|p| p.moisture)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn add_pile(&mut self, cell: CellId, material: Material, count: u32, moisture: u32) {
+        if count == 0 {
+            return;
+        }
+        if let Some(pile) = self
+            .piles
+            .iter_mut()
+            .find(|p| p.cell == cell && p.material == material)
+        {
+            let total = pile.count + count;
+            pile.moisture = (pile.moisture * pile.count + moisture * count) / total.max(1);
+            pile.count = total;
+        } else {
+            self.piles.push(Pile {
+                cell,
+                material,
+                count,
+                moisture,
+            });
+        }
+    }
+
+    pub(crate) fn take_from_pile(
+        &mut self,
+        cell: CellId,
+        material: Material,
+        n: u32,
+    ) -> Option<u32> {
+        let idx = self
+            .piles
+            .iter()
+            .position(|p| p.cell == cell && p.material == material)?;
+        if self.piles[idx].count < n {
+            return None;
+        }
+        let moisture = self.piles[idx].moisture;
+        self.piles[idx].count -= n;
+        if self.piles[idx].count == 0 {
+            let emptied = self.piles[idx].cell;
+            self.piles.remove(idx);
+            if material == Material::Berry {
+                self.spent_berries.insert(emptied);
+                self.deer_ate_berries.remove(&emptied);
+            }
+        }
+        Some(moisture)
+    }
+
+    pub(crate) fn mint_item(
+        &mut self,
+        material: Material,
+        moisture: u32,
+        cell: CellId,
+        carrier: Option<ActorId>,
+        role: Role,
+    ) -> ItemId {
+        let id = self.next_item;
+        self.next_item += 1;
+        self.items.insert(
+            id,
+            Item {
+                id,
+                material,
+                moisture,
+                cell,
+                carrier,
+                role,
+                construction: None,
+                firing_ready_at: None,
+                hardened: false,
+            },
+        );
+        id
+    }
+
+    pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
+        self.items
+            .values()
+            .filter(|i| i.carrier == Some(actor))
+            .count() as u32
+    }
+
+    pub(crate) fn ground_ids(&self, cell: CellId, material: Material) -> Vec<ItemId> {
+        let mut ids: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|item| {
+                item.cell == cell
+                    && item.material == material
+                    && item.role == Role::Loose
+                    && item.carrier.is_none()
+            })
+            .map(|item| item.id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    pub(crate) fn loose_ids(&self, actor: ActorId, material: Material) -> Vec<ItemId> {
+        let mut ids: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|i| i.carrier == Some(actor) && i.material == material && i.role == Role::Loose)
+            .map(|i| i.id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    pub(crate) fn is_dry(&self, moisture: u32) -> bool {
+        moisture < self.tuning.damp_at
+    }
+
+    pub(crate) fn fire_at(&self, cell: CellId) -> Option<&Fire> {
+        self.fires.values().find(|fire| fire.cell == cell)
+    }
+
+    pub(crate) fn dry_loose_ids(&self, actor: ActorId, material: Material) -> Vec<ItemId> {
+        self.loose_ids(actor, material)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+            .collect()
+    }
+
+    pub(crate) fn dry_pile_count(&self, cell: CellId, material: Material) -> u32 {
+        let count = self.pile_count(cell, material);
+        if count > 0 && self.is_dry(self.pile_moisture(cell, material)) {
+            count
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn has_dry(&self, actor: ActorId, material: Material) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        !self.dry_loose_ids(actor, material).is_empty()
+            || self.dry_pile_count(person.cell, material) > 0
+    }
+
+    pub(crate) fn has_material_at_hand(&self, actor: ActorId, material: Material) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        !self.loose_ids(actor, material).is_empty() || self.pile_count(person.cell, material) > 0
+    }
+
+    /// Dry fuel from the arms when it is already carried. The pile at the
+    /// feet is spent only when the arms do not hold a dry piece. The bool
+    /// is true when the piece came from the arms.
+    pub(crate) fn consume_dry(
+        &mut self,
+        actor: ActorId,
+        material: Material,
+    ) -> Result<(Option<ItemId>, bool), ()> {
+        if let Some(item_id) = self.dry_loose_ids(actor, material).first().copied() {
+            self.items.remove(&item_id);
+            return Ok((Some(item_id), true));
+        }
+        let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        if self.dry_pile_count(person_cell, material) > 0
+            && self.take_from_pile(person_cell, material, 1).is_some()
+        {
+            return Ok((None, false));
+        }
+        Err(())
+    }
+
+    /// One loose handful, carried before the pile on this cell.
+    pub(crate) fn take_hand(
+        &mut self,
+        actor: ActorId,
+        material: Material,
+    ) -> Result<Option<ItemId>, ()> {
+        if let Some(item_id) = self.loose_ids(actor, material).first().copied() {
+            self.items.remove(&item_id);
+            return Ok(Some(item_id));
+        }
+        let Some(person_cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        if self.take_from_pile(person_cell, material, 1).is_some() {
+            Ok(None)
+        } else {
+            Err(())
+        }
+    }
+
+    /// Heat treats mushrooms first, then sweet berries. Poison berries are not food.
+    pub(crate) fn consume_food(
+        &mut self,
+        actor: ActorId,
+    ) -> Result<(Option<ItemId>, Material), ()> {
+        if let Some(id) = self.loose_ids(actor, Material::Carcass).first().copied() {
+            self.items.remove(&id);
+            return Ok((Some(id), Material::Carcass));
+        }
+        for material in [Material::Mushroom, Material::Berry] {
+            if let Ok(item) = self.take_hand(actor, material) {
+                return Ok((item, material));
+            }
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        if let Some(id) = self.ground_ids(cell, Material::Carcass).first().copied() {
+            self.items.remove(&id);
+            return Ok((Some(id), Material::Carcass));
+        }
+        Err(())
+    }
+
+    pub(crate) fn mint_fire(&mut self, cell: CellId, lit_event: EventId) -> FireId {
+        let id = self.next_fire;
+        self.next_fire += 1;
+        let goes_out_at = self.time.saturating_add(self.tuning.fire_ticks);
+        self.fires.insert(
+            id,
+            Fire {
+                id,
+                cell,
+                lit_event,
+                goes_out_at,
+            },
+        );
+        self.schedule(goes_out_at, Wake::Fire(id));
+        id
+    }
+
+    pub(crate) fn extinguish(&mut self, id: FireId, text: &str, extra_cause: Option<EventId>) {
+        let Some(fire) = self.fires.remove(&id) else {
+            return;
+        };
+        self.schedule.retain(|entry| entry.wake != Wake::Fire(id));
+        let mut causes = vec![fire.lit_event];
+        if let Some(cause) = extra_cause {
+            causes.push(cause);
+        }
+        self.emit(
+            text,
+            Scope::Cell(fire.cell),
+            vec![],
+            vec![fire.cell],
+            vec![],
+            causes,
+            None,
+        );
+    }
+
+    pub(crate) fn gripping(&self, actor: ActorId) -> Option<ItemId> {
+        self.grips.iter().find(|g| g.actor == actor).map(|g| g.item)
+    }
+
+    pub(crate) fn log_at(&self, cell: CellId) -> bool {
+        self.pile_count(cell, Material::Log) > 0
+            || self
+                .items
+                .values()
+                .any(|i| i.material == Material::Log && i.cell == cell && i.carrier.is_none())
+    }
+
+    pub(crate) fn log_item(&self) -> Option<&Item> {
+        self.items.values().find(|i| i.material == Material::Log)
+    }
+
+    pub(crate) fn construction_at(&self, cell: CellId) -> Option<&Construction> {
+        self.constructions.values().find(|c| c.cell == cell)
+    }
+
+    pub(crate) fn condition_word(&self, moisture: u32) -> &'static str {
+        if moisture >= self.tuning.soaked_at {
+            "soaked"
+        } else if moisture >= self.tuning.damp_at {
+            "damp"
+        } else {
+            "dry"
+        }
+    }
+
+    /// Clothes take the rain as soon as it reaches the body. A dry word
+    /// means the rain has not touched them. Shade does not wipe a burn.
+    pub(crate) fn clothes_word(&self, moisture: u32) -> &'static str {
+        if moisture == 0 {
+            "dry"
+        } else if moisture >= self.tuning.soaked_at {
+            "soaked"
+        } else if moisture >= self.tuning.damp_at {
+            "damp"
+        } else {
+            "wet"
+        }
+    }
+
+    pub(crate) fn thirst_word(&self, thirst: u32) -> &'static str {
+        if thirst >= self.tuning.parched_at {
+            "parched"
+        } else if thirst >= self.tuning.thirsty_at {
+            "thirsty"
+        } else {
+            "not thirsty"
+        }
+    }
+
+    pub(crate) fn thirst_sentence(&self, thirst: u32) -> &'static str {
+        match self.thirst_word(thirst) {
+            "parched" => "parched",
+            "thirsty" => "thirsty",
+            _ => "not thirsty",
+        }
+    }
+
+    pub(crate) fn hunger_word(&self, hunger: u32) -> &'static str {
+        if hunger >= self.tuning.starving_at {
+            "starving"
+        } else if hunger >= self.tuning.hungry_at {
+            "hungry"
+        } else {
+            "not hungry"
+        }
+    }
+
+    pub(crate) fn illness_word(&self, illness: u32) -> &'static str {
+        if illness >= self.tuning.ill_at {
+            "ill"
+        } else {
+            "well"
+        }
+    }
+
+    pub(crate) fn energy_word(&self, energy: u32) -> &'static str {
+        if energy >= self.tuning.spent_at {
+            "spent"
+        } else if energy >= self.tuning.tiring_at {
+            "tiring"
+        } else {
+            "rested"
+        }
+    }
+
+    pub(crate) fn cold_word(&self, cold: u32) -> &'static str {
+        if cold >= self.tuning.cold_at {
+            "cold"
+        } else if cold >= self.tuning.chilly_at {
+            "chilly"
+        } else {
+            "warm"
+        }
+    }
+
+    pub(crate) fn sun_word(&self, sunburn: u32) -> &'static str {
+        if sunburn >= self.tuning.burned_at {
+            "burned"
+        } else if sunburn >= self.tuning.pink_at {
+            "pink"
+        } else {
+            "unburned"
+        }
+    }
+
+    pub(crate) fn mud_word(&self, mud: u32) -> &'static str {
+        if mud == 0 {
+            "bare skin"
+        } else if mud < self.tuning.smear_at {
+            "thin mud"
+        } else {
+            "mud-smeared"
+        }
+    }
+
+    pub(crate) fn wind_word(&self, exposure: u32) -> &'static str {
+        if exposure == 0 {
+            "out of the wind"
+        } else if exposure < 1000 {
+            "in a little wind"
+        } else {
+            "in the wind"
+        }
+    }
+
+    pub(crate) fn water_here(&self, cell: CellId) -> bool {
+        self.cell(cell).region == Region::Brook || self.cell(cell).still
+    }
+
+    /// Still water freezes once the evening has chilled. The brook keeps
+    /// running. A fire on the pool keeps it open.
+    pub(crate) fn still_frozen(&self, cell: CellId) -> bool {
+        self.time >= self.tuning.chill_at
+            && self.cell(cell).still
+            && self.cell(cell).region != Region::Brook
+            && self.fire_at(cell).is_none()
+    }
+
+    pub(crate) fn has_brush(&self, cell: CellId) -> bool {
+        self.pile_count(cell, Material::Branch) > 0
+            || self.items.values().any(|item| {
+                item.cell == cell
+                    && item.material == Material::Branch
+                    && item.role == Role::Loose
+                    && item.carrier.is_none()
+            })
+    }
+
+    pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
+        !self.loose_ids(actor, Material::Carcass).is_empty()
+            || [Material::Mushroom, Material::Berry]
+                .into_iter()
+                .any(|material| !self.loose_ids(actor, material).is_empty())
+    }
+
+    pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {
+        let piles: u32 = [Material::Mushroom, Material::Berry]
+            .into_iter()
+            .map(|material| self.pile_count(cell, material))
+            .sum();
+        piles + self.ground_ids(cell, Material::Carcass).len() as u32
+    }
+
+    pub(crate) fn name_of(&self, id: ActorId) -> String {
+        self.actors
+            .get(&id)
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| "someone".into())
+    }
+
+    pub(crate) fn names(&self, ids: &[ActorId]) -> String {
+        let mut names: Vec<String> = ids.iter().map(|id| self.name_of(*id)).collect();
+        names.sort();
+        match names.len() {
+            0 => "nobody".into(),
+            1 => names[0].clone(),
+            2 => format!("{} and {}", names[0], names[1]),
+            _ => {
+                let last = names[names.len() - 1].clone();
+                format!("{}, and {last}", names[..names.len() - 1].join(", "))
+            }
+        }
+    }
+
+    pub(crate) fn move_actor(&mut self, actor: ActorId, dest: CellId) {
+        if let Some(person) = self.actors.get_mut(&actor) {
+            person.cell = dest;
+        }
+        let carried: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|i| i.carrier == Some(actor))
+            .map(|i| i.id)
+            .collect();
+        for id in carried {
+            if let Some(item) = self.items.get_mut(&id) {
+                item.cell = dest;
+            }
+        }
+    }
+
+    pub(crate) fn emit(
+        &mut self,
+        text: impl Into<String>,
+        scope: Scope,
+        mut actors: Vec<ActorId>,
+        mut cells: Vec<CellId>,
+        mut items: Vec<ItemId>,
+        mut causes: Vec<EventId>,
+        draw: Option<Draw>,
+    ) -> EventId {
+        actors.sort_unstable();
+        actors.dedup();
+        cells.sort_unstable();
+        cells.dedup();
+        items.sort_unstable();
+        items.dedup();
+        causes.sort_unstable();
+        causes.dedup();
+        let id = self.next_event;
+        self.next_event += 1;
+        self.events.push(Event {
+            id,
+            time: self.time,
+            text: text.into(),
+            scope,
+            affected_actors: actors,
+            affected_cells: cells,
+            affected_items: items,
+            causes,
+            draw,
+        });
+        id
+    }
+
+    pub(crate) fn finish(
+        &mut self,
+        command_id: String,
+        actor_id: ActorId,
+        success: bool,
+        message: impl Into<String>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let result = CommandResult {
+            command_id,
+            actor_id,
+            success,
+            message: message.into(),
+        };
+        self.applied
+            .insert(result.command_id.clone(), result.clone());
+        results.push(result);
+    }
+
+    pub(crate) fn relative(&self, from: CellId, to: CellId) -> String {
+        if from == to {
+            return "here".into();
+        }
+        let (x1, y1) = cell_xy(from);
+        let (x2, y2) = cell_xy(to);
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let ns = if dy < 0 {
+            "north"
+        } else if dy > 0 {
+            "south"
+        } else {
+            ""
+        };
+        let ew = if dx > 0 {
+            "east"
+        } else if dx < 0 {
+            "west"
+        } else {
+            ""
+        };
+        match (ns, ew) {
+            ("", "") => "here".into(),
+            (ns, "") => ns.into(),
+            ("", ew) => ew.into(),
+            (ns, ew) => format!("{ns} and {ew}"),
+        }
+    }
+
+    fn normalize(&mut self) {
+        self.piles.sort_by_key(|p| (p.cell, p.material as u8));
+        self.grips.sort_by_key(|g| (g.item, g.actor));
+        self.schedule.sort_by_key(|s| (s.at, s.seq));
+    }
+
+    fn trim_events(&mut self) {
+        if self.events.len() > EVENT_CAP {
+            let extra = self.events.len() - EVENT_CAP;
+            self.events.drain(0..extra);
+        }
+    }
+
+    pub(crate) fn wet_add(&self, gain: u32, exposure: u32) -> u32 {
+        ((gain as u64) * (exposure as u64) / 1000) as u32
+    }
+}
+
+fn default_next_id() -> u32 {
+    1
+}
+
+fn clean_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    let chars: Vec<char> = name.chars().collect();
+    if chars.is_empty() || chars.len() > 24 {
+        return Err("use a name of 1 to 24 characters".into());
+    }
+    if !chars[0].is_ascii_alphabetic() {
+        return Err("a name starts with a letter".into());
+    }
+    if !chars
+        .iter()
+        .all(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-' || *c == '\'')
+    {
+        return Err("use letters, numbers, spaces, hyphens, or apostrophes".into());
+    }
+    Ok(name.to_string())
+}
+
+pub fn contest_hash(seed: u64, time: u64, tag: &str, subject: &str, actor: u32) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    feed(&mut hash, &seed.to_le_bytes());
+    feed(&mut hash, &time.to_le_bytes());
+    feed(&mut hash, tag.as_bytes());
+    feed(&mut hash, subject.as_bytes());
+    feed(&mut hash, &actor.to_le_bytes());
+    hash
+}
+
+fn feed(hash: &mut u64, bytes: &[u8]) {
+    for byte in bytes {
+        *hash ^= *byte as u64;
+        *hash = hash.wrapping_mul(0x100000001b3);
+    }
+    *hash ^= 0xff;
+    *hash = hash.wrapping_mul(0x100000001b3);
+}

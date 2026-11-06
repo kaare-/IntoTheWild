@@ -1,0 +1,10 @@
+/target
+/web/node_modules
+/web/dist
+/data
+__pycache__/
+*.pyc
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite-journal
+.DS_Store

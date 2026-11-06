@@ -1,0 +1,144 @@
+# Tunable material properties and attempt parameters for the first evening.
+# The living valley keeps the copy it was seeded with. Delete the sqlite
+# file to be born again from this file.
+
+[time]
+# First rain fires during the window that opens at this tick.
+# Sixteen windows is enough for one person to fetch three branches and
+# bark from the rock, raise a frame on open ground, and lay the bark
+# before the rain. A slower attempt still has the overhang.
+rain_starts_at = 16
+# While rain is already falling, this tick makes open rain heavier.
+# Wood left in the open soaks twice as fast. A rock overhang or a bark
+# roof is unchanged, and nothing dries.
+season_at = 18
+# Loose branches on open ground lose one at this interval. A rock overhang
+# or a bark roof brings exposure under open sky, and that stops the rot.
+# Branches built into a frame are not loose, so they are not in it.
+rot_ticks = 8
+# A drag occupies the body until the next window closes.
+drag_ticks = 1
+frame_phase_ticks = 1
+frame_phases = 3
+bark_ticks = 1
+# A fire lit with dry bark and a dry branch burns this many ticks, then goes out.
+# Thirteen keeps a fire lit on the step that ends at sim time 5 burning through
+# the dry step that ends at sim time 13 and through sim time 17, when rain
+# starts. It still goes out on the next step. Rain in the open puts a fire out
+# sooner. A rock overhang or a bark roof keeps the rain off it.
+fire_ticks = 13
+# After a body steps off a fire, or the fire goes out, the sky's cold is halved
+# for this many ticks. Open wind still cools. The fire still dies in the rain.
+warmth_hold = 4
+# A lump of clay set at a burning fire hardens into a bowl after this many
+# ticks, if the fire is still burning. Unfired clay cannot boil water.
+# The fire still dies in the rain. There is no kiln.
+clay_ticks = 4
+# Holding a spear at a burning fire hardens the point after this many ticks.
+# The stone and the branch are already spent. Leaving the fire starts the
+# wait over. The deer is not hunted.
+spear_ticks = 4
+# From this tick, still water is frozen unless a fire burns on it.
+# The brook keeps running. A body in the open is already getting cold before this.
+chill_at = 12
+
+[body]
+# Fractions of a full soaking (1.0) applied when exposure is total.
+rain_gain = 0.12
+brook_rain = 0.10
+wade = 0.05
+damp_at = 0.25
+soaked_at = 0.60
+# Thirst rises every tick, including with nobody present. One drink
+# from the brook takes off 0.45. Rain wets clothes and does not quench.
+thirst_per_tick = 0.01
+drink_relief = 0.45
+thirsty_at = 0.25
+parched_at = 0.60
+# Hunger rises every tick, with or without a command. Bark is tinder, not
+# food. Most berries are sweet and can be eaten raw; that takes this much
+# off energy and does not touch hunger. A few berries are poisonous. Cooking
+# does not make them food. Mushrooms still have to be heat-treated. Cooking
+# a mushroom or sweet berries over a fire takes off 0.45 of hunger. Energy
+# uses these same hunger numbers. Rain does not feed you.
+hunger_per_tick = 0.01
+cook_relief = 0.45
+hungry_at = 0.25
+starving_at = 0.60
+# A raw drink rolls a draw. The brook is running water and only occasionally
+# makes you ill. Still water, the pool, almost always does. When the draw
+# falls under that source's chance, illness jumps by illness_hit. It then
+# falls by illness_recovery every tick, with or without a command, until the
+# word is well again. Boiling needs a pot and a fire. It does not roll the
+# draw, and it does not cure an illness you already have.
+illness_chance = 0.20
+still_chance = 0.90
+illness_hit = 1.0
+ill_at = 0.25
+illness_recovery = 0.05
+# Cold and sun use the same exposure as the rain. Open sky is 1. The wind
+# doubles the cold gain only there. A rock overhang is 0, so it feels neither,
+# and the cold already on a body leaves once they stand under it.
+# A dry bark roof is a little. One smear of mud leaves a quarter of the sun.
+# Mud flakes off each tick. Rain in the open washes it faster. The sun does
+# not burn while rain is falling.
+cold_per_tick = 0.04
+chilly_at = 0.25
+cold_at = 0.60
+# Standing on a burning fire. This tick does not also add the sky's cold.
+# Open wind is 0.08, so this is enough to warm a body in the open.
+# The sun on that body is unchanged. The next cell does not warm.
+fire_warmth = 0.16
+sun_per_tick = 0.05
+pink_at = 0.25
+burned_at = 0.60
+smear_at = 0.50
+mud_fade = 0.04
+mud_wash = 0.20
+mud_sun = 0.25
+carry_slots = 4
+sight = 2
+
+[forces]
+# Hands that must pull one direction, with nobody pulling another.
+drag_needed = 2
+
+[roof]
+# Exposure fractions. 0 is sealed, 1 is open sky.
+rock = 0.0
+dry_bark = 0.05
+wet_bark = 0.55
+
+[materials.branch]
+rain_gain = 0.18
+
+[materials.bark]
+rain_gain = 0.22
+
+[materials.log]
+rain_gain = 0.08
+
+[materials.berry]
+rain_gain = 0.16
+
+[materials.water]
+rain_gain = 0.0
+
+[materials.mushroom]
+rain_gain = 0.16
+
+[materials."bitter berry"]
+# These are the poisonous handfuls. The name in the valley is poison berries.
+rain_gain = 0.16
+
+[materials.pot]
+rain_gain = 0.0
+
+[materials.mud]
+rain_gain = 0.0
+
+[server]
+# Used by the server binary. Overridden by CLI flags.
+window_secs = 20
+port = 18431
+snapshot_every = 5
