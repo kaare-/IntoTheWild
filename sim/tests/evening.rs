@@ -4096,7 +4096,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         square_east,
-        "East: the rock overhang. Near stands under that rock. A pile of branches lies there. A pot sits there. A pile of bark lies there. Hoofprints mark the ground."
+        "East: the rock overhang. Near stands on the valley floor under that rock. A pile of branches lies there. A pot sits there. A pile of bark lies there. Hoofprints mark the ground."
     );
     assert!(!square_east.contains("1 person"), "{square_east}");
     assert!(
@@ -4251,10 +4251,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_east,
-        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. Near stands under that rock."
+        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. Near stands on the valley floor under that rock."
     );
     assert!(!aside_east.contains("person"), "{aside_east}");
-    assert!(!aside_east.contains("valley floor"), "{aside_east}");
+    assert!(
+        aside_east.contains("on the valley floor under that rock"),
+        "{aside_east}"
+    );
+    assert!(!aside_east.contains("East: valley floor"), "{aside_east}");
     assert!(!aside_east.contains("a deer"), "{aside_east}");
     assert!(!aside_east.contains("berries"), "{aside_east}");
     let aside_north = from_west
@@ -4769,7 +4773,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_east_later,
-        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. Near stands under that rock."
+        "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor. Near stands on the valley floor under that rock."
     );
     assert!(!aside_east_later.contains("person"), "{aside_east_later}");
     let aside_south_later = from_west_later

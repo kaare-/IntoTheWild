@@ -876,7 +876,7 @@ impl World {
                     floor.rock_side
                 );
                 if let Some(name) = self.name_under_that_rock(origin, dest, floor.rock_side) {
-                    line.push_str(&format!(" {name} stands under that rock."));
+                    line.push_str(&format!(" {name}"));
                 }
                 return line;
             }
@@ -1459,8 +1459,8 @@ impl World {
         None
     }
 
-    /// The name of the person on the rock, in sight from the square that faces
-    /// the outside floor. The rock itself stays out of a look that cannot see it.
+    /// The person on the rock, named, standing on the ground that is already there.
+    /// The rock square keeps the valley floor. It does not get a new floor name.
     fn name_under_that_rock(
         &self,
         origin: CellId,
@@ -1483,14 +1483,16 @@ impl World {
         if names.len() != 1 {
             return None;
         }
-        names.pop()
+        let name = names.pop()?;
+        let ground = self.cell(rock).region.word();
+        Some(format!("{name} stands on the {ground} under that rock."))
     }
 
-    /// East from the outside floor names the rock and the person under it.
-    /// The ground is not called a valley floor, and the person is not a count.
+    /// East from the outside floor names the rock and the person on the valley floor under it.
+    /// The person is not a count.
     fn rock_from_the_outside_floor(&self, dir: Dir, rock: CellId, name: &str) -> String {
         let mut parts = vec![format!(
-            "{}: the rock overhang. {name} stands under that rock.",
+            "{}: the rock overhang. {name}",
             capitalize(dir.word())
         )];
         if self.pile_count(rock, Material::Branch) > 0 {
