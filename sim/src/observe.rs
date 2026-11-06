@@ -320,7 +320,12 @@ impl World {
         let cell = self.cell(actor.cell);
         let wood_side = self.rotting_wood_beside_these_prints(actor.cell);
         let mut parts = Vec::new();
-        if wood_side.is_none() {
+        if let Some(side) = wood_side {
+            parts.push(format!(
+                "You are on the square {} of the rotting wood.",
+                across_from(side)
+            ));
+        } else {
             parts.push(format!(
                 "You are on the {}, {}.",
                 cell.region.word(),
@@ -531,7 +536,7 @@ impl World {
             parts.push("The deer left hoofprints on the ground here.".into());
         } else if let Some(side) = wood_side {
             parts.push("Hoofprints mark the ground.".into());
-            parts.push(format!("The rotting wood is to the {side}."));
+            parts.push(format!("The rotting wood is the next square {side}."));
         } else if self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
@@ -928,8 +933,9 @@ impl World {
         }
         if let Some(side) = self.wood_south_of_these_prints(origin, dir, dest) {
             return format!(
-                "{}: hoofprints mark the ground, and the rotting wood is to the {side}.",
-                capitalize(dir.word())
+                "{}: the square {} of the rotting wood has hoofprints. The rotting wood is the next square {side}.",
+                capitalize(dir.word()),
+                across_from(side)
             );
         }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
@@ -1216,8 +1222,9 @@ impl World {
         }
         let side = orthogonal_step(dest, corner)?;
         Some(format!(
-            "{}: hoofprints mark the ground, and the rotting wood is to the {side}. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
-            capitalize(dir.word())
+            "{}: the square {} of the rotting wood has hoofprints. The rotting wood is the next square {side}. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
+            capitalize(dir.word()),
+            across_from(side)
         ))
     }
 
@@ -3347,5 +3354,14 @@ fn orthogonal_step(from: CellId, to: CellId) -> Option<&'static str> {
         (0, -1) => Some("north"),
         (0, 1) => Some("south"),
         _ => None,
+    }
+}
+
+fn across_from(side: &str) -> &'static str {
+    match side {
+        "north" => "south",
+        "south" => "north",
+        "east" => "west",
+        _ => "east",
     }
 }
