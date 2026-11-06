@@ -3599,11 +3599,27 @@ impl World {
         views
     }
 
+    /// A fire still burning where the sky does not reach it. Open fires are
+    /// already out by the time this rain is read.
+    fn fire_the_rain_misses(&self, origin: CellId) -> bool {
+        self.fires.values().any(|fire| {
+            chebyshev(origin, fire.cell) <= self.tuning.sight
+                && self.exposure_millis(fire.cell) < 1000
+        })
+    }
+
     /// An event keeps the weather of its own tick. The wood is named, not counted.
     fn heard_text(&self, origin: CellId, event: &crate::model::Event) -> String {
-        if event.text.starts_with("Rain reaches the valley") && self.exposure_millis(origin) >= 1000
-        {
-            return "The rain wets your clothes.".into();
+        if event.text.starts_with("Rain reaches the valley") {
+            let rain = if self.exposure_millis(origin) >= 1000 {
+                "The rain wets your clothes.".to_string()
+            } else {
+                event.text.clone()
+            };
+            if self.fire_the_rain_misses(origin) {
+                return format!("{rain} The rain does not reach the fire.");
+            }
+            return rain;
         }
         if event.text == "A branch rots away in the open. You hear branches breaking."
             || event.text == "The last branch rots away in the open. You hear a branch break."

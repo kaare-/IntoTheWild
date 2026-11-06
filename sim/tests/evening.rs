@@ -569,6 +569,96 @@ fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
 }
 
 #[test]
+fn rain_names_the_fire_it_does_not_reach() {
+    let mut world = world_at(16);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    for (id, dir) in [
+        ("east-1", Dir::East),
+        ("east-2", Dir::East),
+        ("north-1", Dir::North),
+        ("north-2", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.sim_time(), 4);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert_eq!(
+        lit.results[0].message,
+        "You light a fire with bark and a dry branch from the pile at the feet."
+    );
+    assert_eq!(world.sim_time(), 5);
+    let at_five = world.observe(near).unwrap();
+    assert!(at_five
+        .text
+        .contains("A small fire burns here. It warms anyone standing at it."));
+    assert!(at_five.map.contains("@*+"));
+    assert!(!at_five.text.contains("The rain does not reach the fire."));
+    assert!(at_five
+        .events
+        .iter()
+        .all(|event| !event.text.contains("The rain does not reach the fire.")));
+    while world.sim_time() < 13 {
+        world.step(&[]);
+    }
+    let at_thirteen = world.observe(near).unwrap();
+    assert!(!world.is_raining());
+    assert!(at_thirteen
+        .text
+        .contains("A small fire burns here. It warms anyone standing at it."));
+    assert!(at_thirteen.map.contains("@*+"));
+    assert!(at_thirteen
+        .events
+        .iter()
+        .all(|event| !event.text.contains("The fire burns down.")));
+    assert!(!at_thirteen
+        .text
+        .contains("The rain does not reach the fire."));
+    while world.sim_time() < 17 {
+        world.step(&[]);
+    }
+    assert!(world.is_raining());
+    let at_seventeen = world.observe(near).unwrap();
+    let place = at_seventeen
+        .text
+        .lines()
+        .find(|line| line.starts_with("You are on the"))
+        .unwrap_or("");
+    assert!(place.contains("Rock leans overhead, and the rain does not reach this ground."));
+    assert!(place.contains("A small fire burns here. It warms anyone standing at it."));
+    assert!(!place.contains("The rain does not reach the fire."));
+    assert!(at_seventeen.map.contains("@*+"));
+    let rain = at_seventeen
+        .events
+        .iter()
+        .find(|event| event.text.contains("Rain reaches"))
+        .map(|event| event.text.as_str())
+        .unwrap_or("");
+    assert_eq!(
+        rain,
+        "Rain reaches the valley and finds whatever was left in the open. The rain does not reach the fire."
+    );
+    assert!(at_seventeen
+        .events
+        .iter()
+        .all(|event| !event.text.contains("The fire burns down.")));
+    assert!(at_seventeen
+        .events
+        .iter()
+        .all(|event| !event.text.contains("puts out")));
+    let unseen = world.observe(far).unwrap();
+    assert!(unseen
+        .events
+        .iter()
+        .all(|event| !event.text.contains("The rain does not reach the fire.")));
+    assert!(unseen
+        .events
+        .iter()
+        .any(|event| event.text == "The rain wets your clothes."));
+}
+
+#[test]
 fn parser_accepts_the_evening_commands() {
     assert!(matches!(parse_attempt("look").unwrap(), Attempt::Look));
     assert!(matches!(
