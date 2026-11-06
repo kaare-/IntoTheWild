@@ -908,15 +908,12 @@ impl World {
         };
         if let Some(floor) = self.outside_floor(origin) {
             if dest == floor.wood {
-                let name = if self.last_branch_is_still_there(dest) {
-                    "the last branch"
+                let (name, prints) = if self.last_branch_is_still_there(dest) {
+                    ("the last branch", "Hoofprints mark the ground.")
                 } else {
-                    "the rotting wood"
+                    ("the rotting wood", "Hoofprints mark that wood.")
                 };
-                return format!(
-                    "{}: {name}. Hoofprints mark that wood.",
-                    capitalize(dir.word())
-                );
+                return format!("{}: {name}. {prints}", capitalize(dir.word()));
             }
             if dir.word() == floor.rock_side && self.cell(dest).rock {
                 if let Some(name) = self.name_under_that_rock(origin, origin, floor.rock_side) {

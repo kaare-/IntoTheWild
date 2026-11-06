@@ -1634,7 +1634,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         south_sixteen,
-        "South: the last branch. Hoofprints mark that wood."
+        "South: the last branch. Hoofprints mark the ground."
     );
     assert_eq!(
         at_sixteen
