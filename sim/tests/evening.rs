@@ -4158,7 +4158,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!place.contains("the near floor"), "{place}");
     let under_again = world.observe(near).unwrap();
     assert!(under_again.text.contains(
-        "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. Past that wood, the deer stands on the west floor, and hoofprints mark that floor."
+        "West: hoofprints mark the outside floor. Step stands on that floor. The rotting wood is the next square south of that floor. Past that wood, the deer stands on the west floor, and hoofprints mark that floor."
     ));
     assert!(under_again.text.contains(
         "South: valley floor. The corner beyond, to the west, has that wood. Past that wood is the west floor. Hoofprints mark that floor. The deer stands on the west floor."
@@ -4729,7 +4729,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         unseen
             .text
-            .contains("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor."),
+            .contains("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Aside stands on the poison berries."),
         "{}",
         unseen.text
     );
@@ -4853,7 +4853,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let west_gone = unseen
         .text
-        .find("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor.")
+        .find("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Aside stands on the poison berries.")
         .expect(&unseen.text);
     assert!(west_gone < prints_gone, "{}", unseen.text);
     assert!(!unseen.text.contains("as well as here"), "{}", unseen.text);

@@ -1017,10 +1017,14 @@ impl World {
             return line;
         }
         if let Some(side) = self.wood_south_of_these_prints(origin, dir, dest) {
-            return format!(
+            let mut line = format!(
                 "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor.",
                 capitalize(dir.word())
             );
+            if let Some(past) = self.person_on_the_berries_off_this_floor(origin, dest) {
+                line.push_str(&past);
+            }
+            return line;
         }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
         match self.corner_beyond(origin, dir) {
@@ -1305,10 +1309,17 @@ impl World {
             return None;
         }
         let side = orthogonal_step(dest, corner)?;
-        Some(format!(
-            "{}: hoofprints mark the outside floor. The rotting wood is the next square {side} of that floor. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
+        let mut line = format!(
+            "{}: hoofprints mark the outside floor.",
             capitalize(dir.word())
-        ))
+        );
+        if let Some(name) = self.name_standing_on(origin, dest) {
+            line.push_str(&format!(" {name} stands on that floor."));
+        }
+        line.push_str(&format!(
+            " The rotting wood is the next square {side} of that floor. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor."
+        ));
+        Some(line)
     }
 
     /// The same square, once the deer has left the west floor, at sim time 14 and 15.
@@ -1340,6 +1351,55 @@ impl World {
             return None;
         }
         Some(side)
+    }
+
+    /// The one person standing on a cell in sight. The name is theirs.
+    fn name_standing_on(&self, origin: CellId, cell: CellId) -> Option<String> {
+        if chebyshev(origin, cell) > self.tuning.sight {
+            return None;
+        }
+        let mut names: Vec<_> = self
+            .actors
+            .values()
+            .filter(|actor| actor.cell == cell)
+            .map(|actor| actor.name.clone())
+            .collect();
+        if names.len() != 1 {
+            return None;
+        }
+        names.pop()
+    }
+
+    /// A person on the poison berries one step off the outside floor.
+    /// "That floor" stays the outside floor. The deer is not named here.
+    fn person_on_the_berries_off_this_floor(
+        &self,
+        origin: CellId,
+        floor: CellId,
+    ) -> Option<String> {
+        let (x, y) = cell_xy(floor);
+        let mut found = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(cell) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if cell == origin || self.pile_count(cell, Material::BitterBerry) == 0 {
+                continue;
+            }
+            let Some(name) = self.name_standing_on(origin, cell) else {
+                continue;
+            };
+            let way = orthogonal_step(floor, cell)?;
+            found.push(format!(
+                " {} of that floor, {name} stands on the poison berries.",
+                capitalize(way)
+            ));
+        }
+        if found.len() != 1 {
+            return None;
+        }
+        found.pop()
     }
 
     /// The valley floor just outside the rock, once the deer has passed the wood.
