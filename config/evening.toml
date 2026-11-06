@@ -22,8 +22,11 @@ frame_phase_ticks = 1
 frame_phases = 3
 bark_ticks = 1
 # A fire lit with dry bark and a dry branch burns this many ticks, then goes out.
-# Rain in the open puts it out sooner. A rock overhang or a bark roof keeps it.
-fire_ticks = 8
+# Thirteen keeps a fire lit on the step that ends at sim time 5 burning through
+# the dry step that ends at sim time 13 and through sim time 17, when rain
+# starts. It still goes out on the next step. Rain in the open puts a fire out
+# sooner. A rock overhang or a bark roof keeps the rain off it.
+fire_ticks = 13
 # After a body steps off a fire, or the fire goes out, the sky's cold is halved
 # for this many ticks. Open wind still cools. The fire still dies in the rain.
 warmth_hold = 4

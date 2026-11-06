@@ -544,8 +544,9 @@ fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
 
     let mut brief = world_at(1_000);
     let linde = brief.spawn_at("Linde", "l", 6, 1).unwrap();
+    let life = brief.tuning.fire_ticks;
     brief.step(&[cmd("light", linde, Attempt::Light)]);
-    for _ in 0..7 {
+    for _ in 1..life {
         brief.step(&[]);
     }
     assert!(brief
@@ -2387,7 +2388,9 @@ fn clay_stays_soft_when_the_fire_goes_out() {
     world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
     assert_eq!(world.actor_cell(near), Some((6, 1)));
     world.step(&[cmd("light", near, Attempt::Light)]);
-    for _ in 0..6 {
+    let goes_out = world.sim_time() - 1 + world.tuning.fire_ticks;
+    let set_at = goes_out - world.tuning.clay_ticks + 1;
+    while world.sim_time() < set_at {
         world.step(&[]);
     }
     let set = world.step(&[cmd("set", near, Attempt::SetClay)]);

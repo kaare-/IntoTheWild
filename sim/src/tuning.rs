@@ -113,7 +113,7 @@ pub struct Tuning {
 }
 
 fn default_fire_ticks() -> u64 {
-    8
+    13
 }
 fn default_warmth_hold() -> u64 {
     4
