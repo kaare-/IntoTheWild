@@ -4049,7 +4049,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .find(|line| line.starts_with("West:"))
         .unwrap_or("");
     assert_eq!(aside_north, "North: slope.");
-    assert_eq!(aside_south, "South: valley floor, hoofprints.");
+    assert_eq!(
+        aside_south,
+        "South: the west floor. Hoofprints mark that floor."
+    );
+    assert!(!aside_south.contains("valley floor"), "{aside_south}");
+    assert!(!aside_south.contains("deer"), "{aside_south}");
+    assert!(!aside_south.contains("the outside floor"), "{aside_south}");
+    assert!(!aside_south.contains("the south floor"), "{aside_south}");
     assert_eq!(aside_west, "West: valley floor, mushrooms.");
     assert!(!west_later.contains("this square"), "{west_later}");
     assert!(!west_later.contains("that square"), "{west_later}");
@@ -4532,6 +4539,20 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(
         aside_east_later,
         "East: the outside floor. Hoofprints mark that floor. The rock overhang is the next square east of that floor."
+    );
+    let aside_south_later = from_west_later
+        .text
+        .lines()
+        .find(|line| line.starts_with("South:"))
+        .unwrap_or("");
+    assert_eq!(
+        aside_south_later,
+        "South: the west floor. Hoofprints mark that floor."
+    );
+    assert!(!aside_south_later.contains("deer"), "{aside_south_later}");
+    assert!(
+        !aside_south_later.contains("the south floor"),
+        "{aside_south_later}"
     );
     assert!(
         !from_west_later

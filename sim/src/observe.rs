@@ -851,6 +851,12 @@ impl World {
                 );
             }
         }
+        if self.west_floor_left_to_the_south(origin, dest) {
+            return format!(
+                "{}: the west floor. Hoofprints mark that floor.",
+                capitalize(dir.word())
+            );
+        }
         let cell = self.cell(dest);
         let mut bits = vec![cell.region.word().to_string()];
         if cell.rock {
@@ -1354,6 +1360,29 @@ impl World {
             }
         }
         None
+    }
+
+    /// The west floor is the next square south, after the deer has left it.
+    fn west_floor_left_to_the_south(&self, origin: CellId, dest: CellId) -> bool {
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) || !self.tracks.contains(&dest)
+        {
+            return false;
+        }
+        let (x, y) = cell_xy(origin);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            let Some(floor) = self.outside_floor(next) else {
+                continue;
+            };
+            if dir.word() != floor.rock_side {
+                continue;
+            }
+            return self.first_cell_off_this_wood(floor.wood) == Some(dest);
+        }
+        false
     }
 
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
