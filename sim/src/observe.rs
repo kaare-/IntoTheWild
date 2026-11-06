@@ -861,11 +861,15 @@ impl World {
         }
         if let Some(floor) = self.outside_floor(dest) {
             if dir.word() == floor.rock_side {
-                return format!(
+                let mut line = format!(
                     "{}: the outside floor. Hoofprints mark that floor. The rock overhang is the next square {} of that floor.",
                     capitalize(dir.word()),
                     floor.rock_side
                 );
+                if self.person_stands_under_that_rock(origin, dest, floor.rock_side) {
+                    line.push_str(" A person stands under that rock.");
+                }
+                return line;
             }
         }
         if self.west_floor_left_to_the_south(origin, dest) {
@@ -1384,6 +1388,28 @@ impl World {
             }
         }
         None
+    }
+
+    /// A person on the rock, in sight from the square that faces the outside floor.
+    /// The rock itself stays out of a look that cannot see it.
+    fn person_stands_under_that_rock(
+        &self,
+        origin: CellId,
+        floor_cell: CellId,
+        rock_side: &str,
+    ) -> bool {
+        let Some(dir) = Dir::all().into_iter().find(|dir| dir.word() == rock_side) else {
+            return false;
+        };
+        let (x, y) = cell_xy(floor_cell);
+        let (dx, dy) = dir.delta();
+        let Some(rock) = cell_id(x + dx, y + dy) else {
+            return false;
+        };
+        if !self.cell(rock).rock || chebyshev(origin, rock) > self.tuning.sight {
+            return false;
+        }
+        self.actors.values().any(|actor| actor.cell == rock)
     }
 
     /// The west floor is the next square south, after the deer has left it.
