@@ -318,11 +318,15 @@ impl World {
     fn here_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let cell = self.cell(actor.cell);
-        let mut parts = vec![format!(
-            "You are on the {}, {}.",
-            cell.region.word(),
-            self.cover_phrase(actor.cell)
-        )];
+        let wood_side = self.rotting_wood_beside_these_prints(actor.cell);
+        let mut parts = Vec::new();
+        if wood_side.is_none() {
+            parts.push(format!(
+                "You are on the {}, {}.",
+                cell.region.word(),
+                self.cover_phrase(actor.cell)
+            ));
+        }
         if cell.trail {
             parts.push("A deer trail passes here.".into());
         }
@@ -525,6 +529,9 @@ impl World {
         }
         if self.tracks.contains(&actor.cell) && self.prints_stay_on_the_wood(actor.cell) {
             parts.push("The deer left hoofprints on the ground here.".into());
+        } else if let Some(side) = wood_side {
+            parts.push("Hoofprints mark the ground.".into());
+            parts.push(format!("The rotting wood is to the {side}."));
         } else if self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
         }
@@ -921,7 +928,7 @@ impl World {
         }
         if let Some(side) = self.wood_south_of_these_prints(origin, dir, dest) {
             return format!(
-                "{}: hoofprints mark the ground, and the wood is {side} of them.",
+                "{}: hoofprints mark the ground, and the rotting wood is to the {side}.",
                 capitalize(dir.word())
             );
         }
@@ -1209,7 +1216,7 @@ impl World {
         }
         let side = orthogonal_step(dest, corner)?;
         Some(format!(
-            "{}: hoofprints mark the ground, and the wood is {side} of them. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
+            "{}: hoofprints mark the ground, and the rotting wood is to the {side}. Past that wood, the deer stands on the {way} floor, and hoofprints mark that floor.",
             capitalize(dir.word())
         ))
     }
@@ -1243,6 +1250,43 @@ impl World {
             return None;
         }
         Some(side)
+    }
+
+    /// The same prints and the same wood, read from the square itself.
+    fn rotting_wood_beside_these_prints(&self, here: CellId) -> Option<&'static str> {
+        if !self.tracks.contains(&here) {
+            return None;
+        }
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == here) {
+            return None;
+        }
+        let (x, y) = cell_xy(here);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(rock) = cell_id(x - dx, y - dy) else {
+                continue;
+            };
+            if !self.open_wood_keeps_its_way(rock) {
+                continue;
+            }
+            let Some((corner, _)) = self.corner_wood(rock, dir) else {
+                continue;
+            };
+            let Some(side) = orthogonal_step(here, corner) else {
+                continue;
+            };
+            let deer_there = self.deer_stands_past_this_wood(rock, corner).is_some();
+            let left = self
+                .floor_west_of_this_wood(rock, corner)
+                .is_some_and(|entered| {
+                    self.deer_stands_on_next_floor(rock, entered).is_some()
+                        || self.next_floor_still_in_sight(rock, entered).is_some()
+                });
+            if deer_there || left {
+                return Some(side);
+            }
+        }
+        None
     }
 
     fn corner_beyond(&self, origin: CellId, dir: Dir) -> Option<String> {
@@ -1284,7 +1328,7 @@ impl World {
             let mut line = format!("The corner beyond, to the {side}, has that wood.");
             if let Some((_, way)) = self.deer_stands_past_this_wood(origin, corner) {
                 line.push_str(&format!(
-                    " Past that wood is the {way} floor. Hoofprints mark that floor. The deer stands there."
+                    " Past that wood is the {way} floor. Hoofprints mark that floor. The deer stands on the {way} floor."
                 ));
                 return Some(line);
             }
