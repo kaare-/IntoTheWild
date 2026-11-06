@@ -286,7 +286,7 @@ impl World {
                 {
                     if self.last_branch_is_still_there(cell) {
                         format!(
-                            "The last branch is rotting to the {}.",
+                            "The last branch is rotting to the {}, and the deer left hoofprints on the ground under it.",
                             self.relative(origin, cell)
                         )
                     } else {
@@ -918,10 +918,7 @@ impl World {
         if let Some(floor) = self.outside_floor(origin) {
             if dest == floor.wood {
                 if self.last_branch_is_still_there(dest) {
-                    return format!(
-                        "{}: the last branch. Hoofprints mark that branch.",
-                        capitalize(dir.word())
-                    );
+                    return format!("{}: the last branch.", capitalize(dir.word()));
                 }
                 return format!(
                     "{}: the rotting wood. Hoofprints mark that wood.",
