@@ -4009,10 +4009,17 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .lines()
         .find(|line| line.starts_with("You are on the"))
         .unwrap_or("");
+    assert_eq!(
+        aside_place,
+        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry. They are poisonous."
+    );
+    assert!(aside_place.starts_with("You are on the valley floor, in the open."));
+    assert!(!aside_place.contains("rock"), "{aside_place}");
     assert!(
-        aside_place.starts_with("You are on the valley floor, in the open."),
+        !aside_place.starts_with("You stand on the outside floor"),
         "{aside_place}"
     );
+    assert!(aside_place.contains("They are poisonous."), "{aside_place}");
     let aside_east = from_west
         .text
         .lines()
@@ -4026,7 +4033,24 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!aside_east.contains("a deer"), "{aside_east}");
     assert!(!aside_east.contains("berries"), "{aside_east}");
     assert!(!aside_east.contains("person"), "{aside_east}");
-    assert!(!aside_place.contains("the outside floor"), "{aside_place}");
+    let aside_north = from_west
+        .text
+        .lines()
+        .find(|line| line.starts_with("North:"))
+        .unwrap_or("");
+    let aside_south = from_west
+        .text
+        .lines()
+        .find(|line| line.starts_with("South:"))
+        .unwrap_or("");
+    let aside_west = from_west
+        .text
+        .lines()
+        .find(|line| line.starts_with("West:"))
+        .unwrap_or("");
+    assert_eq!(aside_north, "North: slope.");
+    assert_eq!(aside_south, "South: valley floor, hoofprints.");
+    assert_eq!(aside_west, "West: valley floor, mushrooms.");
     assert!(!west_later.contains("this square"), "{west_later}");
     assert!(!west_later.contains("that square"), "{west_later}");
     assert!(!west_later.contains("the deer"), "{west_later}");
@@ -4487,14 +4511,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .lines()
         .find(|line| line.starts_with("You are on the"))
         .unwrap_or("");
+    assert_eq!(
+        aside_place_later,
+        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry. They are poisonous."
+    );
     assert!(
         aside_place_later.starts_with("You are on the valley floor, in the open."),
         "{aside_place_later}"
     );
     assert!(
-        !aside_place_later.contains("the outside floor"),
+        aside_place_later.contains("They are poisonous."),
         "{aside_place_later}"
     );
+    assert!(!aside_place_later.contains("rock"), "{aside_place_later}");
     let aside_east_later = from_west_later
         .text
         .lines()

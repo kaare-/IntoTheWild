@@ -345,6 +345,9 @@ impl World {
                 cell.region.word(),
                 self.cover_phrase(actor.cell)
             ));
+            if let Some(side) = self.outside_floor_next_door(actor.cell) {
+                parts.push(format!("The outside floor is the next square {side}."));
+            }
         }
         if cell.trail {
             parts.push("A deer trail passes here.".into());
@@ -1330,6 +1333,24 @@ impl World {
                     rock_side: facing_back(dir),
                     wood: corner,
                 });
+            }
+        }
+        None
+    }
+
+    /// The outside floor is the next square, on the side away from the rock.
+    fn outside_floor_next_door(&self, here: CellId) -> Option<&'static str> {
+        let (x, y) = cell_xy(here);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            let Some(floor) = self.outside_floor(dest) else {
+                continue;
+            };
+            if dir.word() == floor.rock_side {
+                return Some(dir.word());
             }
         }
         None
