@@ -639,6 +639,64 @@ impl World {
         }
     }
 
+    fn arm_bit(&self, actor_id: ActorId, item: &CarryView) -> String {
+        if item.material == "stone" && item.count == 1 {
+            format!("a {} stone", item.condition)
+        } else if item.material == "bark" && item.count == 1 {
+            format!("a {} sheet of bark", item.condition)
+        } else if item.material == "pot" && item.count == 1 {
+            format!("a {} pot", item.condition)
+        } else if item.material == "clay" && item.count == 1 {
+            "a lump of clay".into()
+        } else if item.material == "bowl" && item.count == 1 {
+            "a fired bowl".into()
+        } else if item.material == "carcass" && item.count == 1 {
+            "a deer carcass".into()
+        } else if item.material == "spear" && item.count == 1 {
+            let hardened = self
+                .loose_ids(actor_id, Material::Spear)
+                .first()
+                .and_then(|id| self.item(*id))
+                .is_some_and(|spear| spear.hardened);
+            if hardened {
+                "a spear with a hardened point".into()
+            } else {
+                "a spear with an unhardened point".into()
+            }
+        } else if item.material == "mushroom" {
+            if item.count == 1 {
+                format!("a {} mushroom", item.condition)
+            } else {
+                format!("{} {} mushrooms", count_word(item.count), item.condition)
+            }
+        } else if item.material == "berry" {
+            if item.count == 1 {
+                format!("a {} handful of berries", item.condition)
+            } else {
+                format!(
+                    "{} {} handfuls of berries",
+                    count_word(item.count),
+                    item.condition
+                )
+            }
+        } else if item.material == "poison berry" {
+            if item.count == 1 {
+                format!("a {} handful of poison berries", item.condition)
+            } else {
+                format!(
+                    "{} {} handfuls of poison berries",
+                    count_word(item.count),
+                    item.condition
+                )
+            }
+        } else {
+            format!(
+                "{} {} carried by you ({})",
+                item.count, item.material, item.condition
+            )
+        }
+    }
+
     fn self_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let mut parts = vec![
@@ -662,64 +720,29 @@ impl World {
         if carrying.is_empty() {
             parts.push("Your arms are empty.".into());
         } else {
+            let drinks = carrying
+                .iter()
+                .find(|item| item.material == "water")
+                .map(|item| item.count)
+                .unwrap_or(0);
+            let pot_holds_the_drink = drinks > 0
+                && carrying
+                    .iter()
+                    .any(|item| item.material == "pot" && item.count == 1);
             let bits: Vec<String> = carrying
                 .iter()
-                .map(|item| {
-                    if item.material == "stone" && item.count == 1 {
-                        format!("a {} stone", item.condition)
-                    } else if item.material == "bark" && item.count == 1 {
-                        format!("a {} sheet of bark", item.condition)
-                    } else if item.material == "pot" && item.count == 1 {
-                        format!("a {} pot", item.condition)
-                    } else if item.material == "clay" && item.count == 1 {
-                        "a lump of clay".into()
-                    } else if item.material == "bowl" && item.count == 1 {
-                        "a fired bowl".into()
-                    } else if item.material == "carcass" && item.count == 1 {
-                        "a deer carcass".into()
-                    } else if item.material == "spear" && item.count == 1 {
-                        let hardened = self
-                            .loose_ids(actor_id, Material::Spear)
-                            .first()
-                            .and_then(|id| self.item(*id))
-                            .is_some_and(|spear| spear.hardened);
-                        if hardened {
-                            "a spear with a hardened point".into()
-                        } else {
-                            "a spear with an unhardened point".into()
-                        }
-                    } else if item.material == "mushroom" {
-                        if item.count == 1 {
-                            format!("a {} mushroom", item.condition)
-                        } else {
-                            format!("{} {} mushrooms", count_word(item.count), item.condition)
-                        }
-                    } else if item.material == "berry" {
-                        if item.count == 1 {
-                            format!("a {} handful of berries", item.condition)
-                        } else {
-                            format!(
-                                "{} {} handfuls of berries",
-                                count_word(item.count),
-                                item.condition
-                            )
-                        }
-                    } else if item.material == "poison berry" {
-                        if item.count == 1 {
-                            format!("a {} handful of poison berries", item.condition)
-                        } else {
-                            format!(
-                                "{} {} handfuls of poison berries",
-                                count_word(item.count),
-                                item.condition
-                            )
-                        }
-                    } else {
-                        format!(
-                            "{} {} carried by you ({})",
-                            item.count, item.material, item.condition
-                        )
+                .filter_map(|item| {
+                    if pot_holds_the_drink && item.material == "water" {
+                        return None;
                     }
+                    if pot_holds_the_drink && item.material == "pot" {
+                        return Some(if drinks == 1 {
+                            "a pot with a drink of water in it".into()
+                        } else {
+                            format!("a pot with {} drinks of water in it", count_word(drinks))
+                        });
+                    }
+                    Some(self.arm_bit(actor_id, item))
                 })
                 .collect();
             parts.push(format!("You have {}.", bits.join(", ")));

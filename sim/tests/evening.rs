@@ -955,10 +955,17 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         .unwrap_or_default();
     assert_eq!(bare_event, "Near gathers a drink of water from the brook.");
     assert!(!bare_event.contains("pot"));
+    let bare_arms = arms_sentence(&bare.observe(hands).unwrap().text);
+    assert!(bare_arms.contains("1 water"));
+    assert!(!bare_arms.contains("pot"));
 
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();
     world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    assert_eq!(
+        arms_sentence(&world.observe(near).unwrap().text),
+        "You have a dry pot."
+    );
     for step in 0..5 {
         world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
     }
@@ -980,6 +987,10 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         fill_event,
         "Near gathers a drink of water from the brook into the pot."
     );
+    let filled_arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert_eq!(filled_arms, "You have a pot with a drink of water in it.");
+    assert!(!filled_arms.contains("dry pot"));
+    assert!(!filled_arms.contains("1 water"));
     for step in 0..5 {
         world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
     }
@@ -1011,6 +1022,18 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
     assert_eq!(body.self_info.thirst, "not thirsty");
     assert_eq!(body.self_info.illness, "well");
     assert!(body.text.contains("A small fire burns here."));
+    let empty_again = arms_sentence(&body.text);
+    assert_eq!(empty_again, "You have a dry pot.");
+    assert!(!empty_again.contains("water"));
+}
+
+fn arms_sentence(text: &str) -> String {
+    let Some(start) = text.find("You have ") else {
+        return String::new();
+    };
+    let rest = &text[start..];
+    let end = rest.find('.').unwrap_or(rest.len() - 1);
+    rest[..=end].to_string()
 }
 
 #[test]
