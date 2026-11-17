@@ -10,6 +10,15 @@ pub const WIDTH: i32 = 7;
 pub const HEIGHT: i32 = 5;
 const EVENT_CAP: usize = 20_000;
 
+/// One successful act, filled while looking at one recipient.
+/// `rest` already closes the sentence, as in `a pot.`
+pub(crate) fn spoken_act(name: Option<&str>, stem: &str, rest: &str) -> String {
+    match name {
+        None => format!("You {stem} {rest}"),
+        Some(name) => format!("{name} {stem}s {rest}"),
+    }
+}
+
 pub type ActorId = u32;
 pub type ItemId = u32;
 pub type ConstructionId = u32;

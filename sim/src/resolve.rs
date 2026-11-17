@@ -595,7 +595,8 @@ impl World {
                     } else {
                         ""
                     };
-                    let text = format!("{name} gathers a {noun}.{breaking}");
+                    let rest = format!("a {noun}.{breaking}");
+                    let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
                         Scope::Cell(cell),
@@ -609,7 +610,7 @@ impl World {
                         intent.command_id,
                         intent.actor_id,
                         true,
-                        format!("You gather a {noun}."),
+                        crate::model::spoken_act(None, "gather", &rest),
                         results,
                     );
                 } else {

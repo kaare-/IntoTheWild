@@ -3613,7 +3613,7 @@ impl World {
             .map(|event| EventView {
                 id: event.id,
                 time: event.time,
-                text: self.heard_text(origin, event),
+                text: self.heard_text(viewer, origin, event),
             })
             .collect();
         if views.len() > 40 {
@@ -3631,8 +3631,53 @@ impl World {
         })
     }
 
+    /// A successful gather, filled for the person who took it.
+    /// Anyone else keeps the stored sentence. Water and mud are not this act.
+    fn gather_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} gathers "))?;
+        let (noun, tail) = if let Some(noun) = rest.strip_suffix(". You hear branches breaking.") {
+            (noun, ". You hear branches breaking.")
+        } else {
+            (rest.strip_suffix('.')?, ".")
+        };
+        let noun = noun.strip_prefix("a ")?;
+        const NOUNS: &[&str] = &[
+            "branch",
+            "sheet of bark",
+            "log",
+            "handful of berries",
+            "mushroom",
+            "handful of poison berries",
+            "pot",
+            "stone",
+            "lump of clay",
+            "bowl",
+            "spear",
+            "carcass",
+        ];
+        if !NOUNS.contains(&noun) {
+            return None;
+        }
+        Some(crate::model::spoken_act(
+            None,
+            "gather",
+            &format!("a {noun}{tail}"),
+        ))
+    }
+
     /// An event keeps the weather of its own tick. The wood is named, not counted.
-    fn heard_text(&self, origin: CellId, event: &crate::model::Event) -> String {
+    fn heard_text(&self, viewer: ActorId, origin: CellId, event: &crate::model::Event) -> String {
+        if let Some(line) = self.gather_for_these_eyes(viewer, event) {
+            return line;
+        }
         if event.text.starts_with("Rain reaches the valley") {
             let rain = if self.exposure_millis(origin) >= 1000 {
                 "The rain wets your clothes.".to_string()
