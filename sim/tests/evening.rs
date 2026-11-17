@@ -1059,13 +1059,17 @@ fn a_look_places_the_person_and_the_pot_that_are_still_under_the_rock() {
     assert_eq!(report.results[0].message, "You gather a pot.");
     let after = world.observe(west).unwrap().text;
     assert!(
-        after.contains("Near stands on the valley floor under the rock overhang."),
+        after.contains(
+            "Near stands on the valley floor under the rock overhang, carrying a dry pot."
+        ),
         "{after}"
     );
     assert!(
-        !after.contains("pot"),
+        !after.contains("sits on the ground"),
         "the pot is in the arms, not on the ground: {after}"
     );
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert_eq!(arms, "You have a dry pot.");
     assert!(world
         .observe(far)
         .unwrap()

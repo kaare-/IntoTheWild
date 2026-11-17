@@ -589,7 +589,7 @@ impl World {
     }
 
     /// A rock in sight that the compass lines do not already stand on.
-    /// The pot is named only while it is still on that ground.
+    /// The pot is on that ground, or in the hands of the person standing there.
     fn seen_under_the_rock(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
@@ -609,12 +609,42 @@ impl World {
                 || !self.ground_ids(cell, Material::Pot).is_empty();
             let mut parts = Vec::new();
             if !names.is_empty() && !person_already {
-                let verb = if names.len() == 1 { "stands" } else { "stand" };
                 let ground = self.cell(cell).region.word();
-                parts.push(format!(
-                    "{} {verb} on the {ground} under the rock overhang.",
-                    self.join_names(&names)
-                ));
+                if names.len() == 1 {
+                    let holder = self
+                        .actors
+                        .values()
+                        .find(|actor| actor.cell == cell && actor.name == names[0]);
+                    let carried = holder.and_then(|actor| self.carried_pot_phrase(actor.id));
+                    if let Some(pot) = carried {
+                        parts.push(format!(
+                            "{} stands on the {ground} under the rock overhang, carrying {pot}.",
+                            names[0]
+                        ));
+                    } else {
+                        parts.push(format!(
+                            "{} stands on the {ground} under the rock overhang.",
+                            names[0]
+                        ));
+                    }
+                } else {
+                    let verb = "stand";
+                    parts.push(format!(
+                        "{} {verb} on the {ground} under the rock overhang.",
+                        self.join_names(&names)
+                    ));
+                    for name in &names {
+                        let holder = self
+                            .actors
+                            .values()
+                            .find(|actor| actor.cell == cell && actor.name == *name);
+                        if let Some(pot) =
+                            holder.and_then(|actor| self.carried_pot_phrase(actor.id))
+                        {
+                            parts.push(format!("{name} is carrying {pot}."));
+                        }
+                    }
+                }
             }
             if pot_on_the_ground {
                 if parts.is_empty() {
@@ -631,6 +661,18 @@ impl World {
             None
         } else {
             Some(lines.join(" "))
+        }
+    }
+
+    fn carried_pot_phrase(&self, actor_id: ActorId) -> Option<String> {
+        let ids = self.loose_ids(actor_id, Material::Pot);
+        if ids.len() == 1 {
+            let moisture = self.item(ids[0]).map(|item| item.moisture).unwrap_or(0);
+            Some(format!("a {} pot", self.condition_word(moisture)))
+        } else if ids.len() > 1 {
+            Some(format!("{} pots", count_word(ids.len() as u32)))
+        } else {
+            None
         }
     }
 
