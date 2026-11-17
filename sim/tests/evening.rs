@@ -1028,6 +1028,59 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
 }
 
 #[test]
+fn a_look_places_the_person_and_the_pot_that_are_still_under_the_rock() {
+    let mut world = world_at(10_000);
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    let before = world.observe(west).unwrap().text;
+    assert!(
+        before.contains("A pot sits on the ground under the rock overhang."),
+        "{before}"
+    );
+    assert!(!before.contains("Near stands"), "{before}");
+    assert!(
+        !world.observe(far).unwrap().text.contains("pot"),
+        "Far cannot see the rock"
+    );
+
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let standing = world.observe(west).unwrap().text;
+    assert!(
+        standing.contains("Near stands on the valley floor under the rock overhang."),
+        "{standing}"
+    );
+    assert!(
+        standing.contains("A pot sits on the ground there."),
+        "{standing}"
+    );
+    assert!(!standing.contains("1 person"), "{standing}");
+
+    let report = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    assert_eq!(report.results[0].message, "You gather a pot.");
+    let after = world.observe(west).unwrap().text;
+    assert!(
+        after.contains("Near stands on the valley floor under the rock overhang."),
+        "{after}"
+    );
+    assert!(
+        !after.contains("pot"),
+        "the pot is in the arms, not on the ground: {after}"
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("pot") && !event.text.contains("gather") }));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near gathers a pot."));
+}
+
+#[test]
 fn gathering_a_pot_is_one_sentence_for_each_pair_of_eyes() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();

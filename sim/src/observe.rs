@@ -229,6 +229,9 @@ impl World {
         if let Some(person) = self.person_on_the_berries_north_of_the_west_floor(actor_id) {
             lines.push(person);
         }
+        if let Some(seen) = self.seen_under_the_rock(actor_id) {
+            lines.push(seen);
+        }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
@@ -583,6 +586,85 @@ impl World {
             }
         }
         parts.join(" ")
+    }
+
+    /// A rock in sight that the compass lines do not already stand on.
+    /// The pot is named only while it is still on that ground.
+    fn seen_under_the_rock(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.cell(cell).rock || cell == origin || orthogonal_neighbor(origin, cell) {
+                continue;
+            }
+            let person_already = self.rock_person_already_in_the_compass(origin, cell);
+            let mut names: Vec<String> = self
+                .actors
+                .values()
+                .filter(|actor| actor.cell == cell && actor.id != viewer)
+                .map(|actor| actor.name.clone())
+                .collect();
+            names.sort();
+            let pot_on_the_ground = self.pile_count(cell, Material::Pot) > 0
+                || !self.ground_ids(cell, Material::Pot).is_empty();
+            let mut parts = Vec::new();
+            if !names.is_empty() && !person_already {
+                let verb = if names.len() == 1 { "stands" } else { "stand" };
+                let ground = self.cell(cell).region.word();
+                parts.push(format!(
+                    "{} {verb} on the {ground} under the rock overhang.",
+                    self.join_names(&names)
+                ));
+            }
+            if pot_on_the_ground {
+                if parts.is_empty() {
+                    parts.push("A pot sits on the ground under the rock overhang.".into());
+                } else {
+                    parts.push("A pot sits on the ground there.".into());
+                }
+            }
+            if !parts.is_empty() {
+                lines.push(parts.join(" "));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// The compass already names the person under the rock, one step past the outside floor.
+    fn rock_person_already_in_the_compass(&self, origin: CellId, rock: CellId) -> bool {
+        let (x, y) = cell_xy(origin);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            let Some(floor) = self.outside_floor(dest) else {
+                continue;
+            };
+            if dir.word() != floor.rock_side {
+                continue;
+            }
+            let Some(rock_dir) = Dir::all()
+                .into_iter()
+                .find(|way| way.word() == floor.rock_side)
+            else {
+                continue;
+            };
+            let (rx, ry) = rock_dir.delta();
+            let (fx, fy) = cell_xy(dest);
+            if cell_id(fx + rx, fy + ry) == Some(rock)
+                && self
+                    .name_under_that_rock(origin, dest, floor.rock_side)
+                    .is_some()
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// Under the rock the other person is named with the overhang, before the wood.
@@ -4138,6 +4220,14 @@ fn carried_food_phrase(material: Material, count: u32, condition: &str) -> Strin
     } else {
         format!("{} {condition} {many}", capitalize(&count_word(count)))
     }
+}
+
+fn orthogonal_neighbor(from: CellId, to: CellId) -> bool {
+    let (x1, y1) = cell_xy(from);
+    let (x2, y2) = cell_xy(to);
+    let dx = (x1 - x2).abs();
+    let dy = (y1 - y2).abs();
+    (dx == 1 && dy == 0) || (dx == 0 && dy == 1)
 }
 
 fn cell_span(count: u32) -> String {
