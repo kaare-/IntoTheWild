@@ -708,6 +708,7 @@ fn parser_accepts_the_evening_commands() {
         Attempt::BindSpear
     ));
     assert!(matches!(parse_attempt("knap").unwrap(), Attempt::Knap));
+    assert!(matches!(parse_attempt("haft").unwrap(), Attempt::Haft));
     assert!(matches!(
         parse_attempt("examine spear").unwrap(),
         Attempt::Examine(ExamineTarget::Spear)
@@ -6350,5 +6351,86 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
     assert_eq!(
         again.results[0].message,
         "You are not carrying a flint nodule."
+    );
+}
+
+#[test]
+fn a_flint_flake_and_a_dry_branch_haft_into_a_spear() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    let early = world.step(&[cmd("early", near, Attempt::Haft)]);
+    assert_eq!(early.results[0].message, "You are not carrying a branch.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("haft")));
+    for (id, dir) in [
+        ("east", Dir::East),
+        ("east-2", Dir::East),
+        ("south", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let before = world.observe(near).unwrap().text;
+    assert_eq!(
+        arms_sentence(&before),
+        "You have a sharp flint flake, a dry branch."
+    );
+    let report = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    let sentence = "You haft the flint flake and a dry branch into a spear.";
+    let witnessed = "Near hafts the flint flake and a dry branch into a spear.";
+    assert_eq!(report.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("haft"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("haft"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("haft")));
+    let after = world.observe(near).unwrap().text;
+    let arms = arms_sentence(&after);
+    assert_eq!(
+        arms,
+        "You have a spear with a flint tip, not yet fire-hardened."
+    );
+    assert!(!arms.contains("flake"), "{arms}");
+    assert!(!arms.contains("branch"), "{arms}");
+    assert!(
+        after.contains("a spear with a flint tip, not yet fire-hardened"),
+        "{after}"
+    );
+    let examined = world.examine(near, ExamineTarget::Spear);
+    assert!(
+        examined.contains("A spear with a flint tip, not yet fire-hardened,"),
+        "{examined}"
+    );
+    let from_west = world.examine(west, ExamineTarget::Spear);
+    assert!(
+        from_west.contains("A spear with a flint tip, not yet fire-hardened,"),
+        "{from_west}"
     );
 }

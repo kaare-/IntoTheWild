@@ -49,6 +49,7 @@ impl World {
         let mut sets = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
+        let mut hafts = Vec::new();
         let mut hunts = Vec::new();
 
         for intent in pending {
@@ -88,6 +89,7 @@ impl World {
                         Attempt::SetClay => sets.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
+                        Attempt::Haft => hafts.push(intent),
                         Attempt::Hunt => hunts.push(intent),
                     }
                 }
@@ -171,6 +173,7 @@ impl World {
         self.apply_sets(sets, &mut results);
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
+        self.apply_hafts(hafts, &mut results);
         self.apply_hunts(hunts, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
@@ -251,6 +254,23 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Flint).is_empty() {
                     Err("You are not carrying a flint nodule.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Haft => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Flake).is_empty() {
+                    Err("You are not carrying a flint flake.".into())
+                } else if self.loose_ids(actor.id, Material::Branch).is_empty() {
+                    Err("You are not carrying a branch.".into())
+                } else if self.dry_loose_ids(actor.id, Material::Branch).is_empty() {
+                    Err("The branch is too damp to haft.".into())
                 } else {
                     Ok(true)
                 }
@@ -1439,6 +1459,57 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, "knap", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_hafts(&mut self, hafts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the flint flake and a dry branch into a spear.";
+        for intent in hafts {
+            let flake = self
+                .loose_ids(intent.actor_id, Material::Flake)
+                .first()
+                .copied();
+            let branch = self
+                .dry_loose_ids(intent.actor_id, Material::Branch)
+                .first()
+                .copied();
+            let (Some(flake), Some(branch)) = (flake, branch) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need a carried flint flake and a carried dry branch.",
+                    results,
+                );
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.items.remove(&flake);
+            self.items.remove(&branch);
+            let id = self.mint_item(Material::Spear, 0, cell, Some(intent.actor_id), Role::Loose);
+            if let Some(spear) = self.items.get_mut(&id) {
+                spear.flint_tip = true;
+            }
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "haft", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "haft", rest),
                 results,
             );
         }

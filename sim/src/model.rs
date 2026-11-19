@@ -229,6 +229,7 @@ pub enum Attempt {
     SetClay,
     BindSpear,
     Knap,
+    Haft,
     Hunt,
     Eat(Material),
     Smear,
@@ -252,6 +253,7 @@ impl Attempt {
                 | Attempt::SetClay
                 | Attempt::BindSpear
                 | Attempt::Knap
+                | Attempt::Haft
                 | Attempt::Hunt
                 | Attempt::Eat(_)
                 | Attempt::Smear
@@ -357,6 +359,9 @@ pub struct Item {
     /// Brook water that has not been boiled. Boiled water is not raw.
     #[serde(default)]
     pub raw: bool,
+    /// A spear hafted from a flint flake. It is not the stone-bound spear.
+    #[serde(default)]
+    pub flint_tip: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -913,6 +918,7 @@ impl World {
                 firing_ready_at: None,
                 hardened: false,
                 raw: false,
+                flint_tip: false,
             },
         );
         id

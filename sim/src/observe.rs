@@ -579,8 +579,11 @@ impl World {
             parts.push("A deer carcass lies here.".into());
         }
         for id in self.ground_ids(actor.cell, Material::Spear) {
-            let hardened = self.item(id).is_some_and(|item| item.hardened);
-            if hardened {
+            let spear = self.item(id);
+            let hardened = spear.is_some_and(|item| item.hardened);
+            if spear.is_some_and(|item| item.flint_tip && !item.hardened) {
+                parts.push("A spear with a flint tip, not yet fire-hardened, lies here.".into());
+            } else if hardened {
                 parts.push("A spear lies here. The point is hardened.".into());
             } else {
                 parts.push("A spear lies here. The point is not hardened.".into());
@@ -824,6 +827,8 @@ impl World {
             format!("a {} flint nodule", item.condition)
         } else if item.material == "flake" && item.count == 1 {
             "a sharp flint flake".into()
+        } else if item.material == "branch" && item.count == 1 {
+            format!("a {} branch", item.condition)
         } else if item.material == "bark" && item.count == 1 {
             format!("a {} sheet of bark", item.condition)
         } else if item.material == "pot" && item.count == 1 {
@@ -835,12 +840,13 @@ impl World {
         } else if item.material == "carcass" && item.count == 1 {
             "a deer carcass".into()
         } else if item.material == "spear" && item.count == 1 {
-            let hardened = self
+            let spear = self
                 .loose_ids(actor_id, Material::Spear)
                 .first()
-                .and_then(|id| self.item(*id))
-                .is_some_and(|spear| spear.hardened);
-            if hardened {
+                .and_then(|id| self.item(*id));
+            if spear.is_some_and(|spear| spear.flint_tip && !spear.hardened) {
+                "a spear with a flint tip, not yet fire-hardened".into()
+            } else if spear.is_some_and(|spear| spear.hardened) {
                 "a spear with a hardened point".into()
             } else {
                 "a spear with an unhardened point".into()
@@ -994,8 +1000,11 @@ impl World {
         let Some(id) = self.loose_ids(actor_id, Material::Spear).first().copied() else {
             return String::new();
         };
-        let hardened = self.item(id).is_some_and(|item| item.hardened);
-        if hardened {
+        let spear = self.item(id);
+        let hardened = spear.is_some_and(|item| item.hardened);
+        if spear.is_some_and(|item| item.flint_tip && !item.hardened) {
+            " They carry a spear with a flint tip, not yet fire-hardened.".into()
+        } else if hardened {
             " They carry a spear with a hardened point.".into()
         } else if self.spear_is_hardening(actor_id) {
             " They carry a spear with an unhardened point. The point is hardening in the fire."
@@ -1253,12 +1262,13 @@ impl World {
             bits.push("a spear hardening in the fire".into());
         }
         if self.ground_ids(dest, Material::Spear).len() == 1 {
-            let hardened = self
+            let spear = self
                 .ground_ids(dest, Material::Spear)
                 .first()
-                .and_then(|id| self.item(*id))
-                .is_some_and(|spear| spear.hardened);
-            if hardened {
+                .and_then(|id| self.item(*id));
+            if spear.is_some_and(|spear| spear.flint_tip && !spear.hardened) {
+                bits.push("a spear with a flint tip, not yet fire-hardened".into());
+            } else if spear.is_some_and(|spear| spear.hardened) {
                 bits.push("a spear with a hardened point".into());
             } else {
                 bits.push("a spear with an unhardened point".into());
@@ -2658,7 +2668,15 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             for id in self.ground_ids(cell, Material::Spear) {
-                let hardened = self.item(id).is_some_and(|item| item.hardened);
+                let spear = self.item(id);
+                if spear.is_some_and(|item| item.flint_tip && !item.hardened) {
+                    lines.push(format!(
+                        "A spear with a flint tip, not yet fire-hardened, lies in contact with the ground {}.",
+                        self.place_phrase(origin, cell)
+                    ));
+                    continue;
+                }
+                let hardened = spear.is_some_and(|item| item.hardened);
                 let point = if hardened {
                     "The point is hardened."
                 } else {
@@ -2678,7 +2696,15 @@ impl World {
             };
             let cell = self.actor(other).unwrap().cell;
             for id in self.loose_ids(other, Material::Spear) {
-                let hardened = self.item(id).is_some_and(|item| item.hardened);
+                let spear = self.item(id);
+                if spear.is_some_and(|item| item.flint_tip && !item.hardened) {
+                    lines.push(format!(
+                        "A spear with a flint tip, not yet fire-hardened, is carried by {who}, {}.",
+                        self.cover_phrase(cell)
+                    ));
+                    continue;
+                }
+                let hardened = spear.is_some_and(|item| item.hardened);
                 let point = if hardened {
                     "a hardened point"
                 } else {
@@ -3904,6 +3930,20 @@ impl World {
         })
     }
 
+    /// A successful haft, filled for the person who bound it.
+    /// Anyone else keeps the stored sentence.
+    fn haft_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} hafts "))?;
+        if rest != "the flint flake and a dry branch into a spear." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "haft", rest))
+    }
+
     /// A successful knap, filled for the person who struck it.
     /// Anyone else keeps the stored sentence.
     fn knap_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -4016,6 +4056,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.knap_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.haft_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
@@ -4333,6 +4376,11 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Flint).is_empty() {
             actions.push("knap".into());
+        }
+        if !self.loose_ids(actor_id, Material::Flake).is_empty()
+            && !self.loose_ids(actor_id, Material::Branch).is_empty()
+        {
+            actions.push("haft".into());
         }
         if self.actors.values().any(|other| {
             chebyshev(actor.cell, other.cell) <= self.tuning.sight

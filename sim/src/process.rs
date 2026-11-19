@@ -92,7 +92,7 @@ impl World {
                 let Some(item) = self.item(id).cloned() else {
                     continue;
                 };
-                if item.hardened {
+                if item.hardened || item.flint_tip {
                     continue;
                 }
                 if at_fire {
@@ -118,6 +118,7 @@ impl World {
         };
         if item.material != Material::Spear
             || item.hardened
+            || item.flint_tip
             || item.firing_ready_at != Some(self.time)
         {
             return;

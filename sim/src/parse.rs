@@ -13,6 +13,7 @@ drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
+haft                         a carried flint flake and a dry branch into a spear
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
@@ -83,6 +84,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             if rest.is_empty() || rest == "flint" || rest == "nodule" || rest == "flint nodule" =>
         {
             Ok(Attempt::Knap)
+        }
+        "haft" if rest.is_empty() || rest == "spear" || rest == "flake" || rest == "flint" => {
+            Ok(Attempt::Haft)
         }
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
