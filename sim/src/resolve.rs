@@ -494,6 +494,7 @@ impl World {
                             | Material::Bowl
                             | Material::Spear
                             | Material::Carcass
+                            | Material::Hide
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -616,6 +617,7 @@ impl World {
                     | Material::Bowl
                     | Material::Spear
                     | Material::Carcass
+                    | Material::Hide
                     | Material::Flint
             ) {
                 self.ground_ids(cell, material)
@@ -1803,8 +1805,9 @@ impl World {
             for _ in 0..3 {
                 ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
             }
+            ids.push(self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose));
             let name = self.name_of(actor.id);
-            let rest = "the carcass into three portions of raw meat.";
+            let rest = "the carcass into three portions of raw meat and a hide.";
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
                 Scope::Cell(actor.cell),

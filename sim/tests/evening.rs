@@ -6605,8 +6605,8 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert_eq!(world.material_tally(Material::Carcass), 1);
 
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
-    let sentence = "You butcher the carcass into three portions of raw meat.";
-    let witnessed = "Near butchers the carcass into three portions of raw meat.";
+    let sentence = "You butcher the carcass into three portions of raw meat and a hide.";
+    let witnessed = "Near butchers the carcass into three portions of raw meat and a hide.";
     assert_eq!(cut.results[0].message, sentence);
     let yours: Vec<_> = world
         .observe(near)
@@ -6642,6 +6642,8 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         ground.contains("Three portions of raw meat lie here."),
         "{ground}"
     );
+    assert!(ground.contains("A deer hide lies here."), "{ground}");
+    assert_eq!(world.material_tally(Material::Hide), 1);
     assert!(!ground.contains("A deer carcass lies here."), "{ground}");
     assert!(
         arms_sentence(&ground).contains("a spear with a fire-hardened flint tip"),
@@ -6651,6 +6653,28 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         world.examine(near, ExamineTarget::Meat),
         "Three portions of raw meat lie here, under the rock overhang."
     );
+    let lifted = world.step(&[cmd("hide", near, Attempt::Gather(Material::Hide))]);
+    assert_eq!(lifted.results[0].message, "You gather a deer hide.");
+    let hide_seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("gathers a deer hide"))
+        .collect();
+    assert_eq!(hide_seen, vec!["Near gathers a deer hide.".to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("hide")));
+    let carried = world.observe(near).unwrap().text;
+    assert!(arms_sentence(&carried).contains("a deer hide"), "{carried}");
+    assert!(!carried.contains("A deer hide lies here."), "{carried}");
+    assert_eq!(world.material_tally(Material::Hide), 1);
+    assert_eq!(world.material_tally(Material::Meat), 3);
     let raw = world.step(&[cmd("raw-meat", near, Attempt::Eat(Material::Meat))]);
     assert!(!raw.results[0].success);
     assert_eq!(raw.results[0].message, "Raw meat is not food.");

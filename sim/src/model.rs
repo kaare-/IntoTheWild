@@ -67,6 +67,7 @@ pub enum Material {
     Flint,
     Flake,
     Meat,
+    Hide,
 }
 
 impl Material {
@@ -89,6 +90,7 @@ impl Material {
             Material::Flint => "flint",
             Material::Flake => "flake",
             Material::Meat => "meat",
+            Material::Hide => "hide",
         }
     }
 
@@ -111,6 +113,7 @@ impl Material {
             Material::Flint => "flint nodule",
             Material::Flake => "flint flake",
             Material::Meat => "raw meat",
+            Material::Hide => "deer hide",
         }
     }
 
@@ -203,6 +206,7 @@ pub enum ExamineTarget {
     Spear,
     Carcass,
     Meat,
+    Hide,
     Fire,
     Water,
     Deer,

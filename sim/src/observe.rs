@@ -187,6 +187,7 @@ impl World {
             ExamineTarget::Spear => self.examine_spear(actor_id),
             ExamineTarget::Carcass => self.examine_carcass(actor_id),
             ExamineTarget::Meat => self.examine_meat(actor_id),
+            ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -582,6 +583,9 @@ impl World {
         if let Some(line) = self.meat_here_line(actor.cell) {
             parts.push(line);
         }
+        if !self.ground_ids(actor.cell, Material::Hide).is_empty() {
+            parts.push("A deer hide lies here.".into());
+        }
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let spear = self.item(id);
             let hardened = spear.is_some_and(|item| item.hardened);
@@ -845,6 +849,8 @@ impl World {
             "a fired bowl".into()
         } else if item.material == "carcass" && item.count == 1 {
             "a deer carcass".into()
+        } else if item.material == "hide" && item.count == 1 {
+            "a deer hide".into()
         } else if item.material == "spear" && item.count == 1 {
             let spear = self
                 .loose_ids(actor_id, Material::Spear)
@@ -1282,6 +1288,9 @@ impl World {
         }
         if let Some(bit) = self.meat_compass_bit(dest) {
             bits.push(bit);
+        }
+        if !self.ground_ids(dest, Material::Hide).is_empty() {
+            bits.push("a deer hide".into());
         }
         if self
             .actors
@@ -2722,6 +2731,40 @@ impl World {
         }
     }
 
+    fn examine_hide(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.ground_ids(cell, Material::Hide).is_empty() {
+                continue;
+            }
+            lines.push(format!(
+                "A deer hide lies {}.",
+                self.place_phrase(origin, cell)
+            ));
+        }
+        for other in self.visible_actor_ids(viewer) {
+            if self.loose_ids(other, Material::Hide).is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            lines.push(format!(
+                "A deer hide is carried by {who}, {}.",
+                self.cover_phrase(cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no hide from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_spear(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3112,6 +3155,7 @@ impl World {
                 Material::Flint => "flint",
                 Material::Flake => "flint flake",
                 Material::Meat => "meat",
+                Material::Hide => "hide",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -4097,7 +4141,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} butchers "))?;
-        if rest != "the carcass into three portions of raw meat." {
+        if rest != "the carcass into three portions of raw meat and a hide." {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
@@ -4194,6 +4238,7 @@ impl World {
             "bowl",
             "spear",
             "carcass",
+            "deer hide",
             "drink of water",
             "flint nodule",
         ];
@@ -4632,6 +4677,11 @@ impl World {
         {
             actions.push("gather carcass".into());
         }
+        if !self.ground_ids(actor.cell, Material::Hide).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather hide".into());
+        }
         if self
             .loose_ids(actor_id, Material::Spear)
             .iter()
@@ -4684,6 +4734,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Carcass).is_empty() {
             actions.push("drop carcass".into());
+        }
+        if !self.loose_ids(actor_id, Material::Hide).is_empty() {
+            actions.push("drop hide".into());
         }
         if self
             .loose_ids(actor_id, Material::Spear)
@@ -4907,6 +4960,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",
         (Material::Meat, _) => "raw meat",
+        (Material::Hide, _) => "deer hide",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
