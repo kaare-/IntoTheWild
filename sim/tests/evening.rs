@@ -6287,22 +6287,35 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
     let west = world.spawn_at("West", "w", 4, 1).unwrap();
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let bare = world.step(&[cmd("early", near, Attempt::Knap)]);
-    assert_eq!(
-        bare.results[0].message,
-        "You are not carrying a flint nodule."
-    );
-    assert!(world
-        .observe(west)
+    let failure = "You are not carrying a flint nodule.";
+    assert_eq!(bare.results[0].message, failure);
+    let near_fail: Vec<_> = world
+        .observe(near)
         .unwrap()
         .events
         .iter()
-        .all(|event| !event.text.contains("knap")));
-    assert!(world
-        .observe(far)
-        .unwrap()
-        .events
-        .iter()
-        .all(|event| !event.text.contains("knap")));
+        .map(|event| event.text.clone())
+        .filter(|text| text == failure || text.to_lowercase().contains("knap"))
+        .collect();
+    assert_eq!(near_fail, vec![failure.to_string()]);
+    for witness in [west, far] {
+        assert!(
+            world
+                .observe(witness)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != failure && !event.text.to_lowercase().contains("knap")),
+            "{:?}",
+            world
+                .observe(witness)
+                .unwrap()
+                .events
+                .iter()
+                .map(|event| event.text.clone())
+                .collect::<Vec<_>>()
+        );
+    }
     world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
     let before = world.observe(near).unwrap().text;
     assert_eq!(arms_sentence(&before), "You have a dry flint nodule.");
