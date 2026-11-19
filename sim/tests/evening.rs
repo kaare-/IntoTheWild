@@ -1090,6 +1090,11 @@ fn lighting_a_fire_is_one_sentence_for_each_pair_of_eyes() {
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();
     let west = world.spawn_at("West", "w", 5, 3).unwrap();
     let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    let before = world.observe(west).unwrap().text;
+    assert!(
+        !before.contains("fire"),
+        "no fire before it is lit: {before}"
+    );
     let report = world.step(&[cmd("light", near, Attempt::Light)]);
     let sentence = "You light a fire with bark and a dry branch from the pile at the feet.";
     let witnessed = "Near lights a fire with bark and a dry branch from the pile at the feet.";
@@ -1112,6 +1117,11 @@ fn lighting_a_fire_is_one_sentence_for_each_pair_of_eyes() {
         .filter(|text| text.contains("light"))
         .collect();
     assert_eq!(seen, vec![witnessed.to_string()]);
+    let after = world.observe(west).unwrap().text;
+    assert!(
+        after.contains("A small fire burns there. It warms anyone standing at it."),
+        "{after}"
+    );
     assert!(world
         .observe(far)
         .unwrap()

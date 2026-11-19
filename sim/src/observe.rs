@@ -653,6 +653,16 @@ impl World {
                     parts.push("A pot sits on the ground there.".into());
                 }
             }
+            if self.fire_at(cell).is_some() {
+                if parts.is_empty() {
+                    parts.push(
+                        "A small fire burns under the rock overhang. It warms anyone standing at it."
+                            .into(),
+                    );
+                } else {
+                    parts.push("A small fire burns there. It warms anyone standing at it.".into());
+                }
+            }
             if !parts.is_empty() {
                 lines.push(parts.join(" "));
             }
