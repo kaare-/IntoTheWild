@@ -438,10 +438,8 @@ impl World {
                         }
                         Material::Clay => Err("Unfired clay is not food.".into()),
                         Material::Bowl => Err("A bowl is not food.".into()),
-                        Material::Bark => {
-                            Err("Bark is tinder, not food. Light a fire and cook berries.".into())
-                        }
-                        _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
+                        Material::Bark => Err("Bark is tinder, not food.".into()),
+                        _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
             }

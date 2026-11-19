@@ -2302,7 +2302,7 @@ fn eat_bark_is_refused_and_the_sheet_still_lights() {
     let west = world.spawn_at("West", "w", 5, 3).unwrap();
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let bark = world.material_tally(Material::Bark);
-    let line = "Bark is tinder, not food. Light a fire and cook berries.";
+    let line = "Bark is tinder, not food.";
     let hunger = world.observe(near).unwrap().self_info.hunger.clone();
     assert!(world
         .observe(near)

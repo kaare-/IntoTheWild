@@ -149,9 +149,7 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
         | "poison berries" => Ok(Attempt::Eat(Material::BitterBerry)),
         "bark" => Ok(Attempt::Eat(Material::Bark)),
-        "wood" | "branch" | "branches" | "log" => {
-            Err("Bark is tinder, not food. Light a fire and cook berries.".into())
-        }
+        "wood" | "branch" | "branches" | "log" => Err("Bark is tinder, not food.".into()),
         "mud" => Err("Mud is for your skin, not your stomach.".into()),
         "carcass" | "deer carcass" => Ok(Attempt::Eat(Material::Carcass)),
         "meat" | "cooked meat" | "raw meat" => Ok(Attempt::Eat(Material::Meat)),
