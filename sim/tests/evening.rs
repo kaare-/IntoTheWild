@@ -2001,6 +2001,125 @@ fn still_water_sickens_more_often_than_the_brook() {
 }
 
 #[test]
+fn seed_one_still_water_sickens_on_the_next_drink_and_the_brook_does_not() {
+    let mut early = World::valley(Tuning::evening(), 1);
+    let near = early.spawn_at("Near", "n", 2, 1).unwrap();
+    for _ in 0..4 {
+        early.step(&[]);
+    }
+    let arrived = early.step(&[cmd("arrive", near, Attempt::Drink)]);
+    assert_eq!(
+        arrived.results[0].message, "You drink the still water. The thirst eases.",
+        "seed 1, the drink on arrival at the pool, is the safe draw"
+    );
+    assert_eq!(early.observe(near).unwrap().self_info.illness, "well");
+
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    pair(
+        &mut world,
+        "w",
+        near,
+        Attempt::Move(Dir::West),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    pair(
+        &mut world,
+        "w2",
+        near,
+        Attempt::Move(Dir::West),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    pair(
+        &mut world,
+        "nw",
+        near,
+        Attempt::Move(Dir::North),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    pair(
+        &mut world,
+        "nn",
+        near,
+        Attempt::Move(Dir::North),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    world.step(&[cmd("to-brook", west, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(west), Some((1, 2)));
+    assert_eq!(world.sim_time(), 5);
+    let drunk = world.step(&[
+        cmd("still", near, Attempt::Drink),
+        cmd("brook", west, Attempt::Drink),
+    ]);
+    assert_eq!(
+        drunk.results[0].message,
+        "You drink the still water. The thirst eases. Your stomach turns."
+    );
+    assert_eq!(
+        drunk.results[1].message,
+        "You drink from the brook. The thirst eases."
+    );
+    let pool = world.observe(near).unwrap();
+    let running = world.observe(west).unwrap();
+    let witness = world.observe(far).unwrap();
+    assert_eq!(pool.self_info.illness, "ill");
+    assert!(pool.text.contains("You are ill."));
+    assert_eq!(running.self_info.illness, "well");
+    assert!(running.text.contains("You are well."));
+    assert!(pool
+        .events
+        .iter()
+        .any(|event| event.text == "Near's stomach turns."));
+    assert!(running
+        .events
+        .iter()
+        .all(|event| !event.text.contains("stomach")));
+    assert!(witness
+        .events
+        .iter()
+        .any(|event| event.text == "Near drinks the still water."));
+    assert!(witness
+        .events
+        .iter()
+        .any(|event| event.text == "West drinks from the brook."));
+    assert!(witness
+        .events
+        .iter()
+        .all(|event| !event.text.contains("stomach")));
+
+    world.step(&[cmd("fill", west, Attempt::Gather(Material::Water))]);
+    for id in ["e1", "e2", "e3", "e4", "e5"] {
+        world.step(&[cmd(id, west, Attempt::Move(Dir::East))]);
+    }
+    world.step(&[cmd("up", west, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(west), Some((6, 1)));
+    world.step(&[cmd("pot", west, Attempt::Gather(Material::Pot))]);
+    world.step(&[cmd("light", west, Attempt::Light)]);
+    let boiled = world.step(&[cmd("boil", west, Attempt::Boil)]);
+    assert_eq!(
+        boiled.results[0].message,
+        "You boil the drink in the pot over the fire and drink it."
+    );
+    let safe = world.observe(west).unwrap();
+    assert_eq!(safe.self_info.illness, "well");
+    assert!(safe.text.contains("You are well."));
+    assert!(safe
+        .events
+        .iter()
+        .all(|event| !event.text.contains("stomach")));
+    assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
+    assert_eq!(world.sim_time(), 16);
+    assert!(!world.is_raining());
+}
+
+#[test]
 fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     let mut world = world_at(10_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
