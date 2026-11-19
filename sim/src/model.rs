@@ -368,6 +368,9 @@ pub struct Item {
     /// A spear hafted from a flint flake. It is not the stone-bound spear.
     #[serde(default)]
     pub flint_tip: bool,
+    /// Meat that has been held over a fire. Raw meat leaves this false.
+    #[serde(default)]
+    pub cooked: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -925,6 +928,7 @@ impl World {
                 hardened: false,
                 raw: false,
                 flint_tip: false,
+                cooked: false,
             },
         );
         id
@@ -1276,6 +1280,13 @@ impl World {
             .map(|material| self.pile_count(cell, material))
             .sum();
         piles + self.ground_ids(cell, Material::Carcass).len() as u32
+    }
+
+    /// One piece of raw meat lying on this cell. Cooked meat is not raw.
+    pub(crate) fn raw_meat_at(&self, cell: CellId) -> Option<ItemId> {
+        self.ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|meat| !meat.cooked))
     }
 
     pub(crate) fn name_of(&self, id: ActorId) -> String {

@@ -579,8 +579,8 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Carcass).is_empty() {
             parts.push("A deer carcass lies here.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Meat).is_empty() {
-            parts.push("Raw meat lies here.".into());
+        if let Some(line) = self.meat_here_line(actor.cell) {
+            parts.push(line);
         }
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let spear = self.item(id);
@@ -1280,8 +1280,8 @@ impl World {
         if !self.ground_ids(dest, Material::Carcass).is_empty() {
             bits.push("a carcass".into());
         }
-        if !self.ground_ids(dest, Material::Meat).is_empty() {
-            bits.push("raw meat".into());
+        if let Some(bit) = self.meat_compass_bit(dest) {
+            bits.push(bit);
         }
         if self
             .actors
@@ -2698,13 +2698,11 @@ impl World {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if self.ground_ids(cell, Material::Meat).is_empty() {
-                continue;
+            for id in self.ground_ids(cell, Material::Meat) {
+                let cooked = self.item(id).is_some_and(|meat| meat.cooked);
+                let kind = if cooked { "Cooked meat" } else { "Raw meat" };
+                lines.push(format!("{kind} lies {}.", self.place_phrase(origin, cell)));
             }
-            lines.push(format!(
-                "Raw meat lies {}.",
-                self.place_phrase(origin, cell)
-            ));
         }
         if lines.is_empty() {
             "You see no meat from here.".into()
@@ -4003,6 +4001,53 @@ impl World {
         })
     }
 
+    /// Raw meat held over the fire, filled for the person who cooked it.
+    fn cook_meat_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
+        if rest != "the raw meat over the fire." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "cook", rest))
+    }
+
+    fn meat_here_line(&self, cell: crate::model::CellId) -> Option<String> {
+        let ids = self.ground_ids(cell, Material::Meat);
+        if ids.is_empty() {
+            return None;
+        }
+        let cooked = ids
+            .iter()
+            .all(|id| self.item(*id).is_some_and(|meat| meat.cooked));
+        Some(if cooked {
+            "Cooked meat lies here.".into()
+        } else {
+            "Raw meat lies here.".into()
+        })
+    }
+
+    fn meat_compass_bit(&self, cell: crate::model::CellId) -> Option<String> {
+        let ids = self.ground_ids(cell, Material::Meat);
+        if ids.is_empty() {
+            return None;
+        }
+        let cooked = ids
+            .iter()
+            .all(|id| self.item(*id).is_some_and(|meat| meat.cooked));
+        Some(if cooked {
+            "cooked meat".into()
+        } else {
+            "raw meat".into()
+        })
+    }
+
     /// A carcass cut with the flint spear, filled for the person who cut it.
     fn butcher_for_these_eyes(
         &self,
@@ -4190,6 +4235,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.butcher_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {

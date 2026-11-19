@@ -1168,7 +1168,10 @@ impl World {
         if self.fire_at(person.cell).is_none() {
             return Some("There is no fire burning here.".into());
         }
-        if !self.cookable_carried(actor) && self.cookable_pile(person.cell) == 0 {
+        if !self.cookable_carried(actor)
+            && self.cookable_pile(person.cell) == 0
+            && self.raw_meat_at(person.cell).is_none()
+        {
             return Some("There is nothing here to cook.".into());
         }
         None
@@ -1247,6 +1250,14 @@ impl World {
         let mut carried = Vec::new();
         let mut piles: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
         for intent in cooks {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if self.raw_meat_at(cell).is_some() {
+                self.cook_meat(intent, results);
+                continue;
+            }
             if self.cookable_carried(intent.actor_id) {
                 carried.push(intent);
             } else {
@@ -1304,6 +1315,57 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Raw meat on the fire's own cell. It stays on the ground and is not eaten.
+    fn cook_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if self.cook_refusal(intent.actor_id).is_some() {
+            let message = self
+                .cook_refusal(intent.actor_id)
+                .unwrap_or_else(|| "There is no fire burning here.".into());
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let Some(id) = self.raw_meat_at(cell) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        if let Some(meat) = self.items.get_mut(&id) {
+            meat.cooked = true;
+        }
+        let rest = "the raw meat over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
     }
 
     fn cook_for(

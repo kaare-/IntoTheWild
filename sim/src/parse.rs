@@ -22,7 +22,7 @@ lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them
-cook                         mushrooms, sweet berries, or a carcass; poison berries are not food
+cook                         mushrooms, sweet berries, a carcass, or raw meat; poison berries are not food
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet; a flint spear in your arms
 eat berries                  sweet berries only; poison berries sicken you
