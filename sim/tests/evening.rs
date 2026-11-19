@@ -2209,6 +2209,77 @@ fn open_sky_chills_and_burns_while_shelter_and_mud_hold_them_off() {
 }
 
 #[test]
+fn mud_on_the_skin_keeps_the_same_sun_from_burning() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    for (id, dir) in [
+        ("w", Dir::West),
+        ("w2", Dir::West),
+        ("n", Dir::North),
+        ("n2", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    let scooped = world.step(&[cmd("mud", near, Attempt::Gather(Material::Mud))]);
+    assert_eq!(scooped.results[0].message, "You gather a handful of mud.");
+    let smeared = world.step(&[cmd("smear", near, Attempt::Smear)]);
+    assert_eq!(smeared.results[0].message, "You smear mud on your skin.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You smear mud on your skin."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near smears mud on their skin."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("smear") && !event.text.contains("mud")));
+    while world.observe(west).unwrap().self_info.sunburn != "burned" {
+        assert!(
+            !world.is_raining(),
+            "the contrast has to show before the rain"
+        );
+        world.step(&[]);
+        assert!(
+            world.sim_time() < 16,
+            "sun should burn the bare skin before the rain"
+        );
+    }
+    let covered = world.observe(near).unwrap().self_info;
+    let bare = world.observe(west).unwrap().self_info;
+    assert_eq!(covered.mud, "mud-smeared");
+    assert_eq!(bare.mud, "bare skin");
+    assert_ne!(covered.sunburn, "burned");
+    assert_eq!(bare.sunburn, "burned");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Your skin is mud-smeared."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .text
+        .contains("Your skin is bare skin."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .text
+        .contains("Your skin is burned."));
+}
+
+#[test]
 fn the_rock_takes_the_cold_off() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();
@@ -2507,10 +2578,9 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     cook.step(&[cmd("light", sera, Attempt::Light)]);
     cook.step(&[cmd("meal", sera, Attempt::Cook)]);
     let refused = cook.observe(sera).unwrap();
-    assert!(refused
-        .events
-        .iter()
-        .any(|event| event.text.contains("Cooking does not make poison berries food.")));
+    assert!(refused.events.iter().any(|event| event
+        .text
+        .contains("Cooking does not make poison berries food.")));
     assert_eq!(cook.material_tally(Material::BitterBerry), 2);
     assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
 

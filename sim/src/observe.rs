@@ -4131,6 +4131,18 @@ impl World {
         Some(crate::model::spoken_act(None, "wear", rest))
     }
 
+    /// Mud put on the skin, filled for the person who smeared it.
+    fn smear_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text != format!("{name} smears mud on their skin.") {
+            return None;
+        }
+        Some("You smear mud on your skin.".into())
+    }
+
     /// Cooked meat eaten, filled for the person who ate it.
     fn eat_meat_for_these_eyes(
         &self,
@@ -4442,6 +4454,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.wear_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.smear_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
