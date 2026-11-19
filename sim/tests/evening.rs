@@ -6522,3 +6522,75 @@ fn a_flint_tipped_spear_hardens_in_the_rock_fire() {
         "{from_west}"
     );
 }
+
+#[test]
+fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [
+        ("east", Dir::East),
+        ("east-2", Dir::East),
+        ("south", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("haft", near, Attempt::Haft)]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert_eq!(
+        arms_sentence(&world.observe(near).unwrap().text),
+        "You have a spear with a fire-hardened flint tip."
+    );
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let mut waited = 0;
+    while world.deer_cell() != Some((6, 1)) && waited < 40 {
+        world.step(&[]);
+        waited += 1;
+    }
+    assert_eq!(
+        world.deer_cell(),
+        Some((6, 1)),
+        "the deer returns under the rock"
+    );
+    let report = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
+    let sentence = "You bring the deer down with the flint spear.";
+    let witnessed = "Near brings the deer down with the flint spear.";
+    assert_eq!(report.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("bring"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("brings"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("bring")));
+    assert!(world.deer_cell().is_none());
+    let after = world.observe(near).unwrap().text;
+    assert!(after.contains("A deer carcass lies here."), "{after}");
+    assert!(!after.contains("A deer stands here."), "{after}");
+    assert_eq!(world.material_tally(Material::Carcass), 1);
+}

@@ -304,6 +304,12 @@ impl World {
                 {
                     if self.loose_ids(actor.id, Material::Spear).is_empty() {
                         Err("You are not carrying a spear.".into())
+                    } else if self
+                        .loose_ids(actor.id, Material::Spear)
+                        .iter()
+                        .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+                    {
+                        Err("The flint tip is not fire-hardened.".into())
                     } else {
                         Err("The spear's point is not hardened.".into())
                     }
@@ -1575,6 +1581,12 @@ impl World {
             {
                 let message = if self.loose_ids(actor.id, Material::Spear).is_empty() {
                     "You are not carrying a spear."
+                } else if self
+                    .loose_ids(actor.id, Material::Spear)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+                {
+                    "The flint tip is not fire-hardened."
                 } else {
                     "The spear's point is not hardened."
                 };
@@ -1670,11 +1682,27 @@ impl World {
         results: &mut Vec<CommandResult>,
     ) {
         let name = self.name_of(intent.actor_id);
+        let flint = self
+            .loose_ids(intent.actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
         self.tracks.insert(deer_cell);
         self.deer = None;
         let id = self.mint_item(Material::Carcass, 0, deer_cell, None, Role::Loose);
+        let (heard, yours) = if flint {
+            let rest = "the deer down with the flint spear.";
+            (
+                crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+                crate::model::spoken_act(None, "bring", rest),
+            )
+        } else {
+            (
+                format!("{name} brings the deer down."),
+                "You bring the deer down. A carcass lies where it stood.".to_string(),
+            )
+        };
         self.emit(
-            format!("{name} brings the deer down."),
+            heard,
             Scope::Cell(deer_cell),
             vec![intent.actor_id],
             vec![deer_cell],
@@ -1686,7 +1714,7 @@ impl World {
             intent.command_id.clone(),
             intent.actor_id,
             true,
-            "You bring the deer down. A carcass lies where it stood.",
+            yours,
             results,
         );
     }
