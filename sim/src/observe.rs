@@ -10,6 +10,7 @@ use serde::Serialize;
 pub const LEGEND: &str = "\
 @ you          p other
 L log          w dry wood
+n flint nodule
 W wet wood     b bark
 B wet bark     * fire
 y berries      Y wet berries
@@ -179,6 +180,7 @@ impl World {
             ExamineTarget::Pot => self.examine_material(actor_id, Material::Pot),
             ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
             ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
+            ExamineTarget::Flint => self.examine_flint(actor_id),
             ExamineTarget::Clay => self.examine_clay(actor_id),
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
             ExamineTarget::Spear => self.examine_spear(actor_id),
@@ -231,6 +233,9 @@ impl World {
         }
         if let Some(seen) = self.seen_under_the_rock(actor_id) {
             lines.push(seen);
+        }
+        if let Some(flint) = self.seen_flint(actor_id) {
+            lines.push(flint);
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
@@ -548,6 +553,11 @@ impl World {
         {
             parts.push("A loose stone lies here.".into());
         }
+        if self.pile_count(actor.cell, Material::Flint) > 0
+            || !self.ground_ids(actor.cell, Material::Flint).is_empty()
+        {
+            parts.push("A flint nodule lies here.".into());
+        }
         let firing = self.clay_firing_count(actor.cell);
         let loose_clay = self.ground_ids(actor.cell, Material::Clay).len() as u32;
         let clay_pile = self.pile_count(actor.cell, Material::Clay);
@@ -586,6 +596,30 @@ impl World {
             }
         }
         parts.join(" ")
+    }
+
+    /// A flint nodule in sight that the place line and the compass do not already name.
+    fn seen_flint(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || orthogonal_neighbor(origin, cell) {
+                continue;
+            }
+            let count = self.pile_count(cell, Material::Flint)
+                + self.ground_ids(cell, Material::Flint).len() as u32;
+            if count > 0 {
+                lines.push(format!(
+                    "A flint nodule lies {}.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
     }
 
     /// A rock in sight that the compass lines do not already stand on.
@@ -785,6 +819,8 @@ impl World {
     fn arm_bit(&self, actor_id: ActorId, item: &CarryView) -> String {
         if item.material == "stone" && item.count == 1 {
             format!("a {} stone", item.condition)
+        } else if item.material == "flint" && item.count == 1 {
+            format!("a {} flint nodule", item.condition)
         } else if item.material == "bark" && item.count == 1 {
             format!("a {} sheet of bark", item.condition)
         } else if item.material == "pot" && item.count == 1 {
@@ -1183,6 +1219,11 @@ impl World {
             || !self.ground_ids(dest, Material::Stone).is_empty()
         {
             bits.push("a stone".into());
+        }
+        if self.pile_count(dest, Material::Flint) > 0
+            || !self.ground_ids(dest, Material::Flint).is_empty()
+        {
+            bits.push("a flint nodule".into());
         }
         let clay_firing = self.clay_firing_count(dest);
         if clay_firing > 0 && self.pile_count(dest, Material::Clay) == 0 {
@@ -2658,6 +2699,43 @@ impl World {
         }
     }
 
+    fn examine_flint(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let on_ground = self.pile_count(cell, Material::Flint)
+                + self.ground_ids(cell, Material::Flint).len() as u32;
+            if on_ground > 0 {
+                lines.push(format!(
+                    "A flint nodule lies {}. It is a sharp stone.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Flint).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A flint nodule is carried by {who}, {}.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no flint from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_material(&self, viewer: ActorId, material: Material) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -2885,6 +2963,7 @@ impl World {
                 Material::Mushroom => "mushrooms",
                 Material::Pot => "pot",
                 Material::Stone => "stone",
+                Material::Flint => "flint",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -3528,6 +3607,11 @@ impl World {
         {
             marks.push('s');
         }
+        if self.pile_count(cell, Material::Flint) > 0
+            || self.worst_loose(cell, Material::Flint).is_some()
+        {
+            marks.push('n');
+        }
         if self.pile_count(cell, Material::Clay) > 0
             || self.worst_loose(cell, Material::Clay).is_some()
         {
@@ -3812,6 +3896,7 @@ impl World {
             "spear",
             "carcass",
             "drink of water",
+            "flint nodule",
         ];
         let known = NOUNS
             .iter()
@@ -4183,6 +4268,12 @@ impl World {
         {
             actions.push("gather stone".into());
         }
+        if (self.pile_count(actor.cell, Material::Flint) > 0
+            || !self.ground_ids(actor.cell, Material::Flint).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather flint".into());
+        }
         if (self.pile_count(actor.cell, Material::Clay) > 0
             || !self.ground_ids(actor.cell, Material::Clay).is_empty())
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -4433,6 +4524,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Mushroom, false) => "mushrooms",
         (Material::Pot, _) => "pot",
         (Material::Stone, _) => "stone",
+        (Material::Flint, _) => "flint nodule",
         (Material::Clay, true) => "lump of clay",
         (Material::Clay, false) => "lumps of clay",
         (Material::Bowl, _) => "bowl",

@@ -543,6 +543,7 @@ impl World {
                     | Material::Bowl
                     | Material::Spear
                     | Material::Carcass
+                    | Material::Flint
             ) {
                 self.ground_ids(cell, material)
             } else {

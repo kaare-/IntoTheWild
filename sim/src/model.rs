@@ -64,6 +64,7 @@ pub enum Material {
     Bowl,
     Spear,
     Carcass,
+    Flint,
 }
 
 impl Material {
@@ -83,6 +84,7 @@ impl Material {
             Material::Bowl => "bowl",
             Material::Spear => "spear",
             Material::Carcass => "carcass",
+            Material::Flint => "flint",
         }
     }
 
@@ -102,6 +104,7 @@ impl Material {
             Material::Bowl => "bowl",
             Material::Spear => "spear",
             Material::Carcass => "carcass",
+            Material::Flint => "flint nodule",
         }
     }
 
@@ -187,6 +190,7 @@ pub enum ExamineTarget {
     Pot,
     Mud,
     Stone,
+    Flint,
     Clay,
     Bowl,
     Spear,
@@ -606,6 +610,7 @@ impl World {
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
+        world.add_pile(cell_id(4, 0).unwrap(), Material::Flint, 1, 0);
         world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.normalize();

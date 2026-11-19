@@ -5102,7 +5102,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .lines()
         .find(|line| line.starts_with("West:"))
         .unwrap_or("");
-    assert_eq!(aside_north, "North: slope.");
+    assert_eq!(aside_north, "North: slope, a flint nodule.");
     assert_eq!(
         aside_south,
         "South: the west floor. Hoofprints mark that floor. South of that floor is the south floor, still in sight. The deer stands on the south floor."
@@ -6219,5 +6219,59 @@ fn examine_berries_does_not_blame_a_deer_that_did_not_eat_them() {
     assert_eq!(
         world.examine(far, ExamineTarget::Berries),
         "You see no berries from here."
+    );
+}
+
+#[test]
+fn a_flint_nodule_on_the_slope_can_be_carried() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let here = world.observe(near).unwrap().text;
+    assert!(here.contains("A flint nodule lies here."), "{here}");
+    let beside = world.observe(west).unwrap().text;
+    assert!(beside.contains("a flint nodule"), "{beside}");
+    assert!(
+        !world.observe(far).unwrap().text.contains("flint"),
+        "{}",
+        world.observe(far).unwrap().text
+    );
+    let report = world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    assert_eq!(report.results[0].message, "You gather a flint nodule.");
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("flint"))
+        .collect();
+    assert_eq!(yours, vec!["You gather a flint nodule.".to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("flint"))
+        .collect();
+    assert_eq!(seen, vec!["Near gathers a flint nodule.".to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("flint")));
+    let after = world.observe(near).unwrap().text;
+    assert!(!after.contains("A flint nodule lies here."), "{after}");
+    assert_eq!(
+        arms_sentence(&after),
+        "You have a dry flint nodule."
+    );
+    let beside = world.observe(west).unwrap().text;
+    assert!(
+        !beside.contains("a flint nodule"),
+        "the nodule is in the arms, not still on the slope: {beside}"
     );
 }
