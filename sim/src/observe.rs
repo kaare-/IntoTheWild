@@ -3820,6 +3820,34 @@ impl World {
         ))
     }
 
+    /// A successful boil, filled for the person who drank it.
+    /// The stored sentence names them and keeps the thirst words on the end.
+    /// Anyone else hears the act without that private ending.
+    fn boil_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 {
+            return None;
+        }
+        let (public, coda) = Self::split_boil_coda(&event.text);
+        let actor_id = event.affected_actors[0];
+        let name = self.name_of(actor_id);
+        let rest = public.strip_prefix(&format!("{name} boils "))?;
+        let you_rest = match rest {
+            "the drink in the pot over the fire and drinks it." => {
+                "the drink in the pot and drink it."
+            }
+            "a drink of water over the fire and drinks it." => "a drink of water and drink it.",
+            _ => return None,
+        };
+        if viewer == actor_id {
+            Some(format!(
+                "{}{coda}",
+                crate::model::spoken_act(None, "boil", you_rest)
+            ))
+        } else {
+            Some(public.to_string())
+        }
+    }
+
     /// A successful light, filled for the person who set it.
     /// Anyone else keeps the stored sentence.
     fn light_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -3840,6 +3868,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.boil_for_these_eyes(viewer, event) {
             return line;
         }
         if event.text.starts_with("Rain reaches the valley") {
@@ -3879,6 +3910,19 @@ impl World {
             }
         }
         event.text.clone()
+    }
+
+    fn split_boil_coda(text: &str) -> (&str, &str) {
+        for coda in [
+            " The thirst eases.",
+            " You were not thirsty.",
+            " You are still thirsty.",
+        ] {
+            if let Some(public) = text.strip_suffix(coda) {
+                return (public, coda);
+            }
+        }
+        (text, "")
     }
 
     /// The open wood south of the outside floor, named from whoever hears it.

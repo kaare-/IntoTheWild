@@ -924,7 +924,7 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
     assert!(boiled
         .events
         .iter()
-        .any(|event| event.text.contains("boils the drink in the pot")));
+        .any(|event| event.text.contains("boil the drink in the pot")));
     assert!(boiled
         .events
         .iter()
@@ -1006,12 +1006,12 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         .unwrap()
         .events
         .iter()
-        .find(|event| event.text.contains("boils"))
+        .find(|event| event.text.contains("boil"))
         .map(|event| event.text.clone())
         .unwrap_or_default();
     assert_eq!(
         boil_event,
-        "Near boils the drink in the pot over the fire and drinks it."
+        "You boil the drink in the pot and drink it. The thirst eases."
     );
     assert!(world
         .material_items(Material::Pot)
@@ -1025,6 +1025,56 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
     let empty_again = arms_sentence(&body.text);
     assert_eq!(empty_again, "You have a dry pot.");
     assert!(!empty_again.contains("water"));
+}
+
+#[test]
+fn boiling_a_drink_is_one_sentence_for_each_pair_of_eyes() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    for step in 0..5 {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
+    }
+    world.step(&[cmd("fill", near, Attempt::Gather(Material::Water))]);
+    for step in 0..5 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    let boiled = world.step(&[cmd("boil", near, Attempt::Boil)]);
+    let sentence = "You boil the drink in the pot and drink it. The thirst eases.";
+    let witnessed = "Near boils the drink in the pot over the fire and drinks it.";
+    assert_eq!(boiled.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("boil"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("boil"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("boil")));
+    assert!(world
+        .event_log()
+        .iter()
+        .any(|event| event.text.starts_with(witnessed)));
 }
 
 #[test]
@@ -2392,11 +2442,7 @@ fn rain_still_puts_out_an_open_fire_and_the_warmth_lingers() {
     world.step(&[cmd("branch", sera, Attempt::Gather(Material::Branch))]);
     world.step(&[cmd("west", sera, Attempt::Move(Dir::West))]);
     world.step(&[cmd("light", sera, Attempt::Light)]);
-    assert!(world
-        .observe(sera)
-        .unwrap()
-        .text
-        .contains("It warms you."));
+    assert!(world.observe(sera).unwrap().text.contains("It warms you."));
     assert!(world
         .observe(beside)
         .unwrap()

@@ -1716,17 +1716,21 @@ impl World {
                 .into_iter()
                 .collect();
             let in_pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
-            let heard = if in_pot {
-                format!(
-                    "{} boils the drink in the pot over the fire and drinks it.",
-                    actor.name
-                )
+            let coda = if before == 0 {
+                " You were not thirsty."
+            } else if after < self.tuning.thirsty_at {
+                " The thirst eases."
             } else {
-                format!(
-                    "{} boils a drink of water over the fire and drinks it.",
-                    actor.name
-                )
+                " You are still thirsty."
             };
+            let heard = format!(
+                "{}{coda}",
+                crate::model::spoken_act(
+                    Some(actor.name.as_str()),
+                    "boil",
+                    boil_witness_rest(in_pot)
+                )
+            );
             self.emit(
                 heard,
                 Scope::Cell(actor.cell),
@@ -1736,18 +1740,10 @@ impl World {
                 fire_event,
                 None,
             );
-            let lead = if in_pot {
-                "You boil the drink in the pot and drink it."
-            } else {
-                "You boil a drink of water and drink it."
-            };
-            let message = if before == 0 {
-                format!("{lead} You were not thirsty.")
-            } else if after < self.tuning.thirsty_at {
-                format!("{lead} The thirst eases.")
-            } else {
-                format!("{lead} You are still thirsty.")
-            };
+            let message = format!(
+                "{}{coda}",
+                crate::model::spoken_act(None, "boil", boil_actor_rest(in_pot))
+            );
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
     }
@@ -2106,6 +2102,24 @@ fn attempt_dir(attempt: &Attempt) -> Option<Dir> {
     match attempt {
         Attempt::Drag(dir) | Attempt::Move(dir) => Some(*dir),
         _ => None,
+    }
+}
+
+/// The witness rest of one boil. The actor's rest drops "over the fire" and
+/// says "drink", which is the sentence that person already heard.
+fn boil_witness_rest(in_pot: bool) -> &'static str {
+    if in_pot {
+        "the drink in the pot over the fire and drinks it."
+    } else {
+        "a drink of water over the fire and drinks it."
+    }
+}
+
+fn boil_actor_rest(in_pot: bool) -> &'static str {
+    if in_pot {
+        "the drink in the pot and drink it."
+    } else {
+        "a drink of water and drink it."
     }
 }
 
