@@ -246,6 +246,9 @@ impl World {
         if let Some(ice) = self.seen_frozen_pool(actor_id) {
             lines.push(ice);
         }
+        if let Some(open) = self.seen_open_pool(actor_id) {
+            lines.push(open);
+        }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
@@ -672,6 +675,34 @@ impl World {
             }
             lines.push(format!(
                 "The still water to the {} is frozen.",
+                self.relative(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A fire on still water in sight, after the chill. The person standing
+    /// on it already has the place line. Before the fire, this stays quiet.
+    fn seen_open_pool(&self, viewer: ActorId) -> Option<String> {
+        if self.time < self.tuning.chill_at {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || self.fire_at(cell).is_none() {
+                continue;
+            }
+            let place = self.cell(cell);
+            if !place.still || place.region == crate::model::Region::Brook {
+                continue;
+            }
+            lines.push(format!(
+                "The fire is keeping the still water to the {} from freezing.",
                 self.relative(origin, cell)
             ));
         }

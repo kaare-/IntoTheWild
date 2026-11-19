@@ -2351,6 +2351,53 @@ fn far_reads_the_ice_once_the_pool_in_sight_is_frozen() {
 }
 
 #[test]
+fn far_reads_the_fire_keeping_the_pool_open() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    for (id, dir) in [
+        ("w", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    while world.sim_time() < 12 {
+        world.step(&[]);
+    }
+    let ice = "The still water to the north and west is frozen.";
+    let open = "The fire is keeping the still water to the north and west from freezing.";
+    assert!(world.observe(far).unwrap().text.contains(ice));
+    assert!(!world
+        .observe(far)
+        .unwrap()
+        .text
+        .contains("keeping the still water"));
+    assert!(!world.observe(west).unwrap().text.contains("frozen"));
+    assert!(!world
+        .observe(west)
+        .unwrap()
+        .text
+        .contains("keeping the still water"));
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let near_look = world.observe(near).unwrap().text;
+    let far_look = world.observe(far).unwrap().text;
+    let west_look = world.observe(west).unwrap().text;
+    assert!(near_look.contains("The fire is keeping the still water from freezing."));
+    assert!(!near_look.contains("to the north and west from freezing"));
+    assert!(far_look.contains(open), "{far_look}");
+    assert!(!far_look.contains("is frozen"));
+    assert!(!west_look.contains("frozen"));
+    assert!(!west_look.contains("keeping the still water"));
+}
+
+#[test]
 fn eat_bark_is_refused_and_the_sheet_still_lights() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();
