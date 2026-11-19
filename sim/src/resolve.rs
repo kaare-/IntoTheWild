@@ -1359,8 +1359,9 @@ impl World {
         };
         let into_pot = !self.loose_ids(intent.actor_id, Material::Pot).is_empty();
         let pot = if into_pot { " into the pot" } else { "" };
+        let rest = format!("a drink of water from {source}{pot}.");
         self.emit(
-            format!("{name} gathers a drink of water from {source}{pot}."),
+            crate::model::spoken_act(Some(name.as_str()), "gather", &rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -1368,15 +1369,16 @@ impl World {
             vec![],
             None,
         );
+        let yours = if into_pot {
+            "a drink of water into the pot."
+        } else {
+            "a drink of water."
+        };
         self.finish(
             intent.command_id,
             intent.actor_id,
             true,
-            if into_pot {
-                "You gather a drink of water into the pot."
-            } else {
-                "You gather a drink of water."
-            },
+            crate::model::spoken_act(None, "gather", yours),
             results,
         );
     }
