@@ -186,6 +186,7 @@ impl World {
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
             ExamineTarget::Spear => self.examine_spear(actor_id),
             ExamineTarget::Carcass => self.examine_carcass(actor_id),
+            ExamineTarget::Meat => self.examine_meat(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -577,6 +578,9 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Carcass).is_empty() {
             parts.push("A deer carcass lies here.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Meat).is_empty() {
+            parts.push("Raw meat lies here.".into());
         }
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let spear = self.item(id);
@@ -1275,6 +1279,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Carcass).is_empty() {
             bits.push("a carcass".into());
+        }
+        if !self.ground_ids(dest, Material::Meat).is_empty() {
+            bits.push("raw meat".into());
         }
         if self
             .actors
@@ -2687,6 +2694,25 @@ impl World {
         }
     }
 
+    fn examine_meat(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.ground_ids(cell, Material::Meat).is_empty() {
+                continue;
+            }
+            lines.push(format!(
+                "Raw meat lies {}.",
+                self.place_phrase(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no meat from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_spear(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3076,6 +3102,7 @@ impl World {
                 Material::Stone => "stone",
                 Material::Flint => "flint",
                 Material::Flake => "flint flake",
+                Material::Meat => "meat",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -3976,6 +4003,23 @@ impl World {
         })
     }
 
+    /// A carcass cut with the flint spear, filled for the person who cut it.
+    fn butcher_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} butchers "))?;
+        if rest != "the carcass into raw meat." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "butcher", rest))
+    }
+
     /// A flint spear bringing the deer down, filled for the person who struck.
     /// Anyone else keeps the stored sentence. A stone spear keeps its own line.
     fn bring_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -4143,6 +4187,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.bring_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.butcher_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
@@ -4493,6 +4540,14 @@ impl World {
         {
             actions.push("gather carcass".into());
         }
+        if self
+            .loose_ids(actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+            && !self.ground_ids(actor.cell, Material::Carcass).is_empty()
+        {
+            actions.push("butcher".into());
+        }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -4729,6 +4784,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",
+        (Material::Meat, _) => "raw meat",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",

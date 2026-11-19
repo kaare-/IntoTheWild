@@ -66,6 +66,7 @@ pub enum Material {
     Carcass,
     Flint,
     Flake,
+    Meat,
 }
 
 impl Material {
@@ -87,6 +88,7 @@ impl Material {
             Material::Carcass => "carcass",
             Material::Flint => "flint",
             Material::Flake => "flake",
+            Material::Meat => "meat",
         }
     }
 
@@ -108,6 +110,7 @@ impl Material {
             Material::Carcass => "carcass",
             Material::Flint => "flint nodule",
             Material::Flake => "flint flake",
+            Material::Meat => "raw meat",
         }
     }
 
@@ -199,6 +202,7 @@ pub enum ExamineTarget {
     Bowl,
     Spear,
     Carcass,
+    Meat,
     Fire,
     Water,
     Deer,
@@ -231,6 +235,7 @@ pub enum Attempt {
     Knap,
     Haft,
     Hunt,
+    Butcher,
     Eat(Material),
     Smear,
 }
@@ -255,6 +260,7 @@ impl Attempt {
                 | Attempt::Knap
                 | Attempt::Haft
                 | Attempt::Hunt
+                | Attempt::Butcher
                 | Attempt::Eat(_)
                 | Attempt::Smear
         )

@@ -758,6 +758,10 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Eat(Material::Berry)
     ));
     assert!(matches!(
+        parse_attempt("butcher").unwrap(),
+        Attempt::Butcher
+    ));
+    assert!(matches!(
         parse_attempt("eat mushrooms").unwrap(),
         Attempt::Eat(Material::Mushroom)
     ));
@@ -6593,4 +6597,49 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert!(after.contains("A deer carcass lies here."), "{after}");
     assert!(!after.contains("A deer stands here."), "{after}");
     assert_eq!(world.material_tally(Material::Carcass), 1);
+
+    let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
+    let sentence = "You butcher the carcass into raw meat.";
+    let witnessed = "Near butchers the carcass into raw meat.";
+    assert_eq!(cut.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("butcher"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("butchers"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("butcher")));
+    assert_eq!(world.material_tally(Material::Carcass), 0);
+    assert_eq!(world.material_tally(Material::Meat), 1);
+    let meat = world.material_items(Material::Meat);
+    assert_eq!(meat[0].1, None);
+    assert_eq!((meat[0].2, meat[0].3), (6, 1));
+    let ground = world.observe(near).unwrap().text;
+    assert!(ground.contains("Raw meat lies here."), "{ground}");
+    assert!(!ground.contains("A deer carcass lies here."), "{ground}");
+    assert_eq!(
+        arms_sentence(&ground),
+        "You have a spear with a fire-hardened flint tip."
+    );
+    assert_eq!(
+        world.examine(near, ExamineTarget::Meat),
+        "Raw meat lies here, under the rock overhang."
+    );
 }

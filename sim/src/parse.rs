@@ -24,6 +24,7 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         mushrooms, sweet berries, or a carcass; poison berries are not food
 hunt                         a hardened spear; the deer on your cell or the next
+butcher                      a carcass at your feet; a flint spear in your arms
 eat berries                  sweet berries only; poison berries sicken you
 eat carcass                  raw meat is refused; it must be cooked
 smear mud                    mud on skin against the sun
@@ -89,6 +90,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Haft)
         }
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
+        "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" => Ok(Attempt::Butcher),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
@@ -166,6 +168,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "bowl" => ExamineTarget::Bowl,
         "spear" | "spears" => ExamineTarget::Spear,
         "carcass" | "deer carcass" => ExamineTarget::Carcass,
+        "meat" | "raw meat" => ExamineTarget::Meat,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,

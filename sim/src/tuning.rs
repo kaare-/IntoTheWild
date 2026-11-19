@@ -407,6 +407,7 @@ impl Tuning {
             Material::Carcass => 0,
             Material::Flint => 0,
             Material::Flake => 0,
+            Material::Meat => 0,
         }
     }
 }

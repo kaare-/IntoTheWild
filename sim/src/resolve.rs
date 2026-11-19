@@ -51,6 +51,7 @@ impl World {
         let mut knaps = Vec::new();
         let mut hafts = Vec::new();
         let mut hunts = Vec::new();
+        let mut butchers = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -91,6 +92,7 @@ impl World {
                         Attempt::Knap => knaps.push(intent),
                         Attempt::Haft => hafts.push(intent),
                         Attempt::Hunt => hunts.push(intent),
+                        Attempt::Butcher => butchers.push(intent),
                     }
                 }
             }
@@ -175,6 +177,7 @@ impl World {
         self.apply_knaps(knaps, &mut results);
         self.apply_hafts(hafts, &mut results);
         self.apply_hunts(hunts, &mut results);
+        self.apply_butchers(butchers, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -286,6 +289,25 @@ impl World {
                     Err("You are not carrying a stone.".into())
                 } else if self.loose_ids(actor.id, Material::Branch).is_empty() {
                     Err("You are not carrying a branch.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Butcher => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self
+                    .loose_ids(actor.id, Material::Spear)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+                {
+                    Err("You are not carrying a flint spear.".into())
+                } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
+                    Err("There is no carcass here to butcher.".into())
                 } else {
                     Ok(true)
                 }
@@ -1669,6 +1691,62 @@ impl World {
                     );
                 }
             }
+        }
+    }
+
+    fn apply_butchers(&mut self, butchers: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the carcass into raw meat.";
+        for intent in butchers {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self
+                .loose_ids(actor.id, Material::Spear)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+            {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a flint spear.",
+                    results,
+                );
+                continue;
+            }
+            let Some(carcass) = self
+                .ground_ids(actor.cell, Material::Carcass)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no carcass here to butcher.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&carcass);
+            let id = self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose);
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "butcher", rest),
+                results,
+            );
         }
     }
 
