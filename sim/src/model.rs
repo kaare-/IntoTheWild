@@ -1282,6 +1282,37 @@ impl World {
         piles + self.ground_ids(cell, Material::Carcass).len() as u32
     }
 
+    /// One piece of cooked meat, from the arms before the ground.
+    pub(crate) fn cooked_meat_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|meat| meat.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|meat| meat.cooked))
+    }
+
+    pub(crate) fn raw_meat_near(&self, actor: ActorId) -> bool {
+        let carried = self
+            .loose_ids(actor, Material::Meat)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|meat| !meat.cooked));
+        if carried {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.ground_ids(cell, Material::Meat)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|meat| !meat.cooked))
+    }
+
     /// One piece of raw meat lying on this cell. Cooked meat is not raw.
     pub(crate) fn raw_meat_at(&self, cell: CellId) -> Option<ItemId> {
         self.ground_ids(cell, Material::Meat)

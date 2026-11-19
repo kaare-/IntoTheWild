@@ -26,7 +26,8 @@ cook                         mushrooms, sweet berries, a carcass, or raw meat; p
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet; a flint spear in your arms
 eat berries                  sweet berries only; poison berries sicken you
-eat carcass                  raw meat is refused; it must be cooked
+eat meat                     cooked meat; raw meat is not food
+eat carcass                  a carcass must be cooked
 smear mud                    mud on skin against the sun
 interrupt                    stop the work your body is in
 help"
@@ -144,7 +145,8 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
             Err("Bark is tinder, not food. Light a fire and cook berries.".into())
         }
         "mud" => Err("Mud is for your skin, not your stomach.".into()),
-        "carcass" | "deer carcass" | "meat" | "raw meat" => Ok(Attempt::Eat(Material::Carcass)),
+        "carcass" | "deer carcass" => Ok(Attempt::Eat(Material::Carcass)),
+        "meat" | "cooked meat" | "raw meat" => Ok(Attempt::Eat(Material::Meat)),
         _ => Err("Name a food: berries, poison berries, mushrooms, or carcass.".into()),
     }
 }

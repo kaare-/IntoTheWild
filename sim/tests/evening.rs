@@ -769,6 +769,10 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("eat carcass").unwrap(),
         Attempt::Eat(Material::Carcass)
     ));
+    assert!(matches!(
+        parse_attempt("eat meat").unwrap(),
+        Attempt::Eat(Material::Meat)
+    ));
     assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
     assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
@@ -6644,6 +6648,15 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         world.examine(near, ExamineTarget::Meat),
         "Raw meat lies here, under the rock overhang."
     );
+    let raw = world.step(&[cmd("raw-meat", near, Attempt::Eat(Material::Meat))]);
+    assert!(!raw.results[0].success);
+    assert_eq!(raw.results[0].message, "Raw meat is not food.");
+    assert_eq!(world.material_tally(Material::Meat), 1);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Raw meat lies here."));
 
     let mut cooked = world.step(&[cmd("cook", near, Attempt::Cook)]);
     if cooked.results[0].message == "There is no fire burning here." {
@@ -6687,12 +6700,56 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         "Cooked meat lies here, under the rock overhang."
     );
     assert_eq!(world.material_tally(Material::Meat), 1);
-    let eaten = world.step(&[cmd("eat", near, Attempt::Eat(Material::Carcass))]);
-    assert!(!eaten.results[0].success);
-    assert_eq!(world.material_tally(Material::Meat), 1);
+    let before = world.observe(near).unwrap().self_info.hunger;
+    let eaten = world.step(&[cmd("eat-meat", near, Attempt::Eat(Material::Meat))]);
+    let after_word = world.observe(near).unwrap().self_info.hunger;
+    let tail = if before != "not hungry" && after_word != before {
+        " The hunger eases.".to_string()
+    } else {
+        format!(" You are {after_word}.")
+    };
+    let sentence = format!("You eat the cooked meat.{tail}");
+    assert_eq!(eaten.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("eat the cooked meat") || text == "The hunger eases.")
+        .collect();
+    assert!(
+        yours.iter().any(|text| text == "You eat the cooked meat."),
+        "{yours:?}"
+    );
+    if tail.contains("eases") {
+        assert!(yours.iter().any(|text| text == "The hunger eases."));
+        assert_ne!(before, after_word);
+    }
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("eats the cooked meat"))
+        .collect();
+    assert_eq!(seen, vec!["Near eats the cooked meat.".to_string()]);
     assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("cooked meat")));
+    assert_eq!(world.material_tally(Material::Meat), 0);
+    assert!(!world
         .observe(near)
         .unwrap()
         .text
         .contains("Cooked meat lies here."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains(&format!("You are {after_word}.")));
 }

@@ -4001,6 +4001,23 @@ impl World {
         })
     }
 
+    /// Cooked meat eaten, filled for the person who ate it.
+    fn eat_meat_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} eats "))?;
+        if rest != "the cooked meat." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "eat", rest))
+    }
+
     /// Raw meat held over the fire, filled for the person who cooked it.
     fn cook_meat_for_these_eyes(
         &self,
@@ -4238,6 +4255,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.eat_meat_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
@@ -4525,6 +4545,9 @@ impl World {
             || !self.ground_ids(actor.cell, Material::Carcass).is_empty()
         {
             actions.push("eat carcass".into());
+        }
+        if self.cooked_meat_id(actor_id).is_some() {
+            actions.push("eat meat".into());
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots

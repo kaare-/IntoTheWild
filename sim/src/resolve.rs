@@ -397,6 +397,15 @@ impl World {
                                 Err("The carcass must be cooked.".into())
                             }
                         }
+                        Material::Meat => {
+                            if self.cooked_meat_id(actor.id).is_some() {
+                                Ok(true)
+                            } else if self.raw_meat_near(actor.id) {
+                                Err("Raw meat is not food.".into())
+                            } else {
+                                Err("There is no cooked meat here to eat.".into())
+                            }
+                        }
                         Material::Clay => Err("Unfired clay is not food.".into()),
                         Material::Bowl => Err("A bowl is not food.".into()),
                         _ => Err("Bark is tinder, not food. Light a fire and cook berries.".into()),
@@ -2151,6 +2160,10 @@ impl World {
             let Attempt::Eat(material) = intent.attempt else {
                 continue;
             };
+            if material == Material::Meat {
+                self.eat_meat(intent, results);
+                continue;
+            }
             if material == Material::BitterBerry {
                 self.eat_poison(intent, results);
                 continue;
@@ -2207,6 +2220,60 @@ impl World {
             };
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
+    }
+
+    fn eat_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_meat_id(intent.actor_id) else {
+            let message = if self.raw_meat_near(intent.actor_id) {
+                "Raw meat is not food."
+            } else {
+                "There is no cooked meat here to eat."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cooked meat.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+            self.emit(
+                "The hunger eases.",
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
     fn eat_poison(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
