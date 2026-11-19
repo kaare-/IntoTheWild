@@ -942,7 +942,10 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
     let mut bare = world_at(10_000);
     let hands = bare.spawn_at("Near", "n", 1, 1).unwrap();
     let gathered = bare.step(&[cmd("bare", hands, Attempt::Gather(Material::Water))]);
-    assert_eq!(gathered.results[0].message, "You gather a drink of water.");
+    assert_eq!(
+        gathered.results[0].message,
+        "You gather a drink of water from the brook."
+    );
     assert!(!gathered.results[0].message.contains("pot"));
     let bare_event = bare
         .observe(hands)
@@ -952,7 +955,7 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         .find(|event| event.text.contains("drink of water"))
         .map(|event| event.text.clone())
         .unwrap_or_default();
-    assert_eq!(bare_event, "You gather a drink of water.");
+    assert_eq!(bare_event, "You gather a drink of water from the brook.");
     assert!(!bare_event.contains("pot"));
     let bare_arms = arms_sentence(&bare.observe(hands).unwrap().text);
     assert!(bare_arms.contains("1 water"));
@@ -972,7 +975,7 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
     let filled = world.step(&[cmd("fill", near, Attempt::Gather(Material::Water))]);
     assert_eq!(
         filled.results[0].message,
-        "You gather a drink of water into the pot."
+        "You gather a drink of water from the brook into the pot."
     );
     let fill_event = world
         .observe(near)
@@ -982,7 +985,10 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         .find(|event| event.text.contains("drink of water"))
         .map(|event| event.text.clone())
         .unwrap_or_default();
-    assert_eq!(fill_event, "You gather a drink of water into the pot.");
+    assert_eq!(
+        fill_event,
+        "You gather a drink of water from the brook into the pot."
+    );
     let filled_arms = arms_sentence(&world.observe(near).unwrap().text);
     assert_eq!(filled_arms, "You have a pot with a drink of water in it.");
     assert!(!filled_arms.contains("dry pot"));
@@ -1201,7 +1207,7 @@ fn gathering_water_is_one_sentence_for_each_pair_of_eyes() {
     let west = bare.spawn_at("West", "w", 2, 3).unwrap();
     let far = bare.spawn_at("Far", "f", 3, 3).unwrap();
     let gathered = bare.step(&[cmd("bare", near, Attempt::Gather(Material::Water))]);
-    let sentence = "You gather a drink of water.";
+    let sentence = "You gather a drink of water from the brook.";
     let witnessed = "Near gathers a drink of water from the brook.";
     assert_eq!(gathered.results[0].message, sentence);
     assert!(!sentence.contains("pot"));
@@ -1240,7 +1246,7 @@ fn gathering_water_is_one_sentence_for_each_pair_of_eyes() {
     }
     assert_eq!(world.actor_cell(near), Some((0, 1)));
     let filled = world.step(&[cmd("fill", near, Attempt::Gather(Material::Water))]);
-    let sentence = "You gather a drink of water into the pot.";
+    let sentence = "You gather a drink of water from the brook into the pot.";
     let witnessed = "Near gathers a drink of water from the brook into the pot.";
     assert_eq!(filled.results[0].message, sentence);
     let yours: Vec<_> = world
@@ -1262,6 +1268,41 @@ fn gathering_water_is_one_sentence_for_each_pair_of_eyes() {
         .collect();
     assert_eq!(seen, vec![witnessed.to_string()]);
     assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("drink of water")));
+
+    let mut pool = world_at(10_000);
+    let near = pool.spawn_at("Near", "n", 2, 1).unwrap();
+    let west = pool.spawn_at("West", "w", 2, 3).unwrap();
+    let far = pool.spawn_at("Far", "f", 5, 3).unwrap();
+    let pooled = pool.step(&[cmd("pool", near, Attempt::Gather(Material::Water))]);
+    let sentence = "You gather a drink of water from the still water.";
+    let witnessed = "Near gathers a drink of water from the still water.";
+    assert_eq!(pooled.results[0].message, sentence);
+    assert!(!sentence.contains("brook"));
+    assert!(!witnessed.contains("brook"));
+    let yours: Vec<_> = pool
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("drink of water"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = pool
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("drink of water"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(pool
         .observe(far)
         .unwrap()
         .events

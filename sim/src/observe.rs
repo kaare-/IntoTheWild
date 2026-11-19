@@ -3776,7 +3776,6 @@ impl World {
 
     /// A successful gather, filled for the person who took it.
     /// Anyone else keeps the stored sentence. Mud is not this act.
-    /// A drink of water drops the source for the person who gathered it.
     fn gather_for_these_eyes(
         &self,
         viewer: ActorId,
@@ -3787,9 +3786,6 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} gathers "))?;
-        if let Some(line) = Self::water_gather_for_these_hands(rest) {
-            return Some(line);
-        }
         let (noun, tail) = if let Some(noun) = rest.strip_suffix(". You hear branches breaking.") {
             (noun, ". You hear branches breaking.")
         } else {
@@ -3809,6 +3805,7 @@ impl World {
             "bowl",
             "spear",
             "carcass",
+            "drink of water",
         ];
         let known = NOUNS
             .iter()
@@ -3822,22 +3819,6 @@ impl World {
             "gather",
             &format!("a {noun}{tail}"),
         ))
-    }
-
-    /// "Near gathers a drink of water from the brook into the pot."
-    /// becomes "You gather a drink of water into the pot."
-    fn water_gather_for_these_hands(rest: &str) -> Option<String> {
-        let body = rest.strip_suffix('.')?;
-        let body = body.strip_prefix("a drink of water")?;
-        if !body.is_empty() && !body.starts_with(" from ") {
-            return None;
-        }
-        let yours = if body.contains(" into the pot") {
-            "a drink of water into the pot."
-        } else {
-            "a drink of water."
-        };
-        Some(crate::model::spoken_act(None, "gather", yours))
     }
 
     /// A successful boil, filled for the person who drank it.

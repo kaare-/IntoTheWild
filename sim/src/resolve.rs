@@ -1369,16 +1369,11 @@ impl World {
             vec![],
             None,
         );
-        let yours = if into_pot {
-            "a drink of water into the pot."
-        } else {
-            "a drink of water."
-        };
         self.finish(
             intent.command_id,
             intent.actor_id,
             true,
-            crate::model::spoken_act(None, "gather", yours),
+            crate::model::spoken_act(None, "gather", &rest),
             results,
         );
     }
