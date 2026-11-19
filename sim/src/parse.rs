@@ -22,7 +22,7 @@ lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them
-cook                         heat a mushroom, or cook berries, a carcass, or raw meat
+cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet into three portions; a flint spear in your arms
 wear hide                    a carried deer hide, against the cold

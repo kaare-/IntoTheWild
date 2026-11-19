@@ -2086,6 +2086,86 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
 }
 
 #[test]
+fn cooking_does_not_make_poison_berries_food() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let examined = world.examine(near, ExamineTarget::BitterBerries);
+    assert!(examined.contains("They are poisonous."), "{examined}");
+    assert!(
+        examined.contains("Cooking does not make them food."),
+        "{examined}"
+    );
+    world.step(&[cmd("pick", near, Attempt::Gather(Material::BitterBerry))]);
+    world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("east-2", near, Attempt::Move(Dir::East))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let bark = world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    assert!(bark.results[0].success, "{}", bark.results[0].message);
+    let branch = world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    assert!(branch.results[0].success, "{}", branch.results[0].message);
+    world.step(&[cmd("back", near, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("back-2", near, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(near), Some((4, 1)));
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let before = world.observe(near).unwrap().self_info;
+    assert_eq!(before.illness, "well");
+    let cooked = world.step(&[cmd("cook", near, Attempt::Cook)]);
+    assert!(!cooked.results[0].success);
+    assert_eq!(
+        cooked.results[0].message,
+        "Cooking does not make poison berries food."
+    );
+    assert_eq!(world.material_tally(Material::BitterBerry), 2);
+    let after = world.observe(near).unwrap().self_info;
+    assert_eq!(after.illness, "well");
+    assert_eq!(after.hunger, before.hunger);
+    let refusal = "Cooking does not make poison berries food.";
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == refusal));
+    for witness in [west, far] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != refusal && !event.text.contains("cooks") }));
+    }
+    let eaten = world.step(&[cmd("eat", near, Attempt::Eat(Material::BitterBerry))]);
+    assert_eq!(
+        eaten.results[0].message,
+        "You eat a handful of poison berries. Your stomach turns."
+    );
+    assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, before.hunger);
+    assert_eq!(world.material_tally(Material::BitterBerry), 1);
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near eats a handful of poison berries."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near eats a handful of poison berries."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("stomach") }));
+}
+
+#[test]
 fn open_sky_chills_and_burns_while_shelter_and_mud_hold_them_off() {
     let mut world = world_at(10_000);
     let open = world.spawn_at("Sera", "s", 4, 3).unwrap();
@@ -2430,7 +2510,7 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     assert!(refused
         .events
         .iter()
-        .any(|event| event.text.contains("nothing here to cook")));
+        .any(|event| event.text.contains("Cooking does not make poison berries food.")));
     assert_eq!(cook.material_tally(Material::BitterBerry), 2);
     assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
 

@@ -1214,6 +1214,9 @@ impl World {
             && self.cookable_pile(person.cell) == 0
             && self.raw_meat_at(person.cell).is_none()
         {
+            if self.has_material_at_hand(actor, Material::BitterBerry) {
+                return Some("Cooking does not make poison berries food.".into());
+            }
             return Some("There is nothing here to cook.".into());
         }
         None
