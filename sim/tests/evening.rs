@@ -6605,8 +6605,8 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert_eq!(world.material_tally(Material::Carcass), 1);
 
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
-    let sentence = "You butcher the carcass into raw meat.";
-    let witnessed = "Near butchers the carcass into raw meat.";
+    let sentence = "You butcher the carcass into three portions of raw meat.";
+    let witnessed = "Near butchers the carcass into three portions of raw meat.";
     assert_eq!(cut.results[0].message, sentence);
     let yours: Vec<_> = world
         .observe(near)
@@ -6633,12 +6633,15 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .iter()
         .all(|event| !event.text.contains("butcher")));
     assert_eq!(world.material_tally(Material::Carcass), 0);
-    assert_eq!(world.material_tally(Material::Meat), 1);
+    assert_eq!(world.material_tally(Material::Meat), 3);
     let meat = world.material_items(Material::Meat);
-    assert_eq!(meat[0].1, None);
-    assert_eq!((meat[0].2, meat[0].3), (6, 1));
+    assert!(meat.iter().all(|item| item.1.is_none()));
+    assert!(meat.iter().all(|item| (item.2, item.3) == (6, 1)));
     let ground = world.observe(near).unwrap().text;
-    assert!(ground.contains("Raw meat lies here."), "{ground}");
+    assert!(
+        ground.contains("Three portions of raw meat lie here."),
+        "{ground}"
+    );
     assert!(!ground.contains("A deer carcass lies here."), "{ground}");
     assert!(
         arms_sentence(&ground).contains("a spear with a fire-hardened flint tip"),
@@ -6646,17 +6649,17 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     );
     assert_eq!(
         world.examine(near, ExamineTarget::Meat),
-        "Raw meat lies here, under the rock overhang."
+        "Three portions of raw meat lie here, under the rock overhang."
     );
     let raw = world.step(&[cmd("raw-meat", near, Attempt::Eat(Material::Meat))]);
     assert!(!raw.results[0].success);
     assert_eq!(raw.results[0].message, "Raw meat is not food.");
-    assert_eq!(world.material_tally(Material::Meat), 1);
+    assert_eq!(world.material_tally(Material::Meat), 3);
     assert!(world
         .observe(near)
         .unwrap()
         .text
-        .contains("Raw meat lies here."));
+        .contains("Three portions of raw meat lie here."));
 
     let mut cooked = world.step(&[cmd("cook", near, Attempt::Cook)]);
     if cooked.results[0].message == "There is no fire burning here." {
@@ -6693,13 +6696,19 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .iter()
         .all(|event| !event.text.contains("raw meat")));
     let after = world.observe(near).unwrap().text;
-    assert!(after.contains("Cooked meat lies here."), "{after}");
-    assert!(!after.contains("Raw meat lies here."), "{after}");
+    assert!(
+        after.contains("A portion of cooked meat lies here."),
+        "{after}"
+    );
+    assert!(
+        after.contains("Two portions of raw meat lie here."),
+        "{after}"
+    );
     assert_eq!(
         world.examine(near, ExamineTarget::Meat),
-        "Cooked meat lies here, under the rock overhang."
+        "Two portions of raw meat lie here, under the rock overhang.\nA portion of cooked meat lies here, under the rock overhang."
     );
-    assert_eq!(world.material_tally(Material::Meat), 1);
+    assert_eq!(world.material_tally(Material::Meat), 3);
     let before = world.observe(near).unwrap().self_info.hunger;
     let eaten = world.step(&[cmd("eat-meat", near, Attempt::Eat(Material::Meat))]);
     let after_word = world.observe(near).unwrap().self_info.hunger;
@@ -6741,12 +6750,13 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .events
         .iter()
         .all(|event| !event.text.contains("cooked meat")));
-    assert_eq!(world.material_tally(Material::Meat), 0);
-    assert!(!world
-        .observe(near)
-        .unwrap()
-        .text
-        .contains("Cooked meat lies here."));
+    assert_eq!(world.material_tally(Material::Meat), 2);
+    let left = world.observe(near).unwrap().text;
+    assert!(
+        left.contains("Two portions of raw meat lie here."),
+        "{left}"
+    );
+    assert!(!left.contains("cooked meat"), "{left}");
     assert!(world
         .observe(near)
         .unwrap()

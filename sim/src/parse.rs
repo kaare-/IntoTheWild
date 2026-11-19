@@ -24,7 +24,7 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         mushrooms, sweet berries, a carcass, or raw meat; poison berries are not food
 hunt                         a hardened spear; the deer on your cell or the next
-butcher                      a carcass at your feet; a flint spear in your arms
+butcher                      a carcass at your feet into three portions; a flint spear in your arms
 eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat; raw meat is not food
 eat carcass                  a carcass must be cooked

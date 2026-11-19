@@ -2698,10 +2698,21 @@ impl World {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            for id in self.ground_ids(cell, Material::Meat) {
-                let cooked = self.item(id).is_some_and(|meat| meat.cooked);
-                let kind = if cooked { "Cooked meat" } else { "Raw meat" };
-                lines.push(format!("{kind} lies {}.", self.place_phrase(origin, cell)));
+            let ids = self.ground_ids(cell, Material::Meat);
+            if ids.is_empty() {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            let raw = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|meat| !meat.cooked))
+                .count() as u32;
+            let cooked = ids.len() as u32 - raw;
+            if raw > 0 {
+                lines.push(portions_lie_at("raw meat", raw, &place));
+            }
+            if cooked > 0 {
+                lines.push(portions_lie_at("cooked meat", cooked, &place));
             }
         }
         if lines.is_empty() {
@@ -4040,14 +4051,19 @@ impl World {
         if ids.is_empty() {
             return None;
         }
-        let cooked = ids
+        let raw = ids
             .iter()
-            .all(|id| self.item(*id).is_some_and(|meat| meat.cooked));
-        Some(if cooked {
-            "Cooked meat lies here.".into()
-        } else {
-            "Raw meat lies here.".into()
-        })
+            .filter(|id| self.item(**id).is_some_and(|meat| !meat.cooked))
+            .count() as u32;
+        let cooked = ids.len() as u32 - raw;
+        let mut parts = Vec::new();
+        if raw > 0 {
+            parts.push(portions_lie("raw meat", raw));
+        }
+        if cooked > 0 {
+            parts.push(portions_lie("cooked meat", cooked));
+        }
+        Some(parts.join(" "))
     }
 
     fn meat_compass_bit(&self, cell: crate::model::CellId) -> Option<String> {
@@ -4055,14 +4071,19 @@ impl World {
         if ids.is_empty() {
             return None;
         }
-        let cooked = ids
+        let raw = ids
             .iter()
-            .all(|id| self.item(*id).is_some_and(|meat| meat.cooked));
-        Some(if cooked {
-            "cooked meat".into()
-        } else {
-            "raw meat".into()
-        })
+            .filter(|id| self.item(**id).is_some_and(|meat| !meat.cooked))
+            .count() as u32;
+        let cooked = ids.len() as u32 - raw;
+        let mut parts = Vec::new();
+        if raw > 0 {
+            parts.push(portion_bit("raw meat", raw));
+        }
+        if cooked > 0 {
+            parts.push(portion_bit("cooked meat", cooked));
+        }
+        Some(parts.join(" and "))
     }
 
     /// A carcass cut with the flint spear, filled for the person who cut it.
@@ -4076,7 +4097,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} butchers "))?;
-        if rest != "the carcass into raw meat." {
+        if rest != "the carcass into three portions of raw meat." {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
@@ -4813,6 +4834,36 @@ fn drink_count_phrase(count: u32, raw: bool) -> String {
         format!("a drink of {kind}")
     } else {
         format!("{} drinks of {kind}", count_word(count))
+    }
+}
+
+fn portions_lie(kind: &str, count: u32) -> String {
+    if count == 1 {
+        format!("A portion of {kind} lies here.")
+    } else {
+        format!(
+            "{} portions of {kind} lie here.",
+            capitalize(&count_word(count))
+        )
+    }
+}
+
+fn portions_lie_at(kind: &str, count: u32, place: &str) -> String {
+    if count == 1 {
+        format!("A portion of {kind} lies {place}.")
+    } else {
+        format!(
+            "{} portions of {kind} lie {place}.",
+            capitalize(&count_word(count))
+        )
+    }
+}
+
+fn portion_bit(kind: &str, count: u32) -> String {
+    if count == 1 {
+        format!("a portion of {kind}")
+    } else {
+        format!("{} portions of {kind}", count_word(count))
     }
 }
 

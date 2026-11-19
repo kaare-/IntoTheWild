@@ -1766,7 +1766,6 @@ impl World {
     }
 
     fn apply_butchers(&mut self, butchers: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "the carcass into raw meat.";
         for intent in butchers {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
@@ -1800,14 +1799,18 @@ impl World {
                 continue;
             };
             self.items.remove(&carcass);
-            let id = self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose);
+            let mut ids = Vec::new();
+            for _ in 0..3 {
+                ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
+            }
             let name = self.name_of(actor.id);
+            let rest = "the carcass into three portions of raw meat.";
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
-                vec![id],
+                ids,
                 vec![],
                 None,
             );
