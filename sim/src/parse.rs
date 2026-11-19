@@ -30,6 +30,7 @@ eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat; raw meat is not food
 eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
 eat carcass                  a carcass must be cooked
+eat bark                     bark is tinder, not food
 smear mud                    mud on skin against the sun
 interrupt                    stop the work your body is in
 help"
@@ -147,7 +148,8 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
         | "poison berries" => Ok(Attempt::Eat(Material::BitterBerry)),
-        "bark" | "wood" | "branch" | "branches" | "log" => {
+        "bark" => Ok(Attempt::Eat(Material::Bark)),
+        "wood" | "branch" | "branches" | "log" => {
             Err("Bark is tinder, not food. Light a fire and cook berries.".into())
         }
         "mud" => Err("Mud is for your skin, not your stomach.".into()),

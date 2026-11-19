@@ -784,7 +784,10 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("eat meat").unwrap(),
         Attempt::Eat(Material::Meat)
     ));
-    assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
+    assert!(matches!(
+        parse_attempt("eat bark").unwrap(),
+        Attempt::Eat(Material::Bark)
+    ));
     assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
         Attempt::Say(text) if text == "The wood is still dry."
@@ -2293,6 +2296,109 @@ fn far_reads_the_ice_once_the_pool_in_sight_is_frozen() {
 }
 
 #[test]
+fn eat_bark_is_refused_and_the_sheet_still_lights() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let bark = world.material_tally(Material::Bark);
+    let line = "Bark is tinder, not food. Light a fire and cook berries.";
+    let hunger = world.observe(near).unwrap().self_info.hunger.clone();
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .allowed_actions
+        .iter()
+        .all(|action| action != "eat bark"));
+
+    let ground = world.step(&[cmd("eat-ground", near, Attempt::Eat(Material::Bark))]);
+    assert!(!ground.results[0].success);
+    assert_eq!(ground.results[0].message, line);
+    assert_eq!(world.material_tally(Material::Bark), bark);
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, hunger);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == line));
+    for witness in [west, far] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != line && !event.text.contains("tinder")));
+    }
+
+    let gathered = world.step(&[cmd("gather", near, Attempt::Gather(Material::Bark))]);
+    assert!(
+        gathered.results[0].success,
+        "{}",
+        gathered.results[0].message
+    );
+    assert_eq!(world.material_tally(Material::Bark), bark);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .self_info
+        .carrying
+        .iter()
+        .any(|item| item.material == "bark" && item.count >= 1));
+
+    let carried = world.step(&[cmd("eat-carried", near, Attempt::Eat(Material::Bark))]);
+    assert!(!carried.results[0].success);
+    assert_eq!(carried.results[0].message, line);
+    assert_eq!(world.material_tally(Material::Bark), bark);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .self_info
+        .carrying
+        .iter()
+        .any(|item| item.material == "bark" && item.count >= 1));
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, hunger);
+    for witness in [west, far] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != line && !event.text.contains("tinder")));
+    }
+
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert_eq!(
+        lit.results[0].message,
+        "You light a fire with the bark from the arms and a dry branch from the pile at the feet."
+    );
+    assert!(lit.results[0].success);
+    assert_eq!(world.material_tally(Material::Bark), bark - 1);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .self_info
+        .carrying
+        .iter()
+        .all(|item| item.material != "bark"));
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, hunger);
+    assert!(!lit.results[0].message.contains("eases"));
+    let witnessed = "Near lights a fire with the bark from the arms and a dry branch from the pile at the feet.";
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == witnessed));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("lights a fire")));
+}
+
+#[test]
 fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     let mut world = world_at(10_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
@@ -2997,7 +3103,10 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
         .text
         .contains("Cooking does not make poison berries food.")));
     assert_eq!(cook.material_tally(Material::BitterBerry), 2);
-    assert!(parse_attempt("eat bark").unwrap_err().contains("tinder"));
+    assert!(matches!(
+        parse_attempt("eat bark").unwrap(),
+        Attempt::Eat(Material::Bark)
+    ));
 
     let mut pool = World::valley(Tuning::evening(), 1);
     pool.tuning.chill_at = 0;
