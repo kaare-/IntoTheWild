@@ -4143,6 +4143,18 @@ impl World {
         Some("You smear mud on your skin.".into())
     }
 
+    /// Rain taking the mud, filled for the person it washed.
+    fn wash_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text != format!("The rain washes the mud off {name}.") {
+            return None;
+        }
+        Some("The rain washes the mud off you.".into())
+    }
+
     /// Cooked meat eaten, filled for the person who ate it.
     fn eat_meat_for_these_eyes(
         &self,
@@ -4457,6 +4469,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.smear_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.wash_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {

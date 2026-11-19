@@ -513,7 +513,6 @@ impl World {
         let smear_at = self.tuning.smear_at;
         let mud_sun = self.tuning.mud_sun;
         let mud_fade = self.tuning.mud_fade;
-        let mud_wash = self.tuning.mud_wash;
         let ids: Vec<ActorId> = self.actors.keys().copied().collect();
         for id in ids {
             let wearing = self.wearing_hide(id);
@@ -549,13 +548,8 @@ impl World {
             if mud_before >= smear_at && sun_gain > 0 {
                 sun_gain = ((u64::from(sun_gain) * u64::from(mud_sun)) / 1000) as u32;
             }
-            let mud_loss = if mud_before == 0 {
-                0
-            } else if raining && exposure >= 1000 {
-                mud_wash
-            } else {
-                mud_fade
-            };
+            let washed = raining && exposure >= 1000 && mud_before > 0;
+            let mud_loss = if washed { mud_before } else { mud_fade };
             let cold_after = if on_fire {
                 cold_before.saturating_sub(self.tuning.fire_warmth)
             } else if exposure == 0 {
@@ -637,6 +631,17 @@ impl World {
                 self.emit(
                     text,
                     Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+            if washed {
+                self.emit(
+                    format!("The rain washes the mud off {name}."),
+                    Scope::Cell(cell),
                     vec![id],
                     vec![cell],
                     vec![],

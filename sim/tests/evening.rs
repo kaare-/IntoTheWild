@@ -8,6 +8,20 @@ fn world_at(rain_at: u64) -> World {
     World::valley(tuning, 7)
 }
 
+fn pair(
+    world: &mut World,
+    id: &str,
+    near: u32,
+    near_attempt: Attempt,
+    west: u32,
+    west_attempt: Attempt,
+) -> villmarks_sim::StepReport {
+    world.step(&[
+        cmd(&format!("n-{id}"), near, near_attempt),
+        cmd(&format!("w-{id}"), west, west_attempt),
+    ])
+}
+
 fn cmd(id: &str, actor: u32, attempt: Attempt) -> Intent {
     Intent {
         command_id: id.into(),
@@ -2277,6 +2291,115 @@ fn mud_on_the_skin_keeps_the_same_sun_from_burning() {
         .unwrap()
         .text
         .contains("Your skin is burned."));
+}
+
+#[test]
+fn rain_washes_open_mud_and_leaves_the_rock() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    pair(
+        &mut world,
+        "w",
+        near,
+        Attempt::Move(Dir::West),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    pair(
+        &mut world,
+        "w2",
+        near,
+        Attempt::Move(Dir::West),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    pair(
+        &mut world,
+        "nw",
+        near,
+        Attempt::Move(Dir::North),
+        west,
+        Attempt::Move(Dir::West),
+    );
+    pair(
+        &mut world,
+        "nn",
+        near,
+        Attempt::Move(Dir::North),
+        west,
+        Attempt::Move(Dir::North),
+    );
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    pair(
+        &mut world,
+        "pool",
+        near,
+        Attempt::Gather(Material::Mud),
+        west,
+        Attempt::Move(Dir::North),
+    );
+    assert_eq!(world.actor_cell(west), Some((2, 1)));
+    pair(
+        &mut world,
+        "smear-gather",
+        near,
+        Attempt::Smear,
+        west,
+        Attempt::Gather(Material::Mud),
+    );
+    let apart = pair(
+        &mut world,
+        "walk-smear",
+        near,
+        Attempt::Move(Dir::East),
+        west,
+        Attempt::Smear,
+    );
+    assert_eq!(apart.results[1].message, "You smear mud on your skin.");
+    for id in ["e2", "e3", "e4"] {
+        world.step(&[cmd(id, near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    assert_eq!(world.actor_cell(west), Some((2, 1)));
+    assert_eq!(world.actor_cell(far), Some((3, 3)));
+    while world.sim_time() < 16 {
+        world.step(&[]);
+    }
+    assert!(!world.is_raining());
+    assert_eq!(world.observe(near).unwrap().self_info.mud, "mud-smeared");
+    assert_eq!(world.observe(west).unwrap().self_info.mud, "mud-smeared");
+    world.step(&[]);
+    assert_eq!(world.sim_time(), 17);
+    assert!(world.is_raining());
+    let sheltered = world.observe(near).unwrap();
+    let open = world.observe(west).unwrap();
+    let witness = world.observe(far).unwrap();
+    assert_eq!(sheltered.self_info.mud, "mud-smeared");
+    assert_eq!(open.self_info.mud, "bare skin");
+    assert!(sheltered.text.contains("Your skin is mud-smeared."));
+    assert!(open.text.contains("Your skin is bare skin."));
+    assert!(open
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off you."));
+    assert!(witness
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off West."));
+    assert!(sheltered
+        .events
+        .iter()
+        .all(|event| !event.text.contains("washes the mud")));
+    assert!(witness
+        .events
+        .iter()
+        .all(|event| !event.text.contains("washes the mud off Near")));
+    assert!(open
+        .events
+        .iter()
+        .all(|event| !event.text.contains("washes the mud off Near")));
 }
 
 #[test]
