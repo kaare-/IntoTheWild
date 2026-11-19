@@ -516,6 +516,7 @@ impl World {
         let mud_wash = self.tuning.mud_wash;
         let ids: Vec<ActorId> = self.actors.keys().copied().collect();
         for id in ids {
+            let wearing = self.wearing_hide(id);
             let Some(actor) = self.actors.get(&id) else {
                 continue;
             };
@@ -535,6 +536,9 @@ impl World {
             }
             let mut cold_gain = sky_cold;
             if !on_fire && carried > 0 {
+                cold_gain /= 2;
+            }
+            if wearing {
                 cold_gain /= 2;
             }
             let mut sun_gain = if raining {

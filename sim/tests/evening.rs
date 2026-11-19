@@ -757,10 +757,7 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("eat").unwrap(),
         Attempt::Eat(Material::Berry)
     ));
-    assert!(matches!(
-        parse_attempt("butcher").unwrap(),
-        Attempt::Butcher
-    ));
+    assert!(matches!(parse_attempt("wear hide").unwrap(), Attempt::Wear));
     assert!(matches!(
         parse_attempt("eat mushrooms").unwrap(),
         Attempt::Eat(Material::Mushroom)
@@ -6675,6 +6672,58 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert!(!carried.contains("A deer hide lies here."), "{carried}");
     assert_eq!(world.material_tally(Material::Hide), 1);
     assert_eq!(world.material_tally(Material::Meat), 3);
+
+    let mut bare = world.clone();
+    bare.step(&[cmd("south-bare", near, Attempt::Move(Dir::South))]);
+    let mut open_ticks = 0;
+    while bare.observe(near).unwrap().self_info.cold != "cold" && open_ticks < 40 {
+        bare.step(&[]);
+        open_ticks += 1;
+    }
+    let bare_body = bare.observe(near).unwrap().self_info;
+    assert_eq!(bare_body.cold, "cold");
+    assert_eq!(bare_body.wind, "in the wind");
+
+    let mut covered = world.clone();
+    let wore = covered.step(&[cmd("wear", near, Attempt::Wear)]);
+    assert_eq!(wore.results[0].message, "You wear the deer hide.");
+    let worn_line: Vec<_> = covered
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("wear the deer hide"))
+        .collect();
+    assert_eq!(worn_line, vec!["You wear the deer hide.".to_string()]);
+    let west_wore: Vec<_> = covered
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("wears the deer hide"))
+        .collect();
+    assert_eq!(west_wore, vec!["Near wears the deer hide.".to_string()]);
+    assert!(covered
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("wears")));
+    covered.step(&[cmd("south-hide", near, Attempt::Move(Dir::South))]);
+    for _ in 0..open_ticks {
+        covered.step(&[]);
+    }
+    let covered_body = covered.observe(near).unwrap().self_info;
+    assert_ne!(covered_body.cold, "cold");
+    assert_eq!(covered_body.wind, "in the wind");
+    assert!(covered
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("The deer hide is on you."));
+
     let raw = world.step(&[cmd("raw-meat", near, Attempt::Eat(Material::Meat))]);
     assert!(!raw.results[0].success);
     assert_eq!(raw.results[0].message, "Raw meat is not food.");

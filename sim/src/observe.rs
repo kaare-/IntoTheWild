@@ -850,7 +850,11 @@ impl World {
         } else if item.material == "carcass" && item.count == 1 {
             "a deer carcass".into()
         } else if item.material == "hide" && item.count == 1 {
-            "a deer hide".into()
+            if self.wearing_hide(actor_id) {
+                "a deer hide on you".into()
+            } else {
+                "a deer hide".into()
+            }
         } else if item.material == "spear" && item.count == 1 {
             let spear = self
                 .loose_ids(actor_id, Material::Spear)
@@ -915,6 +919,9 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.mud_word(actor.mud)),
         ];
+        if self.wearing_hide(actor_id) {
+            parts.push("The deer hide is on you.".into());
+        }
         if actor.warm_from_fire && self.fire_at(actor.cell).is_none() {
             parts.push("The warmth of the fire is still on you.".into());
         }
@@ -4056,6 +4063,19 @@ impl World {
         })
     }
 
+    /// A deer hide put on, filled for the person who wears it.
+    fn wear_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} wears "))?;
+        if rest != "the deer hide." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "wear", rest))
+    }
+
     /// Cooked meat eaten, filled for the person who ate it.
     fn eat_meat_for_these_eyes(
         &self,
@@ -4324,6 +4344,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.eat_meat_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.wear_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
@@ -4734,6 +4757,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Carcass).is_empty() {
             actions.push("drop carcass".into());
+        }
+        if !self.loose_ids(actor_id, Material::Hide).is_empty() && !self.wearing_hide(actor_id) {
+            actions.push("wear hide".into());
         }
         if !self.loose_ids(actor_id, Material::Hide).is_empty() {
             actions.push("drop hide".into());

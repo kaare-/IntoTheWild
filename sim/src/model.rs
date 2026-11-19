@@ -240,6 +240,7 @@ pub enum Attempt {
     Haft,
     Hunt,
     Butcher,
+    Wear,
     Eat(Material),
     Smear,
 }
@@ -265,6 +266,7 @@ impl Attempt {
                 | Attempt::Haft
                 | Attempt::Hunt
                 | Attempt::Butcher
+                | Attempt::Wear
                 | Attempt::Eat(_)
                 | Attempt::Smear
         )
@@ -375,6 +377,9 @@ pub struct Item {
     /// Meat that has been held over a fire. Raw meat leaves this false.
     #[serde(default)]
     pub cooked: bool,
+    /// A hide worn against the cold. Other materials leave this false.
+    #[serde(default)]
+    pub worn: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -933,6 +938,7 @@ impl World {
                 raw: false,
                 flint_tip: false,
                 cooked: false,
+                worn: false,
             },
         );
         id
@@ -1284,6 +1290,12 @@ impl World {
             .map(|material| self.pile_count(cell, material))
             .sum();
         piles + self.ground_ids(cell, Material::Carcass).len() as u32
+    }
+
+    pub(crate) fn wearing_hide(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
     }
 
     /// One piece of cooked meat, from the arms before the ground.

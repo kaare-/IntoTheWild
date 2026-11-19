@@ -25,6 +25,7 @@ light fire                   dry bark and a dry branch, from the arms if you car
 cook                         mushrooms, sweet berries, a carcass, or raw meat; poison berries are not food
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet into three portions; a flint spear in your arms
+wear hide                    a carried deer hide, against the cold
 eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat; raw meat is not food
 eat carcass                  a carcass must be cooked
@@ -92,6 +93,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" => Ok(Attempt::Butcher),
+        "wear" | "wrap" if rest.is_empty() || rest == "hide" || rest == "deer hide" => {
+            Ok(Attempt::Wear)
+        }
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
