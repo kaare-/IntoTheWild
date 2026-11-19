@@ -2179,6 +2179,70 @@ fn illness_fades_and_the_actor_hears_it_settle() {
 }
 
 #[test]
+fn the_still_pool_freezes_at_tick_twelve_and_the_refusal_stays_private() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    for (id, dir) in [
+        ("w", Dir::West),
+        ("w2", Dir::West),
+        ("n", Dir::North),
+        ("n2", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    assert_eq!(world.sim_time(), 4);
+    let open = world.observe(near).unwrap();
+    assert!(open
+        .text
+        .contains("Still water lies here. It is not the brook."));
+    assert!(!open.text.contains("frozen"));
+    while world.sim_time() < 12 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 12);
+    assert!(!world.is_raining());
+    let iced = world.observe(near).unwrap();
+    assert!(iced.text.contains("The still water is frozen."));
+    assert!(iced
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 2 && cell.y == 1 && cell.frozen));
+    assert!(iced
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 1 && cell.y == 2 && !cell.frozen));
+    let drink = world.step(&[cmd("drink", near, Attempt::Drink)]);
+    assert_eq!(drink.results[0].message, "The still water is frozen.");
+    assert_eq!(world.observe(near).unwrap().self_info.illness, "well");
+    let gather = world.step(&[cmd("gather", near, Attempt::Gather(Material::Water))]);
+    assert_eq!(gather.results[0].message, "The still water is frozen.");
+    assert_eq!(world.material_tally(Material::Water), 0);
+    let actor = world.observe(near).unwrap();
+    assert_eq!(
+        actor
+            .events
+            .iter()
+            .filter(|event| event.text == "The still water is frozen.")
+            .count(),
+        2
+    );
+    for witness in [far, west] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The still water is frozen."));
+    }
+    assert_eq!(world.actor_cell(far), Some((3, 3)));
+    assert_eq!(world.actor_cell(west), Some((5, 3)));
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+}
+
+#[test]
 fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     let mut world = world_at(10_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
