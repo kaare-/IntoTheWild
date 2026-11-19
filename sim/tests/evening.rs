@@ -592,7 +592,7 @@ fn rain_names_the_fire_it_does_not_reach() {
     let at_five = world.observe(near).unwrap();
     assert!(at_five
         .text
-        .contains("A small fire burns here. It warms anyone standing at it."));
+        .contains("A small fire burns here. It warms you."));
     assert!(at_five.map.contains("@*+"));
     assert!(!at_five.text.contains("The rain does not reach the fire."));
     assert!(at_five
@@ -606,7 +606,7 @@ fn rain_names_the_fire_it_does_not_reach() {
     assert!(!world.is_raining());
     assert!(at_thirteen
         .text
-        .contains("A small fire burns here. It warms anyone standing at it."));
+        .contains("A small fire burns here. It warms you."));
     assert!(at_thirteen.map.contains("@*+"));
     assert!(at_thirteen
         .events
@@ -626,7 +626,7 @@ fn rain_names_the_fire_it_does_not_reach() {
         .find(|line| line.starts_with("You are on the"))
         .unwrap_or("");
     assert!(place.contains("Rock leans overhead, and the rain does not reach this ground."));
-    assert!(place.contains("A small fire burns here. It warms anyone standing at it."));
+    assert!(place.contains("A small fire burns here. It warms you."));
     assert!(!place.contains("The rain does not reach the fire."));
     assert!(at_seventeen.map.contains("@*+"));
     let rain = at_seventeen
@@ -1125,7 +1125,7 @@ fn lighting_a_fire_is_one_sentence_for_each_pair_of_eyes() {
     assert!(!after.contains("anyone standing"), "{after}");
     let own = world.observe(near).unwrap().text;
     assert!(
-        own.contains("A small fire burns here. It warms anyone standing at it."),
+        own.contains("A small fire burns here. It warms you."),
         "{own}"
     );
     world.step(&[cmd("off", near, Attempt::Move(Dir::South))]);
@@ -2277,7 +2277,7 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
     let sun_at_light = world.observe(sera).unwrap().self_info.sunburn.clone();
     world.step(&[cmd("light", sera, Attempt::Light)]);
     let lit = world.observe(sera).unwrap();
-    assert!(lit.text.contains("warms anyone standing at it"));
+    assert!(lit.text.contains("It warms you."));
     assert_eq!(lit.self_info.wind, "in the wind");
     assert!(lit
         .events
@@ -2396,7 +2396,7 @@ fn rain_still_puts_out_an_open_fire_and_the_warmth_lingers() {
         .observe(sera)
         .unwrap()
         .text
-        .contains("warms anyone standing"));
+        .contains("It warms you."));
     assert!(world
         .observe(beside)
         .unwrap()

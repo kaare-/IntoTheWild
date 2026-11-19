@@ -394,7 +394,7 @@ impl World {
             }
         }
         if self.fire_at(actor.cell).is_some() {
-            parts.push("A small fire burns here. It warms anyone standing at it.".into());
+            parts.push("A small fire burns here. It warms you.".into());
         } else if self
             .fires
             .values()
