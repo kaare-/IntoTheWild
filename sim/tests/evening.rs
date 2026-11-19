@@ -1658,6 +1658,61 @@ fn the_wet_season_makes_open_rain_heavier_and_stays_local() {
 }
 
 #[test]
+fn open_berries_soak_when_the_wet_season_arrives_and_the_rock_stays_dry() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let rock = world.examine(near, ExamineTarget::Berries);
+    assert!(rock.contains("The sweet berries are dry."), "{rock}");
+    assert!(rock.contains("Rain does not reach it."), "{rock}");
+    let open = world.examine(near, ExamineTarget::BitterBerries);
+    assert!(open.contains("The poison berries are dry."), "{open}");
+
+    while world.sim_time() < 18 {
+        world.step(&[]);
+    }
+    assert!(!world.wet_season);
+    let before = world.observe(near).unwrap();
+    assert!(!before.text.contains("are soaked"), "{}", before.text);
+    let before_open = world.examine(near, ExamineTarget::BitterBerries);
+    assert!(before_open.contains("are damp."), "{before_open}");
+    assert!(!before_open.contains("soaked"), "{before_open}");
+    let before_rock = world.examine(near, ExamineTarget::Berries);
+    assert!(!before_rock.contains("soaked"), "{before_rock}");
+    assert!(
+        before_rock.contains("You see no berries from here."),
+        "{before_rock}"
+    );
+
+    world.step(&[]);
+    assert!(world.wet_season);
+    assert_eq!(world.sim_time(), 19);
+    let after_open = world.examine(near, ExamineTarget::BitterBerries);
+    assert!(after_open.contains("are soaked."), "{after_open}");
+    let after_rock = world.examine(near, ExamineTarget::Berries);
+    assert!(!after_rock.contains("soaked"), "{after_rock}");
+    let near_look = world.observe(near).unwrap().text;
+    let far_look = world.observe(far).unwrap().text;
+    let west_look = world.observe(west).unwrap().text;
+    assert!(near_look.contains("The rain is heavier on the wood this season."));
+    assert!(
+        near_look.contains("The poison berries to the north are soaked."),
+        "{near_look}"
+    );
+    assert!(
+        far_look.contains("The poison berries to the north and east are soaked."),
+        "{far_look}"
+    );
+    assert!(
+        west_look.contains("The poison berries to the north and west are soaked."),
+        "{west_look}"
+    );
+    assert!(!near_look.contains("The berries to the"));
+    assert!(!far_look.contains("The berries under the rock are soaked."));
+}
+
+#[test]
 fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
     let mut world = World::valley(Tuning::evening(), 1);
     let sera = world.spawn_at("Sera", "s", 4, 3).unwrap();

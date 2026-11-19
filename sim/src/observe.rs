@@ -217,6 +217,9 @@ impl World {
         if let Some(season) = self.season_line(actor_id) {
             lines.push(season);
         }
+        if let Some(soaked) = self.soaked_open_berries(actor_id) {
+            lines.push(soaked);
+        }
         if let Some(rot) = self.rot_line(actor_id) {
             lines.push(rot);
         }
@@ -285,6 +288,37 @@ impl World {
                     }))
         });
         sees_open_wood.then(|| "The rain is heavier on the wood this season.".to_string())
+    }
+
+    /// Open berries cross into soaked on the wet-season rain. Shelter keeps
+    /// a pile dry, so this sentence is not about the rock.
+    fn soaked_open_berries(&self, viewer: ActorId) -> Option<String> {
+        if !self.wet_season || !self.raining {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || self.exposure_millis(cell) < 1000 {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::BitterBerry) > 0
+                && self.pile_moisture(cell, Material::BitterBerry) >= self.tuning.soaked_at
+            {
+                lines.push(format!("The poison berries to the {way} are soaked."));
+            }
+            if self.pile_count(cell, Material::Berry) > 0
+                && self.pile_moisture(cell, Material::Berry) >= self.tuning.soaked_at
+            {
+                lines.push(format!("The berries to the {way} are soaked."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
     }
 
     fn rot_line(&self, viewer: ActorId) -> Option<String> {
