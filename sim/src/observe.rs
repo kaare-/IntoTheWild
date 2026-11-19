@@ -3801,9 +3801,26 @@ impl World {
         ))
     }
 
+    /// A successful light, filled for the person who set it.
+    /// Anyone else keeps the stored sentence.
+    fn light_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} lights "))?;
+        if !rest.starts_with("a fire with ") || !rest.ends_with('.') {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "light", rest))
+    }
+
     /// An event keeps the weather of its own tick. The wood is named, not counted.
     fn heard_text(&self, viewer: ActorId, origin: CellId, event: &crate::model::Event) -> String {
         if let Some(line) = self.gather_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.light_for_these_eyes(viewer, event) {
             return line;
         }
         if event.text.starts_with("Rain reaches the valley") {

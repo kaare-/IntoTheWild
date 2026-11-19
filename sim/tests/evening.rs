@@ -428,7 +428,7 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     assert!(lit.events.iter().any(|event| {
         event
             .text
-            .contains("lights a fire with bark and a dry branch from the pile at the feet")
+            .contains("You light a fire with bark and a dry branch from the pile at the feet")
     }));
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert_eq!(
@@ -1082,6 +1082,46 @@ fn a_look_places_the_person_and_the_pot_that_are_still_under_the_rock() {
     assert!(world.observe(west).unwrap().events.iter().any(|event| {
         event.text == "Near gathers a pot from the ground under the rock overhang."
     }));
+}
+
+#[test]
+fn lighting_a_fire_is_one_sentence_for_each_pair_of_eyes() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 0).unwrap();
+    let report = world.step(&[cmd("light", near, Attempt::Light)]);
+    let sentence = "You light a fire with bark and a dry branch from the pile at the feet.";
+    let witnessed = "Near lights a fire with bark and a dry branch from the pile at the feet.";
+    assert_eq!(report.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("light"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("light"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("light")));
+    assert!(world
+        .event_log()
+        .iter()
+        .any(|event| event.text == witnessed));
 }
 
 #[test]
@@ -2752,7 +2792,7 @@ fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
     );
     let seen = world.observe(near).unwrap();
     assert!(seen.events.iter().any(|event| {
-        event.text == "Near lights a fire with the bark and the branch from the arms."
+        event.text == "You light a fire with the bark and the branch from the arms."
     }));
     assert!(seen.text.contains("A small fire burns here."));
     assert_eq!(pile_at(&world, near, 6, 1), (1, 2, 1));

@@ -2109,7 +2109,7 @@ fn attempt_dir(attempt: &Attempt) -> Option<Dir> {
     }
 }
 
-/// `who` is the public line. None is the line the lighter hears.
+/// One light, filled for the person who set it and for anyone else.
 fn light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {
     let fuel = match (bark_arms, branch_arms) {
         (true, true) => "the bark and the branch from the arms",
@@ -2117,8 +2117,5 @@ fn light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {
         (true, false) => "the bark from the arms and a dry branch from the pile at the feet",
         (false, true) => "bark from the pile at the feet and the branch from the arms",
     };
-    match who {
-        Some(name) => format!("{name} lights a fire with {fuel}."),
-        None => format!("You light a fire with {fuel}."),
-    }
+    crate::model::spoken_act(who, "light", &format!("a fire with {fuel}."))
 }
