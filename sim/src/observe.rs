@@ -654,13 +654,22 @@ impl World {
                 }
             }
             if self.fire_at(cell).is_some() {
-                if parts.is_empty() {
-                    parts.push(
-                        "A small fire burns under the rock overhang. It warms anyone standing at it."
-                            .into(),
-                    );
+                let burn = if parts.is_empty() {
+                    "A small fire burns under the rock overhang."
                 } else {
-                    parts.push("A small fire burns there. It warms anyone standing at it.".into());
+                    "A small fire burns there."
+                };
+                let mut warmed: Vec<String> = self
+                    .actors
+                    .values()
+                    .filter(|actor| actor.cell == cell && actor.id != viewer)
+                    .map(|actor| actor.name.clone())
+                    .collect();
+                warmed.sort();
+                if warmed.is_empty() {
+                    parts.push(format!("{burn}"));
+                } else {
+                    parts.push(format!("{burn} It warms {}.", self.join_names(&warmed)));
                 }
             }
             if !parts.is_empty() {

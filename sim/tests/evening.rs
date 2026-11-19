@@ -1119,8 +1119,22 @@ fn lighting_a_fire_is_one_sentence_for_each_pair_of_eyes() {
     assert_eq!(seen, vec![witnessed.to_string()]);
     let after = world.observe(west).unwrap().text;
     assert!(
-        after.contains("A small fire burns there. It warms anyone standing at it."),
+        after.contains("A small fire burns there. It warms Near."),
         "{after}"
+    );
+    assert!(!after.contains("anyone standing"), "{after}");
+    let own = world.observe(near).unwrap().text;
+    assert!(
+        own.contains("A small fire burns here. It warms anyone standing at it."),
+        "{own}"
+    );
+    world.step(&[cmd("off", near, Attempt::Move(Dir::South))]);
+    let empty = world.observe(west).unwrap().text;
+    assert!(empty.contains("A small fire burns"), "{empty}");
+    assert!(!empty.contains("warms"), "{empty}");
+    assert!(
+        !world.observe(far).unwrap().text.contains("A small fire"),
+        "Far cannot see the fire"
     );
     assert!(world
         .observe(far)
