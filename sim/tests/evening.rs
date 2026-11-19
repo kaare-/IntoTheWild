@@ -990,7 +990,10 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         "You gather a drink of water from the brook into the pot."
     );
     let filled_arms = arms_sentence(&world.observe(near).unwrap().text);
-    assert_eq!(filled_arms, "You have a pot with a drink of water in it.");
+    assert_eq!(
+        filled_arms,
+        "You have a pot with a drink of raw water in it."
+    );
     assert!(!filled_arms.contains("dry pot"));
     assert!(!filled_arms.contains("1 water"));
     for step in 0..5 {
@@ -1027,6 +1030,7 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
     let empty_again = arms_sentence(&body.text);
     assert_eq!(empty_again, "You have a dry pot.");
     assert!(!empty_again.contains("water"));
+    assert!(!empty_again.contains("raw"));
 }
 
 #[test]
@@ -1308,6 +1312,22 @@ fn gathering_water_is_one_sentence_for_each_pair_of_eyes() {
         .events
         .iter()
         .all(|event| !event.text.contains("drink of water")));
+
+    let mut held = world_at(10_000);
+    let near = held.spawn_at("Near", "n", 6, 1).unwrap();
+    held.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    for step in 0..4 {
+        held.step(&[cmd(
+            &format!("pool-west-{step}"),
+            near,
+            Attempt::Move(Dir::West),
+        )]);
+    }
+    assert_eq!(held.actor_cell(near), Some((2, 1)));
+    held.step(&[cmd("pool-fill", near, Attempt::Gather(Material::Water))]);
+    let still_arms = arms_sentence(&held.observe(near).unwrap().text);
+    assert_eq!(still_arms, "You have a pot with a drink of water in it.");
+    assert!(!still_arms.contains("raw"));
 }
 
 #[test]

@@ -344,6 +344,9 @@ pub struct Item {
     /// A spear's point. Other materials leave this false.
     #[serde(default)]
     pub hardened: bool,
+    /// Brook water that has not been boiled. Boiled water is not raw.
+    #[serde(default)]
+    pub raw: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -898,6 +901,7 @@ impl World {
                 construction: None,
                 firing_ready_at: None,
                 hardened: false,
+                raw: false,
             },
         );
         id

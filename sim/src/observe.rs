@@ -868,6 +868,16 @@ impl World {
                 .find(|item| item.material == "water")
                 .map(|item| item.count)
                 .unwrap_or(0);
+            let raw_drinks = self
+                .items
+                .values()
+                .filter(|item| {
+                    item.carrier == Some(actor_id)
+                        && item.role == Role::Loose
+                        && item.material == Material::Water
+                        && item.raw
+                })
+                .count() as u32;
             let pot_holds_the_drink = drinks > 0
                 && carrying
                     .iter()
@@ -879,11 +889,7 @@ impl World {
                         return None;
                     }
                     if pot_holds_the_drink && item.material == "pot" {
-                        return Some(if drinks == 1 {
-                            "a pot with a drink of water in it".into()
-                        } else {
-                            format!("a pot with {} drinks of water in it", count_word(drinks))
-                        });
+                        return Some(pot_drink_phrase(drinks, raw_drinks));
                     }
                     Some(self.arm_bit(actor_id, item))
                 })
@@ -4367,6 +4373,32 @@ fn cell_span(count: u32) -> String {
     };
     let noun = if count == 1 { "cell" } else { "cells" };
     format!("{word} {noun}")
+}
+
+/// Brook water in the pot is raw. Any other drink in that pot is not.
+fn pot_drink_phrase(drinks: u32, raw_drinks: u32) -> String {
+    let raw = raw_drinks.min(drinks);
+    let plain = drinks.saturating_sub(raw);
+    match (raw, plain) {
+        (1, 0) => "a pot with a drink of raw water in it".into(),
+        (raw, 0) => format!("a pot with {} drinks of raw water in it", count_word(raw)),
+        (0, 1) => "a pot with a drink of water in it".into(),
+        (0, plain) => format!("a pot with {} drinks of water in it", count_word(plain)),
+        (raw, plain) => format!(
+            "a pot with {} and {} in it",
+            drink_count_phrase(raw, true),
+            drink_count_phrase(plain, false)
+        ),
+    }
+}
+
+fn drink_count_phrase(count: u32, raw: bool) -> String {
+    let kind = if raw { "raw water" } else { "water" };
+    if count == 1 {
+        format!("a drink of {kind}")
+    } else {
+        format!("{} drinks of {kind}", count_word(count))
+    }
 }
 
 fn count_word(count: u32) -> String {

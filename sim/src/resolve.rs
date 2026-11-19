@@ -1351,8 +1351,14 @@ impl World {
             return;
         }
         let item = self.mint_item(Material::Water, 0, cell, Some(intent.actor_id), Role::Loose);
+        let from_brook = self.cell(cell).region == Region::Brook;
+        if from_brook {
+            if let Some(drink) = self.items.get_mut(&item) {
+                drink.raw = true;
+            }
+        }
         let name = self.name_of(intent.actor_id);
-        let source = if self.cell(cell).region == Region::Brook {
+        let source = if from_brook {
             "the brook"
         } else {
             "the still water"
