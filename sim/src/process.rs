@@ -671,10 +671,9 @@ impl World {
             actor.illness = before.saturating_sub(loss);
             let after = actor.illness;
             if before >= ill_at && after < ill_at {
-                let name = actor.name.clone();
                 let cell = actor.cell;
                 self.emit(
-                    format!("{name}'s stomach settles."),
+                    "Your stomach settles.",
                     Scope::Personal(id),
                     vec![id],
                     vec![cell],

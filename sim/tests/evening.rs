@@ -2120,6 +2120,65 @@ fn seed_one_still_water_sickens_on_the_next_drink_and_the_brook_does_not() {
 }
 
 #[test]
+fn illness_fades_and_the_actor_hears_it_settle() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    for (id, dir) in [
+        ("w", Dir::West),
+        ("w2", Dir::West),
+        ("n", Dir::North),
+        ("n2", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    world.step(&[]);
+    let drunk = world.step(&[cmd("still", near, Attempt::Drink)]);
+    assert_eq!(
+        drunk.results[0].message,
+        "You drink the still water. The thirst eases. Your stomach turns."
+    );
+    assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
+    assert_eq!(world.sim_time(), 6);
+    let mut ticks = 0;
+    while world.observe(near).unwrap().self_info.illness == "ill" {
+        world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 30, "illness should fade");
+    }
+    assert_eq!(ticks, 15);
+    assert_eq!(world.sim_time(), 21);
+    let settled = world.observe(near).unwrap();
+    assert_eq!(settled.self_info.illness, "well");
+    assert!(settled.text.contains("You are well."));
+    assert_eq!(
+        settled
+            .events
+            .iter()
+            .filter(|event| event.text.contains("settles"))
+            .map(|event| event.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Your stomach settles."]
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("settles")));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("settles")));
+    assert_eq!(world.actor_cell(far), Some((3, 3)));
+    assert_eq!(world.actor_cell(west), Some((5, 3)));
+}
+
+#[test]
 fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     let mut world = world_at(10_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
