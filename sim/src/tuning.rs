@@ -406,6 +406,7 @@ impl Tuning {
             Material::Spear => 0,
             Material::Carcass => 0,
             Material::Flint => 0,
+            Material::Flake => 0,
         }
     }
 }

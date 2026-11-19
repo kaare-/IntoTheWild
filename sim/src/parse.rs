@@ -5,13 +5,14 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|flake|clay|bowl|spear|carcass|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
 gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass
 drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
+knap                         a carried flint nodule into a sharp flake
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
@@ -78,6 +79,11 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "boil" => Ok(Attempt::Boil),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
         "bind" if rest == "spear" => Ok(Attempt::BindSpear),
+        "knap"
+            if rest.is_empty() || rest == "flint" || rest == "nodule" || rest == "flint nodule" =>
+        {
+            Ok(Attempt::Knap)
+        }
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
@@ -151,6 +157,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "pot" => ExamineTarget::Pot,
         "stone" | "stones" => ExamineTarget::Stone,
         "flint" | "flint nodule" | "nodule" => ExamineTarget::Flint,
+        "flake" | "flint flake" | "sharp flake" => ExamineTarget::Flake,
         "clay" => ExamineTarget::Clay,
         "bowl" => ExamineTarget::Bowl,
         "spear" | "spears" => ExamineTarget::Spear,

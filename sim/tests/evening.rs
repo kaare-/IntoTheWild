@@ -707,6 +707,7 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("bind spear").unwrap(),
         Attempt::BindSpear
     ));
+    assert!(matches!(parse_attempt("knap").unwrap(), Attempt::Knap));
     assert!(matches!(
         parse_attempt("examine spear").unwrap(),
         Attempt::Examine(ExamineTarget::Spear)
@@ -6265,13 +6266,89 @@ fn a_flint_nodule_on_the_slope_can_be_carried() {
         .all(|event| !event.text.contains("flint")));
     let after = world.observe(near).unwrap().text;
     assert!(!after.contains("A flint nodule lies here."), "{after}");
-    assert_eq!(
-        arms_sentence(&after),
-        "You have a dry flint nodule."
-    );
+    assert_eq!(arms_sentence(&after), "You have a dry flint nodule.");
     let beside = world.observe(west).unwrap().text;
     assert!(
         !beside.contains("a flint nodule"),
         "the nodule is in the arms, not still on the slope: {beside}"
+    );
+}
+
+#[test]
+fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let bare = world.step(&[cmd("early", near, Attempt::Knap)]);
+    assert_eq!(
+        bare.results[0].message,
+        "You are not carrying a flint nodule."
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("knap")));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("knap")));
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    let before = world.observe(near).unwrap().text;
+    assert_eq!(arms_sentence(&before), "You have a dry flint nodule.");
+    let report = world.step(&[cmd("knap", near, Attempt::Knap)]);
+    let sentence = "You knap the flint nodule into a sharp flake.";
+    let witnessed = "Near knaps the flint nodule into a sharp flake.";
+    assert_eq!(report.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("knap"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("knap"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("knap") && !event.text.contains("flake")));
+    let after = world.observe(near).unwrap().text;
+    assert_eq!(arms_sentence(&after), "You have a sharp flint flake.");
+    assert!(
+        after.contains("It is sharp enough to cut or haft later."),
+        "{after}"
+    );
+    assert!(!after.contains("nodule"), "{after}");
+    let examined = world.examine(near, ExamineTarget::Flake);
+    assert!(
+        examined.contains("It is sharp enough to cut or haft later."),
+        "{examined}"
+    );
+    assert!(!examined.contains("nodule"), "{examined}");
+    let from_west = world.examine(west, ExamineTarget::Flint);
+    assert!(
+        from_west.contains("It is sharp enough to cut or haft later."),
+        "{from_west}"
+    );
+    let again = world.step(&[cmd("again", near, Attempt::Knap)]);
+    assert_eq!(
+        again.results[0].message,
+        "You are not carrying a flint nodule."
     );
 }

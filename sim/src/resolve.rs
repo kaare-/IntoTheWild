@@ -48,6 +48,7 @@ impl World {
         let mut smears = Vec::new();
         let mut sets = Vec::new();
         let mut binds = Vec::new();
+        let mut knaps = Vec::new();
         let mut hunts = Vec::new();
 
         for intent in pending {
@@ -86,6 +87,7 @@ impl World {
                         Attempt::Smear => smears.push(intent),
                         Attempt::SetClay => sets.push(intent),
                         Attempt::BindSpear => binds.push(intent),
+                        Attempt::Knap => knaps.push(intent),
                         Attempt::Hunt => hunts.push(intent),
                     }
                 }
@@ -168,6 +170,7 @@ impl World {
         self.apply_boils(boils, &mut results);
         self.apply_sets(sets, &mut results);
         self.apply_binds(binds, &mut results);
+        self.apply_knaps(knaps, &mut results);
         self.apply_hunts(hunts, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
@@ -235,6 +238,19 @@ impl World {
                     } else {
                         Err("Unfired clay cannot boil water.".into())
                     }
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Knap => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Flint).is_empty() {
+                    Err("You are not carrying a flint nodule.".into())
                 } else {
                     Ok(true)
                 }
@@ -1383,6 +1399,49 @@ impl World {
             crate::model::spoken_act(None, "gather", &rest),
             results,
         );
+    }
+
+    fn apply_knaps(&mut self, knaps: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the flint nodule into a sharp flake.";
+        for intent in knaps {
+            let nodule = self
+                .loose_ids(intent.actor_id, Material::Flint)
+                .first()
+                .copied();
+            let Some(nodule) = nodule else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not carrying a flint nodule.",
+                    results,
+                );
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.items.remove(&nodule);
+            let id = self.mint_item(Material::Flake, 0, cell, Some(intent.actor_id), Role::Loose);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "knap", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "knap", rest),
+                results,
+            );
+        }
     }
 
     fn apply_binds(&mut self, binds: Vec<Intent>, results: &mut Vec<CommandResult>) {

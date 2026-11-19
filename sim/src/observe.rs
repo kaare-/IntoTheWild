@@ -181,6 +181,7 @@ impl World {
             ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
             ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
             ExamineTarget::Flint => self.examine_flint(actor_id),
+            ExamineTarget::Flake => self.examine_flake(actor_id),
             ExamineTarget::Clay => self.examine_clay(actor_id),
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
             ExamineTarget::Spear => self.examine_spear(actor_id),
@@ -821,6 +822,8 @@ impl World {
             format!("a {} stone", item.condition)
         } else if item.material == "flint" && item.count == 1 {
             format!("a {} flint nodule", item.condition)
+        } else if item.material == "flake" && item.count == 1 {
+            "a sharp flint flake".into()
         } else if item.material == "bark" && item.count == 1 {
             format!("a {} sheet of bark", item.condition)
         } else if item.material == "pot" && item.count == 1 {
@@ -931,6 +934,9 @@ impl World {
                 })
                 .collect();
             parts.push(format!("You have {}.", bits.join(", ")));
+        }
+        if !self.loose_ids(actor_id, Material::Flake).is_empty() {
+            parts.push("It is sharp enough to cut or haft later.".into());
         }
         if self.spear_is_hardening(actor_id) {
             parts.push("The point of your spear is hardening in the fire.".into());
@@ -2729,11 +2735,44 @@ impl World {
                 self.cover_phrase(actor.cell)
             ));
         }
+        lines.extend(self.flake_lines(viewer));
         if lines.is_empty() {
             "You see no flint from here.".into()
         } else {
             lines.join("\n")
         }
+    }
+
+    fn examine_flake(&self, viewer: ActorId) -> String {
+        let lines = self.flake_lines(viewer);
+        if lines.is_empty() {
+            "You see no flint flake from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    fn flake_lines(&self, viewer: ActorId) -> Vec<String> {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Flake).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A flint flake is carried by {who}, {}. It is sharp enough to cut or haft later.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        lines
     }
 
     fn examine_material(&self, viewer: ActorId, material: Material) -> String {
@@ -2964,6 +3003,7 @@ impl World {
                 Material::Pot => "pot",
                 Material::Stone => "stone",
                 Material::Flint => "flint",
+                Material::Flake => "flint flake",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -3864,6 +3904,20 @@ impl World {
         })
     }
 
+    /// A successful knap, filled for the person who struck it.
+    /// Anyone else keeps the stored sentence.
+    fn knap_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} knaps "))?;
+        if rest != "the flint nodule into a sharp flake." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "knap", rest))
+    }
+
     /// A successful gather, filled for the person who took it.
     /// Anyone else keeps the stored sentence. Mud is not this act.
     fn gather_for_these_eyes(
@@ -3959,6 +4013,9 @@ impl World {
     /// An event keeps the weather of its own tick. The wood is named, not counted.
     fn heard_text(&self, viewer: ActorId, origin: CellId, event: &crate::model::Event) -> String {
         if let Some(line) = self.gather_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.knap_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.light_for_these_eyes(viewer, event) {
@@ -4274,6 +4331,15 @@ impl World {
         {
             actions.push("gather flint".into());
         }
+        if !self.loose_ids(actor_id, Material::Flint).is_empty() {
+            actions.push("knap".into());
+        }
+        if self.actors.values().any(|other| {
+            chebyshev(actor.cell, other.cell) <= self.tuning.sight
+                && !self.loose_ids(other.id, Material::Flake).is_empty()
+        }) {
+            actions.push("examine flake".into());
+        }
         if (self.pile_count(actor.cell, Material::Clay) > 0
             || !self.ground_ids(actor.cell, Material::Clay).is_empty())
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -4525,6 +4591,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Pot, _) => "pot",
         (Material::Stone, _) => "stone",
         (Material::Flint, _) => "flint nodule",
+        (Material::Flake, _) => "flint flake",
         (Material::Clay, true) => "lump of clay",
         (Material::Clay, false) => "lumps of clay",
         (Material::Bowl, _) => "bowl",
