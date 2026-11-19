@@ -3833,9 +3833,11 @@ impl World {
         let rest = public.strip_prefix(&format!("{name} boils "))?;
         let you_rest = match rest {
             "the drink in the pot over the fire and drinks it." => {
-                "the drink in the pot and drink it."
+                "the drink in the pot over the fire and drink it."
             }
-            "a drink of water over the fire and drinks it." => "a drink of water and drink it.",
+            "a drink of water over the fire and drinks it." => {
+                "a drink of water over the fire and drink it."
+            }
             _ => return None,
         };
         if viewer == actor_id {

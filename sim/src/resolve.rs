@@ -1716,9 +1716,9 @@ impl World {
                 .into_iter()
                 .collect();
             let in_pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
-            let coda = if before == 0 {
-                " You were not thirsty."
-            } else if after < self.tuning.thirsty_at {
+            let coda = if self.thirst_word(before) == "not thirsty" {
+                ""
+            } else if self.thirst_word(after) == "not thirsty" {
                 " The thirst eases."
             } else {
                 " You are still thirsty."
@@ -2105,8 +2105,8 @@ fn attempt_dir(attempt: &Attempt) -> Option<Dir> {
     }
 }
 
-/// The witness rest of one boil. The actor's rest drops "over the fire" and
-/// says "drink", which is the sentence that person already heard.
+/// The witness rest of one boil. The actor's rest names the same fire and
+/// says "drink".
 fn boil_witness_rest(in_pot: bool) -> &'static str {
     if in_pot {
         "the drink in the pot over the fire and drinks it."
@@ -2117,9 +2117,9 @@ fn boil_witness_rest(in_pot: bool) -> &'static str {
 
 fn boil_actor_rest(in_pot: bool) -> &'static str {
     if in_pot {
-        "the drink in the pot and drink it."
+        "the drink in the pot over the fire and drink it."
     } else {
-        "a drink of water and drink it."
+        "a drink of water over the fire and drink it."
     }
 }
 

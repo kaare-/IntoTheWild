@@ -921,10 +921,9 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
     let boiled = world.observe(sera).unwrap();
     assert_eq!(boiled.self_info.illness, "well");
     assert_eq!(boiled.self_info.thirst, "not thirsty");
-    assert!(boiled
-        .events
-        .iter()
-        .any(|event| event.text.contains("boil the drink in the pot")));
+    assert!(boiled.events.iter().any(|event| {
+        event.text == "You boil the drink in the pot over the fire and drink it. The thirst eases."
+    }));
     assert!(boiled
         .events
         .iter()
@@ -999,7 +998,7 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
     let boiled = world.step(&[cmd("boil", near, Attempt::Boil)]);
     assert_eq!(
         boiled.results[0].message,
-        "You boil the drink in the pot and drink it. The thirst eases."
+        "You boil the drink in the pot over the fire and drink it."
     );
     let boil_event = world
         .observe(near)
@@ -1011,7 +1010,7 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         .unwrap_or_default();
     assert_eq!(
         boil_event,
-        "You boil the drink in the pot and drink it. The thirst eases."
+        "You boil the drink in the pot over the fire and drink it."
     );
     assert!(world
         .material_items(Material::Pot)
@@ -1044,7 +1043,7 @@ fn boiling_a_drink_is_one_sentence_for_each_pair_of_eyes() {
     assert_eq!(world.actor_cell(near), Some((6, 1)));
     world.step(&[cmd("light", near, Attempt::Light)]);
     let boiled = world.step(&[cmd("boil", near, Attempt::Boil)]);
-    let sentence = "You boil the drink in the pot and drink it. The thirst eases.";
+    let sentence = "You boil the drink in the pot over the fire and drink it.";
     let witnessed = "Near boils the drink in the pot over the fire and drinks it.";
     assert_eq!(boiled.results[0].message, sentence);
     let yours: Vec<_> = world
