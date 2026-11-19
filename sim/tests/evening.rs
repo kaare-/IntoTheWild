@@ -1056,7 +1056,10 @@ fn a_look_places_the_person_and_the_pot_that_are_still_under_the_rock() {
     assert!(!standing.contains("1 person"), "{standing}");
 
     let report = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
-    assert_eq!(report.results[0].message, "You gather a pot.");
+    assert_eq!(
+        report.results[0].message,
+        "You gather a pot from the ground under the rock overhang."
+    );
     let after = world.observe(west).unwrap().text;
     assert!(
         after.contains(
@@ -1076,12 +1079,9 @@ fn a_look_places_the_person_and_the_pot_that_are_still_under_the_rock() {
         .events
         .iter()
         .all(|event| { !event.text.contains("pot") && !event.text.contains("gather") }));
-    assert!(world
-        .observe(west)
-        .unwrap()
-        .events
-        .iter()
-        .any(|event| event.text == "Near gathers a pot."));
+    assert!(world.observe(west).unwrap().events.iter().any(|event| {
+        event.text == "Near gathers a pot from the ground under the rock overhang."
+    }));
 }
 
 #[test]
@@ -1091,7 +1091,10 @@ fn gathering_a_pot_is_one_sentence_for_each_pair_of_eyes() {
     let west = world.spawn_at("West", "w", 4, 1).unwrap();
     let far = world.spawn_at("Far", "f", 0, 0).unwrap();
     let report = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
-    assert_eq!(report.results[0].message, "You gather a pot.");
+    assert_eq!(
+        report.results[0].message,
+        "You gather a pot from the ground under the rock overhang."
+    );
     let yours: Vec<_> = world
         .observe(near)
         .unwrap()
@@ -1100,7 +1103,10 @@ fn gathering_a_pot_is_one_sentence_for_each_pair_of_eyes() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("pot") || text.contains("gather"))
         .collect();
-    assert_eq!(yours, vec!["You gather a pot.".to_string()]);
+    assert_eq!(
+        yours,
+        vec!["You gather a pot from the ground under the rock overhang.".to_string()]
+    );
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
@@ -1109,17 +1115,19 @@ fn gathering_a_pot_is_one_sentence_for_each_pair_of_eyes() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("pot") || text.contains("gather"))
         .collect();
-    assert_eq!(seen, vec!["Near gathers a pot.".to_string()]);
+    assert_eq!(
+        seen,
+        vec!["Near gathers a pot from the ground under the rock overhang.".to_string()]
+    );
     assert!(world
         .observe(far)
         .unwrap()
         .events
         .iter()
         .all(|event| { !event.text.contains("pot") && !event.text.contains("gather") }));
-    assert!(world
-        .event_log()
-        .iter()
-        .any(|event| event.text == "Near gathers a pot."));
+    assert!(world.event_log().iter().any(|event| {
+        event.text == "Near gathers a pot from the ground under the rock overhang."
+    }));
 }
 
 fn arms_sentence(text: &str) -> String {

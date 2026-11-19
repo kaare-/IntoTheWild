@@ -3787,7 +3787,11 @@ impl World {
             "spear",
             "carcass",
         ];
-        if !NOUNS.contains(&noun) {
+        let known = NOUNS
+            .iter()
+            .copied()
+            .any(|word| noun == word || noun.starts_with(&format!("{word} from ")));
+        if !known {
             return None;
         }
         Some(crate::model::spoken_act(

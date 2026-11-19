@@ -595,7 +595,12 @@ impl World {
                     } else {
                         ""
                     };
-                    let rest = format!("a {noun}.{breaking}");
+                    let from = if material == Material::Pot {
+                        format!(" from the ground {}", self.cover_phrase(cell))
+                    } else {
+                        String::new()
+                    };
+                    let rest = format!("a {noun}{from}.{breaking}");
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
