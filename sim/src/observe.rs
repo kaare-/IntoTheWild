@@ -240,6 +240,9 @@ impl World {
         if let Some(flint) = self.seen_flint(actor_id) {
             lines.push(flint);
         }
+        if let Some(ice) = self.seen_frozen_pool(actor_id) {
+            lines.push(ice);
+        }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
@@ -623,6 +626,26 @@ impl World {
             }
         }
         parts.join(" ")
+    }
+
+    /// Frozen still water in sight. The person standing on it already has the place line.
+    fn seen_frozen_pool(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.still_frozen(cell) {
+                continue;
+            }
+            lines.push(format!(
+                "The still water to the {} is frozen.",
+                self.relative(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
     }
 
     /// A flint nodule in sight that the place line and the compass do not already name.

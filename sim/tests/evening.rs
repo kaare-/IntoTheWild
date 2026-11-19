@@ -2243,6 +2243,56 @@ fn the_still_pool_freezes_at_tick_twelve_and_the_refusal_stays_private() {
 }
 
 #[test]
+fn far_reads_the_ice_once_the_pool_in_sight_is_frozen() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let ice = "The still water to the north and west is frozen.";
+    assert!(!world.observe(far).unwrap().text.contains("frozen"));
+    assert!(!world.observe(far).unwrap().text.contains("ice"));
+    assert!(!world.observe(west).unwrap().text.contains("frozen"));
+    for (id, dir) in [
+        ("w", Dir::West),
+        ("w2", Dir::West),
+        ("n", Dir::North),
+        ("n2", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Still water lies here. It is not the brook."));
+    assert!(!world.observe(far).unwrap().text.contains("frozen"));
+    assert!(!world.observe(west).unwrap().text.contains("frozen"));
+    while world.sim_time() < 12 {
+        world.step(&[]);
+    }
+    let standing = world.observe(near).unwrap();
+    assert!(standing.text.contains("The still water is frozen."));
+    assert!(!standing.text.contains(ice));
+    assert!(world.observe(far).unwrap().text.contains(ice));
+    assert!(!world.observe(west).unwrap().text.contains("frozen"));
+    let drink = world.step(&[cmd("drink", near, Attempt::Drink)]);
+    assert_eq!(drink.results[0].message, "The still water is frozen.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen."));
+}
+
+#[test]
 fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     let mut world = world_at(10_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
