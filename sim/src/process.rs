@@ -92,7 +92,7 @@ impl World {
                 let Some(item) = self.item(id).cloned() else {
                     continue;
                 };
-                if item.hardened || item.flint_tip {
+                if item.hardened {
                     continue;
                 }
                 if at_fire {
@@ -118,7 +118,6 @@ impl World {
         };
         if item.material != Material::Spear
             || item.hardened
-            || item.flint_tip
             || item.firing_ready_at != Some(self.time)
         {
             return;
@@ -144,8 +143,17 @@ impl World {
             spear.firing_ready_at = None;
         }
         let name = self.name_of(carrier);
+        let text = if item.flint_tip {
+            crate::model::spoken_act(
+                Some(name.as_str()),
+                "harden",
+                "the flint tip of the spear in the fire.",
+            )
+        } else {
+            format!("The point of {name}'s spear hardens.")
+        };
         self.emit(
-            format!("The point of {name}'s spear hardens."),
+            text,
             Scope::Cell(cell),
             vec![carrier],
             vec![cell],

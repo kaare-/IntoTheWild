@@ -6434,3 +6434,91 @@ fn a_flint_flake_and_a_dry_branch_haft_into_a_spear() {
         "{from_west}"
     );
 }
+
+#[test]
+fn a_flint_tipped_spear_hardens_in_the_rock_fire() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [
+        ("east", Dir::East),
+        ("east-2", Dir::East),
+        ("south", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("haft", near, Attempt::Haft)]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let started = world.sim_time();
+    let waiting = world.observe(near).unwrap().text;
+    assert_eq!(
+        arms_sentence(&waiting),
+        "You have a spear with a flint tip, not yet fire-hardened."
+    );
+    assert!(
+        waiting.contains("The flint tip of your spear is hardening in the fire."),
+        "{waiting}"
+    );
+    assert!(
+        !waiting.contains("The point of your spear is hardening"),
+        "{waiting}"
+    );
+    for _ in 0..3 {
+        world.step(&[]);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The flint tip of your spear is hardening in the fire."));
+    }
+    world.step(&[]);
+    assert_eq!(world.sim_time(), started + 4);
+    let sentence = "You harden the flint tip of the spear in the fire.";
+    let witnessed = "Near hardens the flint tip of the spear in the fire.";
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("harden the flint"))
+        .collect();
+    assert_eq!(yours, vec![sentence.to_string()]);
+    let seen: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("hardens the flint"))
+        .collect();
+    assert_eq!(seen, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("flint tip")));
+    let after = world.observe(near).unwrap().text;
+    assert_eq!(
+        arms_sentence(&after),
+        "You have a spear with a fire-hardened flint tip."
+    );
+    assert!(!after.contains("not yet fire-hardened"), "{after}");
+    assert!(!after.contains("hardening in the fire"), "{after}");
+    let examined = world.examine(near, ExamineTarget::Spear);
+    assert_eq!(
+        examined,
+        "A spear with a fire-hardened flint tip is carried by you, under the rock overhang."
+    );
+    let from_west = world.examine(west, ExamineTarget::Spear);
+    assert!(
+        from_west.contains("A spear with a fire-hardened flint tip is carried by Near"),
+        "{from_west}"
+    );
+}
