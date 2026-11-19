@@ -2011,6 +2011,9 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
         .events
         .iter()
         .any(|event| { event.text.contains("Raw mushrooms do not feed you.") }));
+    assert!(world.observe(linde).unwrap().events.iter().all(|event| {
+        !event.text.contains("Raw mushrooms") && !event.text.contains("mushroom")
+    }));
     world.step(&[cmd(
         "raw-bitter",
         linde,
@@ -2043,14 +2046,43 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     }
     assert_eq!(world.actor_cell(nils), Some((6, 1)));
     world.step(&[cmd("light", nils, Attempt::Light)]);
+    let hunger_before = world.observe(nils).unwrap().self_info.hunger.clone();
     world.step(&[cmd("meal", nils, Attempt::Cook)]);
     let cooked = world.observe(nils).unwrap();
     assert!(cooked
         .events
         .iter()
-        .any(|event| event.text.contains("cooks a mushroom")));
-    assert_eq!(cooked.self_info.hunger, "not hungry");
+        .any(|event| event.text == "You cook the mushroom over the fire."));
+    assert_eq!(cooked.self_info.hunger, hunger_before);
+    assert_eq!(world.material_tally(Material::Mushroom), 2);
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .text
+        .contains("a cooked mushroom"));
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Nils cooks the mushroom over the fire."));
+    while world.observe(nils).unwrap().self_info.hunger != "hungry" {
+        world.step(&[]);
+        assert!(world.sim_time() < 80, "hunger should arrive");
+    }
+    let fed = world.step(&[cmd("eat-mushroom", nils, Attempt::Eat(Material::Mushroom))]);
+    assert_eq!(
+        fed.results[0].message,
+        "You eat the cooked mushroom. The hunger eases."
+    );
+    assert_eq!(world.observe(nils).unwrap().self_info.hunger, "not hungry");
     assert_eq!(world.material_tally(Material::Mushroom), 1);
+    assert!(world
+        .observe(sera)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Nils eats the cooked mushroom."));
 }
 
 #[test]
@@ -3598,15 +3630,11 @@ fn burning(world: &World, actor: u32) -> bool {
 #[test]
 fn cook_names_an_energy_change_and_stays_quiet_when_the_word_stays() {
     let mut world = world_at(10_000);
-    let near = world.spawn_at("Near", "n", 3, 1).unwrap();
-    world.step(&[cmd("m1", near, Attempt::Gather(Material::Mushroom))]);
-    world.step(&[cmd("m2", near, Attempt::Gather(Material::Mushroom))]);
-    for i in 0..3 {
-        world.step(&[cmd(&format!("e{i}"), near, Attempt::Move(Dir::East))]);
-    }
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    world.step(&[cmd("b1", near, Attempt::Gather(Material::Berry))]);
+    world.step(&[cmd("b2", near, Attempt::Gather(Material::Berry))]);
+    world.step(&[cmd("b3", near, Attempt::Gather(Material::Berry))]);
     assert_eq!(world.actor_cell(near), Some((6, 1)));
-    let picked = world.step(&[cmd("berry", near, Attempt::Gather(Material::Berry))]);
-    assert!(picked.results[0].success, "{}", picked.results[0].message);
 
     let mut ticks = 0;
     while world.observe(near).unwrap().self_info.energy != "tiring" {
@@ -3625,7 +3653,7 @@ fn cook_names_an_energy_change_and_stays_quiet_when_the_word_stays() {
     let both = world.step(&[cmd("cook-both", near, Attempt::Cook)]);
     assert_eq!(
         both.results[0].message,
-        "You cook a mushroom. You are not hungry. You are rested."
+        "You cook a handful of berries. You are not hungry. You are rested."
     );
     let eased = world.observe(near).unwrap().self_info;
     assert_eq!(eased.hunger, "not hungry");
@@ -3664,7 +3692,7 @@ fn cook_names_an_energy_change_and_stays_quiet_when_the_word_stays() {
     let cooked = world.step(&[cmd("cook-hunger", near, Attempt::Cook)]);
     assert_eq!(
         cooked.results[0].message,
-        "You cook a mushroom. You are not hungry."
+        "You cook a handful of berries. You are not hungry."
     );
     assert!(!cooked.results[0].message.contains("rested"));
     assert!(!cooked.results[0].message.contains("tiring"));

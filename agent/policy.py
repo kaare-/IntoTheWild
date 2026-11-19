@@ -296,6 +296,8 @@ def safe_food(obs: dict, memory: Memory, me: dict, allowed: set[str]) -> str | N
             if step:
                 return step
     if me_hungry(obs):
+        if "eat mushrooms" in allowed:
+            return "eat mushrooms"
         if "cook" in allowed:
             return "cook"
         if "gather mushrooms" in allowed:

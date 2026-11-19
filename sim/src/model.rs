@@ -1063,7 +1063,9 @@ impl World {
         }
     }
 
-    /// Heat treats mushrooms first, then sweet berries. Poison berries are not food.
+    /// Sweet berries and a carcass are eaten by the cook. A mushroom is not:
+    /// heat leaves it in the arms or on the ground until someone eats it.
+    /// Poison berries are not food.
     pub(crate) fn consume_food(
         &mut self,
         actor: ActorId,
@@ -1072,10 +1074,8 @@ impl World {
             self.items.remove(&id);
             return Ok((Some(id), Material::Carcass));
         }
-        for material in [Material::Mushroom, Material::Berry] {
-            if let Ok(item) = self.take_hand(actor, material) {
-                return Ok((item, material));
-            }
+        if let Ok(item) = self.take_hand(actor, Material::Berry) {
+            return Ok((item, Material::Berry));
         }
         let Some(cell) = self.actor(actor).map(|person| person.cell) else {
             return Err(());
@@ -1279,9 +1279,44 @@ impl World {
 
     pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
         !self.loose_ids(actor, Material::Carcass).is_empty()
-            || [Material::Mushroom, Material::Berry]
-                .into_iter()
-                .any(|material| !self.loose_ids(actor, material).is_empty())
+            || self.raw_mushroom_id(actor).is_some()
+            || !self.loose_ids(actor, Material::Berry).is_empty()
+    }
+
+    /// A raw mushroom in the arms. A cooked one is already food.
+    pub(crate) fn raw_mushroom_id(&self, actor: ActorId) -> Option<ItemId> {
+        self.loose_ids(actor, Material::Mushroom)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|mushroom| !mushroom.cooked))
+    }
+
+    /// One cooked mushroom, from the arms before the ground.
+    pub(crate) fn cooked_mushroom_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Mushroom)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|mushroom| mushroom.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Mushroom)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|mushroom| mushroom.cooked))
+    }
+
+    pub(crate) fn raw_mushroom_near(&self, actor: ActorId) -> bool {
+        if self.raw_mushroom_id(actor).is_some() {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.pile_count(cell, Material::Mushroom) > 0
+            || self
+                .ground_ids(cell, Material::Mushroom)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|mushroom| !mushroom.cooked))
     }
 
     pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {

@@ -510,6 +510,19 @@ impl World {
                 self.condition_word(self.pile_moisture(actor.cell, Material::Mushroom))
             ));
         }
+        let cooked_mushrooms = self
+            .ground_ids(actor.cell, Material::Mushroom)
+            .into_iter()
+            .filter(|id| self.item(*id).is_some_and(|mushroom| mushroom.cooked))
+            .count();
+        if cooked_mushrooms == 1 {
+            parts.push("A cooked mushroom lies here.".into());
+        } else if cooked_mushrooms > 1 {
+            parts.push(format!(
+                "{} cooked mushrooms lie here.",
+                count_word(cooked_mushrooms as u32)
+            ));
+        }
         if self.pile_count(actor.cell, Material::Pot) > 0
             || !self.ground_ids(actor.cell, Material::Pot).is_empty()
         {
@@ -870,7 +883,19 @@ impl World {
                 "a spear with an unhardened point".into()
             }
         } else if item.material == "mushroom" {
-            if item.count == 1 {
+            let ids = self.loose_ids(actor_id, Material::Mushroom);
+            let cooked = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|mushroom| mushroom.cooked))
+                .count() as u32;
+            let raw = ids.len() as u32 - cooked;
+            if cooked > 0 && raw == 0 {
+                if cooked == 1 {
+                    "a cooked mushroom".into()
+                } else {
+                    format!("{} cooked mushrooms", count_word(cooked))
+                }
+            } else if item.count == 1 {
                 format!("a {} mushroom", item.condition)
             } else {
                 format!("{} {} mushrooms", count_word(item.count), item.condition)
@@ -3113,10 +3138,40 @@ impl World {
                     self.condition_word(moisture),
                     self.cover_phrase(cell)
                 ));
-            } else if matches!(
-                material,
-                Material::Mushroom | Material::Berry | Material::BitterBerry
-            ) {
+            } else if material == Material::Mushroom {
+                let cooked = ids
+                    .iter()
+                    .filter(|id| self.item(**id).is_some_and(|mushroom| mushroom.cooked))
+                    .count();
+                if cooked == ids.len() {
+                    let phrase = if cooked == 1 {
+                        "A cooked mushroom is".to_string()
+                    } else {
+                        format!("{} cooked mushrooms are", count_word(cooked as u32))
+                    };
+                    lines.push(format!(
+                        "{phrase} carried by {who}, {}. {}",
+                        self.cover_phrase(cell),
+                        if cooked == 1 {
+                            "It is good to eat."
+                        } else {
+                            "They are good to eat."
+                        }
+                    ));
+                } else {
+                    let phrase = carried_food_phrase(
+                        material,
+                        ids.len() as u32,
+                        self.condition_word(moisture),
+                    );
+                    lines.push(format!(
+                        "{phrase} {} carried by {who}, {}.{}",
+                        if ids.len() == 1 { "is" } else { "are" },
+                        self.cover_phrase(cell),
+                        food_clause(material)
+                    ));
+                }
+            } else if matches!(material, Material::Berry | Material::BitterBerry) {
                 let phrase =
                     carried_food_phrase(material, ids.len() as u32, self.condition_word(moisture));
                 lines.push(format!(
@@ -4093,6 +4148,23 @@ impl World {
         Some(crate::model::spoken_act(None, "eat", rest))
     }
 
+    /// A cooked mushroom eaten, filled for the person who ate it.
+    fn eat_mushroom_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} eats "))?;
+        if rest != "the cooked mushroom." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "eat", rest))
+    }
+
     /// Raw meat held over the fire, filled for the person who cooked it.
     fn cook_meat_for_these_eyes(
         &self,
@@ -4105,6 +4177,23 @@ impl World {
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
         if rest != "the raw meat over the fire." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "cook", rest))
+    }
+
+    /// A mushroom held over the fire, filled for the person who cooked it.
+    fn cook_mushroom_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
+        if rest != "the mushroom over the fire." {
             return None;
         }
         Some(crate::model::spoken_act(None, "cook", rest))
@@ -4343,7 +4432,13 @@ impl World {
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
             return line;
         }
+        if let Some(line) = self.cook_mushroom_for_these_eyes(viewer, event) {
+            return line;
+        }
         if let Some(line) = self.eat_meat_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.eat_mushroom_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.wear_for_these_eyes(viewer, event) {
@@ -4637,6 +4732,9 @@ impl World {
         }
         if self.cooked_meat_id(actor_id).is_some() {
             actions.push("eat meat".into());
+        }
+        if self.cooked_mushroom_id(actor_id).is_some() {
+            actions.push("eat mushrooms".into());
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots

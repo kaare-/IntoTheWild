@@ -393,7 +393,15 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else {
                     match material {
-                        Material::Mushroom => Err("Raw mushrooms do not feed you.".into()),
+                        Material::Mushroom => {
+                            if self.cooked_mushroom_id(actor.id).is_some() {
+                                Ok(true)
+                            } else if self.raw_mushroom_near(actor.id) {
+                                Err("Raw mushrooms do not feed you.".into())
+                            } else {
+                                Err("There is no cooked mushroom here to eat.".into())
+                            }
+                        }
                         Material::BitterBerry => {
                             if self.has_material_at_hand(actor.id, Material::BitterBerry) {
                                 Ok(true)
@@ -1292,6 +1300,12 @@ impl World {
                 self.cook_meat(intent, results);
                 continue;
             }
+            if self.raw_mushroom_id(intent.actor_id).is_some()
+                || self.pile_count(cell, Material::Mushroom) > 0
+            {
+                self.cook_mushroom(intent, results);
+                continue;
+            }
             if self.cookable_carried(intent.actor_id) {
                 carried.push(intent);
             } else {
@@ -1349,6 +1363,66 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Heat leaves the mushroom in the arms, or on the ground if it was a pile.
+    /// It does not feed anyone until it is eaten.
+    fn cook_mushroom(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if let Some(message) = self.cook_refusal(intent.actor_id) {
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let id = if let Some(id) = self.raw_mushroom_id(intent.actor_id) {
+            if let Some(mushroom) = self.items.get_mut(&id) {
+                mushroom.cooked = true;
+            }
+            id
+        } else if self.pile_count(cell, Material::Mushroom) > 0 {
+            let moisture = self
+                .take_from_pile(cell, Material::Mushroom, 1)
+                .unwrap_or(0);
+            let id = self.mint_item(Material::Mushroom, moisture, cell, None, Role::Loose);
+            if let Some(mushroom) = self.items.get_mut(&id) {
+                mushroom.cooked = true;
+            }
+            id
+        } else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        let rest = "the mushroom over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
     }
 
     /// Raw meat on the fire's own cell. It stays on the ground and is not eaten.
@@ -2237,6 +2311,10 @@ impl World {
                 self.eat_meat(intent, results);
                 continue;
             }
+            if material == Material::Mushroom {
+                self.eat_mushroom(intent, results);
+                continue;
+            }
             if material == Material::BitterBerry {
                 self.eat_poison(intent, results);
                 continue;
@@ -2293,6 +2371,60 @@ impl World {
             };
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
+    }
+
+    fn eat_mushroom(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_mushroom_id(intent.actor_id) else {
+            let message = if self.raw_mushroom_near(intent.actor_id) {
+                "Raw mushrooms do not feed you."
+            } else {
+                "There is no cooked mushroom here to eat."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cooked mushroom.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+            self.emit(
+                "The hunger eases.",
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
     fn eat_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
