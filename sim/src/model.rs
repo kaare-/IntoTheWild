@@ -4891,13 +4891,43 @@ mod wolf {
             "{on_it}"
         );
         assert!(!on_it.contains("A wolf stands"), "{on_it}");
-        let toward = world.observe(seen).unwrap().text;
+        let dark = world.observe(seen).unwrap().text;
+        assert!(!dark.contains("Wolf tracks"), "{dark}");
         assert!(
-            toward.contains("Wolf tracks mark the ground to the north."),
-            "{toward}"
+            dark.contains("The dark hides what lies farther off."),
+            "{dark}"
         );
         let out = world.observe(quiet).unwrap().text;
         assert!(!out.contains("Wolf tracks"), "{out}");
+        let deer_cell = super::cell_id(1, 1).unwrap();
+        world.leave_fresh_tracks(deer_cell);
+        let dark_deer = world.observe(seen).unwrap().text;
+        assert!(
+            !dark_deer.contains("Deer tracks mark the ground to the east."),
+            "{dark_deer}"
+        );
+        let seen_cell = world.actor(seen).unwrap().cell;
+        let fire = world.mint_fire(seen_cell, 0);
+        let lit = world.observe(seen).unwrap().text;
+        assert!(
+            lit.contains("Wolf tracks mark the ground to the north."),
+            "{lit}"
+        );
+        assert!(
+            lit.contains("Deer tracks mark the ground to the east."),
+            "{lit}"
+        );
+        assert!(
+            !lit.contains("The dark hides what lies farther off."),
+            "{lit}"
+        );
+        world.extinguish(fire, "The fire goes out.", None);
+        let dark_again = world.observe(seen).unwrap().text;
+        assert!(!dark_again.contains("Wolf tracks"), "{dark_again}");
+        assert!(
+            !dark_again.contains("Deer tracks mark the ground to the east."),
+            "{dark_again}"
+        );
         let ticks = world.tuning.track_ticks;
         for _ in 0..ticks - 1 {
             world.step(&[]);
@@ -4906,11 +4936,7 @@ mod wolf {
                 .unwrap()
                 .text
                 .contains("Wolf tracks mark the ground here."));
-            assert!(world
-                .observe(seen)
-                .unwrap()
-                .text
-                .contains("Wolf tracks mark the ground to the north."));
+            assert!(!world.observe(seen).unwrap().text.contains("Wolf tracks"));
         }
         world.step(&[]);
         assert_eq!(world.time, night + ticks);

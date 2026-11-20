@@ -271,8 +271,11 @@ impl World {
             {
                 lines.push("Deer tracks mark the ground here.".into());
             }
-            if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
-                lines.push(tracks);
+            if self
+                .seen_wolf_tracks(actor_id)
+                .is_some_and(|tracks| tracks.contains("Wolf tracks mark the ground here."))
+            {
+                lines.push("Wolf tracks mark the ground here.".into());
             }
             lines.push("The dark hides what lies farther off.".into());
         } else {
@@ -1084,9 +1087,10 @@ impl World {
         }
     }
 
-    /// Wolf tracks on a cell this person can see. There is no wolf.
-    /// Past sight, nothing. Night does not hide them: they are only there
-    /// while the dark is up, and they fade when `track_ticks` have passed.
+    /// Wolf tracks on ground this person can see. There is no wolf.
+    /// Past sight, nothing. At night, with no fire nearby, only the tracks
+    /// underfoot are named. A fire nearby names the neighbor tracks again,
+    /// the way day does. They fade when `track_ticks` have passed.
     fn seen_wolf_tracks(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
