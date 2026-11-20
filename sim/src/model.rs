@@ -77,6 +77,7 @@ pub enum Material {
     Awl,
     Cord,
     Fish,
+    Brand,
 }
 
 impl Material {
@@ -109,6 +110,7 @@ impl Material {
             Material::Awl => "awl",
             Material::Cord => "strips",
             Material::Fish => "fish",
+            Material::Brand => "brand",
         }
     }
 
@@ -141,6 +143,7 @@ impl Material {
             Material::Awl => "copper awl",
             Material::Cord => "hide strips",
             Material::Fish => "fish",
+            Material::Brand => "burning brand",
         }
     }
 
@@ -250,6 +253,7 @@ pub enum ExamineTarget {
     Hide,
     Cord,
     Fish,
+    Brand,
     Fire,
     Water,
     Deer,
@@ -305,6 +309,7 @@ pub enum Attempt {
     CutHide,
     DryBranch,
     Fish,
+    TakeBrand,
 }
 
 impl Attempt {
@@ -350,6 +355,7 @@ impl Attempt {
                 | Attempt::CutHide
                 | Attempt::DryBranch
                 | Attempt::Fish
+                | Attempt::TakeBrand
         )
     }
 }
@@ -548,6 +554,7 @@ pub enum Wake {
     HardenSpear(ItemId),
     Smelt(ItemId),
     DryBranch(ItemId),
+    BrandOut(ItemId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it

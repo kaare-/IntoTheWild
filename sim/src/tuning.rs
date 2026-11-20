@@ -426,6 +426,7 @@ impl Tuning {
             Material::Awl => 0,
             Material::Cord => 0,
             Material::Fish => 0,
+            Material::Brand => 0,
         }
     }
 }

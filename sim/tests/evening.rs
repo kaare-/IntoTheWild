@@ -738,6 +738,26 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("light fire").unwrap(),
         Attempt::Light
     ));
+    assert!(matches!(
+        parse_attempt("take brand").unwrap(),
+        Attempt::TakeBrand
+    ));
+    assert!(matches!(
+        parse_attempt("take ember").unwrap(),
+        Attempt::TakeBrand
+    ));
+    assert!(matches!(
+        parse_attempt("take a burning brand").unwrap(),
+        Attempt::TakeBrand
+    ));
+    assert!(matches!(
+        parse_attempt("examine brand").unwrap(),
+        Attempt::Examine(ExamineTarget::Brand)
+    ));
+    assert!(matches!(
+        parse_attempt("take bark").unwrap(),
+        Attempt::Gather(Material::Bark)
+    ));
     assert!(matches!(parse_attempt("cook").unwrap(), Attempt::Cook));
     assert!(matches!(
         parse_attempt("examine deer").unwrap(),
@@ -7804,6 +7824,195 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
     assert_eq!(
         again.results[0].message,
         "You are not carrying a flint nodule."
+    );
+}
+
+#[test]
+fn a_brand_lights_a_second_fire_then_burns_out() {
+    let mut world = world_at(40);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+    let early = world.step(&[cmd("early", near, Attempt::TakeBrand)]);
+    assert_eq!(early.results[0].message, "There is no fire burning here.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("brand")));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    world.step(&[cmd("bark-2", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let take = world.step(&[cmd("brand", near, Attempt::TakeBrand)]);
+    let yours = "You take a burning brand from the fire. It stays lit.";
+    let seen = "Near takes a burning brand from the fire. It stays lit.";
+    assert_eq!(take.results[0].message, yours);
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A small fire burns here."),
+        "{}",
+        world.observe(near).unwrap().text
+    );
+    let again = world.step(&[cmd("again", near, Attempt::TakeBrand)]);
+    assert_eq!(
+        again.results[0].message,
+        "You are already carrying a burning brand."
+    );
+    let examined = world.examine(near, ExamineTarget::Brand);
+    assert!(
+        examined.contains(
+            "A burning brand is carried by you, under the rock overhang. It will not burn long."
+        ),
+        "{examined}"
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("brand")));
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    let planted = world.step(&[cmd("plant", near, Attempt::Light)]);
+    let planted_line =
+        "You light a fire with the burning brand and the bark and the branch from the arms.";
+    assert_eq!(planted.results[0].message, planted_line);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == planted_line));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near lights a fire with the burning brand and the bark and the branch from the arms."));
+    world.step(&[cmd("back", near, Attempt::Move(Dir::North))]);
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A small fire burns here."),
+        "source fire"
+    );
+    world.step(&[cmd("see-new", near, Attempt::Move(Dir::South))]);
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A small fire burns here."),
+        "new fire"
+    );
+    world.step(&[cmd("home", near, Attempt::Move(Dir::North))]);
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A small fire burns here."),
+        "the fire they took the brand from is still burning"
+    );
+    let second = world.step(&[cmd("second", near, Attempt::TakeBrand)]);
+    assert_eq!(second.results[0].message, yours);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Your brand burns out."),
+        "{:?}",
+        world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near's brand burns out."));
+}
+
+#[test]
+fn rain_in_the_open_puts_a_carried_brand_out() {
+    let mut world = world_at(4);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    let take = world.step(&[cmd("brand", near, Attempt::TakeBrand)]);
+    assert_eq!(
+        take.results[0].message,
+        "You take a burning brand from the fire. It stays lit."
+    );
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    world.step(&[]);
+    assert!(
+        world.observe(near).unwrap().raining,
+        "rain should have reached the valley"
+    );
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "The rain puts your brand out."),
+        "{:?}",
+        world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "The rain puts Near's brand out."));
+    world.step(&[cmd("back", near, Attempt::Move(Dir::North))]);
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A small fire burns here."),
+        "rain on the brand does not put the sheltered fire out"
     );
 }
 

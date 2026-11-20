@@ -34,6 +34,7 @@ impl World {
                 Wake::HardenSpear(id) => self.harden_spear(id),
                 Wake::Smelt(id) => self.finish_smelt(id),
                 Wake::DryBranch(id) => self.dry_branch(id),
+                Wake::BrandOut(id) => self.brand_out(id),
             }
         }
     }
@@ -1001,6 +1002,70 @@ impl World {
             self.first_rain = Some(id);
         }
         self.douse_open_fires(id);
+        self.douse_open_brands();
+    }
+
+    fn douse_open_brands(&mut self) {
+        let open: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|item| item.material == Material::Brand)
+            .filter(|item| self.item_exposure(item.id) >= 1000)
+            .map(|item| item.id)
+            .collect();
+        for id in open {
+            self.quench_brand(id, true);
+        }
+    }
+
+    fn brand_out(&mut self, id: ItemId) {
+        let Some(item) = self.item(id) else {
+            return;
+        };
+        if item.material != Material::Brand || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        self.quench_brand(id, false);
+    }
+
+    fn quench_brand(&mut self, id: ItemId, rain: bool) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Brand {
+            return;
+        }
+        let (cell, affected, text) = if let Some(carrier) = item.carrier {
+            let name = self.name_of(carrier);
+            let cell = self
+                .actor(carrier)
+                .map(|person| person.cell)
+                .unwrap_or(item.cell);
+            let text = if rain {
+                format!("The rain puts {name}'s brand out.")
+            } else {
+                format!("{name}'s brand burns out.")
+            };
+            (cell, vec![carrier], text)
+        } else if rain {
+            (
+                item.cell,
+                vec![],
+                "The rain puts the brand out.".to_string(),
+            )
+        } else {
+            (item.cell, vec![], "The brand burns out.".to_string())
+        };
+        self.items.remove(&id);
+        self.emit(
+            text,
+            Scope::Cell(cell),
+            affected,
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
     }
 
     fn douse_open_fires(&mut self, rain_event: EventId) {

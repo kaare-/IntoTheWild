@@ -5,7 +5,7 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
 gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
@@ -15,6 +15,7 @@ bind spear                   a carried stone and a carried branch; hold it at a 
 knap                         a carried flint nodule into a sharp flake
 haft                         a carried flint flake and a dry branch into a spear; hide strips, if carried, bind the tip. Hold it at a fire
 dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
+take brand                   a burning brand from a fire already burning here; the fire stays lit. It goes out in the rain, or after a short wait.
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
@@ -91,6 +92,18 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "e" | "east" => Ok(Attempt::Move(Dir::East)),
         "w" | "west" => Ok(Attempt::Move(Dir::West)),
         "move" | "go" | "walk" => parse_dir(rest).map(Attempt::Move),
+        "take"
+            if rest == "brand"
+                || rest == "ember"
+                || rest == "a brand"
+                || rest == "an ember"
+                || rest == "a burning brand"
+                || rest == "burning brand"
+                || rest == "the brand"
+                || rest == "the ember" =>
+        {
+            Ok(Attempt::TakeBrand)
+        }
         "gather" | "get" | "take" => parse_material(rest).map(Attempt::Gather),
         "drop" => parse_material(rest).map(Attempt::Drop),
         "grab" | "grip" => Ok(Attempt::Grab),
@@ -224,6 +237,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
         "fish" | "raw fish" | "cooked fish" => Ok(Material::Fish),
+        "brand" | "ember" | "burning brand" => Ok(Material::Brand),
         "hide" | "deer hide" => Ok(Material::Hide),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
@@ -279,6 +293,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
         "meat" | "raw meat" => ExamineTarget::Meat,
         "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,
+        "brand" | "ember" | "burning brand" => ExamineTarget::Brand,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,

@@ -200,6 +200,7 @@ impl World {
             ExamineTarget::Carcass => self.examine_carcass(actor_id),
             ExamineTarget::Meat => self.examine_meat(actor_id),
             ExamineTarget::Fish => self.examine_fish(actor_id),
+            ExamineTarget::Brand => self.examine_brand(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -649,6 +650,9 @@ impl World {
                 "The {} branch in your arms is drying by the fire. It is not dry yet.",
                 self.condition_word(moisture)
             ));
+        }
+        for id in self.ground_ids(actor.cell, Material::Brand) {
+            parts.push("A burning brand lies here.".into());
         }
         for id in self.ground_ids(actor.cell, Material::Fish) {
             let cooked = self.item(id).is_some_and(|fish| fish.cooked);
@@ -1436,6 +1440,8 @@ impl World {
             "a copper bead, metal from the fire".into()
         } else if item.material == "awl" && item.count == 1 {
             "a copper awl".into()
+        } else if item.material == "brand" && item.count == 1 {
+            "a burning brand".into()
         } else if item.material == "fish" && item.count == 1 {
             let cooked = self
                 .loose_ids(actor_id, Material::Fish)
@@ -3604,6 +3610,39 @@ impl World {
         }
     }
 
+    fn examine_brand(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for _id in self.ground_ids(cell, Material::Brand) {
+                lines.push(format!(
+                    "A burning brand lies in contact with the ground {}. It will not burn long.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            if self.loose_ids(other, Material::Brand).is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            lines.push(format!(
+                "A burning brand is carried by {who}, {}. It will not burn long.",
+                self.cover_phrase(cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no brand from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_fish(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -4535,6 +4574,7 @@ impl World {
                 Material::Hide => "hide",
                 Material::Cord => "hide strips",
                 Material::Fish => "fish",
+                Material::Brand => "brand",
                 Material::Ochre => "ochre",
                 Material::CopperOre => "copper ore",
                 Material::IronOre => "iron ore",
@@ -5850,6 +5890,26 @@ impl World {
         Some(crate::model::spoken_act(None, "harden", rest))
     }
 
+    /// A brand taken, or going out, filled for the person who carries it.
+    fn brand_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} takes ")) {
+            if rest.starts_with("a burning brand from the fire.") {
+                return Some(crate::model::spoken_act(None, "take", rest));
+            }
+        }
+        if event.text == format!("{name}'s brand burns out.") {
+            return Some("Your brand burns out.".into());
+        }
+        if event.text == format!("The rain puts {name}'s brand out.") {
+            return Some("The rain puts your brand out.".into());
+        }
+        None
+    }
+
     /// A fish taken from the brook, filled for the person who speared it.
     fn fish_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -6200,6 +6260,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.fish_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.brand_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.harden_for_these_eyes(viewer, event) {
@@ -7114,6 +7177,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Hide, _) => "deer hide",
         (Material::Cord, _) => "hide strips",
         (Material::Fish, _) => "fish",
+        (Material::Brand, _) => "brand",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",

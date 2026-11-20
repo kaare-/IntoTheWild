@@ -76,6 +76,7 @@ impl World {
         let mut rests = Vec::new();
         let mut dries = Vec::new();
         let mut fishes = Vec::new();
+        let mut brands = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -134,6 +135,7 @@ impl World {
                         Attempt::Rest => rests.push(intent),
                         Attempt::DryBranch => dries.push(intent),
                         Attempt::Fish => fishes.push(intent),
+                        Attempt::TakeBrand => brands.push(intent),
                     }
                 }
             }
@@ -234,6 +236,7 @@ impl World {
         self.apply_rests(rests, &mut results);
         self.apply_dries(dries, &mut results);
         self.apply_fishes(fishes, &mut results);
+        self.apply_brands(brands, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -315,6 +318,23 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Flint).is_empty() {
                     Err("You are not carrying a flint nodule.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::TakeBrand => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if !self.loose_ids(actor.id, Material::Brand).is_empty() {
+                    Err("You are already carrying a burning brand.".into())
+                } else if self.carry_count(actor.id) >= self.tuning.carry_slots {
+                    Err("Your arms are full.".into())
                 } else {
                     Ok(true)
                 }
@@ -914,6 +934,7 @@ impl World {
                             | Material::Awl
                             | Material::Cord
                             | Material::Fish
+                            | Material::Brand
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1048,6 +1069,7 @@ impl World {
                     | Material::Copper
                     | Material::Awl
                     | Material::Cord
+                    | Material::Brand
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1685,6 +1707,10 @@ impl World {
                     self.finish(intent.command_id, intent.actor_id, false, message, results);
                     continue;
                 }
+                let brand = self
+                    .loose_ids(intent.actor_id, Material::Brand)
+                    .first()
+                    .copied();
                 let bark = self.consume_dry(intent.actor_id, Material::Bark);
                 let branch = self.consume_dry(intent.actor_id, Material::Branch);
                 let (Ok((bark_item, bark_arms)), Ok((branch_item, branch_arms))) = (bark, branch)
@@ -1698,9 +1724,17 @@ impl World {
                     );
                     continue;
                 };
+                if let Some(brand) = brand {
+                    self.items.remove(&brand);
+                }
                 let name = self.name_of(intent.actor_id);
+                let line = if brand.is_some() {
+                    brand_light_line(Some(&name), bark_arms, branch_arms)
+                } else {
+                    light_line(Some(&name), bark_arms, branch_arms)
+                };
                 let event = self.emit(
-                    light_line(Some(&name), bark_arms, branch_arms),
+                    line,
                     Scope::Cell(cell),
                     vec![intent.actor_id],
                     vec![cell],
@@ -1710,13 +1744,12 @@ impl World {
                 );
                 self.mint_fire(cell, event);
                 lit = true;
-                self.finish(
-                    intent.command_id,
-                    intent.actor_id,
-                    true,
-                    light_line(None, bark_arms, branch_arms),
-                    results,
-                );
+                let yours = if brand.is_some() {
+                    brand_light_line(None, bark_arms, branch_arms)
+                } else {
+                    light_line(None, bark_arms, branch_arms)
+                };
+                self.finish(intent.command_id, intent.actor_id, true, yours, results);
             }
         }
     }
@@ -2218,6 +2251,39 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, verb, &rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_brands(&mut self, brands: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "a burning brand from the fire. It stays lit.";
+        for intent in brands {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let id = self.mint_item(Material::Brand, 0, cell, Some(intent.actor_id), Role::Loose);
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            if let Some(brand) = self.items.get_mut(&id) {
+                brand.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, Wake::BrandOut(id));
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "take", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "take", rest),
                 results,
             );
         }
@@ -4581,6 +4647,20 @@ fn boil_actor_rest(in_pot: bool) -> &'static str {
     } else {
         "a drink of water over the fire and drink it."
     }
+}
+
+fn brand_light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {
+    let fuel = match (bark_arms, branch_arms) {
+        (true, true) => "the bark and the branch from the arms",
+        (false, false) => "bark and a dry branch from the pile at the feet",
+        (true, false) => "the bark from the arms and a dry branch from the pile at the feet",
+        (false, true) => "bark from the pile at the feet and the branch from the arms",
+    };
+    crate::model::spoken_act(
+        who,
+        "light",
+        &format!("a fire with the burning brand and {fuel}."),
+    )
 }
 
 /// One light, filled for the person who set it and for anyone else.
