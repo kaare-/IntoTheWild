@@ -293,6 +293,9 @@ impl World {
             if let Some(mark) = self.seen_ochre_mark(actor_id) {
                 lines.push(mark);
             }
+            if let Some(mark) = self.seen_charcoal_mark(actor_id) {
+                lines.push(mark);
+            }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
             }
@@ -831,6 +834,14 @@ impl World {
             };
             parts.push(format!("A red ochre mark is on the {surface} here."));
         }
+        if self.charcoal_marks.contains(&actor.cell) {
+            let surface = if self.cell(actor.cell).rock {
+                "rock"
+            } else {
+                "ground"
+            };
+            parts.push(format!("A black charcoal mark is on the {surface} here."));
+        }
         let firing = self.clay_firing_count(actor.cell);
         let loose_clay = self
             .ground_ids(actor.cell, Material::Clay)
@@ -1339,6 +1350,32 @@ impl World {
                 )
             };
             lines.push(format!("A red ochre mark is {place}."));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A black charcoal mark in sight, other than the one under the looker's feet.
+    fn seen_charcoal_mark(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.charcoal_marks.contains(&cell) {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("on the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!(
+                    "on the ground on the {region} to the {}",
+                    self.relative(origin, cell)
+                )
+            };
+            lines.push(format!("A black charcoal mark is {place}."));
         }
         if lines.is_empty() {
             None
@@ -2220,6 +2257,9 @@ impl World {
         }
         if self.ochre_marks.contains(&dest) {
             bits.push("a red ochre mark".into());
+        }
+        if self.charcoal_marks.contains(&dest) {
+            bits.push("a black charcoal mark".into());
         }
         let clay_firing = self.clay_firing_count(dest);
         let unshaped_clay = self.ground_ids(dest, Material::Clay).iter().any(|id| {
@@ -3861,6 +3901,29 @@ impl World {
                 "A lump of charcoal is carried by {who}, {}. The fire left it. It is cold.",
                 self.cover_phrase(cell)
             ));
+        }
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.charcoal_marks.contains(&cell) {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                if origin == cell {
+                    "on the rock here".to_string()
+                } else {
+                    format!("on the rock to the {}", self.relative(origin, cell))
+                }
+            } else {
+                let region = self.cell(cell).region.word();
+                if origin == cell {
+                    format!("on the ground here, on the {region}")
+                } else {
+                    format!(
+                        "on the ground on the {region} to the {}",
+                        self.relative(origin, cell)
+                    )
+                }
+            };
+            lines.push(format!("A black charcoal mark is {place}."));
         }
         if lines.is_empty() {
             "You see no charcoal from here.".into()
@@ -5861,6 +5924,12 @@ impl World {
         if event.text == format!("{name} marks the rock with red ochre.") {
             return Some("You mark the rock with red ochre.".into());
         }
+        if event.text == format!("{name} marks the ground with charcoal.") {
+            return Some("You mark the ground with charcoal.".into());
+        }
+        if event.text == format!("{name} marks the rock with charcoal.") {
+            return Some("You mark the rock with charcoal.".into());
+        }
         None
     }
 
@@ -7387,11 +7456,15 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Ochre).is_empty() {
             actions.push("smear ochre".into());
-            if !self.ochre_marks.contains(&actor.cell) {
-                actions.push("mark".into());
-                if self.cell(actor.cell).rock {
-                    actions.push("mark rock".into());
-                }
+        }
+        if (!self.loose_ids(actor_id, Material::Ochre).is_empty()
+            || !self.loose_ids(actor_id, Material::Charcoal).is_empty())
+            && !self.ochre_marks.contains(&actor.cell)
+            && !self.charcoal_marks.contains(&actor.cell)
+        {
+            actions.push("mark".into());
+            if self.cell(actor.cell).rock {
+                actions.push("mark rock".into());
             }
         }
         if self.log_at(actor.cell) {

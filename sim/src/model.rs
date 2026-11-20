@@ -678,9 +678,12 @@ pub struct World {
     /// handful leaves this unset.
     #[serde(default)]
     pub(crate) deer_ate_berries: BTreeSet<CellId>,
-    /// A red ochre mark left on a cell. It stays. Rain does not wash it.
+    /// A red ochre mark left on a cell. Open rain washes it. The rock keeps it.
     #[serde(default)]
     pub(crate) ochre_marks: BTreeSet<CellId>,
+    /// A black charcoal mark left on a cell. Open rain washes it. The rock keeps it.
+    #[serde(default)]
+    pub(crate) charcoal_marks: BTreeSet<CellId>,
     /// A lean-to of branches. It stands in that cell and breaks the wind.
     #[serde(default)]
     pub(crate) lean_tos: BTreeSet<CellId>,
@@ -757,6 +760,7 @@ impl World {
             spent_berries: BTreeSet::new(),
             deer_ate_berries: BTreeSet::new(),
             ochre_marks: BTreeSet::new(),
+            charcoal_marks: BTreeSet::new(),
             lean_tos: BTreeSet::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),

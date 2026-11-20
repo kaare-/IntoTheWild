@@ -12625,3 +12625,179 @@ fn a_small_fire_leaves_charcoal_when_it_goes_out() {
         .iter()
         .all(|event| !event.text.contains("burns down") && !event.text.contains("charcoal")));
 }
+
+#[test]
+fn a_lump_of_charcoal_marks_the_rock_and_rain_washes_an_open_one() {
+    let mut bare = world_at(1_000);
+    let near = bare.spawn_at("Near", "n", 6, 1).unwrap();
+    let none = bare.step(&[cmd("none", near, Attempt::Mark)]);
+    assert_eq!(none.results[0].message, "You have no ochre to mark with.");
+
+    let mut rock = world_at(1_000);
+    let near = rock.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = rock.spawn_at("Seen", "s", 6, 2).unwrap();
+    let quiet = rock.spawn_at("Quiet", "q", 0, 4).unwrap();
+    let life = rock.tuning.fire_ticks;
+    rock.step(&[cmd("light", near, Attempt::Light)]);
+    for _ in 1..life {
+        rock.step(&[]);
+    }
+    rock.step(&[]);
+    assert!(rock
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A lump of charcoal lies here."));
+    rock.step(&[cmd("take", near, Attempt::Gather(Material::Charcoal))]);
+    assert_eq!(rock.material_tally(Material::Charcoal), 1);
+    let marked = rock.step(&[cmd("mark", near, Attempt::MarkRock)]);
+    assert_eq!(
+        marked.results[0].message,
+        "You mark the rock with charcoal."
+    );
+    let yours = "You mark the rock with charcoal.";
+    let witnessed = "Near marks the rock with charcoal.";
+    assert!(rock
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(rock
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == witnessed));
+    assert!(rock
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("charcoal")));
+    let here = rock.observe(near).unwrap().text;
+    assert!(
+        here.contains("A black charcoal mark is on the rock here."),
+        "{here}"
+    );
+    let beside = rock.observe(seen).unwrap().text;
+    assert!(
+        beside.contains("A black charcoal mark is on the rock to the north."),
+        "{beside}"
+    );
+    assert!(beside.contains("a black charcoal mark"), "{beside}");
+    assert!(!rock.observe(quiet).unwrap().text.contains("charcoal mark"));
+    let named = rock.examine(near, ExamineTarget::Charcoal);
+    assert!(
+        named.contains("A black charcoal mark is on the rock here."),
+        "{named}"
+    );
+    assert!(!named.contains("A lump of charcoal"), "{named}");
+    let from_sight = rock.examine(seen, ExamineTarget::Charcoal);
+    assert!(
+        from_sight.contains("A black charcoal mark is on the rock to the north."),
+        "{from_sight}"
+    );
+    assert_eq!(
+        rock.examine(quiet, ExamineTarget::Charcoal),
+        "You see no charcoal from here."
+    );
+    assert_eq!(rock.material_tally(Material::Charcoal), 0);
+    let again = rock.step(&[cmd("again", near, Attempt::Mark)]);
+    assert!(!again.results[0].success);
+    assert_eq!(again.results[0].message, "A black mark is already here.");
+    rock.step(&[cmd("west", near, Attempt::Move(Dir::West))]);
+    let without = rock.step(&[cmd("empty", near, Attempt::Mark)]);
+    assert_eq!(
+        without.results[0].message,
+        "You have no ochre to mark with."
+    );
+    assert!(rock
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A black charcoal mark is on the rock to the east."));
+
+    let mut rain = world_at(16);
+    rain.tuning.fire_ticks = 1;
+    let near = rain.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = rain.spawn_at("Seen", "s", 5, 0).unwrap();
+    let quiet = rain.spawn_at("Quiet", "q", 0, 4).unwrap();
+    rain.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    rain.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    rain.step(&[cmd("west", near, Attempt::Move(Dir::West))]);
+    assert_eq!(rain.actor_cell(near), Some((5, 1)));
+    rain.step(&[cmd("light", near, Attempt::Light)]);
+    for _ in 0..4 {
+        if rain
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A lump of charcoal lies here.")
+        {
+            break;
+        }
+        rain.step(&[]);
+    }
+    rain.step(&[cmd("take", near, Attempt::Gather(Material::Charcoal))]);
+    let off = rain.step(&[cmd("rock", near, Attempt::MarkRock)]);
+    assert_eq!(off.results[0].message, "There is no rock here to mark.");
+    assert_eq!(rain.material_tally(Material::Charcoal), 1);
+    let marked = rain.step(&[cmd("mark", near, Attempt::Mark)]);
+    assert_eq!(
+        marked.results[0].message,
+        "You mark the ground with charcoal."
+    );
+    assert!(rain
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A black charcoal mark is on the ground here."));
+    assert!(rain
+        .observe(seen)
+        .unwrap()
+        .text
+        .contains("A black charcoal mark is on the ground on the valley floor to the south."));
+    assert!(rain
+        .observe(seen)
+        .unwrap()
+        .text
+        .contains("a black charcoal mark"));
+    let named = rain.examine(near, ExamineTarget::Charcoal);
+    assert!(
+        named.contains("A black charcoal mark is on the ground here, on the valley floor."),
+        "{named}"
+    );
+    while rain.sim_time() < 16 {
+        rain.step(&[]);
+    }
+    assert!(!rain.is_raining());
+    assert!(rain
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A black charcoal mark is on the ground here."));
+    rain.step(&[]);
+    assert!(rain.is_raining());
+    let washed = "The rain washes the black charcoal mark off the ground on the valley floor.";
+    assert!(rain
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == washed));
+    assert!(rain
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == washed));
+    assert!(rain
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("charcoal mark")));
+    assert!(!rain.observe(near).unwrap().text.contains("charcoal mark"));
+    assert!(!rain.observe(seen).unwrap().text.contains("charcoal mark"));
+}

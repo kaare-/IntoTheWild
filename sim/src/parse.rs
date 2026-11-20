@@ -48,8 +48,8 @@ eat carcass                  a carcass must be cooked
 eat bark                     bark is tinder, not food
 smear mud                    mud on skin against the sun
 smear ochre                  red ochre on the skin, a mark unlike mud
-mark                         a carried lump of ochre leaves a red mark on this ground
-mark rock                    the same red mark on the rock, when you stand under it
+mark                         a carried lump of ochre leaves a red mark on this ground. A lump of charcoal leaves a black mark instead, and is used up
+mark rock                    the same mark on the rock, when you stand under it. Rain washes an open mark and leaves one under the rock
 smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead
 smelt iron                   a carried lump of iron ore; a small fire refuses it, and a fire fed an extra dry branch yields a bloom of iron
 feed                         an extra dry branch into a burning fire, from the arms or the pile at your feet; the fire burns hot enough for iron

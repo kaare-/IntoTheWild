@@ -858,10 +858,14 @@ impl World {
                     Err("There is no rock here to mark.".into())
                 } else if self.ochre_marks.contains(&actor.cell) {
                     Err("A red mark is already here.".into())
-                } else if self.loose_ids(actor.id, Material::Ochre).is_empty() {
-                    Err("You have no ochre to mark with.".into())
-                } else {
+                } else if self.charcoal_marks.contains(&actor.cell) {
+                    Err("A black mark is already here.".into())
+                } else if !self.loose_ids(actor.id, Material::Charcoal).is_empty()
+                    || !self.loose_ids(actor.id, Material::Ochre).is_empty()
+                {
                     Ok(true)
+                } else {
+                    Err("You have no ochre to mark with.".into())
                 }
             }
             Attempt::Light => {
@@ -4762,6 +4766,45 @@ impl World {
                 );
                 continue;
             }
+            if self.charcoal_marks.contains(&cell) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "A black mark is already here.",
+                    results,
+                );
+                continue;
+            }
+            let rock = self.cell(cell).rock;
+            let surface = if rock { "rock" } else { "ground" };
+            let name = self.name_of(intent.actor_id);
+            if let Some(item_id) = self
+                .loose_ids(intent.actor_id, Material::Charcoal)
+                .first()
+                .copied()
+            {
+                self.items.remove(&item_id);
+                self.charcoal_marks.insert(cell);
+                let rest = format!("the {surface} with charcoal.");
+                self.emit(
+                    crate::model::spoken_act(Some(name.as_str()), "mark", &rest),
+                    Scope::Cell(cell),
+                    vec![intent.actor_id],
+                    vec![cell],
+                    vec![item_id],
+                    vec![],
+                    None,
+                );
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    true,
+                    crate::model::spoken_act(None, "mark", &rest),
+                    results,
+                );
+                continue;
+            }
             let Some(item_id) = self
                 .loose_ids(intent.actor_id, Material::Ochre)
                 .first()
@@ -4778,9 +4821,6 @@ impl World {
             };
             self.items.remove(&item_id);
             self.ochre_marks.insert(cell);
-            let rock = self.cell(cell).rock;
-            let surface = if rock { "rock" } else { "ground" };
-            let name = self.name_of(intent.actor_id);
             let rest = format!("the {surface} with red ochre.");
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "mark", &rest),

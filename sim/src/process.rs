@@ -852,6 +852,7 @@ impl World {
             }
         }
         self.wash_open_ochre_marks();
+        self.wash_open_charcoal_marks();
     }
 
     /// Open rain takes a red ochre mark off the ground. The rock overhang keeps its mark.
@@ -870,6 +871,32 @@ impl World {
             let region = self.cell(cell).region.word();
             self.emit(
                 format!("The rain washes the red ochre mark off the ground on the {region}."),
+                Scope::Cell(cell),
+                vec![],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
+    }
+
+    /// Open rain takes a black charcoal mark off the ground. The rock overhang keeps its mark.
+    fn wash_open_charcoal_marks(&mut self) {
+        if !self.raining {
+            return;
+        }
+        let open: Vec<CellId> = self
+            .charcoal_marks
+            .iter()
+            .copied()
+            .filter(|cell| self.exposure_millis(*cell) >= 1000)
+            .collect();
+        for cell in open {
+            self.charcoal_marks.remove(&cell);
+            let region = self.cell(cell).region.word();
+            self.emit(
+                format!("The rain washes the black charcoal mark off the ground on the {region}."),
                 Scope::Cell(cell),
                 vec![],
                 vec![cell],
