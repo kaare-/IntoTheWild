@@ -1070,7 +1070,9 @@ impl World {
             if !on_fire && carried > 0 {
                 cold_gain /= 2;
             }
-            if wearing {
+            if self.wearing_wolf_cloak(id) {
+                cold_gain /= 4;
+            } else if wearing {
                 cold_gain /= 2;
             }
             let mut sun_gain = if raining {

@@ -496,7 +496,12 @@ impl World {
                     .iter()
                     .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
                 {
-                    Err("You are not wearing a deer hide.".into())
+                    Err(if self.carrying_wolf_hide(actor.id) {
+                        "You are not wearing a wolf hide."
+                    } else {
+                        "You are not wearing a deer hide."
+                    }
+                    .into())
                 } else {
                     Ok(true)
                 }
@@ -882,7 +887,12 @@ impl World {
                     .iter()
                     .all(|id| self.item(*id).is_some_and(|hide| hide.pierced))
                 {
-                    Err("The deer hide is already pierced.".into())
+                    Err(if self.carrying_wolf_hide(actor.id) {
+                        "The wolf hide is already pierced."
+                    } else {
+                        "The deer hide is already pierced."
+                    }
+                    .into())
                 } else {
                     Ok(true)
                 }
@@ -920,9 +930,19 @@ impl World {
                     .iter()
                     .any(|id| self.item(*id).is_some_and(|hide| hide.sewn))
                 {
-                    Err("The deer hide is already a cloak.".into())
+                    Err(if self.carrying_wolf_hide(actor.id) {
+                        "The wolf hide is already a cloak."
+                    } else {
+                        "The deer hide is already a cloak."
+                    }
+                    .into())
                 } else {
-                    Err("The deer hide is not pierced.".into())
+                    Err(if self.carrying_wolf_hide(actor.id) {
+                        "The wolf hide is not pierced."
+                    } else {
+                        "The deer hide is not pierced."
+                    }
+                    .into())
                 }
             }
             Attempt::Eat(material) => {
@@ -3460,11 +3480,8 @@ impl World {
                 continue;
             };
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
-            let rest = if sewn {
-                "the sewn deer-hide cloak."
-            } else {
-                "the deer hide."
-            };
+            let wolf = self.item(id).is_some_and(|hide| hide.wolf);
+            let rest = worn_phrase(wolf, sewn);
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = true;
             }
@@ -3509,11 +3526,8 @@ impl World {
                 continue;
             };
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
-            let rest = if sewn {
-                "the sewn deer-hide cloak."
-            } else {
-                "the deer hide."
-            };
+            let wolf = self.item(id).is_some_and(|hide| hide.wolf);
+            let rest = worn_phrase(wolf, sewn);
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = false;
             }
@@ -3623,7 +3637,13 @@ impl World {
             for _ in 0..3 {
                 ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
             }
-            ids.push(self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose));
+            let hide = self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose);
+            if wolf {
+                if let Some(item) = self.items.get_mut(&hide) {
+                    item.wolf = true;
+                }
+            }
+            ids.push(hide);
             ids.push(self.mint_item(Material::Bone, 0, actor.cell, None, Role::Loose));
             let name = self.name_of(actor.id);
             let rest = match (wolf, with_knife) {
@@ -5333,27 +5353,28 @@ impl World {
                 .first()
                 .copied();
             let bone_awl = awl.is_some_and(|id| self.item(id).is_some_and(|awl| awl.bone));
-            let rest = if bone_awl {
-                "the deer hide with the bone awl. It is ready to sew."
-            } else {
-                "the deer hide with the copper awl. It is ready to sew."
-            };
             let hide = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
                 .find(|id| self.item(*id).is_some_and(|hide| !hide.pierced));
             let (Some(_awl), Some(hide)) = (awl, hide) else {
-                self.finish(
-                    intent.command_id,
-                    intent.actor_id,
-                    false,
-                    "You need a copper awl and a deer hide.",
-                    results,
-                );
+                let message = if self.carrying_wolf_hide(intent.actor_id) {
+                    "You need a copper awl and a wolf hide."
+                } else {
+                    "You need a copper awl and a deer hide."
+                };
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
-            if let Some(hide) = self.items.get_mut(&hide) {
-                hide.pierced = true;
+            let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
+            let rest = match (wolf, bone_awl) {
+                (true, true) => "the wolf hide with the bone awl. It is ready to sew.",
+                (true, false) => "the wolf hide with the copper awl. It is ready to sew.",
+                (false, true) => "the deer hide with the bone awl. It is ready to sew.",
+                (false, false) => "the deer hide with the copper awl. It is ready to sew.",
+            };
+            if let Some(item) = self.items.get_mut(&hide) {
+                item.pierced = true;
             }
             let cell = self
                 .actor(intent.actor_id)
@@ -5380,21 +5401,25 @@ impl World {
     }
 
     fn apply_sews(&mut self, sews: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "the pierced deer hide into a cloak.";
         for intent in sews {
             let hide = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
                 .find(|id| self.item(*id).is_some_and(|hide| hide.pierced));
             let Some(hide) = hide else {
-                self.finish(
-                    intent.command_id,
-                    intent.actor_id,
-                    false,
-                    "The deer hide is not pierced.",
-                    results,
-                );
+                let message = if self.carrying_wolf_hide(intent.actor_id) {
+                    "The wolf hide is not pierced."
+                } else {
+                    "The deer hide is not pierced."
+                };
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
+            };
+            let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
+            let rest = if wolf {
+                "the pierced wolf hide into a cloak."
+            } else {
+                "the pierced deer hide into a cloak."
             };
             if let Some(item) = self.items.get_mut(&hide) {
                 item.pierced = false;
@@ -6506,6 +6531,15 @@ fn boil_actor_rest(in_pot: bool) -> &'static str {
         "the drink in the pot over the fire and drink it."
     } else {
         "a drink of water over the fire and drink it."
+    }
+}
+
+fn worn_phrase(wolf: bool, sewn: bool) -> &'static str {
+    match (wolf, sewn) {
+        (true, true) => "the sewn wolf-hide cloak.",
+        (true, false) => "the wolf hide.",
+        (false, true) => "the sewn deer-hide cloak.",
+        (false, false) => "the deer hide.",
     }
 }
 

@@ -153,7 +153,7 @@ impl World {
                 illness: self.body_word(actor.stings_until, actor.illness).into(),
                 energy: self.energy_word(actor.energy).into(),
                 cold: self.cold_word(actor.cold).into(),
-                wind: self.wind_at(actor.cell).into(),
+                wind: self.wind_on(actor.id).into(),
                 sunburn: self.sun_word(actor.sunburn).into(),
                 mud: self.mud_word(actor.mud).into(),
                 ochre: self.ochre_word(actor.ochre).into(),
@@ -1018,23 +1018,7 @@ impl World {
         if self.snares.contains_key(&actor.cell) {
             parts.push("A hide snare is set here.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Hide).is_empty() {
-            let sewn = self
-                .ground_ids(actor.cell, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
-            let pierced = self
-                .ground_ids(actor.cell, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
-            if sewn {
-                parts.push("A sewn deer-hide cloak lies here.".into());
-            } else if pierced {
-                parts.push("A pierced deer hide lies here. It is ready to sew.".into());
-            } else {
-                parts.push("A deer hide lies here.".into());
-            }
-        }
+        parts.extend(self.hide_here_lines(&self.ground_ids(actor.cell, Material::Hide)));
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let spear = self.item(id);
             let hardened = spear.is_some_and(|item| item.hardened);
@@ -2424,19 +2408,22 @@ impl World {
                 .loose_ids(actor_id, Material::Hide)
                 .first()
                 .and_then(|id| self.item(*id));
+            let wolf = hide.is_some_and(|hide| hide.wolf);
+            let kind = if wolf { "wolf" } else { "deer" };
+            let cloak = if wolf { "wolf-hide" } else { "deer-hide" };
             match (
                 hide.is_some_and(|hide| hide.worn),
                 hide.is_some_and(|hide| hide.pierced),
                 hide.is_some_and(|hide| hide.sewn),
             ) {
                 (_, _, true) if hide.is_some_and(|hide| hide.worn) => {
-                    "a sewn deer-hide cloak on you".into()
+                    format!("a sewn {cloak} cloak on you")
                 }
-                (_, _, true) => "a sewn deer-hide cloak".into(),
-                (true, true, _) => "a pierced deer hide on you (ready to sew)".into(),
-                (false, true, _) => "a pierced deer hide (ready to sew)".into(),
-                (true, false, _) => "a deer hide on you".into(),
-                (false, false, _) => "a deer hide".into(),
+                (_, _, true) => format!("a sewn {cloak} cloak"),
+                (true, true, _) => format!("a pierced {kind} hide on you (ready to sew)"),
+                (false, true, _) => format!("a pierced {kind} hide (ready to sew)"),
+                (true, false, _) => format!("a {kind} hide on you"),
+                (false, false, _) => format!("a {kind} hide"),
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
@@ -2633,7 +2620,7 @@ impl World {
             ),
             format!("You are {}.", self.energy_word(actor.energy)),
             format!("You are {}.", self.cold_word(actor.cold)),
-            format!("You are {}.", self.wind_at(actor.cell)),
+            format!("You are {}.", self.wind_on(actor_id)),
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
@@ -2646,12 +2633,28 @@ impl World {
                 .loose_ids(actor_id, Material::Hide)
                 .iter()
                 .any(|id| self.item(*id).is_some_and(|hide| hide.worn && hide.pierced));
+            let wolf = self
+                .loose_ids(actor_id, Material::Hide)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.worn && hide.wolf));
             if sewn {
-                parts.push("The sewn deer-hide cloak is on you.".into());
+                parts.push(if wolf {
+                    "The sewn wolf-hide cloak is on you.".into()
+                } else {
+                    "The sewn deer-hide cloak is on you.".into()
+                });
             } else if pierced {
-                parts.push("The pierced deer hide is on you. It is ready to sew.".into());
+                parts.push(if wolf {
+                    "The pierced wolf hide is on you. It is ready to sew.".into()
+                } else {
+                    "The pierced deer hide is on you. It is ready to sew.".into()
+                });
             } else {
-                parts.push("The deer hide is on you.".into());
+                parts.push(if wolf {
+                    "The wolf hide is on you.".into()
+                } else {
+                    "The deer hide is on you.".into()
+                });
             }
         }
         if actor.warm_from_fire && self.fire_at(actor.cell).is_none() {
@@ -2743,7 +2746,7 @@ impl World {
         ) + &format!(
             " They are {}. They are {}. Their skin is {}. Their skin is {}.",
             self.cold_word(actor.cold),
-            self.wind_at(actor.cell),
+            self.wind_on(actor_id),
             self.sun_word(actor.sunburn),
             self.skin_cover(actor.mud, actor.ochre)
         ) + &self.spear_clause(actor_id)
@@ -3213,23 +3216,7 @@ impl World {
         if !self.ground_ids(dest, Material::Bow).is_empty() {
             bits.push("a bow".into());
         }
-        if !self.ground_ids(dest, Material::Hide).is_empty() {
-            let sewn = self
-                .ground_ids(dest, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
-            let pierced = self
-                .ground_ids(dest, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
-            if sewn {
-                bits.push("a sewn deer-hide cloak".into());
-            } else if pierced {
-                bits.push("a pierced deer hide (ready to sew)".into());
-            } else {
-                bits.push("a deer hide".into());
-            }
-        }
+        bits.extend(self.hide_compass_bits(&self.ground_ids(dest, Material::Hide)));
         if self
             .actors
             .values()
@@ -5006,36 +4993,104 @@ impl World {
         }
     }
 
+    fn hide_stage(&self, ids: &[crate::model::ItemId], wolf: bool) -> Option<(bool, bool)> {
+        let mine: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.wolf == wolf))
+            .collect();
+        if mine.is_empty() {
+            return None;
+        }
+        let sewn = mine
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = mine
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        Some((sewn, pierced))
+    }
+
+    fn hide_here_lines(&self, ids: &[crate::model::ItemId]) -> Vec<String> {
+        let mut lines = Vec::new();
+        for wolf in [true, false] {
+            let Some((sewn, pierced)) = self.hide_stage(ids, wolf) else {
+                continue;
+            };
+            let kind = if wolf { "wolf" } else { "deer" };
+            let cloak = if wolf { "wolf-hide" } else { "deer-hide" };
+            if sewn {
+                lines.push(format!("A sewn {cloak} cloak lies here."));
+            } else if pierced {
+                lines.push(format!(
+                    "A pierced {kind} hide lies here. It is ready to sew."
+                ));
+            } else {
+                lines.push(format!("A {kind} hide lies here."));
+            }
+        }
+        lines
+    }
+
+    fn hide_compass_bits(&self, ids: &[crate::model::ItemId]) -> Vec<String> {
+        let mut bits = Vec::new();
+        for wolf in [true, false] {
+            let Some((sewn, pierced)) = self.hide_stage(ids, wolf) else {
+                continue;
+            };
+            let kind = if wolf { "wolf" } else { "deer" };
+            let cloak = if wolf { "wolf-hide" } else { "deer-hide" };
+            if sewn {
+                bits.push(format!("a sewn {cloak} cloak"));
+            } else if pierced {
+                bits.push(format!("a pierced {kind} hide (ready to sew)"));
+            } else {
+                bits.push(format!("a {kind} hide"));
+            }
+        }
+        bits
+    }
+
     fn examine_hide(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if self.ground_ids(cell, Material::Hide).is_empty() {
+            let ids = self.ground_ids(cell, Material::Hide);
+            if ids.is_empty() {
                 continue;
             }
             let place = self.place_phrase(origin, cell);
-            let sewn = self
-                .ground_ids(cell, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
-            let pierced = self
-                .ground_ids(cell, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
-            if sewn {
-                lines.push(format!(
-                    "A sewn deer-hide cloak lies {place}. It can be worn against the cold."
-                ));
-            } else if pierced {
-                lines.push(format!(
-                    "A pierced deer hide lies {place}. It is ready to sew."
-                ));
-            } else {
-                lines.push(format!("A deer hide lies {place}."));
+            for wolf in [true, false] {
+                let Some((sewn, pierced)) = self.hide_stage(&ids, wolf) else {
+                    continue;
+                };
+                if wolf {
+                    if sewn {
+                        lines.push(format!(
+                            "A sewn wolf-hide cloak lies {place}. It keeps off more of the cold."
+                        ));
+                    } else if pierced {
+                        lines.push(format!(
+                            "A pierced wolf hide lies {place}. It is ready to sew."
+                        ));
+                    } else {
+                        lines.push(format!("A wolf hide lies {place}."));
+                    }
+                } else if sewn {
+                    lines.push(format!(
+                        "A sewn deer-hide cloak lies {place}. It can be worn against the cold."
+                    ));
+                } else if pierced {
+                    lines.push(format!(
+                        "A pierced deer hide lies {place}. It is ready to sew."
+                    ));
+                } else {
+                    lines.push(format!("A deer hide lies {place}."));
+                }
             }
         }
         for other in self.visible_actor_ids(viewer) {
-            let hides: Vec<_> = self.loose_ids(other, Material::Hide);
+            let hides = self.loose_ids(other, Material::Hide);
             if hides.is_empty() {
                 continue;
             }
@@ -5046,33 +5101,65 @@ impl World {
             };
             let cell = self.actor(other).unwrap().cell;
             let cover = self.cover_phrase(cell);
-            let sewn = hides
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
-            let pierced = hides
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
-            let worn = hides
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.worn));
-            if sewn && worn {
-                lines.push(format!(
-                    "A sewn deer-hide cloak is on {who}, {cover}. It keeps off the cold."
-                ));
-            } else if sewn {
-                lines.push(format!(
-                    "A sewn deer-hide cloak is carried by {who}, {cover}. It can be worn against the cold."
-                ));
-            } else if pierced && worn {
-                lines.push(format!(
-                    "A pierced deer hide is on {who}, {cover}. It is ready to sew."
-                ));
-            } else if pierced {
-                lines.push(format!(
-                    "A pierced deer hide is carried by {who}, {cover}. It is ready to sew."
-                ));
-            } else {
-                lines.push(format!("A deer hide is carried by {who}, {cover}."));
+            for wolf in [true, false] {
+                let mine: Vec<_> = hides
+                    .iter()
+                    .copied()
+                    .filter(|id| self.item(*id).is_some_and(|hide| hide.wolf == wolf))
+                    .collect();
+                if mine.is_empty() {
+                    continue;
+                }
+                let sewn = mine
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+                let pierced = mine
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+                let worn = mine
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.worn));
+                if wolf {
+                    if sewn && worn {
+                        lines.push(format!(
+                            "A sewn wolf-hide cloak is on {who}, {cover}. It keeps off more of the wind and the cold."
+                        ));
+                    } else if sewn {
+                        lines.push(format!(
+                            "A sewn wolf-hide cloak is carried by {who}, {cover}. It keeps off more of the cold."
+                        ));
+                    } else if pierced && worn {
+                        lines.push(format!(
+                            "A pierced wolf hide is on {who}, {cover}. It is ready to sew."
+                        ));
+                    } else if pierced {
+                        lines.push(format!(
+                            "A pierced wolf hide is carried by {who}, {cover}. It is ready to sew."
+                        ));
+                    } else if worn {
+                        lines.push(format!("A wolf hide is on {who}, {cover}."));
+                    } else {
+                        lines.push(format!("A wolf hide is carried by {who}, {cover}."));
+                    }
+                } else if sewn && worn {
+                    lines.push(format!(
+                        "A sewn deer-hide cloak is on {who}, {cover}. It keeps off the cold."
+                    ));
+                } else if sewn {
+                    lines.push(format!(
+                        "A sewn deer-hide cloak is carried by {who}, {cover}. It can be worn against the cold."
+                    ));
+                } else if pierced && worn {
+                    lines.push(format!(
+                        "A pierced deer hide is on {who}, {cover}. It is ready to sew."
+                    ));
+                } else if pierced {
+                    lines.push(format!(
+                        "A pierced deer hide is carried by {who}, {cover}. It is ready to sew."
+                    ));
+                } else {
+                    lines.push(format!("A deer hide is carried by {who}, {cover}."));
+                }
             }
         }
         if lines.is_empty() {
@@ -6897,6 +6984,7 @@ impl World {
                     && self.bow_hunt_for_these_eyes(viewer, event).is_none()
                     && self.scare_for_these_eyes(viewer, event).is_none()
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -8093,6 +8181,43 @@ impl World {
             ))
         } else {
             Some(public.to_string())
+        }
+    }
+
+    /// A wolf hide pierced, sewn, worn, or taken off. The person who did it
+    /// already read the sentence as the command result.
+    fn wolf_cloak_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let failures = [
+            "The wolf hide is not pierced.",
+            "The wolf hide is already pierced.",
+            "The wolf hide is already a cloak.",
+            "You are not wearing a wolf hide.",
+            "You need a copper awl and a wolf hide.",
+        ];
+        if failures.iter().any(|line| line == &event.text) {
+            return Some(event.text.clone());
+        }
+        let name = self.name_of(viewer);
+        let lines = [
+            format!("{name} pierces the wolf hide with the copper awl. It is ready to sew."),
+            format!("{name} pierces the wolf hide with the bone awl. It is ready to sew."),
+            format!("{name} sews the pierced wolf hide into a cloak."),
+            format!("{name} wears the sewn wolf-hide cloak."),
+            format!("{name} wears the wolf hide."),
+            format!("{name} removes the sewn wolf-hide cloak."),
+            format!("{name} removes the wolf hide."),
+        ];
+        if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
         }
     }
 

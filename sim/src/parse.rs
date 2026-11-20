@@ -77,8 +77,8 @@ smelt iron                   a carried lump of iron ore; a small fire refuses it
 feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hot enough for iron. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
-pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew
-sew hide                     a pierced deer hide into a cloak, worn against the cold
+pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl
+sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak
 rest|sleep                   under the rock or a lean-to, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
@@ -288,10 +288,26 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::FirePot)
         }
         "fire" if rest == "pot" || rest == "clay pot" || rest == "the pot" => Ok(Attempt::FirePot),
-        "wear" | "wrap" if rest.is_empty() || rest == "hide" || rest == "deer hide" => {
+        "wear" | "wrap"
+            if rest.is_empty()
+                || rest == "hide"
+                || rest == "deer hide"
+                || rest == "wolf hide"
+                || rest == "wolf cloak"
+                || rest == "cloak" =>
+        {
             Ok(Attempt::Wear)
         }
-        "remove" if rest.is_empty() || rest == "hide" || rest == "deer hide" => Ok(Attempt::Remove),
+        "remove"
+            if rest.is_empty()
+                || rest == "hide"
+                || rest == "deer hide"
+                || rest == "wolf hide"
+                || rest == "wolf cloak"
+                || rest == "cloak" =>
+        {
+            Ok(Attempt::Remove)
+        }
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
@@ -327,8 +343,19 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::HammerIron)
         }
-        "pierce" if rest.is_empty() || rest == "hide" || rest == "deer hide" => Ok(Attempt::Pierce),
-        "sew" if rest.is_empty() || rest == "hide" || rest == "deer hide" || rest == "cloak" => {
+        "pierce"
+            if rest.is_empty() || rest == "hide" || rest == "deer hide" || rest == "wolf hide" =>
+        {
+            Ok(Attempt::Pierce)
+        }
+        "sew"
+            if rest.is_empty()
+                || rest == "hide"
+                || rest == "deer hide"
+                || rest == "wolf hide"
+                || rest == "cloak"
+                || rest == "wolf cloak" =>
+        {
             Ok(Attempt::Sew)
         }
         "rest" | "sleep" if rest.is_empty() => Ok(Attempt::Rest),
@@ -380,7 +407,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
         "fish" | "raw fish" | "cooked fish" => Ok(Material::Fish),
         "brand" | "ember" | "burning brand" => Ok(Material::Brand),
-        "hide" | "deer hide" => Ok(Material::Hide),
+        "hide" | "deer hide" | "wolf hide" | "wolf cloak" => Ok(Material::Hide),
         "basket" | "bark basket" => Ok(Material::Basket),
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
@@ -436,7 +463,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "bowl" => ExamineTarget::Bowl,
         "spear" | "spears" => ExamineTarget::Spear,
         "carcass" | "deer carcass" | "wolf carcass" => ExamineTarget::Carcass,
-        "hide" | "deer hide" => ExamineTarget::Hide,
+        "hide" | "deer hide" | "wolf hide" | "wolf cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
         "meat" | "raw meat" => ExamineTarget::Meat,
         "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,

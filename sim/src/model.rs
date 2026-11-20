@@ -1921,6 +1921,31 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
     }
 
+    pub(crate) fn carrying_wolf_hide(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.wolf))
+    }
+
+    /// A sewn wolf hide worn on the body. It cuts more cold than a deer cloak,
+    /// and the body line says a little wind instead of the open wind.
+    pub(crate) fn wearing_wolf_cloak(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| hide.worn && hide.sewn && hide.wolf)
+        })
+    }
+
+    /// The wind a body feels. A wolf cloak takes the open wind down to a little.
+    pub(crate) fn wind_on(&self, actor: ActorId) -> &'static str {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        if self.wearing_wolf_cloak(actor) && self.wind_at(cell) == "in the wind" {
+            "in a little wind"
+        } else {
+            self.wind_at(cell)
+        }
+    }
+
     /// One piece of cooked meat, from the arms before the ground.
     pub(crate) fn cooked_meat_id(&self, actor: ActorId) -> Option<ItemId> {
         let carried = self
@@ -5807,5 +5832,258 @@ mod wolf {
             .unwrap_or("");
         assert!(lit_north.contains("a wolf carcass"), "{lit_north}");
         assert!(!lit_north.contains("a carcass"), "{lit_north}");
+    }
+
+    #[test]
+    fn a_wolf_hide_sews_into_a_warmer_cloak() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let carcass = world.mint_item(super::Material::Carcass, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&carcass).unwrap().wolf = true;
+        world.mint_item(
+            super::Material::Knife,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            super::Material::Awl,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            super::Material::Hide,
+            0,
+            cell,
+            Some(seen),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            super::Material::Awl,
+            0,
+            cell,
+            Some(seen),
+            super::Role::Loose,
+        );
+
+        let butchered = world.step(&[intent("butcher", near, super::Attempt::Butcher)]);
+        assert!(
+            butchered.results[0].success,
+            "{}",
+            butchered.results[0].message
+        );
+        assert!(butchered.results[0].message.contains("wolf carcass"));
+        let hides = world.ground_ids(cell, super::Material::Hide);
+        assert_eq!(hides.len(), 1);
+        assert!(world.item(hides[0]).unwrap().wolf);
+
+        let pierced_deer = world.step(&[
+            intent(
+                "gather",
+                near,
+                super::Attempt::Gather(super::Material::Hide),
+            ),
+            intent("pierce-deer", seen, super::Attempt::Pierce),
+        ]);
+        assert!(
+            pierced_deer.results.iter().all(|result| result.success),
+            "{pierced_deer:?}"
+        );
+        let sewn = world.step(&[
+            intent("pierce", near, super::Attempt::Pierce),
+            intent("sew-deer", seen, super::Attempt::Sew),
+        ]);
+        let near_pierce = sewn
+            .results
+            .iter()
+            .find(|result| result.actor_id == near)
+            .unwrap();
+        assert_eq!(
+            near_pierce.message,
+            "You pierce the wolf hide with the copper awl. It is ready to sew."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf hide") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near pierces the wolf hide with the copper awl. It is ready to sew."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf hide") }));
+
+        let cloaks = world.step(&[
+            intent("sew", near, super::Attempt::Sew),
+            intent("wear-deer", seen, super::Attempt::Wear),
+        ]);
+        assert_eq!(
+            cloaks.results[0].message,
+            "You sew the pierced wolf hide into a cloak."
+        );
+        let carried = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            carried.contains(
+                "A sewn wolf-hide cloak is carried by you, in the open. It keeps off more of the cold."
+            ) || carried.contains("It keeps off more of the cold."),
+            "{carried}"
+        );
+        assert!(
+            !carried.contains("deer-hide cloak is carried by you"),
+            "{carried}"
+        );
+
+        let wore = world.step(&[intent("wear", near, super::Attempt::Wear)]);
+        assert_eq!(
+            wore.results[0].message,
+            "You wear the sewn wolf-hide cloak."
+        );
+        let on_you = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            on_you.contains("It keeps off more of the wind and the cold."),
+            "{on_you}"
+        );
+        assert!(world
+            .examine(seen, super::ExamineTarget::Hide)
+            .contains("A sewn deer-hide cloak is on you"));
+        let near_events = world.observe(near).unwrap();
+        assert!(near_events.events.iter().all(|event| {
+            !event.text.contains("sewn wolf-hide") && !event.text.contains("pierced wolf hide")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sews the pierced wolf hide into a cloak." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near wears the sewn wolf-hide cloak." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf") }));
+        assert!(near_events
+            .text
+            .contains("The sewn wolf-hide cloak is on you."));
+        assert!(
+            near_events.text.contains("You are in the wind.")
+                || near_events.text.contains("You are in a little wind.")
+        );
+
+        for id in [near, seen, quiet] {
+            let person = world.actors.get_mut(&id).unwrap();
+            person.cold = 0;
+            person.warmth = 0;
+            person.warm_from_fire = false;
+            person.cell = cell;
+        }
+        for _ in 0..8 {
+            world.step(&[]);
+        }
+        let wolf_body = world.observe(near).unwrap();
+        let deer_body = world.observe(seen).unwrap();
+        let bare_body = world.observe(quiet).unwrap();
+        assert!(
+            wolf_body.text.contains("You are warm."),
+            "{}",
+            wolf_body.text
+        );
+        assert!(
+            wolf_body.text.contains("You are in a little wind."),
+            "{}",
+            wolf_body.text
+        );
+        assert!(
+            deer_body.text.contains("You are chilly."),
+            "{}",
+            deer_body.text
+        );
+        assert!(
+            deer_body.text.contains("You are in the wind."),
+            "{}",
+            deer_body.text
+        );
+        assert!(
+            bare_body.text.contains("You are cold."),
+            "{}",
+            bare_body.text
+        );
+        assert!(
+            bare_body.text.contains("You are in the wind."),
+            "{}",
+            bare_body.text
+        );
+        assert!(wolf_body.self_info.cold == "warm");
+        assert!(deer_body.self_info.cold == "chilly");
+        assert!(bare_body.self_info.cold == "cold");
+        let wolf_cold = world.actor(near).unwrap().cold;
+        let deer_cold = world.actor(seen).unwrap().cold;
+        let bare_cold = world.actor(quiet).unwrap().cold;
+        assert!(wolf_cold < deer_cold && deer_cold < bare_cold);
+    }
+
+    #[test]
+    fn a_wolf_hide_that_is_not_ready_fails_in_private() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let hide = world.mint_item(
+            super::Material::Hide,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.items.get_mut(&hide).unwrap().wolf = true;
+        let missed = world.step(&[intent("pierce", near, super::Attempt::Pierce)]);
+        assert!(!missed.results[0].success);
+        assert_eq!(
+            missed.results[0].message,
+            "You are not carrying a copper awl."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf") && !event.text.contains("awl") }));
+        world.mint_item(
+            super::Material::Awl,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let early = world.step(&[intent("sew", near, super::Attempt::Sew)]);
+        assert!(!early.results[0].success);
+        assert_eq!(early.results[0].message, "The wolf hide is not pierced.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "The wolf hide is not pierced."
+                && !event.text.contains("sews the pierced wolf")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf") }));
     }
 }
