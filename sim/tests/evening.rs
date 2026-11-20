@@ -784,6 +784,14 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Gather(Material::CopperOre)
     ));
     assert!(matches!(
+        parse_attempt("gather iron ore").unwrap(),
+        Attempt::Gather(Material::IronOre)
+    ));
+    assert!(matches!(
+        parse_attempt("examine iron").unwrap(),
+        Attempt::Examine(ExamineTarget::IronOre)
+    ));
+    assert!(matches!(
         parse_attempt("gather bead").unwrap(),
         Attempt::Gather(Material::Copper)
     ));
@@ -9246,4 +9254,90 @@ fn leaving_the_rock_names_the_wind_and_the_way_back_keeps_the_shelter() {
     );
     let plain = world.step(&[cmd("plain", far, Attempt::Move(Dir::East))]);
     assert_eq!(plain.results[0].message, "You walk east.");
+}
+
+#[test]
+fn a_lump_of_iron_ore_on_the_slope_can_be_carried() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 5, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    assert_eq!(world.material_tally(Material::IronOre), 1);
+    assert_eq!(world.material_tally(Material::Ochre), 1);
+    assert_eq!(world.material_tally(Material::Flint), 1);
+    let from_near = world.observe(near).unwrap().text;
+    assert!(
+        from_near.contains("A lump of iron ore lies on the slope to the north and east."),
+        "{from_near}"
+    );
+    assert!(
+        from_near.contains("A lump of ochre lies on the slope to the north and west."),
+        "{from_near}"
+    );
+    assert_eq!(
+        world.examine(near, ExamineTarget::IronOre),
+        "A lump of iron ore lies on the slope to the north and east."
+    );
+    assert_eq!(
+        world.examine(west, ExamineTarget::IronOre),
+        "You see no iron ore from here."
+    );
+    assert!(!world.observe(west).unwrap().text.contains("iron"));
+    let beside = world.observe(far).unwrap().text;
+    assert!(
+        beside.contains("North: slope, a lump of iron ore."),
+        "{beside}"
+    );
+    assert!(
+        beside.contains("A lump of iron ore lies on the slope to the north."),
+        "{beside}"
+    );
+    world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((5, 0)));
+    let here = world.observe(near).unwrap().text;
+    assert!(here.contains("A lump of iron ore lies here."), "{here}");
+    assert!(here.contains("You are on the slope"), "{here}");
+    assert_eq!(
+        world.examine(near, ExamineTarget::IronOre),
+        "A lump of iron ore lies here, on the slope."
+    );
+    let yours = "You gather a lump of iron ore.";
+    let witnessed = "Near gathers a lump of iron ore.";
+    let report = world.step(&[cmd("iron", near, Attempt::Gather(Material::IronOre))]);
+    assert_eq!(report.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == witnessed));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("iron")));
+    let after = world.observe(near).unwrap().text;
+    assert!(!after.contains("A lump of iron ore lies here."), "{after}");
+    assert!(
+        arms_sentence(&after).contains("a lump of iron ore"),
+        "{after}"
+    );
+    assert_eq!(world.material_items(Material::IronOre)[0].1, Some(near));
+    assert_eq!(world.material_tally(Material::Ochre), 1);
+    assert_eq!(world.material_tally(Material::Flint), 1);
+    let refused = world.step(&[cmd("smelt", near, Attempt::Smelt)]);
+    assert!(!refused.results[0].success);
+    assert_eq!(
+        refused.results[0].message,
+        "You are not carrying copper ore."
+    );
+    assert_eq!(world.material_items(Material::IronOre)[0].1, Some(near));
 }

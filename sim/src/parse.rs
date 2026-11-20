@@ -5,11 +5,11 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
-drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
@@ -157,6 +157,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "stone" | "stones" => Ok(Material::Stone),
         "flint" | "flint nodule" | "nodule" => Ok(Material::Flint),
         "ochre" => Ok(Material::Ochre),
+        "iron" | "iron ore" => Ok(Material::IronOre),
         "copper ore" | "ore" => Ok(Material::CopperOre),
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
         "awl" | "copper awl" => Ok(Material::Awl),
@@ -166,7 +167,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "hide" | "deer hide" => Ok(Material::Hide),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, copper ore, copper bead, awl, clay, bowl, spear, carcass, hide, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, copper ore, copper bead, awl, clay, bowl, spear, carcass, hide, or log."
                 .into(),
         ),
     }
@@ -202,6 +203,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "stone" | "stones" => ExamineTarget::Stone,
         "flint" | "flint nodule" | "nodule" => ExamineTarget::Flint,
         "ochre" => ExamineTarget::Ochre,
+        "iron" | "iron ore" => ExamineTarget::IronOre,
         "copper" | "copper ore" | "ore" => ExamineTarget::CopperOre,
         "copper bead" | "bead" => ExamineTarget::Copper,
         "awl" | "copper awl" => ExamineTarget::Awl,

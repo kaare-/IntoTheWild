@@ -18,7 +18,7 @@ m mushrooms    q poison berries
 k pot          u water
 s stone         c clay
 o ochre        C copper ore   e copper bead
-i copper awl
+g iron ore     i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
 d deer         \" tracks
@@ -187,6 +187,7 @@ impl World {
             ExamineTarget::Flint => self.examine_flint(actor_id),
             ExamineTarget::Ochre => self.examine_ochre(actor_id),
             ExamineTarget::CopperOre => self.examine_copper_ore(actor_id),
+            ExamineTarget::IronOre => self.examine_iron_ore(actor_id),
             ExamineTarget::Copper => self.examine_copper(actor_id),
             ExamineTarget::Awl => self.examine_awl(actor_id),
             ExamineTarget::Flake => self.examine_flake(actor_id),
@@ -256,6 +257,9 @@ impl World {
         }
         if let Some(ore) = self.seen_copper_ore(actor_id) {
             lines.push(ore);
+        }
+        if let Some(iron) = self.seen_iron_ore(actor_id) {
+            lines.push(iron);
         }
         if let Some(mark) = self.seen_ochre_mark(actor_id) {
             lines.push(mark);
@@ -636,6 +640,11 @@ impl World {
         {
             parts.push("A lump of ochre lies here.".into());
         }
+        if self.pile_count(actor.cell, Material::IronOre) > 0
+            || !self.ground_ids(actor.cell, Material::IronOre).is_empty()
+        {
+            parts.push("A lump of iron ore lies here.".into());
+        }
         if self.pile_count(actor.cell, Material::CopperOre) > 0
             || self.ground_ids(actor.cell, Material::CopperOre).len()
                 > self.copper_smelting_count(actor.cell)
@@ -847,6 +856,31 @@ impl World {
                 let region = self.cell(cell).region.word();
                 lines.push(format!(
                     "A lump of copper ore lies on the {region} to the {}.",
+                    self.relative(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A lump of iron ore in sight, other than the one under the looker's feet.
+    fn seen_iron_ore(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let count = self.pile_count(cell, Material::IronOre)
+                + self.ground_ids(cell, Material::IronOre).len() as u32;
+            if count > 0 {
+                let region = self.cell(cell).region.word();
+                lines.push(format!(
+                    "A lump of iron ore lies on the {region} to the {}.",
                     self.relative(origin, cell)
                 ));
             }
@@ -1119,6 +1153,8 @@ impl World {
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
+        } else if item.material == "iron ore" && item.count == 1 {
+            "a lump of iron ore".into()
         } else if item.material == "copper ore" && item.count == 1 {
             "a lump of copper ore".into()
         } else if item.material == "copper" && item.count == 1 {
@@ -1603,6 +1639,11 @@ impl World {
             || !self.ground_ids(dest, Material::Ochre).is_empty()
         {
             bits.push("a lump of ochre".into());
+        }
+        if self.pile_count(dest, Material::IronOre) > 0
+            || !self.ground_ids(dest, Material::IronOre).is_empty()
+        {
+            bits.push("a lump of iron ore".into());
         }
         if self.pile_count(dest, Material::CopperOre) > 0
             || !self.ground_ids(dest, Material::CopperOre).is_empty()
@@ -3335,6 +3376,46 @@ impl World {
         }
     }
 
+    fn examine_iron_ore(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let on_ground = self.pile_count(cell, Material::IronOre)
+                + self.ground_ids(cell, Material::IronOre).len() as u32;
+            if on_ground > 0 {
+                let region = self.cell(cell).region.word();
+                let place = if origin == cell {
+                    format!("here, on the {region}")
+                } else {
+                    format!("on the {region} to the {}", self.relative(origin, cell))
+                };
+                lines.push(format!("A lump of iron ore lies {place}."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::IronOre).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A lump of iron ore is carried by {who}, {}.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no iron ore from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_copper_ore(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3760,6 +3841,7 @@ impl World {
                 Material::Hide => "hide",
                 Material::Ochre => "ochre",
                 Material::CopperOre => "copper ore",
+                Material::IronOre => "iron ore",
                 Material::Copper => "copper bead",
                 Material::Awl => "copper awl",
                 Material::Clay => "clay",
@@ -4414,6 +4496,11 @@ impl World {
             || self.worst_loose(cell, Material::Ochre).is_some()
         {
             marks.push('o');
+        }
+        if self.pile_count(cell, Material::IronOre) > 0
+            || self.worst_loose(cell, Material::IronOre).is_some()
+        {
+            marks.push('g');
         }
         if self.pile_count(cell, Material::CopperOre) > 0
             || self.worst_loose(cell, Material::CopperOre).is_some()
@@ -5101,6 +5188,7 @@ impl World {
             "flint nodule",
             "lump of ochre",
             "lump of copper ore",
+            "lump of iron ore",
             "copper bead",
             "copper awl",
         ];
@@ -5555,6 +5643,12 @@ impl World {
         {
             actions.push("gather ochre".into());
         }
+        if (self.pile_count(actor.cell, Material::IronOre) > 0
+            || !self.ground_ids(actor.cell, Material::IronOre).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather iron ore".into());
+        }
         if (self.pile_count(actor.cell, Material::CopperOre) > 0
             || !self.ground_ids(actor.cell, Material::CopperOre).is_empty())
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -5671,6 +5765,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Ochre).is_empty() {
             actions.push("drop ochre".into());
+        }
+        if !self.loose_ids(actor_id, Material::IronOre).is_empty() {
+            actions.push("drop iron ore".into());
         }
         if !self.loose_ids(actor_id, Material::CopperOre).is_empty() {
             actions.push("drop copper ore".into());
@@ -5952,6 +6049,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Clay, false) => "lumps of clay",
         (Material::Ochre, true) => "lump of ochre",
         (Material::Ochre, false) => "lumps of ochre",
+        (Material::IronOre, true) => "lump of iron ore",
+        (Material::IronOre, false) => "lumps of iron ore",
         (Material::CopperOre, true) => "lump of copper ore",
         (Material::CopperOre, false) => "lumps of copper ore",
         (Material::Copper, true) => "copper bead",

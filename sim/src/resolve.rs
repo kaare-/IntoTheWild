@@ -573,6 +573,7 @@ impl World {
                         Material::Bark => Err("Bark is tinder, not food.".into()),
                         Material::Ochre => Err("Ochre is not food.".into()),
                         Material::CopperOre => Err("Copper ore is not food.".into()),
+                        Material::IronOre => Err("Iron ore is not food.".into()),
                         Material::Copper => Err("Copper is not food.".into()),
                         Material::Awl => Err("A copper awl is not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
@@ -693,6 +694,7 @@ impl World {
                             | Material::Carcass
                             | Material::Hide
                             | Material::CopperOre
+                            | Material::IronOre
                             | Material::Copper
                             | Material::Awl
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -820,6 +822,7 @@ impl World {
                     | Material::Hide
                     | Material::Flint
                     | Material::CopperOre
+                    | Material::IronOre
                     | Material::Copper
                     | Material::Awl
             ) {

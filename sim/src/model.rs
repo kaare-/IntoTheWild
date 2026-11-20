@@ -70,6 +70,7 @@ pub enum Material {
     Hide,
     Ochre,
     CopperOre,
+    IronOre,
     Copper,
     Awl,
 }
@@ -97,6 +98,7 @@ impl Material {
             Material::Hide => "hide",
             Material::Ochre => "ochre",
             Material::CopperOre => "copper ore",
+            Material::IronOre => "iron ore",
             Material::Copper => "copper",
             Material::Awl => "awl",
         }
@@ -124,6 +126,7 @@ impl Material {
             Material::Hide => "deer hide",
             Material::Ochre => "lump of ochre",
             Material::CopperOre => "lump of copper ore",
+            Material::IronOre => "lump of iron ore",
             Material::Copper => "copper bead",
             Material::Awl => "copper awl",
         }
@@ -214,6 +217,7 @@ pub enum ExamineTarget {
     Flint,
     Ochre,
     CopperOre,
+    IronOre,
     Copper,
     Awl,
     Flake,
@@ -689,6 +693,7 @@ impl World {
         world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
         world.add_pile(cell_id(4, 0).unwrap(), Material::Flint, 1, 0);
         world.add_pile(cell_id(3, 0).unwrap(), Material::Ochre, 1, 0);
+        world.add_pile(cell_id(5, 0).unwrap(), Material::IronOre, 1, 0);
         world.add_pile(cell_id(1, 2).unwrap(), Material::CopperOre, 1, 0);
         world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
