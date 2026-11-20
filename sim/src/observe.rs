@@ -200,6 +200,7 @@ impl World {
             ExamineTarget::Carcass => self.examine_carcass(actor_id),
             ExamineTarget::Meat => self.examine_meat(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
+            ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
@@ -745,6 +746,9 @@ impl World {
         }
         if let Some(line) = self.meat_here_line(actor.cell) {
             parts.push(line);
+        }
+        if !self.ground_ids(actor.cell, Material::Cord).is_empty() {
+            parts.push("Hide strips lie here. They are cordage.".into());
         }
         if !self.ground_ids(actor.cell, Material::Hide).is_empty() {
             let sewn = self
@@ -1352,6 +1356,8 @@ impl World {
             "a fired bowl".into()
         } else if item.material == "carcass" && item.count == 1 {
             "a deer carcass".into()
+        } else if item.material == "strips" && item.count == 1 {
+            "hide strips".into()
         } else if item.material == "hide" && item.count == 1 {
             let hide = self
                 .loose_ids(actor_id, Material::Hide)
@@ -1977,6 +1983,9 @@ impl World {
         }
         if let Some(bit) = self.meat_compass_bit(dest) {
             bits.push(bit);
+        }
+        if !self.ground_ids(dest, Material::Cord).is_empty() {
+            bits.push("hide strips".into());
         }
         if !self.ground_ids(dest, Material::Hide).is_empty() {
             let sewn = self
@@ -3626,6 +3635,44 @@ impl World {
         }
     }
 
+    fn examine_cord(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.ground_ids(cell, Material::Cord).is_empty() {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("on the ground to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!("Hide strips lie {place}. They are cordage."));
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Cord).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "Hide strips are carried by {who}, {}. They are cordage.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no hide strips from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_spear(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -4356,6 +4403,7 @@ impl World {
                 Material::Flake => "flint flake",
                 Material::Meat => "meat",
                 Material::Hide => "hide",
+                Material::Cord => "hide strips",
                 Material::Ochre => "ochre",
                 Material::CopperOre => "copper ore",
                 Material::IronOre => "iron ore",
@@ -5536,6 +5584,7 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} cuts "))?;
         if rest != "the raw meat into two smaller pieces with the iron knife."
             && rest != "the cooked meat into two smaller pieces with the iron knife."
+            && rest != "the deer hide into strips with the iron knife."
         {
             return None;
         }
@@ -6485,6 +6534,9 @@ impl World {
         {
             actions.push("cut meat".into());
         }
+        if !self.loose_ids(actor_id, Material::Knife).is_empty() && self.whole_hide_near(actor_id) {
+            actions.push("cut hide".into());
+        }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -6867,6 +6919,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Carcass, _) => "carcass",
         (Material::Meat, _) => "raw meat",
         (Material::Hide, _) => "deer hide",
+        (Material::Cord, _) => "hide strips",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",

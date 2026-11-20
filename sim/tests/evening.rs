@@ -9673,6 +9673,116 @@ fn wait_until_tiring(world: &mut World, actor: u32) {
 }
 
 #[test]
+fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let far = world.spawn_at("Far", "f", 4, 1).unwrap();
+    let west = world.spawn_at("West", "w", 0, 4).unwrap();
+    assert!(matches!(
+        parse_attempt("cut strips").unwrap(),
+        Attempt::CutHide
+    ));
+    let denied = world.step(&[cmd("no-knife", far, parse_attempt("cut hide").unwrap())]);
+    assert_eq!(
+        denied.results[0].message,
+        "You need an iron knife to cut the hide."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("iron knife to cut the hide")));
+    for (id, attempt) in [
+        ("flint", Attempt::Gather(Material::Flint)),
+        ("knap", Attempt::Knap),
+        ("east-ore", Attempt::Move(Dir::East)),
+        ("ore", Attempt::Gather(Material::IronOre)),
+        ("east-rock", Attempt::Move(Dir::East)),
+        ("south-rock", Attempt::Move(Dir::South)),
+        ("bark", Attempt::Gather(Material::Bark)),
+        ("light", Attempt::Light),
+        ("branch", Attempt::Gather(Material::Branch)),
+        ("haft", Attempt::Haft),
+        ("feed", Attempt::Feed),
+        ("smelt", Attempt::SmeltIron),
+    ] {
+        let step = world.step(&[cmd(id, near, attempt)]);
+        assert!(step.results[0].success, "{}", step.results[0].message);
+    }
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    let bloom = world.step(&[cmd("bloom", near, Attempt::Gather(Material::Iron))]);
+    assert!(bloom.results[0].success, "{}", bloom.results[0].message);
+    let knife = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
+    assert!(knife.results[0].success, "{}", knife.results[0].message);
+    let bare = world.step(&[cmd("no-hide", near, parse_attempt("cut strips").unwrap())]);
+    assert_eq!(bare.results[0].message, "You have no deer hide to cut.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no deer hide")));
+    let mut waited = 0;
+    while world.deer_cell() != Some((6, 1)) && waited < 40 {
+        world.step(&[]);
+        waited += 1;
+    }
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    let hunt = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
+    assert!(hunt.results[0].success, "{}", hunt.results[0].message);
+    let butcher = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
+    assert!(butcher.results[0].success, "{}", butcher.results[0].message);
+    let yours = "You cut the deer hide into strips with the iron knife.";
+    let seen = "Near cuts the deer hide into strips with the iron knife.";
+    let cut = world.step(&[cmd("cut", near, Attempt::CutHide)]);
+    assert_eq!(cut.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Hide), 0);
+    assert_eq!(world.material_tally(Material::Cord), 1);
+    assert_eq!(world.material_tally(Material::Knife), 1);
+    assert_eq!(world.material_items(Material::Knife)[0].1, Some(near));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("strips")));
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("Hide strips lie here. They are cordage."),
+        "{here}"
+    );
+    let examined = world.examine(near, ExamineTarget::Cord);
+    assert!(
+        examined.contains("Hide strips lie here. They are cordage."),
+        "{examined}"
+    );
+    let gathered = world.step(&[cmd("strips", near, Attempt::Gather(Material::Cord))]);
+    assert_eq!(gathered.results[0].message, "You gather hide strips.");
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(arms.contains("hide strips"), "{arms}");
+    let carried = world.examine(near, ExamineTarget::Cord);
+    assert!(
+        carried.contains("Hide strips are carried by you") && carried.contains("They are cordage."),
+        "{carried}"
+    );
+}
+
+#[test]
 fn rest_under_a_lean_to_eases_tiredness_and_the_open_wind_still_refuses() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 5, 2).unwrap();

@@ -60,6 +60,7 @@ impl World {
         let mut hunts = Vec::new();
         let mut butchers = Vec::new();
         let mut cuts = Vec::new();
+        let mut hide_cuts = Vec::new();
         let mut shapes = Vec::new();
         let mut firings = Vec::new();
         let mut lean_tos = Vec::new();
@@ -115,6 +116,7 @@ impl World {
                         Attempt::Hunt => hunts.push(intent),
                         Attempt::Butcher => butchers.push(intent),
                         Attempt::Cut => cuts.push(intent),
+                        Attempt::CutHide => hide_cuts.push(intent),
                         Attempt::Shape => shapes.push(intent),
                         Attempt::FirePot => firings.push(intent),
                         Attempt::BuildLeanTo => lean_tos.push(intent),
@@ -212,6 +214,7 @@ impl World {
         self.apply_hunts(hunts, &mut results);
         self.apply_butchers(butchers, &mut results);
         self.apply_cuts(cuts, &mut results);
+        self.apply_hide_cuts(hide_cuts, &mut results);
         self.apply_shapes(shapes, &mut results);
         self.apply_pot_firings(firings, &mut results);
         self.apply_lean_tos(lean_tos, &mut results);
@@ -420,6 +423,25 @@ impl World {
                     }
                 } else {
                     Ok(true)
+                }
+            }
+            Attempt::CutHide => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Knife).is_empty() {
+                    Err("You need an iron knife to cut the hide.".into())
+                } else {
+                    match self.whole_hide_id(actor.id) {
+                        Some(_) => Ok(true),
+                        None if self.hide_near(actor.id) => {
+                            Err("You have no whole deer hide to cut.".into())
+                        }
+                        None => Err("You have no deer hide to cut.".into()),
+                    }
                 }
             }
             Attempt::Cut => {
@@ -833,6 +855,7 @@ impl World {
                             | Material::Knife
                             | Material::Copper
                             | Material::Awl
+                            | Material::Cord
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -966,6 +989,7 @@ impl World {
                     | Material::Knife
                     | Material::Copper
                     | Material::Awl
+                    | Material::Cord
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1022,6 +1046,8 @@ impl World {
                         && self.item(item).is_some_and(|clay| clay.shaped);
                     let rest = if shaped {
                         "an unfired clay pot.".to_string()
+                    } else if material == Material::Cord {
+                        "hide strips.".to_string()
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -1089,11 +1115,16 @@ impl World {
                 item.worn = false;
             }
             let noun = material.gather_noun();
-            self.emit(
+            let dropped = if material == Material::Cord {
+                format!("{name} drops hide strips. They are in contact with the ground.")
+            } else {
                 format!(
                     "{name} drops {} {noun}. It is in contact with the ground.",
                     material.article()
-                ),
+                )
+            };
+            self.emit(
+                dropped,
                 Scope::Cell(cell),
                 vec![intent.actor_id],
                 vec![cell],
@@ -1105,10 +1136,14 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 true,
-                format!(
-                    "You drop {} {noun}. It is in contact with the ground.",
-                    material.article()
-                ),
+                if material == Material::Cord {
+                    "You drop hide strips. They are in contact with the ground.".to_string()
+                } else {
+                    format!(
+                        "You drop {} {noun}. It is in contact with the ground.",
+                        material.article()
+                    )
+                },
                 results,
             );
         }
@@ -2764,6 +2799,90 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "shape", rest),
+                results,
+            );
+        }
+    }
+
+    pub(crate) fn whole_hide_near(&self, actor: crate::model::ActorId) -> bool {
+        self.whole_hide_id(actor).is_some()
+    }
+
+    fn hide_near(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Hide).is_empty()
+            || !self.ground_ids(cell, Material::Hide).is_empty()
+    }
+
+    fn whole_hide_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let whole = |id: &crate::model::ItemId| {
+            self.item(*id)
+                .is_some_and(|hide| !hide.pierced && !hide.sewn && !hide.worn)
+        };
+        if let Some(id) = self
+            .loose_ids(actor, Material::Hide)
+            .into_iter()
+            .find(|id| whole(id))
+        {
+            return Some(id);
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        self.ground_ids(cell, Material::Hide)
+            .into_iter()
+            .find(|id| whole(id))
+    }
+
+    fn apply_hide_cuts(&mut self, cuts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in cuts {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Knife).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need an iron knife to cut the hide.",
+                    results,
+                );
+                continue;
+            }
+            let Some(id) = self.whole_hide_id(actor.id) else {
+                let message = if self.hide_near(actor.id) {
+                    "You have no whole deer hide to cut."
+                } else {
+                    "You have no deer hide to cut."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            let Some(hide) = self.item(id).cloned() else {
+                continue;
+            };
+            self.items.remove(&id);
+            let strips = self.mint_item(
+                Material::Cord,
+                hide.moisture,
+                hide.cell,
+                hide.carrier,
+                Role::Loose,
+            );
+            let name = self.name_of(actor.id);
+            let rest = "the deer hide into strips with the iron knife.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "cut", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![strips],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "cut", rest),
                 results,
             );
         }

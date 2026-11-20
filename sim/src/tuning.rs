@@ -424,6 +424,7 @@ impl Tuning {
             Material::Knife => 0,
             Material::Copper => 0,
             Material::Awl => 0,
+            Material::Cord => 0,
         }
     }
 }

@@ -26,6 +26,7 @@ cook                         heat a mushroom, or cook berries, a carcass, or raw
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
+cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
@@ -120,6 +121,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" => Ok(Attempt::Butcher),
         "cut" if rest == "meat" || rest == "raw meat" || rest == "cooked meat" => Ok(Attempt::Cut),
+        "cut"
+            if rest == "hide"
+                || rest == "deer hide"
+                || rest == "the hide"
+                || rest == "strips"
+                || rest == "hide strips" =>
+        {
+            Ok(Attempt::CutHide)
+        }
         "shape" if rest.is_empty() || rest == "clay" || rest == "pot" || rest == "clay pot" => {
             Ok(Attempt::Shape)
         }
@@ -205,8 +215,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
         "hide" | "deer hide" => Ok(Material::Hide),
+        "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
                 .into(),
         ),
     }
@@ -254,6 +265,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "spear" | "spears" => ExamineTarget::Spear,
         "carcass" | "deer carcass" => ExamineTarget::Carcass,
         "hide" | "deer hide" => ExamineTarget::Hide,
+        "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
         "meat" | "raw meat" => ExamineTarget::Meat,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,

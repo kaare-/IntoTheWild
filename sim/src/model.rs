@@ -75,6 +75,7 @@ pub enum Material {
     Knife,
     Copper,
     Awl,
+    Cord,
 }
 
 impl Material {
@@ -105,6 +106,7 @@ impl Material {
             Material::Knife => "iron knife",
             Material::Copper => "copper",
             Material::Awl => "awl",
+            Material::Cord => "strips",
         }
     }
 
@@ -135,6 +137,7 @@ impl Material {
             Material::Knife => "iron knife",
             Material::Copper => "copper bead",
             Material::Awl => "copper awl",
+            Material::Cord => "hide strips",
         }
     }
 
@@ -242,6 +245,7 @@ pub enum ExamineTarget {
     Carcass,
     Meat,
     Hide,
+    Cord,
     Fire,
     Water,
     Deer,
@@ -294,6 +298,7 @@ pub enum Attempt {
     Shape,
     FirePot,
     BuildLeanTo,
+    CutHide,
 }
 
 impl Attempt {
@@ -336,6 +341,7 @@ impl Attempt {
                 | Attempt::Shape
                 | Attempt::FirePot
                 | Attempt::BuildLeanTo
+                | Attempt::CutHide
         )
     }
 }
