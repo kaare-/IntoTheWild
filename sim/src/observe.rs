@@ -199,6 +199,7 @@ impl World {
             ExamineTarget::Spear => self.examine_spear(actor_id),
             ExamineTarget::Carcass => self.examine_carcass(actor_id),
             ExamineTarget::Meat => self.examine_meat(actor_id),
+            ExamineTarget::Fish => self.examine_fish(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -648,6 +649,14 @@ impl World {
                 "The {} branch in your arms is drying by the fire. It is not dry yet.",
                 self.condition_word(moisture)
             ));
+        }
+        for id in self.ground_ids(actor.cell, Material::Fish) {
+            let cooked = self.item(id).is_some_and(|fish| fish.cooked);
+            if cooked {
+                parts.push("A cooked fish lies here.".into());
+            } else {
+                parts.push("A raw fish lies here.".into());
+            }
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1427,6 +1436,17 @@ impl World {
             "a copper bead, metal from the fire".into()
         } else if item.material == "awl" && item.count == 1 {
             "a copper awl".into()
+        } else if item.material == "fish" && item.count == 1 {
+            let cooked = self
+                .loose_ids(actor_id, Material::Fish)
+                .first()
+                .and_then(|id| self.item(*id))
+                .is_some_and(|fish| fish.cooked);
+            if cooked {
+                "a cooked fish".into()
+            } else {
+                "a raw fish".into()
+            }
         } else if item.material == "spear" {
             let bits: Vec<String> = self
                 .loose_ids(actor_id, Material::Spear)
@@ -3584,6 +3604,54 @@ impl World {
         }
     }
 
+    fn examine_fish(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for id in self.ground_ids(cell, Material::Fish) {
+                let cooked = self.item(id).is_some_and(|fish| fish.cooked);
+                if cooked {
+                    lines.push(format!(
+                        "A cooked fish lies in contact with the ground {}. It is good to eat.",
+                        self.place_phrase(origin, cell)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "A raw fish lies in contact with the ground {}. It must be cooked before it feeds you.",
+                        self.place_phrase(origin, cell)
+                    ));
+                }
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            for id in self.loose_ids(other, Material::Fish) {
+                let cooked = self.item(id).is_some_and(|fish| fish.cooked);
+                if cooked {
+                    lines.push(format!(
+                        "A cooked fish is carried by {who}, {}. It is good to eat.",
+                        self.cover_phrase(cell)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "A raw fish is carried by {who}, {}. It must be cooked before it feeds you.",
+                        self.cover_phrase(cell)
+                    ));
+                }
+            }
+        }
+        if lines.is_empty() {
+            "You see no fish from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_meat(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -4466,6 +4534,7 @@ impl World {
                 Material::Meat => "meat",
                 Material::Hide => "hide",
                 Material::Cord => "hide strips",
+                Material::Fish => "fish",
                 Material::Ochre => "ochre",
                 Material::CopperOre => "copper ore",
                 Material::IronOre => "iron ore",
@@ -5523,7 +5592,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} eats "))?;
-        if rest != "the cooked meat." {
+        if rest != "the cooked meat." && rest != "the cooked fish." {
             return None;
         }
         Some(crate::model::spoken_act(None, "eat", rest))
@@ -5557,7 +5626,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
-        if rest != "the raw meat over the fire." {
+        if rest != "the raw meat over the fire." && rest != "the fish over the fire." {
             return None;
         }
         Some(crate::model::spoken_act(None, "cook", rest))
@@ -5779,6 +5848,19 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "harden", rest))
+    }
+
+    /// A fish taken from the brook, filled for the person who speared it.
+    fn fish_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} spears "))?;
+        if rest != "a fish from the brook." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "spear", rest))
     }
 
     /// A branch held or set to dry, and the moment it is dry, for the person who did it.
@@ -6115,6 +6197,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.dry_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.fish_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.harden_for_these_eyes(viewer, event) {
@@ -7028,6 +7113,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Meat, _) => "raw meat",
         (Material::Hide, _) => "deer hide",
         (Material::Cord, _) => "hide strips",
+        (Material::Fish, _) => "fish",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",

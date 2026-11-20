@@ -25,6 +25,8 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
 hunt                         a hardened spear; the deer on your cell or the next
+fish                         a fire-hardened flint spear, in the brook or beside it; the spear is not used up
+spear fish                   the same cast
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
@@ -35,6 +37,7 @@ wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat; raw meat is not food
+eat fish                     a cooked fish; raw fish is not food
 eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
 eat carcass                  a carcass must be cooked
 eat bark                     bark is tinder, not food
@@ -119,6 +122,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "haft" if rest.is_empty() || rest == "spear" || rest == "flake" || rest == "flint" => {
             Ok(Attempt::Haft)
         }
+        "fish" if rest.is_empty() || rest == "spear" => Ok(Attempt::Fish),
+        "spear" if rest == "fish" => Ok(Attempt::Fish),
         "dry" if rest.is_empty() || rest == "branch" || rest == "wood" || rest == "the branch" => {
             Ok(Attempt::DryBranch)
         }
@@ -218,6 +223,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "spear" | "spears" => Ok(Material::Spear),
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
+        "fish" | "raw fish" | "cooked fish" => Ok(Material::Fish),
         "hide" | "deer hide" => Ok(Material::Hide),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
@@ -238,6 +244,7 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         "mud" => Err("Mud is for your skin, not your stomach.".into()),
         "carcass" | "deer carcass" => Ok(Attempt::Eat(Material::Carcass)),
         "meat" | "cooked meat" | "raw meat" => Ok(Attempt::Eat(Material::Meat)),
+        "fish" | "cooked fish" | "raw fish" => Ok(Attempt::Eat(Material::Fish)),
         _ => Err("Name a food: berries, poison berries, mushrooms, or carcass.".into()),
     }
 }
@@ -271,6 +278,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "hide" | "deer hide" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
         "meat" | "raw meat" => ExamineTarget::Meat,
+        "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,

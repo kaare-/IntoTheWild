@@ -75,6 +75,7 @@ impl World {
         let mut removes = Vec::new();
         let mut rests = Vec::new();
         let mut dries = Vec::new();
+        let mut fishes = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -132,6 +133,7 @@ impl World {
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
                         Attempt::DryBranch => dries.push(intent),
+                        Attempt::Fish => fishes.push(intent),
                     }
                 }
             }
@@ -231,6 +233,7 @@ impl World {
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
         self.apply_dries(dries, &mut results);
+        self.apply_fishes(fishes, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -312,6 +315,21 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Flint).is_empty() {
                     Err("You are not carrying a flint nodule.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Fish => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.fishing_water(actor.cell) {
+                    Err("The brook is not here.".into())
+                } else if let Some(message) = self.fish_spear_refusal(actor.id) {
+                    Err(message.into())
                 } else {
                     Ok(true)
                 }
@@ -740,6 +758,15 @@ impl World {
                                 Err("The carcass must be cooked.".into())
                             }
                         }
+                        Material::Fish => {
+                            if self.cooked_fish_id(actor.id).is_some() {
+                                Ok(true)
+                            } else if self.raw_fish_near(actor.id) {
+                                Err("Raw fish is not food.".into())
+                            } else {
+                                Err("There is no cooked fish here to eat.".into())
+                            }
+                        }
                         Material::Meat => {
                             if self.cooked_meat_id(actor.id).is_some() {
                                 Ok(true)
@@ -886,6 +913,7 @@ impl World {
                             | Material::Copper
                             | Material::Awl
                             | Material::Cord
+                            | Material::Fish
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1614,6 +1642,7 @@ impl World {
         if !self.cookable_carried(actor)
             && self.cookable_pile(person.cell) == 0
             && self.raw_meat_at(person.cell).is_none()
+            && !self.raw_fish_near(actor)
         {
             if self.has_material_at_hand(actor, Material::BitterBerry) {
                 return Some("Cooking does not make poison berries food.".into());
@@ -1702,6 +1731,10 @@ impl World {
                 .unwrap_or(0);
             if self.raw_meat_at(cell).is_some() {
                 self.cook_meat(intent, results);
+                continue;
+            }
+            if self.raw_fish_id(intent.actor_id).is_some() {
+                self.cook_fish(intent, results);
                 continue;
             }
             if self.raw_mushroom_id(intent.actor_id).is_some()
@@ -2188,6 +2221,156 @@ impl World {
                 results,
             );
         }
+    }
+
+    fn fish_spear_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let ids = self.loose_ids(actor, Material::Spear);
+        if ids.is_empty() {
+            return Some("You are not carrying a spear.");
+        }
+        let flint = ids.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|spear| spear.flint_tip && spear.hardened)
+        });
+        if flint {
+            return None;
+        }
+        if ids
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+        {
+            Some("The flint tip is not fire-hardened.")
+        } else {
+            Some("You need a fire-hardened flint spear.")
+        }
+    }
+
+    fn apply_fishes(&mut self, fishes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "a fish from the brook.";
+        for intent in fishes {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let carrier = if self.carry_count(intent.actor_id) < self.tuning.carry_slots {
+                Some(intent.actor_id)
+            } else {
+                None
+            };
+            let id = self.mint_item(Material::Fish, 0, cell, carrier, Role::Loose);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "spear", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "spear", rest),
+                results,
+            );
+        }
+    }
+
+    fn cook_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if self.cook_refusal(intent.actor_id).is_some() {
+            let message = self
+                .cook_refusal(intent.actor_id)
+                .unwrap_or_else(|| "There is no fire burning here.".into());
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let Some(id) = self.raw_fish_id(intent.actor_id) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        if let Some(fish) = self.items.get_mut(&id) {
+            fish.cooked = true;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let rest = "the fish over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
+    }
+
+    fn eat_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_fish_id(intent.actor_id) else {
+            let message = if self.raw_fish_near(intent.actor_id) {
+                "Raw fish is not food."
+            } else {
+                "There is no cooked fish here to eat."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cooked fish.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
     fn apply_hafts(&mut self, hafts: Vec<Intent>, results: &mut Vec<CommandResult>) {
@@ -3894,6 +4077,10 @@ impl World {
             };
             if material == Material::Meat {
                 self.eat_meat(intent, results);
+                continue;
+            }
+            if material == Material::Fish {
+                self.eat_fish(intent, results);
                 continue;
             }
             if material == Material::Mushroom {

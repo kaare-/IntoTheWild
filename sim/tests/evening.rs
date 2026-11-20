@@ -7808,6 +7808,145 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
 }
 
 #[test]
+fn a_hardened_flint_spear_takes_a_fish_from_the_brook() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 3, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 6, 4).unwrap();
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    assert!(haft.results[0].success, "{}", haft.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("fire-hardened flint tip"),
+        "{}",
+        world.observe(near).unwrap().text
+    );
+    world.step(&[cmd("spare", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("tinder", near, Attempt::Gather(Material::Bark))]);
+    let away = world.step(&[cmd("away", near, Attempt::Fish)]);
+    assert_eq!(away.results[0].message, "The brook is not here.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("brook is not here")));
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("bank-s", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    world.step(&[cmd("drop-spear", near, Attempt::Drop(Material::Spear))]);
+    let bare = world.step(&[cmd("bare", near, Attempt::Fish)]);
+    assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("not carrying a spear")));
+    world.step(&[cmd("spear", near, Attempt::Gather(Material::Spear))]);
+    let yours = "You spear a fish from the brook.";
+    let seen = "Near spears a fish from the brook.";
+    let cast = world.step(&[cmd("fish", near, Attempt::Fish)]);
+    assert_eq!(cast.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Fish), 1);
+    assert_eq!(world.material_tally(Material::Spear), 1);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("fish")));
+    let examined = world.examine(near, ExamineTarget::Fish);
+    assert!(
+        examined.contains(
+            "A raw fish is carried by you, in the open. It must be cooked before it feeds you."
+        ),
+        "{examined}"
+    );
+    let raw = world.step(&[cmd("raw", near, Attempt::Eat(Material::Fish))]);
+    assert_eq!(raw.results[0].message, "Raw fish is not food.");
+    world.step(&[cmd("into", near, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(near), Some((1, 2)));
+    let again = world.step(&[cmd(
+        "spear-fish",
+        near,
+        parse_attempt("spear fish").unwrap(),
+    )]);
+    assert_eq!(again.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Fish), 2);
+    world.step(&[cmd("out", near, Attempt::Move(Dir::East))]);
+    for (id, dir) in [
+        ("back-e1", Dir::East),
+        ("back-e2", Dir::East),
+        ("back-e3", Dir::East),
+        ("back-e4", Dir::East),
+        ("back-n", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let relight = world.step(&[cmd("relight", near, Attempt::Light)]);
+    assert!(relight.results[0].success, "{}", relight.results[0].message);
+    let cook = world.step(&[cmd("cook", near, Attempt::Cook)]);
+    assert_eq!(cook.results[0].message, "You cook the fish over the fire.");
+    let cooked = world.examine(near, ExamineTarget::Fish);
+    assert!(
+        cooked.contains(
+            "A cooked fish is carried by you, under the rock overhang. It is good to eat."
+        ),
+        "{cooked}"
+    );
+    let eat = world.step(&[cmd("eat", near, Attempt::Eat(Material::Fish))]);
+    assert!(
+        eat.results[0]
+            .message
+            .starts_with("You eat the cooked fish."),
+        "{}",
+        eat.results[0].message
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("a spear with a fire-hardened flint tip"),);
+}
+
+#[test]
 fn a_soaked_branch_dries_by_the_fire_and_then_hafts() {
     let mut world = world_at(4);
     let near = world.spawn_at("Near", "n", 4, 0).unwrap();

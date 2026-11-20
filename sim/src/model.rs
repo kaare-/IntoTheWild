@@ -76,6 +76,7 @@ pub enum Material {
     Copper,
     Awl,
     Cord,
+    Fish,
 }
 
 impl Material {
@@ -107,6 +108,7 @@ impl Material {
             Material::Copper => "copper",
             Material::Awl => "awl",
             Material::Cord => "strips",
+            Material::Fish => "fish",
         }
     }
 
@@ -138,6 +140,7 @@ impl Material {
             Material::Copper => "copper bead",
             Material::Awl => "copper awl",
             Material::Cord => "hide strips",
+            Material::Fish => "fish",
         }
     }
 
@@ -246,6 +249,7 @@ pub enum ExamineTarget {
     Meat,
     Hide,
     Cord,
+    Fish,
     Fire,
     Water,
     Deer,
@@ -300,6 +304,7 @@ pub enum Attempt {
     BuildLeanTo,
     CutHide,
     DryBranch,
+    Fish,
 }
 
 impl Attempt {
@@ -344,6 +349,7 @@ impl Attempt {
                 | Attempt::BuildLeanTo
                 | Attempt::CutHide
                 | Attempt::DryBranch
+                | Attempt::Fish
         )
     }
 }
@@ -1490,6 +1496,50 @@ impl World {
         self.ground_ids(cell, Material::Meat)
             .iter()
             .any(|id| self.item(*id).is_some_and(|meat| !meat.cooked))
+    }
+
+    /// A raw fish in the arms, else one on this cell.
+    pub(crate) fn raw_fish_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Fish)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|fish| !fish.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Fish)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|fish| !fish.cooked))
+    }
+
+    pub(crate) fn cooked_fish_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Fish)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|fish| fish.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Fish)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|fish| fish.cooked))
+    }
+
+    pub(crate) fn raw_fish_near(&self, actor: ActorId) -> bool {
+        self.raw_fish_id(actor).is_some()
+    }
+
+    /// In the flowing brook, or on a cell that touches it. Still water is not the brook.
+    pub(crate) fn fishing_water(&self, cell: CellId) -> bool {
+        if self.cell(cell).region == Region::Brook {
+            return true;
+        }
+        let (x, y) = cell_xy(cell);
+        [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
+            cell_id(x + dx, y + dy).is_some_and(|next| self.cell(next).region == Region::Brook)
+        })
     }
 
     /// One piece of raw meat lying on this cell. Cooked meat is not raw.

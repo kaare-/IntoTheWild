@@ -425,6 +425,7 @@ impl Tuning {
             Material::Copper => 0,
             Material::Awl => 0,
             Material::Cord => 0,
+            Material::Fish => 0,
         }
     }
 }
