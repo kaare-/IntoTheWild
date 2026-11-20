@@ -478,10 +478,15 @@ impl World {
             }
         }
         if let Some(fire) = self.fire_at(actor.cell) {
-            if fire.hot {
-                parts.push("A fire burns hotter here. It warms you.".into());
+            let kept = if self.raining && self.lean_tos.contains(&actor.cell) {
+                " The lean-to keeps the fire."
             } else {
-                parts.push("A small fire burns here. It warms you.".into());
+                ""
+            };
+            if fire.hot {
+                parts.push(format!("A fire burns hotter here. It warms you.{kept}"));
+            } else {
+                parts.push(format!("A small fire burns here. It warms you.{kept}"));
             }
         } else if self
             .fires
@@ -1001,9 +1006,14 @@ impl World {
             };
             let dir = self.relative(origin, cell);
             let rain = if self.raining {
-                " The rain does not wash anyone under it."
+                let kept = if self.fire_at(cell).is_some() {
+                    " The lean-to keeps the fire."
+                } else {
+                    ""
+                };
+                format!(" The rain does not wash anyone under it.{kept}")
             } else {
-                ""
+                String::new()
             };
             lines.push(format!(
                 "A lean-to of branches stands on the {place} to the {dir}.{rain}"

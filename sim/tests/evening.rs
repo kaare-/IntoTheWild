@@ -2338,6 +2338,85 @@ fn rain_does_not_wash_a_smear_under_a_lean_to() {
 }
 
 #[test]
+fn rain_puts_out_an_open_fire_and_the_lean_to_keeps_its_fire() {
+    let mut world = world_at(18);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+    world.step(&[cmd("stash", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("to-w", near, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("to-s", near, Attempt::Move(Dir::South))]);
+    let dropped = world.step(&[cmd("drop-wood", near, Attempt::Drop(Material::Branch))]);
+    assert!(dropped.results[0].success, "{}", dropped.results[0].message);
+    let built = world.step(&[cmd("build", near, Attempt::BuildLeanTo)]);
+    assert_eq!(
+        built.results[0].message,
+        "You build a lean-to of three branches."
+    );
+    world.step(&[cmd("back-n", near, Attempt::Move(Dir::North))]);
+    world.step(&[cmd("back-e", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("out-w", near, Attempt::Move(Dir::West))]);
+    let open = world.step(&[cmd("open-fire", near, Attempt::Light)]);
+    assert!(open.results[0].success, "{}", open.results[0].message);
+    assert_eq!(world.actor_cell(near), Some((5, 1)));
+    world.step(&[cmd("more-e", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("bark-2", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("home-w", near, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("home-s", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((5, 2)));
+    world.step(&[cmd("wood", near, Attempt::Gather(Material::Branch))]);
+    let sheltered = world.step(&[cmd("shelter-fire", near, Attempt::Light)]);
+    assert!(
+        sheltered.results[0].success,
+        "{}",
+        sheltered.results[0].message
+    );
+    let dry = world.observe(near).unwrap().text;
+    assert!(
+        dry.contains("A small fire burns here. It warms you.")
+            && !dry.contains("The lean-to keeps the fire."),
+        "{dry}"
+    );
+    while !world.is_raining() {
+        world.step(&[]);
+        assert!(world.sim_time() < 20, "rain should arrive");
+    }
+    let here = world.observe(near).unwrap();
+    assert!(
+        here.text
+            .contains("A small fire burns here. It warms you. The lean-to keeps the fire."),
+        "{here:?}"
+    );
+    assert!(here
+        .visible_cells
+        .iter()
+        .any(|cell| cell.x == 5 && cell.y == 2 && cell.fire));
+    assert!(here
+        .visible_cells
+        .iter()
+        .all(|cell| !(cell.x == 5 && cell.y == 1 && cell.fire)));
+    assert!(here
+        .events
+        .iter()
+        .any(|event| event.text.contains("Rain puts out the fire.")));
+    let beside = world.observe(west).unwrap().text;
+    assert!(beside.contains("The lean-to keeps the fire."), "{beside}");
+    assert!(beside.contains("The rain does not wash anyone under it."));
+    let distant = world.observe(far).unwrap();
+    assert!(
+        !distant.text.contains("The lean-to keeps the fire."),
+        "{}",
+        distant.text
+    );
+    assert!(distant
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Rain puts out the fire.")));
+}
+
+#[test]
 fn still_water_sickens_more_often_than_the_brook() {
     let mut pool = World::valley(Tuning::evening(), 1);
     pool.tuning.still_chance = 1000;
