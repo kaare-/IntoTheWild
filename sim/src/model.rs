@@ -1175,18 +1175,22 @@ impl World {
                 bone: false,
             },
         );
-        if material == Material::Meat {
+        if material == Material::Meat || material == Material::Fish {
             self.arm_raw_spoil(id);
         }
         id
     }
 
     /// Raw meat spoils `meat_ticks` after the step that cut it.
+    /// A raw fish spoils the same number of ticks after the step it was speared.
     /// Salt and cooking clear the wait. A wake that finds either does nothing.
     pub(crate) fn arm_raw_spoil(&mut self, id: ItemId) {
         let at = self.time.saturating_add(self.tuning.meat_ticks);
-        let arm = self.item(id).is_some_and(|meat| {
-            meat.material == Material::Meat && !meat.cooked && !meat.salted && !meat.spoiled
+        let arm = self.item(id).is_some_and(|food| {
+            (food.material == Material::Meat || food.material == Material::Fish)
+                && !food.cooked
+                && !food.salted
+                && !food.spoiled
         });
         if !arm {
             return;
@@ -1669,19 +1673,42 @@ impl World {
         false
     }
 
-    /// A raw fish in the arms, else one on this cell.
+    /// A raw fish in the arms, else one on this cell. A spoiled fish is not raw.
     pub(crate) fn raw_fish_id(&self, actor: ActorId) -> Option<ItemId> {
         let carried = self
             .loose_ids(actor, Material::Fish)
             .into_iter()
-            .find(|id| self.item(*id).is_some_and(|fish| !fish.cooked));
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|fish| !fish.cooked && !fish.spoiled)
+            });
         if carried.is_some() {
             return carried;
         }
         let cell = self.actor(actor)?.cell;
         self.ground_ids(cell, Material::Fish)
             .into_iter()
-            .find(|id| self.item(*id).is_some_and(|fish| !fish.cooked))
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|fish| !fish.cooked && !fish.spoiled)
+            })
+    }
+
+    pub(crate) fn spoiled_fish_near(&self, actor: ActorId) -> bool {
+        let carried = self.loose_ids(actor, Material::Fish).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|fish| fish.spoiled && !fish.cooked)
+        });
+        if carried {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.ground_ids(cell, Material::Fish).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|fish| fish.spoiled && !fish.cooked)
+        })
     }
 
     pub(crate) fn cooked_fish_id(&self, actor: ActorId) -> Option<ItemId> {
@@ -2173,5 +2200,105 @@ mod spoil_meat {
             .all(|event| event.text != "The meat has spoiled."));
         assert!(world.item(raw).unwrap().spoiled);
         assert_eq!(world.material_tally(Material::Meat), 1);
+    }
+}
+
+#[cfg(test)]
+mod spoil_fish {
+    use super::{Attempt, ExamineTarget, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn raw_fish_spoils_and_cooked_fish_stays_good() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("West", "w", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let raw = world.mint_item(Material::Fish, 0, cell, None, Role::Loose);
+        let cooked = world.mint_item(Material::Fish, 0, cell, None, Role::Loose);
+        if let Some(fish) = world.items.get_mut(&cooked) {
+            fish.cooked = true;
+            fish.spoils_at = None;
+        }
+        let ticks = world.tuning.meat_ticks;
+        assert_eq!(world.item(raw).unwrap().spoils_at, Some(ticks));
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let going = world.observe(near).unwrap().text;
+        assert!(
+            going.contains("A raw fish lies here. It is going bad."),
+            "{going}"
+        );
+        assert!(going.contains("A cooked fish lies here."), "{going}");
+        assert!(!going.contains("spoiled"), "{going}");
+        let examined = world.examine(near, ExamineTarget::Fish);
+        assert!(
+            examined.contains(
+                "A raw fish lies in contact with the ground here, in the rain. It is going bad."
+            ),
+            "{examined}"
+        );
+        assert!(
+            examined.contains(
+                "A cooked fish lies in contact with the ground here, in the rain. It is good to eat."
+            ),
+            "{examined}"
+        );
+        world.step(&[]);
+        let spoiled = "A raw fish spoils. It is not food.";
+        let here = world.observe(near).unwrap();
+        assert!(here.events.iter().any(|event| event.text == spoiled));
+        assert!(
+            here.text
+                .contains("A spoiled fish lies here. It is not food."),
+            "{}",
+            here.text
+        );
+        assert!(
+            here.text.contains("A cooked fish lies here."),
+            "{}",
+            here.text
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == spoiled));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != spoiled && !event.text.contains("fish spoils")));
+        assert!(!world.observe(quiet).unwrap().text.contains("spoiled fish"));
+        let cooked_bite = world.step(&[intent("cooked", near, Attempt::Eat(Material::Fish))]);
+        assert!(
+            cooked_bite.results[0]
+                .message
+                .starts_with("You eat the cooked fish."),
+            "{}",
+            cooked_bite.results[0].message
+        );
+        let refused = world.step(&[intent("bad", near, Attempt::Eat(Material::Fish))]);
+        assert!(!refused.results[0].success);
+        assert_eq!(refused.results[0].message, "The fish has spoiled.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The fish has spoiled."));
+        assert!(world.item(raw).unwrap().spoiled);
+        assert!(world.item(cooked).is_none());
     }
 }

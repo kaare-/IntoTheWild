@@ -745,12 +745,7 @@ impl World {
             parts.push("A burning brand lies here.".into());
         }
         for id in self.ground_ids(actor.cell, Material::Fish) {
-            let cooked = self.item(id).is_some_and(|fish| fish.cooked);
-            if cooked {
-                parts.push("A cooked fish lies here.".into());
-            } else {
-                parts.push("A raw fish lies here.".into());
-            }
+            parts.push(self.fish_ground_line(id));
         }
         for _id in self.ground_ids(actor.cell, Material::Basket) {
             parts.push("A bark basket lies here.".into());
@@ -1932,17 +1927,8 @@ impl World {
             "a bone".into()
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
-        } else if item.material == "fish" && item.count == 1 {
-            let cooked = self
-                .loose_ids(actor_id, Material::Fish)
-                .first()
-                .and_then(|id| self.item(*id))
-                .is_some_and(|fish| fish.cooked);
-            if cooked {
-                "a cooked fish".into()
-            } else {
-                "a raw fish".into()
-            }
+        } else if item.material == "fish" {
+            self.fish_carry_phrase(actor_id)
         } else if item.material == "spear" {
             let bits: Vec<String> = self
                 .loose_ids(actor_id, Material::Spear)
@@ -4299,18 +4285,21 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             for id in self.ground_ids(cell, Material::Fish) {
-                let cooked = self.item(id).is_some_and(|fish| fish.cooked);
-                if cooked {
-                    lines.push(format!(
-                        "A cooked fish lies in contact with the ground {}. It is good to eat.",
-                        self.place_phrase(origin, cell)
-                    ));
-                } else {
-                    lines.push(format!(
-                        "A raw fish lies in contact with the ground {}. It must be cooked before it feeds you.",
-                        self.place_phrase(origin, cell)
-                    ));
-                }
+                let place = self.place_phrase(origin, cell);
+                lines.push(match self.fish_state(id) {
+                    "cooked" => format!(
+                        "A cooked fish lies in contact with the ground {place}. It is good to eat."
+                    ),
+                    "spoiled" => format!(
+                        "A spoiled fish lies in contact with the ground {place}. It is not food."
+                    ),
+                    "going" => format!(
+                        "A raw fish lies in contact with the ground {place}. It is going bad."
+                    ),
+                    _ => format!(
+                        "A raw fish lies in contact with the ground {place}. It must be cooked before it feeds you."
+                    ),
+                });
             }
         }
         for other in self.visible_actor_ids(viewer) {
@@ -4320,25 +4309,35 @@ impl World {
                 self.name_of(other)
             };
             let cell = self.actor(other).unwrap().cell;
+            let cover = self.cover_phrase(cell);
             for id in self.loose_ids(other, Material::Fish) {
-                let cooked = self.item(id).is_some_and(|fish| fish.cooked);
                 let in_basket = self.item(id).is_some_and(|fish| fish.in_basket);
-                if in_basket && !cooked {
-                    lines.push(format!(
-                        "A raw fish is in the bark basket carried by {who}, {}. It must be cooked before it feeds you.",
-                        self.cover_phrase(cell)
-                    ));
-                } else if cooked {
-                    lines.push(format!(
-                        "A cooked fish is carried by {who}, {}. It is good to eat.",
-                        self.cover_phrase(cell)
-                    ));
-                } else {
-                    lines.push(format!(
-                        "A raw fish is carried by {who}, {}. It must be cooked before it feeds you.",
-                        self.cover_phrase(cell)
-                    ));
-                }
+                lines.push(match (in_basket, self.fish_state(id)) {
+                    (true, "cooked") => format!(
+                        "A cooked fish is in the bark basket carried by {who}, {cover}. It is good to eat."
+                    ),
+                    (true, "spoiled") => format!(
+                        "A spoiled fish is in the bark basket carried by {who}, {cover}. It is not food."
+                    ),
+                    (true, "going") => format!(
+                        "A raw fish is in the bark basket carried by {who}, {cover}. It is going bad."
+                    ),
+                    (true, _) => format!(
+                        "A raw fish is in the bark basket carried by {who}, {cover}. It must be cooked before it feeds you."
+                    ),
+                    (false, "cooked") => {
+                        format!("A cooked fish is carried by {who}, {cover}. It is good to eat.")
+                    }
+                    (false, "spoiled") => {
+                        format!("A spoiled fish is carried by {who}, {cover}. It is not food.")
+                    }
+                    (false, "going") => {
+                        format!("A raw fish is carried by {who}, {cover}. It is going bad.")
+                    }
+                    (false, _) => format!(
+                        "A raw fish is carried by {who}, {cover}. It must be cooked before it feeds you."
+                    ),
+                });
             }
         }
         if lines.is_empty() {
@@ -6528,7 +6527,12 @@ impl World {
     fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
         match self.basket_contents(actor_id) {
             Some(Material::Berry) => "a bark basket holding a handful of berries".into(),
-            Some(Material::Fish) => "a bark basket holding a raw fish".into(),
+            Some(Material::Fish) => match self.basket_fish_state(actor_id) {
+                "cooked" => "a bark basket holding a cooked fish".into(),
+                "spoiled" => "a bark basket holding a spoiled fish".into(),
+                "going" => "a bark basket holding a raw fish, going bad".into(),
+                _ => "a bark basket holding a raw fish".into(),
+            },
             _ => "a bark basket".into(),
         }
     }
@@ -6539,11 +6543,75 @@ impl World {
         })
     }
 
-    fn basket_held_sentence(&self, actor_id: ActorId) -> &'static str {
+    fn basket_held_sentence(&self, actor_id: ActorId) -> String {
         match self.basket_contents(actor_id) {
-            Some(Material::Berry) => "It holds a handful of berries.",
-            Some(Material::Fish) => "It holds a raw fish.",
-            _ => "It is empty.",
+            Some(Material::Berry) => "It holds a handful of berries.".into(),
+            Some(Material::Fish) => match self.basket_fish_state(actor_id) {
+                "cooked" => "It holds a cooked fish.".into(),
+                "spoiled" => "It holds a spoiled fish. It is not food.".into(),
+                "going" => "It holds a raw fish. It is going bad.".into(),
+                _ => "It holds a raw fish.".into(),
+            },
+            _ => "It is empty.".into(),
+        }
+    }
+
+    /// Cooked fish stays good. A raw fish is going bad on the tick before it spoils.
+    fn fish_state(&self, id: crate::model::ItemId) -> &'static str {
+        let Some(fish) = self.item(id) else {
+            return "raw";
+        };
+        if fish.cooked {
+            "cooked"
+        } else if fish.spoiled {
+            "spoiled"
+        } else if fish.spoils_at == Some(self.time) {
+            "going"
+        } else {
+            "raw"
+        }
+    }
+
+    fn fish_ground_line(&self, id: crate::model::ItemId) -> String {
+        match self.fish_state(id) {
+            "cooked" => "A cooked fish lies here.".into(),
+            "spoiled" => "A spoiled fish lies here. It is not food.".into(),
+            "going" => "A raw fish lies here. It is going bad.".into(),
+            _ => "A raw fish lies here.".into(),
+        }
+    }
+
+    fn fish_carry_phrase(&self, actor_id: ActorId) -> String {
+        let mut bits = Vec::new();
+        for id in self.loose_ids(actor_id, Material::Fish) {
+            if self.item(id).is_some_and(|fish| fish.in_basket) {
+                continue;
+            }
+            bits.push(match self.fish_state(id) {
+                "cooked" => "a cooked fish",
+                "spoiled" => "a spoiled fish",
+                "going" => "a raw fish, going bad",
+                _ => "a raw fish",
+            });
+        }
+        if bits.is_empty() {
+            "a raw fish".into()
+        } else {
+            bits.join(", ")
+        }
+    }
+
+    fn basket_fish_state(&self, actor_id: ActorId) -> &'static str {
+        let id = self
+            .items
+            .values()
+            .find(|item| {
+                item.carrier == Some(actor_id) && item.in_basket && item.material == Material::Fish
+            })
+            .map(|fish| fish.id);
+        match id {
+            Some(id) => self.fish_state(id),
+            None => "raw",
         }
     }
 

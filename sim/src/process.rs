@@ -36,28 +36,34 @@ impl World {
                 Wake::DryBranch(id) => self.dry_branch(id),
                 Wake::BrandOut(id) => self.brand_out(id),
                 Wake::Snare(cell) => self.spring_snare(cell),
-                Wake::Spoil(id) => self.spoil_meat(id),
+                Wake::Spoil(id) => self.spoil_food(id),
             }
         }
     }
 
-    /// Raw unsalted meat has waited out its ticks. It is not food.
-    /// Salted meat and cooked meat keep. Someone who cannot see the cell hears nothing.
-    fn spoil_meat(&mut self, id: ItemId) {
+    /// Raw meat or a raw fish has waited out its ticks. It is not food.
+    /// Salted meat, cooked meat, and cooked fish keep.
+    /// Someone who cannot see the cell hears nothing.
+    fn spoil_food(&mut self, id: ItemId) {
         let Some(item) = self.item(id).cloned() else {
             return;
         };
-        if item.material != Material::Meat || item.cooked || item.salted || item.spoiled {
+        if item.cooked || item.salted || item.spoiled {
+            return;
+        }
+        if item.material != Material::Meat && item.material != Material::Fish {
             return;
         }
         if item.spoils_at != Some(self.time) {
             return;
         }
-        if let Some(meat) = self.items.get_mut(&id) {
-            meat.spoiled = true;
-            meat.spoils_at = None;
+        if let Some(food) = self.items.get_mut(&id) {
+            food.spoiled = true;
+            food.spoils_at = None;
         }
-        let text = if item.small {
+        let text = if item.material == Material::Fish {
+            "A raw fish spoils. It is not food."
+        } else if item.small {
             "A smaller piece of raw meat spoils. It is not food."
         } else {
             "A portion of raw meat spoils. It is not food."

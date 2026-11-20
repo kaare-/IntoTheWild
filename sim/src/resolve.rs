@@ -884,6 +884,8 @@ impl World {
                                 Ok(true)
                             } else if self.raw_fish_near(actor.id) {
                                 Err("Raw fish is not food.".into())
+                            } else if self.spoiled_fish_near(actor.id) {
+                                Err("The fish has spoiled.".into())
                             } else {
                                 Err("There is no cooked fish here to eat.".into())
                             }
@@ -1850,6 +1852,9 @@ impl World {
             if self.spoiled_meat_near(actor) {
                 return Some("The meat has spoiled.".into());
             }
+            if self.spoiled_fish_near(actor) {
+                return Some("The fish has spoiled.".into());
+            }
             if self.has_material_at_hand(actor, Material::BitterBerry) {
                 return Some("Cooking does not make poison berries food.".into());
             }
@@ -2575,6 +2580,8 @@ impl World {
         };
         if let Some(fish) = self.items.get_mut(&id) {
             fish.cooked = true;
+            fish.spoiled = false;
+            fish.spoils_at = None;
         }
         let cell = self
             .actor(intent.actor_id)
@@ -2609,6 +2616,8 @@ impl World {
         let Some(id) = self.cooked_fish_id(intent.actor_id) else {
             let message = if self.raw_fish_near(intent.actor_id) {
                 "Raw fish is not food."
+            } else if self.spoiled_fish_near(intent.actor_id) {
+                "The fish has spoiled."
             } else {
                 "There is no cooked fish here to eat."
             };

@@ -46,9 +46,10 @@ track_ticks = 4
 # A hide snare set with hide strips catches a hare after this many ticks.
 # The strips are spent. The snare is gone. One portion of raw meat lies there.
 snare_ticks = 3
-# Raw meat spoils this many ticks after the step that cut it. On the tick
+# Raw meat spoils this many ticks after the step that cut it. A raw fish
+# spoils the same number of ticks after the step it was speared. On the tick
 # before that, look and examine say it is going bad. Then it is not food.
-# Salted meat is not on this timer. Cooked meat stays good.
+# Salted meat is not on this timer. Cooked meat and cooked fish stay good.
 meat_ticks = 24
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up
