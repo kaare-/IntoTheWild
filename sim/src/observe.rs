@@ -6690,7 +6690,7 @@ impl World {
     }
 
     /// A successful gather, filled for the person who took it.
-    /// Anyone else keeps the stored sentence. Mud is not this act.
+    /// Anyone else keeps the stored sentence.
     fn gather_for_these_eyes(
         &self,
         viewer: ActorId,
@@ -6737,6 +6737,7 @@ impl World {
             "copper awl",
             "lump of charcoal",
             "bundle of reeds",
+            "handful of mud",
         ];
         let known = NOUNS
             .iter()

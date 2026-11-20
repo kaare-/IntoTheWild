@@ -4981,8 +4981,9 @@ impl World {
         }
         let item = self.mint_item(Material::Mud, 0, cell, Some(intent.actor_id), Role::Loose);
         let name = self.name_of(intent.actor_id);
+        let rest = "a handful of mud.";
         self.emit(
-            format!("{name} gathers a handful of mud."),
+            crate::model::spoken_act(Some(name.as_str()), "gather", rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -4994,7 +4995,7 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            "You gather a handful of mud.",
+            crate::model::spoken_act(None, "gather", rest),
             results,
         );
     }
