@@ -91,6 +91,10 @@ flint_ticks = 24
 # After a berry patch is emptied, by gathering or by the deer, the same
 # pile lies there again. Look says the berries are gone until then.
 berry_ticks = 24
+# After the mushrooms on the valley floor are gathered, or cooked off the
+# pile, the same pile lies there again. Look says the mushrooms are gone
+# until then.
+mushroom_ticks = 24
 # After the dry branches under the rock are gathered or snapped away, look
 # says there are none for this many ticks. Then the same dry pile lies there
 # again. Someone who cannot see the rock does not get the line. Open branches

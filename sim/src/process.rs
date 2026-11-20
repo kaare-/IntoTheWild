@@ -44,6 +44,7 @@ impl World {
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::BranchReturn(cell) => self.return_branches(cell),
                 Wake::BerryReturn(cell) => self.return_berries(cell),
+                Wake::MushroomReturn(cell) => self.return_mushrooms(cell),
                 Wake::DeerReturn => self.return_deer(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
@@ -250,6 +251,34 @@ impl World {
         };
         self.emit(
             text,
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The patch has waited out its ticks. The same mushrooms lie there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_mushrooms(&mut self, cell: CellId) {
+        let Some(at) = self.mushroom_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.mushroom_returns_at.remove(&cell);
+        let Some(count) = self.mushroom_patches.get(&cell).copied() else {
+            return;
+        };
+        if self.pile_count(cell, Material::Mushroom) > 0 {
+            return;
+        }
+        self.add_pile(cell, Material::Mushroom, count, 0);
+        self.emit(
+            "Mushrooms lie here again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

@@ -681,6 +681,8 @@ pub enum Wake {
     BranchReturn(CellId),
     /// A berry patch on this cell has fruit again.
     BerryReturn(CellId),
+    /// A mushroom patch on this cell has mushrooms again.
+    MushroomReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
@@ -883,6 +885,12 @@ pub struct World {
     /// When an emptied patch has berries again. Look says they are gone until then.
     #[serde(default)]
     pub(crate) berry_returns_at: BTreeMap<CellId, u64>,
+    /// Seeded mushroom patches. The count is what grows back after the pile is gone.
+    #[serde(default)]
+    pub(crate) mushroom_patches: BTreeMap<CellId, u32>,
+    /// When an emptied patch has mushrooms again. Look says they are gone until then.
+    #[serde(default)]
+    pub(crate) mushroom_returns_at: BTreeMap<CellId, u64>,
     /// When a deer stands on the trail again. Look names no standing deer until then.
     #[serde(default)]
     pub(crate) deer_returns_at: Option<u64>,
@@ -981,6 +989,8 @@ impl World {
             branch_returns_at: BTreeMap::new(),
             berry_patches: BTreeMap::new(),
             berry_returns_at: BTreeMap::new(),
+            mushroom_patches: BTreeMap::new(),
+            mushroom_returns_at: BTreeMap::new(),
             flint_returns_at: BTreeMap::new(),
             deer_returns_at: None,
             next_deer_id: default_next_deer_id(),
@@ -1021,7 +1031,9 @@ impl World {
                 count: 2,
             },
         );
-        world.add_pile(cell_id(3, 1).unwrap(), Material::Mushroom, 2, 0);
+        let mushrooms = cell_id(3, 1).unwrap();
+        world.add_pile(mushrooms, Material::Mushroom, 2, 0);
+        world.mushroom_patches.insert(mushrooms, 2);
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
@@ -1324,6 +1336,9 @@ impl World {
             if matches!(material, Material::Berry | Material::BitterBerry) {
                 self.arm_berry_patch(emptied);
             }
+            if material == Material::Mushroom {
+                self.arm_mushroom_patch(emptied);
+            }
         }
         Some(moisture)
     }
@@ -1472,6 +1487,30 @@ impl World {
         let at = self.time.saturating_add(self.tuning.berry_ticks);
         self.berry_returns_at.insert(cell, at);
         self.schedule(at, Wake::BerryReturn(cell));
+    }
+
+    /// An emptied mushroom patch grows the same pile back after `mushroom_ticks`.
+    /// Gathering the last one, or cooking it off the pile, leaves the same wait.
+    /// A wake that finds mushrooms already there does not add a second pile.
+    pub(crate) fn arm_mushroom_patch(&mut self, cell: CellId) {
+        if !self.mushroom_patches.contains_key(&cell)
+            || self.mushroom_returns_at.contains_key(&cell)
+        {
+            return;
+        }
+        if self.pile_count(cell, Material::Mushroom) > 0 {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.mushroom_ticks);
+        self.mushroom_returns_at.insert(cell, at);
+        self.schedule(at, Wake::MushroomReturn(cell));
+    }
+
+    /// The patch is waiting. Look says the mushrooms are gone.
+    pub(crate) fn mushroom_patch_bare(&self, cell: CellId) -> bool {
+        self.mushroom_returns_at.contains_key(&cell)
+            && self.mushroom_patches.contains_key(&cell)
+            && self.pile_count(cell, Material::Mushroom) == 0
     }
 
     /// The patch is waiting. Look says the berries are gone.
@@ -6433,5 +6472,88 @@ mod berry_return {
             "You gather a handful of berries."
         );
         assert_eq!(world.pile_count(rock, Material::Berry), 3);
+    }
+}
+
+#[cfg(test)]
+mod mushroom_return {
+    use super::{Attempt, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn mushrooms_return_after_they_are_gathered() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Mushrooms lie here"), "{here}");
+        assert!(world.observe(seen).unwrap().text.contains("mushrooms"));
+        let mut n = 0;
+        while world.pile_count(world.actor(near).unwrap().cell, Material::Mushroom) > 0 {
+            n += 1;
+            let took = world.step(&[intent(
+                &format!("gather-{n}"),
+                near,
+                Attempt::Gather(Material::Mushroom),
+            )]);
+            assert_eq!(took.results[0].message, "You gather a mushroom.");
+        }
+        let gone = world.observe(near).unwrap().text;
+        assert!(
+            gone.contains("The mushrooms that were here are gone."),
+            "{gone}"
+        );
+        assert!(!gone.contains("Mushrooms lie here"), "{gone}");
+        let south = world.observe(seen).unwrap().text;
+        assert!(
+            south.contains("The mushrooms to the north are gone."),
+            "{south}"
+        );
+        let examined = world.examine(seen, super::ExamineTarget::Mushrooms);
+        assert!(
+            examined.contains("The mushrooms that were to the north are gone."),
+            "{examined}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("mushroom"));
+        let ticks = world.tuning.mushroom_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The mushrooms that were here are gone."));
+        world.step(&[]);
+        let back = "Mushrooms lie here again.";
+        let again = world.observe(near).unwrap();
+        assert!(again.text.contains("Mushrooms lie here"), "{}", again.text);
+        assert!(!again.text.contains("are gone"), "{}", again.text);
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(seen_back.text.contains("mushrooms"), "{}", seen_back.text);
+        assert!(!seen_back.text.contains("are gone"), "{}", seen_back.text);
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("mushroom"));
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Mushroom))]);
+        assert_eq!(second.results[0].message, "You gather a mushroom.");
+        assert_eq!(
+            world.pile_count(world.actor(near).unwrap().cell, Material::Mushroom),
+            1
+        );
     }
 }

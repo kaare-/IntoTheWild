@@ -311,6 +311,9 @@ impl World {
             if let Some(berries) = self.seen_berry_patches(actor_id) {
                 lines.push(berries);
             }
+            if let Some(mushrooms) = self.seen_mushroom_patches(actor_id) {
+                lines.push(mushrooms);
+            }
             if let Some(branches) = self.seen_rock_branches(actor_id) {
                 lines.push(branches);
             }
@@ -728,6 +731,8 @@ impl World {
                 "Mushrooms lie here, {}. They must be cooked. Raw mushrooms do not feed you.",
                 self.condition_word(self.pile_moisture(actor.cell, Material::Mushroom))
             ));
+        } else if self.mushroom_patch_bare(actor.cell) {
+            parts.push("The mushrooms that were here are gone.".into());
         }
         let cooked_mushrooms = self
             .ground_ids(actor.cell, Material::Mushroom)
@@ -1215,6 +1220,29 @@ impl World {
                 && !self.deer_ate_berries.contains(&cell)
             {
                 lines.push(format!("The berries to the {way} are gone."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A mushroom patch in sight that has not grown back. The compass drops
+    /// the mushrooms while they are gone. Someone on the patch already has the place line.
+    fn seen_mushroom_patches(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            if self.mushroom_patch_bare(cell) {
+                lines.push(format!(
+                    "The mushrooms to the {} are gone.",
+                    self.relative(origin, cell)
+                ));
             }
         }
         if lines.is_empty() {
@@ -5743,6 +5771,14 @@ impl World {
                 } else if !self.deer_ate_berries.contains(&cell) {
                     lines.push(format!("The berries that were {way} are gone."));
                 }
+            } else if count == 0 && material == Material::Mushroom && self.mushroom_patch_bare(cell)
+            {
+                let way = if cell == origin {
+                    "here".to_string()
+                } else {
+                    format!("to the {}", self.relative(origin, cell))
+                };
+                lines.push(format!("The mushrooms that were {way} are gone."));
             } else if count > 0 {
                 if material == Material::Stone && count == 1 {
                     lines.push(format!(

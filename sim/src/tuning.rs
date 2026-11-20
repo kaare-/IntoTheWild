@@ -81,6 +81,11 @@ pub struct Tuning {
     /// Look says the berries are gone until then.
     #[serde(default = "default_berry_ticks")]
     pub berry_ticks: u64,
+    /// Ticks after a mushroom patch is emptied before the same pile lies there again.
+    /// Gathering the last one, or cooking it off the pile, leaves the same wait.
+    /// Look says the mushrooms are gone until then.
+    #[serde(default = "default_mushroom_ticks")]
+    pub mushroom_ticks: u64,
     /// Ticks after a deer is brought down before another stands on the trail.
     /// Look names no standing deer until then. The carcass does not change the wait.
     #[serde(default = "default_deer_ticks")]
@@ -236,6 +241,9 @@ fn default_branch_ticks() -> u64 {
 fn default_berry_ticks() -> u64 {
     24
 }
+fn default_mushroom_ticks() -> u64 {
+    24
+}
 fn default_deer_ticks() -> u64 {
     24
 }
@@ -360,6 +368,8 @@ struct RawTime {
     branch_ticks: u64,
     #[serde(default = "default_berry_ticks")]
     berry_ticks: u64,
+    #[serde(default = "default_mushroom_ticks")]
+    mushroom_ticks: u64,
     #[serde(default = "default_deer_ticks")]
     deer_ticks: u64,
     #[serde(default = "default_night_at")]
@@ -524,6 +534,7 @@ impl Tuning {
             flint_ticks: raw.time.flint_ticks,
             branch_ticks: raw.time.branch_ticks,
             berry_ticks: raw.time.berry_ticks,
+            mushroom_ticks: raw.time.mushroom_ticks,
             deer_ticks: raw.time.deer_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
