@@ -464,8 +464,12 @@ impl World {
                 parts.push("Still water lies here. It is not the brook.".into());
             }
         }
-        if self.fire_at(actor.cell).is_some() {
-            parts.push("A small fire burns here. It warms you.".into());
+        if let Some(fire) = self.fire_at(actor.cell) {
+            if fire.hot {
+                parts.push("A fire burns hotter here. It warms you.".into());
+            } else {
+                parts.push("A small fire burns here. It warms you.".into());
+            }
         } else if self
             .fires
             .values()
@@ -998,9 +1002,15 @@ impl World {
                     parts.push("A pot sits on the ground there.".into());
                 }
             }
-            if self.fire_at(cell).is_some() {
+            if let Some(fire) = self.fire_at(cell) {
                 let burn = if parts.is_empty() {
-                    "A small fire burns under the rock overhang."
+                    if fire.hot {
+                        "A fire burns hotter under the rock overhang."
+                    } else {
+                        "A small fire burns under the rock overhang."
+                    }
+                } else if fire.hot {
+                    "A fire burns hotter there."
                 } else {
                     "A small fire burns there."
                 };
@@ -4000,8 +4010,13 @@ impl World {
             } else {
                 ""
             };
+            let kind = if fire.hot {
+                "A fire burns hotter"
+            } else {
+                "A small fire burns"
+            };
             lines.push(format!(
-                "A small fire burns {}. It was lit on this ground. It warms anyone standing at it.{reach} ({x},{y})",
+                "{kind} {}. It was lit on this ground. It warms anyone standing at it.{reach} ({x},{y})",
                 self.place_phrase(origin, fire.cell)
             ));
         }

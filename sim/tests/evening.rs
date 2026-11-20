@@ -9435,6 +9435,20 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         );
     }
     assert_eq!(world.material_items(Material::IronOre)[0].1, Some(near));
+    let before = world.observe(near).unwrap().text;
+    assert!(
+        before.contains("A small fire burns here. It warms you."),
+        "{before}"
+    );
+    assert!(!before.contains("burns hotter"), "{before}");
+    let from_far = world.observe(far).unwrap().text;
+    assert!(from_far.contains("A small fire burns there."), "{from_far}");
+    assert!(!from_far.contains("burns hotter"), "{from_far}");
+    assert!(
+        !world.observe(west).unwrap().text.contains("burns hotter"),
+        "{}",
+        world.observe(west).unwrap().text
+    );
     let fed = "You feed a dry branch into the fire. It burns hotter.";
     let seen_feed = "Near feeds a dry branch into the fire. It burns hotter.";
     let feed = world.step(&[cmd("feed", near, Attempt::Feed)]);
@@ -9457,6 +9471,30 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         .events
         .iter()
         .all(|event| !event.text.contains("feed") && !event.text.contains("hotter")));
+    let hotter = world.observe(near).unwrap().text;
+    assert!(
+        hotter.contains("A fire burns hotter here. It warms you."),
+        "{hotter}"
+    );
+    assert!(!hotter.contains("A small fire burns here"), "{hotter}");
+    let seen_hot = world.observe(far).unwrap().text;
+    assert!(
+        seen_hot.contains("A fire burns hotter there."),
+        "{seen_hot}"
+    );
+    assert!(!seen_hot.contains("A small fire burns"), "{seen_hot}");
+    assert!(
+        !world.observe(west).unwrap().text.contains("burns hotter"),
+        "{}",
+        world.observe(west).unwrap().text
+    );
+    assert!(
+        world
+            .examine(near, ExamineTarget::Fire)
+            .starts_with("A fire burns hotter here,"),
+        "{}",
+        world.examine(near, ExamineTarget::Fire)
+    );
     let yours = "You set a lump of iron ore by the fire. It leaves your arms.";
     let witnessed = "Near sets a lump of iron ore by the fire. It leaves their arms.";
     let set = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
