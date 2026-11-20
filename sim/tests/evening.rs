@@ -9796,8 +9796,8 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     );
     let hunt = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
     assert!(hunt.results[0].success, "{}", hunt.results[0].message);
-    let dropped = world.step(&[cmd("drop-spear", near, Attempt::Drop(Material::Spear))]);
-    assert!(dropped.results[0].success, "{}", dropped.results[0].message);
+    assert_eq!(world.material_items(Material::Spear)[0].1, Some(near));
+    assert_eq!(world.material_items(Material::Knife)[0].1, Some(near));
     let bare = world.step(&[cmd("no-knife", far, Attempt::Butcher)]);
     assert_eq!(
         bare.results[0].message,
@@ -9831,7 +9831,9 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     assert_eq!(world.material_tally(Material::Meat), 3);
     assert_eq!(world.material_tally(Material::Hide), 1);
     assert_eq!(world.material_tally(Material::Knife), 1);
+    assert_eq!(world.material_tally(Material::Spear), 1);
     assert_eq!(world.material_items(Material::Knife)[0].1, Some(near));
+    assert_eq!(world.material_items(Material::Spear)[0].1, Some(near));
     let examined = world.examine(near, ExamineTarget::Knife);
     assert!(examined.contains("It can cut."), "{examined}");
     let again = world.step(&[cmd("again", near, Attempt::Butcher)]);

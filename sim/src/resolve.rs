@@ -2274,8 +2274,7 @@ impl World {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            let with_knife = !self.has_flint_spear(actor.id)
-                && !self.loose_ids(actor.id, Material::Knife).is_empty();
+            let with_knife = !self.loose_ids(actor.id, Material::Knife).is_empty();
             if !self.has_butcher_tool(actor.id) {
                 self.finish(
                     intent.command_id,
