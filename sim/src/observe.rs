@@ -1784,7 +1784,8 @@ impl World {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::Moss).is_empty() {
+            let count = self.loose_ids(actor.id, Material::Moss).len() as u32;
+            if count == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -1792,10 +1793,17 @@ impl World {
             } else {
                 actor.name.as_str()
             };
-            lines.push(format!(
-                "A handful of moss is carried by {who} {}. It can be pressed on a sting.",
-                self.cover_phrase(actor.cell)
-            ));
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A handful of moss is carried by {who} {cover}. It can be pressed on a sting."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} handfuls of moss are carried by {who} {cover}. They can be pressed on a sting.",
+                    capitalize(&count_word(count))
+                ));
+            }
         }
         if lines.is_empty() {
             "You see no moss from here.".into()
@@ -2230,6 +2238,8 @@ impl World {
             format!("{} honeycombs", count_word(item.count))
         } else if item.material == "moss" && item.count == 1 {
             "a handful of moss".into()
+        } else if item.material == "moss" {
+            format!("{} handfuls of moss", count_word(item.count))
         } else if item.material == "egg" {
             if self
                 .loose_ids(actor_id, Material::Egg)

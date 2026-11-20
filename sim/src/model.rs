@@ -3688,7 +3688,16 @@ mod moss {
         assert_eq!(gathered.results[0].message, "You gather a handful of moss.");
         let empty = world.observe(near).unwrap().text;
         assert!(empty.contains("The damp bank here is bare."), "{empty}");
+        assert!(empty.contains("You have a handful of moss."), "{empty}");
+        assert!(!empty.contains("2 moss"), "{empty}");
         assert!(!empty.contains("Moss grows"), "{empty}");
+        let one = world.examine(near, super::ExamineTarget::Moss);
+        assert!(one.contains("A handful of moss is carried by you"), "{one}");
+        let seen_one = world.examine(seen, super::ExamineTarget::Moss);
+        assert!(
+            seen_one.contains("A handful of moss is carried by Near"),
+            "{seen_one}"
+        );
         let west = world.observe(seen).unwrap().text;
         assert!(
             west.contains("The damp bank to the west is bare."),
@@ -3741,6 +3750,27 @@ mod moss {
             taken.text.contains("The damp bank here is bare."),
             "{}",
             taken.text
+        );
+        assert!(
+            taken.text.contains("You have two handfuls of moss."),
+            "{}",
+            taken.text
+        );
+        assert!(!taken.text.contains("2 moss"), "{}", taken.text);
+        assert!(!taken.text.contains("carried by you"), "{}", taken.text);
+        let two = world.examine(near, super::ExamineTarget::Moss);
+        assert!(
+            two.contains("Two handfuls of moss are carried by you"),
+            "{two}"
+        );
+        let seen_two = world.examine(seen, super::ExamineTarget::Moss);
+        assert!(
+            seen_two.contains("Two handfuls of moss are carried by Near"),
+            "{seen_two}"
+        );
+        assert_eq!(
+            world.examine(quiet, super::ExamineTarget::Moss),
+            "You see no moss from here."
         );
         assert!(taken
             .events
