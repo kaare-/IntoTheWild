@@ -12373,3 +12373,136 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
         .iter()
         .all(|event| !event.text.contains("arms are full")));
 }
+
+#[test]
+fn a_walk_is_footsteps_one_cell_past_sight() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let seen = world.spawn_at("Seen", "s", 6, 3).unwrap();
+    let east = world.spawn_at("East", "e", 2, 3).unwrap();
+    let south = world.spawn_at("South", "u", 5, 0).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+
+    let walked = world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    assert_eq!(walked.results[0].message, "You walk east.");
+    assert_eq!(world.actor_cell(near), Some((5, 3)));
+    let actor = world.observe(near).unwrap();
+    assert!(actor
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks east."));
+    assert!(actor
+        .events
+        .iter()
+        .all(|event| !event.text.contains("footsteps")));
+    let eyes = world.observe(seen).unwrap();
+    assert!(eyes
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks east."));
+    assert!(eyes
+        .events
+        .iter()
+        .all(|event| !event.text.contains("footsteps")));
+    let to_the_east = world.observe(east).unwrap();
+    assert!(to_the_east
+        .events
+        .iter()
+        .any(|event| event.text == "You hear footsteps to the east."));
+    assert!(to_the_east
+        .events
+        .iter()
+        .all(|event| !event.text.contains("walks")));
+    let to_the_south = world.observe(south).unwrap();
+    assert!(to_the_south
+        .events
+        .iter()
+        .any(|event| event.text == "You hear footsteps to the south."));
+    assert!(to_the_south
+        .events
+        .iter()
+        .all(|event| !event.text.contains("walks")));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("footsteps") && !event.text.contains("walks") }));
+
+    world.step(&[]);
+    assert_eq!(
+        world
+            .observe(east)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == "You hear footsteps to the east.")
+            .count(),
+        1
+    );
+
+    let onto = world.step(&[cmd("onto", near, Attempt::Move(Dir::East))]);
+    assert_eq!(onto.results[0].message, "You walk east.");
+    assert_eq!(world.actor_cell(near), Some((6, 3)));
+    let arrived = world.observe(seen).unwrap();
+    assert!(arrived
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks east."));
+    assert!(arrived
+        .events
+        .iter()
+        .all(|event| !event.text.contains("footsteps")));
+    assert_eq!(
+        world
+            .observe(east)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("footsteps"))
+            .count(),
+        1
+    );
+    let south_lines: Vec<_> = world
+        .observe(south)
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| event.text.contains("footsteps"))
+        .map(|event| event.text.clone())
+        .collect();
+    assert_eq!(
+        south_lines,
+        vec![
+            "You hear footsteps to the south.".to_string(),
+            "You hear footsteps to the south and east.".to_string(),
+        ]
+    );
+    let refused = world.step(&[cmd("no", near, Attempt::Move(Dir::East))]);
+    assert_eq!(
+        refused.results[0].message,
+        "The valley does not go that way."
+    );
+    assert_eq!(
+        world
+            .observe(south)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("footsteps"))
+            .count(),
+        2
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("footsteps") }));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("footsteps") && !event.text.contains("walks") }));
+}

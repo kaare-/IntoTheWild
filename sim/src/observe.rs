@@ -6215,6 +6215,52 @@ impl World {
         Some(crate::model::spoken_act(None, "spear", rest))
     }
 
+    /// A successful walk, heard from out of sight. Someone who can see the
+    /// arrival keeps the walk sentence. The walker is standing on it, so they
+    /// do not also hear their own steps. Past hearing, nothing is delivered.
+    fn footsteps_for_these_ears(
+        &self,
+        origin: CellId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        let cell = self.walk_arrival(event)?;
+        if chebyshev(origin, cell) <= self.tuning.sight {
+            return None;
+        }
+        if chebyshev(origin, cell) > self.tuning.hearing {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear footsteps to the {way}."))
+    }
+
+    fn hears_footsteps(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.walk_arrival(event) else {
+            return false;
+        };
+        chebyshev(origin, cell) > self.tuning.sight
+            && chebyshev(origin, cell) <= self.tuning.hearing
+    }
+
+    /// The cell someone arrived on. Only a walk or a wade that succeeded.
+    fn walk_arrival(&self, event: &crate::model::Event) -> Option<CellId> {
+        let crate::model::Scope::Cell(cell) = event.scope else {
+            return None;
+        };
+        if event.affected_actors.len() != 1 {
+            return None;
+        }
+        let name = self.name_of(event.affected_actors[0]);
+        let text = event.text.as_str();
+        if text.starts_with(&format!("{name} walks "))
+            || text.starts_with(&format!("{name} wades "))
+        {
+            Some(cell)
+        } else {
+            None
+        }
+    }
+
     /// A fish taken out of sight. The spear sentence stays with someone who
     /// can see it. Past hearing, the event is not delivered at all.
     fn splash_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
@@ -6586,6 +6632,9 @@ impl World {
         if let Some(line) = self.splash_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.footsteps_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.brand_for_these_eyes(viewer, event) {
             return line;
         }
@@ -6803,6 +6852,7 @@ impl World {
                     || event.affected_actors.contains(&viewer)
                     || self.hears_a_branch_break(origin, event)
                     || self.hears_a_splash(origin, event)
+                    || self.hears_footsteps(origin, event)
             }
         }
     }
