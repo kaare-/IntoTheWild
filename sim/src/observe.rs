@@ -5432,7 +5432,7 @@ impl World {
             let cover = self.cover_phrase(actor.cell);
             if count == 1 {
                 lines.push(format!(
-                    "A flint flake is carried by {who}, {cover}. It is sharp enough to cut or haft later."
+                    "A sharp flint flake is carried by {who}, {cover}. It is sharp enough to cut or haft later."
                 ));
             } else {
                 lines.push(format!(

@@ -4384,7 +4384,7 @@ mod flint_return {
         assert!(!empty.contains("A flint nodule lies here."), "{empty}");
         assert_eq!(
             world.examine(near, ExamineTarget::Flint),
-            "The slope here has no flint.\nA flint flake is carried by you, in the open. It is sharp enough to cut or haft later."
+            "The slope here has no flint.\nA sharp flint flake is carried by you, in the open. It is sharp enough to cut or haft later."
         );
         let south = world.observe(seen).unwrap().text;
         assert!(
@@ -4465,11 +4465,11 @@ mod flake_arms {
         assert!(!one.contains("two sharp"), "{one}");
         assert_eq!(
             world.examine(near, ExamineTarget::Flake),
-            "A flint flake is carried by you, in the open. It is sharp enough to cut or haft later."
+            "A sharp flint flake is carried by you, in the open. It is sharp enough to cut or haft later."
         );
         assert_eq!(
             world.examine(seen, ExamineTarget::Flake),
-            "A flint flake is carried by Near, in the open. It is sharp enough to cut or haft later."
+            "A sharp flint flake is carried by Near, in the open. It is sharp enough to cut or haft later."
         );
         assert_eq!(
             world.examine(quiet, ExamineTarget::Flake),
