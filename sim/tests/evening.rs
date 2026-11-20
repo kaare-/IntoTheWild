@@ -8989,3 +8989,99 @@ fn a_pierced_deer_hide_sews_into_a_cloak() {
     assert_eq!(world.material_items(Material::Awl)[0].1, Some(near));
     assert_eq!(world.material_items(Material::Hide)[0].1, Some(near));
 }
+
+fn cold_rank(word: &str) -> u8 {
+    match word {
+        "warm" => 0,
+        "chilly" => 1,
+        "cold" => 2,
+        other => panic!("unknown cold word {other}"),
+    }
+}
+
+#[test]
+fn a_sewn_cloak_in_the_open_wind_stays_warmer_than_bare_skin() {
+    let (mut world, near, _far, west) = valley_with_an_awl_and_a_hide();
+    world.step(&[cmd("pierce", near, Attempt::Pierce)]);
+    world.step(&[cmd("sew", near, Attempt::Sew)]);
+    let wore = world.step(&[cmd("wear", near, Attempt::Wear)]);
+    assert_eq!(
+        wore.results[0].message,
+        "You wear the sewn deer-hide cloak."
+    );
+    for (id, dir) in [
+        ("w1", Dir::East),
+        ("w2", Dir::East),
+        ("w3", Dir::North),
+        ("w4", Dir::North),
+        ("w5", Dir::North),
+    ] {
+        world.step(&[cmd(id, west, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(west), Some((6, 1)));
+    let mut waited = 0;
+    while waited < 40 {
+        let near_look = world.observe(near).unwrap();
+        let west_look = world.observe(west).unwrap();
+        let settled = near_look.self_info.cold == "warm"
+            && west_look.self_info.cold == "warm"
+            && !near_look.text.contains("A small fire burns here")
+            && !near_look
+                .text
+                .contains("The warmth of the fire is still on you.")
+            && !west_look
+                .text
+                .contains("The warmth of the fire is still on you.");
+        if settled {
+            break;
+        }
+        world.step(&[]);
+        waited += 1;
+    }
+    assert!(
+        waited < 40,
+        "the rock should take the cold and the leftover fire off"
+    );
+    world.step(&[
+        cmd("out-near", near, Attempt::Move(Dir::South)),
+        cmd("out-west", west, Attempt::Move(Dir::South)),
+    ]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    assert_eq!(world.actor_cell(west), Some((6, 2)));
+    let mut cloak = String::new();
+    let mut bare = String::new();
+    for _ in 0..16 {
+        let cloak_now = world.observe(near).unwrap().self_info.cold.clone();
+        let bare_now = world.observe(west).unwrap().self_info.cold.clone();
+        assert!(
+            world
+                .observe(near)
+                .unwrap()
+                .text
+                .contains("You are in the wind."),
+            "cloak"
+        );
+        assert!(
+            world
+                .observe(west)
+                .unwrap()
+                .text
+                .contains("You are in the wind."),
+            "bare"
+        );
+        if cold_rank(&cloak_now) < cold_rank(&bare_now) {
+            cloak = cloak_now;
+            bare = bare_now;
+            break;
+        }
+        world.step(&[]);
+    }
+    assert_ne!(cloak, "", "the cloak should stay warmer than bare skin");
+    assert!(cold_rank(&cloak) < cold_rank(&bare), "{cloak} vs {bare}");
+    let cloak_line = world.observe(near).unwrap().text;
+    let bare_line = world.observe(west).unwrap().text;
+    assert!(cloak_line.contains(&format!("You are {cloak}.")));
+    assert!(bare_line.contains(&format!("You are {bare}.")));
+    assert!(cloak_line.contains("The sewn deer-hide cloak is on you."));
+    assert!(!bare_line.contains("cloak"));
+}
