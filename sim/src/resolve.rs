@@ -77,6 +77,7 @@ impl World {
         let mut dries = Vec::new();
         let mut fishes = Vec::new();
         let mut brands = Vec::new();
+        let mut baskets = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -136,6 +137,7 @@ impl World {
                         Attempt::DryBranch => dries.push(intent),
                         Attempt::Fish => fishes.push(intent),
                         Attempt::TakeBrand => brands.push(intent),
+                        Attempt::WeaveBasket => baskets.push(intent),
                     }
                 }
             }
@@ -237,6 +239,7 @@ impl World {
         self.apply_dries(dries, &mut results);
         self.apply_fishes(fishes, &mut results);
         self.apply_brands(brands, &mut results);
+        self.apply_baskets(baskets, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -944,7 +947,9 @@ impl World {
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
                 }
-                if self.carry_count(actor.id) >= self.tuning.carry_slots {
+                if self.carry_count(actor.id) >= self.tuning.carry_slots
+                    && !(*material == Material::Berry && self.basket_can_hold_berries(actor.id))
+                {
                     return Err("Your arms are full.".into());
                 }
                 Ok(true)
@@ -1018,6 +1023,23 @@ impl World {
                 }
                 if self.loose_ids(actor.id, Material::Bark).is_empty() {
                     return Err("You are not carrying bark.".into());
+                }
+                Ok(true)
+            }
+            Attempt::WeaveBasket => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if !self.loose_ids(actor.id, Material::Basket).is_empty() {
+                    return Err("You are already carrying a bark basket.".into());
+                }
+                let carried_bark = !self.loose_ids(actor.id, Material::Bark).is_empty();
+                let piled_bark = self.pile_count(actor.cell, Material::Bark) > 0;
+                if !carried_bark && !piled_bark {
+                    return Err("You need a sheet of bark to weave a basket.".into());
+                }
+                if !carried_bark && self.carry_count(actor.id) >= self.tuning.carry_slots {
+                    return Err("Your arms are full.".into());
                 }
                 Ok(true)
             }
@@ -1122,6 +1144,9 @@ impl World {
                         );
                         continue;
                     };
+                    if material == Material::Berry {
+                        self.tuck_berry_into_basket(intent.actor_id, item);
+                    }
                     let from = if material == Material::Pot {
                         format!(" from the ground {}", self.cover_phrase(cell))
                     } else {
@@ -1198,6 +1223,26 @@ impl World {
                 item.carrier = None;
                 item.cell = cell;
                 item.worn = false;
+                item.in_basket = false;
+            }
+            if material == Material::Basket {
+                let berries: Vec<_> = self
+                    .items
+                    .values()
+                    .filter(|item| {
+                        item.carrier == Some(intent.actor_id)
+                            && item.material == Material::Berry
+                            && item.in_basket
+                    })
+                    .map(|item| item.id)
+                    .collect();
+                for id in berries {
+                    if let Some(berry) = self.items.get_mut(&id) {
+                        berry.carrier = None;
+                        berry.cell = cell;
+                        berry.in_basket = false;
+                    }
+                }
             }
             let noun = material.gather_noun();
             let dropped = if material == Material::Cord {
@@ -3177,6 +3222,73 @@ impl World {
                 None,
             );
             self.finish(intent.command_id, actor.id, true, yours, results);
+        }
+    }
+
+    pub(crate) fn basket_can_hold_berries(&self, actor: crate::model::ActorId) -> bool {
+        !self.loose_ids(actor, Material::Basket).is_empty()
+            && !self.items.values().any(|item| {
+                item.carrier == Some(actor) && item.material == Material::Berry && item.in_basket
+            })
+    }
+
+    fn tuck_berry_into_basket(
+        &mut self,
+        actor: crate::model::ActorId,
+        berry: crate::model::ItemId,
+    ) {
+        if self.carry_count(actor) <= self.tuning.carry_slots {
+            return;
+        }
+        if !self.basket_can_hold_berries(actor) {
+            return;
+        }
+        if let Some(item) = self.items.get_mut(&berry) {
+            item.in_basket = true;
+        }
+    }
+
+    fn apply_baskets(&mut self, weaves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in weaves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let bark = if let Some(id) = self.loose_ids(actor.id, Material::Bark).first().copied() {
+                self.items.remove(&id);
+                vec![id]
+            } else if self.take_from_pile(actor.cell, Material::Bark, 1).is_some() {
+                Vec::new()
+            } else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a sheet of bark to weave a basket.",
+                    results,
+                );
+                continue;
+            };
+            let id = self.mint_item(Material::Basket, 0, actor.cell, Some(actor.id), Role::Loose);
+            let name = self.name_of(actor.id);
+            let rest = "a bark basket.";
+            let mut affected = bark;
+            affected.push(id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "weave", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                affected,
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "weave", rest),
+                results,
+            );
         }
     }
 

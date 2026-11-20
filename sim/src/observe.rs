@@ -201,6 +201,7 @@ impl World {
             ExamineTarget::Meat => self.examine_meat(actor_id),
             ExamineTarget::Fish => self.examine_fish(actor_id),
             ExamineTarget::Brand => self.examine_brand(actor_id),
+            ExamineTarget::Basket => self.examine_basket(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -732,6 +733,9 @@ impl World {
             } else {
                 parts.push("A raw fish lies here.".into());
             }
+        }
+        for _id in self.ground_ids(actor.cell, Material::Basket) {
+            parts.push("A bark basket lies here.".into());
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1554,6 +1558,8 @@ impl World {
             format!("a {} branch", item.condition)
         } else if item.material == "bark" && item.count == 1 {
             format!("a {} sheet of bark", item.condition)
+        } else if item.material == "basket" && item.count == 1 {
+            self.basket_arm_phrase(actor_id)
         } else if item.material == "pot" && item.count == 1 {
             format!("a {} pot", item.condition)
         } else if item.material == "clay" {
@@ -4755,6 +4761,7 @@ impl World {
                 Material::Spear => "spear",
                 Material::Carcass => "carcass",
                 Material::Water => "water",
+                Material::Basket => "bark basket",
             };
             format!("You see no {name} from here.")
         } else {
@@ -5643,11 +5650,9 @@ impl World {
 
     fn carry_views(&self, actor_id: ActorId) -> Vec<CarryView> {
         let mut groups: Vec<(Material, u32, u32)> = Vec::new();
-        for item in self
-            .items
-            .values()
-            .filter(|item| item.carrier == Some(actor_id) && item.role == Role::Loose)
-        {
+        for item in self.items.values().filter(|item| {
+            item.carrier == Some(actor_id) && item.role == Role::Loose && !item.in_basket
+        }) {
             if let Some(group) = groups
                 .iter_mut()
                 .find(|(material, _, _)| *material == item.material)
@@ -5969,6 +5974,70 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "cut", rest))
+    }
+
+    fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
+        if self.items.values().any(|item| {
+            item.carrier == Some(actor_id) && item.material == Material::Berry && item.in_basket
+        }) {
+            "a bark basket, holding a handful of berries".into()
+        } else {
+            "a bark basket".into()
+        }
+    }
+
+    fn examine_basket(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.ground_ids(cell, Material::Basket).is_empty() {
+                lines.push(format!(
+                    "A bark basket lies {}. It is woven from a sheet of bark. It is empty. {}",
+                    self.place_phrase(origin, cell),
+                    self.rain_reaches_phrase(cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            if self.loose_ids(other, Material::Basket).is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "You carry".to_string()
+            } else {
+                format!("{} carries", self.name_of(other))
+            };
+            let held = if self.items.values().any(|item| {
+                item.carrier == Some(other) && item.material == Material::Berry && item.in_basket
+            }) {
+                "It holds a handful of berries."
+            } else {
+                "It is empty."
+            };
+            let cell = self.actor(other).unwrap().cell;
+            lines.push(format!(
+                "{who} a bark basket, {}. It is woven from a sheet of bark. {held}",
+                self.cover_phrase(cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no bark basket from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    /// A bark basket woven from a sheet of bark, filled for the weaver.
+    fn weave_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} weaves "))?;
+        if rest != "a bark basket." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "weave", rest))
     }
 
     /// A lump shaped into a pot, filled for the person who shaped it.
@@ -6512,6 +6581,9 @@ impl World {
         if let Some(line) = self.shape_for_these_eyes(viewer, event) {
             return line;
         }
+        if let Some(line) = self.weave_for_these_eyes(viewer, event) {
+            return line;
+        }
         if let Some(line) = self.fire_pot_for_these_eyes(viewer, event) {
             return line;
         }
@@ -6821,9 +6893,18 @@ impl World {
             actions.push("gather bark".into());
         }
         if self.pile_count(actor.cell, Material::Berry) > 0
-            && self.carry_count(actor_id) < self.tuning.carry_slots
+            && (self.carry_count(actor_id) < self.tuning.carry_slots
+                || self.basket_can_hold_berries(actor_id))
         {
             actions.push("gather berries".into());
+        }
+        if self.loose_ids(actor_id, Material::Basket).is_empty()
+            && (self.pile_count(actor.cell, Material::Bark) > 0
+                || !self.loose_ids(actor_id, Material::Bark).is_empty())
+            && (!self.loose_ids(actor_id, Material::Bark).is_empty()
+                || self.carry_count(actor_id) < self.tuning.carry_slots)
+        {
+            actions.push("weave basket".into());
         }
         if self.has_material_at_hand(actor_id, Material::Berry) {
             actions.push("eat berries".into());
@@ -7405,6 +7486,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Cord, _) => "hide strips",
         (Material::Fish, _) => "fish",
         (Material::Brand, _) => "brand",
+        (Material::Basket, _) => "bark basket",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",

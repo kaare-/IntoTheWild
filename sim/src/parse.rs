@@ -34,6 +34,8 @@ cut hide                     a whole deer hide into hide strips, with an iron kn
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
+weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries that would not fit in the arms.
+make basket                  the same weave
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
@@ -120,6 +122,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "a lean-to" =>
         {
             Ok(Attempt::BuildLeanTo)
+        }
+        "weave" | "make" if rest == "basket" || rest == "a basket" || rest == "bark basket" => {
+            Ok(Attempt::WeaveBasket)
         }
         "lay" if rest == "bark" => Ok(Attempt::LayBark),
         "roof" => Ok(Attempt::LayBark),
@@ -239,6 +244,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "fish" | "raw fish" | "cooked fish" => Ok(Material::Fish),
         "brand" | "ember" | "burning brand" => Ok(Material::Brand),
         "hide" | "deer hide" => Ok(Material::Hide),
+        "basket" | "bark basket" => Ok(Material::Basket),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
@@ -301,6 +307,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "log" => ExamineTarget::Log,
         "frame" | "shelter" | "roof" => ExamineTarget::Frame,
         "rock" | "overhang" | "rock overhang" => ExamineTarget::Rock,
+        "basket" | "bark basket" => ExamineTarget::Basket,
         "slope" | "the slope" => ExamineTarget::Slope,
         other => ExamineTarget::Person(other.to_string()),
     }

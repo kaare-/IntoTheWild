@@ -78,6 +78,7 @@ pub enum Material {
     Cord,
     Fish,
     Brand,
+    Basket,
 }
 
 impl Material {
@@ -111,6 +112,7 @@ impl Material {
             Material::Cord => "strips",
             Material::Fish => "fish",
             Material::Brand => "brand",
+            Material::Basket => "basket",
         }
     }
 
@@ -144,6 +146,7 @@ impl Material {
             Material::Cord => "hide strips",
             Material::Fish => "fish",
             Material::Brand => "burning brand",
+            Material::Basket => "bark basket",
         }
     }
 
@@ -261,6 +264,7 @@ pub enum ExamineTarget {
     Rock,
     Slope,
     Person(String),
+    Basket,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -310,6 +314,7 @@ pub enum Attempt {
     DryBranch,
     Fish,
     TakeBrand,
+    WeaveBasket,
 }
 
 impl Attempt {
@@ -356,6 +361,7 @@ impl Attempt {
                 | Attempt::DryBranch
                 | Attempt::Fish
                 | Attempt::TakeBrand
+                | Attempt::WeaveBasket
         )
     }
 }
@@ -485,6 +491,9 @@ pub struct Item {
     /// A lump of clay shaped into a pot. It has not been fired.
     #[serde(default)]
     pub shaped: bool,
+    /// A handful of berries sitting in a bark basket. It does not take an arm slot.
+    #[serde(default)]
+    pub in_basket: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1079,6 +1088,7 @@ impl World {
                 sewn: false,
                 small: false,
                 shaped: false,
+                in_basket: false,
             },
         );
         id
@@ -1087,7 +1097,7 @@ impl World {
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
         self.items
             .values()
-            .filter(|i| i.carrier == Some(actor))
+            .filter(|i| i.carrier == Some(actor) && !i.in_basket)
             .count() as u32
     }
 

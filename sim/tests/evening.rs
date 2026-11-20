@@ -12092,3 +12092,119 @@ fn a_clear_night_names_the_stars_and_a_raining_night_does_not() {
     assert!(!near_sky.contains("Rain is falling"), "{near_sky}");
     assert!(!far_sky.contains("Rain is falling"), "{far_sky}");
 }
+
+#[test]
+fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
+    assert_eq!(parse_attempt("weave basket").unwrap(), Attempt::WeaveBasket);
+    assert_eq!(parse_attempt("make basket").unwrap(), Attempt::WeaveBasket);
+    let mut world = World::valley(Tuning::evening(), 1);
+    let bare = world.spawn_at("Bare", "b", 4, 3).unwrap();
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 6, 1).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+
+    let refused = world.step(&[cmd("no-bark", bare, Attempt::WeaveBasket)]);
+    assert_eq!(
+        refused.results[0].message,
+        "You need a sheet of bark to weave a basket."
+    );
+    assert!(!refused.results[0].success);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("sheet of bark")));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("sheet of bark") && !event.text.contains("basket") }));
+
+    let woven = world.step(&[cmd("weave", near, Attempt::WeaveBasket)]);
+    assert_eq!(woven.results[0].message, "You weave a bark basket.");
+    assert!(woven.results[0].success);
+    let near_look = world.observe(near).unwrap();
+    assert!(
+        near_look.text.contains("a bark basket"),
+        "{}",
+        near_look.text
+    );
+    assert!(
+        !near_look.text.contains("holding a handful"),
+        "{}",
+        near_look.text
+    );
+    assert!(near_look.text.contains("A sheet of bark lies here."));
+    assert!(!near_look.text.contains("A pile of bark"));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "You weave a bark basket."));
+    let empty = world.examine(near, ExamineTarget::Basket);
+    assert!(
+        empty.contains("a bark basket")
+            && empty.contains("woven from a sheet of bark")
+            && empty.contains("It is empty."),
+        "{empty}"
+    );
+    let seen = world.examine(far, ExamineTarget::Basket);
+    assert!(
+        seen.contains("Near carries a bark basket") && seen.contains("It is empty."),
+        "{seen}"
+    );
+    assert_eq!(
+        world.examine(quiet, ExamineTarget::Basket),
+        "You see no bark basket from here."
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near weaves a bark basket."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("weaves") && !event.text.contains("basket")));
+
+    for i in 0..3 {
+        let got = world.step(&[
+            cmd(&format!("br-{i}"), near, Attempt::Gather(Material::Branch)),
+            cmd(
+                &format!("far-berry-{i}"),
+                far,
+                Attempt::Gather(Material::Berry),
+            ),
+        ]);
+        assert!(got.results[0].success, "{}", got.results[0].message);
+        assert!(got.results[1].success, "{}", got.results[1].message);
+    }
+    let berry = world.step(&[
+        cmd("berries", near, Attempt::Gather(Material::Berry)),
+        cmd("bark", far, Attempt::Gather(Material::Bark)),
+    ]);
+    assert!(berry.results[0].success, "{}", berry.results[0].message);
+    assert!(berry.results[1].success, "{}", berry.results[1].message);
+    let holding = world.observe(near).unwrap().text;
+    assert!(
+        holding.contains("a bark basket, holding a handful of berries"),
+        "{holding}"
+    );
+    let full = world.examine(near, ExamineTarget::Basket);
+    assert!(full.contains("It holds a handful of berries."), "{full}");
+    world.step(&[cmd("west", far, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("west-2", far, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(far), Some((4, 1)));
+    let no_room = world.step(&[cmd("poison", far, Attempt::Gather(Material::BitterBerry))]);
+    assert_eq!(no_room.results[0].message, "Your arms are full.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("arms are full")));
+}
