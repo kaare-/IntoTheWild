@@ -10653,6 +10653,25 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
     );
     let gathered = world.step(&[cmd("strips", near, Attempt::Gather(Material::Cord))]);
     assert_eq!(gathered.results[0].message, "You gather hide strips.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("gather hide strips")
+            && !event.text.contains("gathers hide strips")));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near gathers hide strips."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("gathers hide strips")));
     let arms = arms_sentence(&world.observe(near).unwrap().text);
     assert!(arms.contains("hide strips"), "{arms}");
     let carried = world.examine(near, ExamineTarget::Cord);

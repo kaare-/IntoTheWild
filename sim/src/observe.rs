@@ -6711,15 +6711,16 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} gathers "))?;
-        let noun = rest
+        let bare = rest
             .strip_suffix(". You hear branches breaking.")
             .unwrap_or(rest)
             .strip_suffix('.')?;
-        let an = noun.starts_with("an ");
-        let noun = if an {
-            noun.strip_prefix("an ").unwrap_or(noun)
+        let (article, noun) = if let Some(noun) = bare.strip_prefix("an ") {
+            ("an", noun)
+        } else if let Some(noun) = bare.strip_prefix("a ") {
+            ("a", noun)
         } else {
-            noun.strip_prefix("a ")?
+            ("", bare)
         };
         const NOUNS: &[&str] = &[
             "branch",
@@ -6748,6 +6749,7 @@ impl World {
             "lump of charcoal",
             "bundle of reeds",
             "handful of mud",
+            "hide strips",
         ];
         let known = NOUNS
             .iter()
@@ -6756,12 +6758,12 @@ impl World {
         if !known {
             return None;
         }
-        let article = if an { "an" } else { "a" };
-        Some(crate::model::spoken_act(
-            None,
-            "gather",
-            &format!("{article} {noun}."),
-        ))
+        let filled = if article.is_empty() {
+            format!("{noun}.")
+        } else {
+            format!("{article} {noun}.")
+        };
+        Some(crate::model::spoken_act(None, "gather", &filled))
     }
 
     /// A dry branch gathered out of sight. The gather sentence stays with
