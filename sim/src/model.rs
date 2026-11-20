@@ -4604,6 +4604,15 @@ mod branch_return {
         let rock = world.actor(near).unwrap().cell;
         let open = super::cell_id(5, 2).unwrap();
         let outside = super::cell_id(5, 1).unwrap();
+        let stocked = world.observe(near).unwrap().text;
+        assert!(
+            stocked.contains("A pile of branches lies here."),
+            "{stocked}"
+        );
+        assert!(
+            stocked.contains("Wood left here stays out of the weather."),
+            "{stocked}"
+        );
         world.tracks.insert(open);
         world.tracks.insert(outside);
         while world.pile_count(open, Material::Branch) > 0 {
@@ -4626,6 +4635,10 @@ mod branch_return {
         );
         assert!(
             !empty.contains("The branches here stay out of the weather."),
+            "{empty}"
+        );
+        assert!(
+            !empty.contains("Wood left here stays out of the weather."),
             "{empty}"
         );
         assert!(!empty.contains("A pile of branches lies here."), "{empty}");
@@ -4705,6 +4718,40 @@ mod branch_return {
             .unwrap()
             .text
             .contains("A pile of branches lies here."));
+    }
+
+    #[test]
+    fn an_empty_rock_does_not_say_wood_stays_out_of_the_weather() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        let stocked = world.observe(near).unwrap().text;
+        assert!(
+            stocked.contains("Wood left here stays out of the weather."),
+            "{stocked}"
+        );
+        assert!(
+            stocked.contains("A pile of branches lies here."),
+            "{stocked}"
+        );
+        while world.pile_count(rock, Material::Branch) > 0 {
+            world.take_from_pile(rock, Material::Branch, 1);
+        }
+        world.step(&[]);
+        let empty = world.observe(near).unwrap().text;
+        assert!(
+            empty.contains("There are no branches under the rock."),
+            "{empty}"
+        );
+        assert!(
+            !empty.contains("Wood left here stays out of the weather."),
+            "{empty}"
+        );
+        assert!(
+            !empty.contains("The branches here stay out of the weather."),
+            "{empty}"
+        );
+        assert!(!empty.contains("A pile of branches lies here."), "{empty}");
     }
 }
 
