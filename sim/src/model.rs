@@ -79,6 +79,7 @@ pub enum Material {
     Fish,
     Brand,
     Basket,
+    Charcoal,
 }
 
 impl Material {
@@ -113,6 +114,7 @@ impl Material {
             Material::Fish => "fish",
             Material::Brand => "brand",
             Material::Basket => "basket",
+            Material::Charcoal => "charcoal",
         }
     }
 
@@ -147,6 +149,7 @@ impl Material {
             Material::Fish => "fish",
             Material::Brand => "burning brand",
             Material::Basket => "bark basket",
+            Material::Charcoal => "lump of charcoal",
         }
     }
 
@@ -265,6 +268,7 @@ pub enum ExamineTarget {
     Slope,
     Person(String),
     Basket,
+    Charcoal,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1266,6 +1270,7 @@ impl World {
         if let Some(cause) = extra_cause {
             causes.push(cause);
         }
+        self.mint_item(Material::Charcoal, 0, fire.cell, None, Role::Loose);
         self.emit(
             text,
             Scope::Cell(fire.cell),

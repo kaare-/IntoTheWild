@@ -946,6 +946,7 @@ impl World {
                             | Material::Cord
                             | Material::Fish
                             | Material::Brand
+                            | Material::Charcoal
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1119,6 +1120,7 @@ impl World {
                     | Material::Cord
                     | Material::Fish
                     | Material::Brand
+                    | Material::Charcoal
             ) {
                 self.ground_ids(cell, material)
             } else {

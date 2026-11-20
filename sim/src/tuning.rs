@@ -475,6 +475,7 @@ impl Tuning {
             Material::Fish => 0,
             Material::Brand => 0,
             Material::Basket => 0,
+            Material::Charcoal => 0,
         }
     }
 }

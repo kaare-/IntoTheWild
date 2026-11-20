@@ -35,6 +35,7 @@ shape clay                   a lump in your arms or at your feet into an unfired
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
+gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
 wear hide                    a carried deer hide, against the cold
@@ -268,6 +269,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "brand" | "ember" | "burning brand" => Ok(Material::Brand),
         "hide" | "deer hide" => Ok(Material::Hide),
         "basket" | "bark basket" => Ok(Material::Basket),
+        "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
@@ -331,6 +333,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "frame" | "shelter" | "roof" => ExamineTarget::Frame,
         "rock" | "overhang" | "rock overhang" => ExamineTarget::Rock,
         "basket" | "bark basket" => ExamineTarget::Basket,
+        "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "slope" | "the slope" => ExamineTarget::Slope,
         other => ExamineTarget::Person(other.to_string()),
     }

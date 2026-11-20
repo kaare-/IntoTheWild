@@ -202,6 +202,7 @@ impl World {
             ExamineTarget::Fish => self.examine_fish(actor_id),
             ExamineTarget::Brand => self.examine_brand(actor_id),
             ExamineTarget::Basket => self.examine_basket(actor_id),
+            ExamineTarget::Charcoal => self.examine_charcoal(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -736,6 +737,12 @@ impl World {
         }
         for _id in self.ground_ids(actor.cell, Material::Basket) {
             parts.push("A bark basket lies here.".into());
+        }
+        let charcoal_here = self.ground_ids(actor.cell, Material::Charcoal).len();
+        if charcoal_here == 1 {
+            parts.push("A lump of charcoal lies here.".into());
+        } else if charcoal_here > 1 {
+            parts.push("Lumps of charcoal lie here.".into());
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1430,6 +1437,12 @@ impl World {
                     parts.push(format!("{burn} It warms {}.", self.join_names(&warmed)));
                 }
             }
+            let charcoal = self.ground_ids(cell, Material::Charcoal).len();
+            if charcoal == 1 {
+                parts.push("A lump of charcoal lies there.".into());
+            } else if charcoal > 1 {
+                parts.push("Lumps of charcoal lie there.".into());
+            }
             if !parts.is_empty() {
                 lines.push(parts.join(" "));
             }
@@ -1669,6 +1682,12 @@ impl World {
                     count_word(item.count),
                     item.condition
                 )
+            }
+        } else if item.material == "charcoal" {
+            if item.count == 1 {
+                "a lump of charcoal".into()
+            } else {
+                format!("{} lumps of charcoal", count_word(item.count))
             }
         } else if item.material == "meat" {
             self.meat_carry_phrase(actor_id)
@@ -3817,6 +3836,39 @@ impl World {
         }
     }
 
+    fn examine_charcoal(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for _id in self.ground_ids(cell, Material::Charcoal) {
+                lines.push(format!(
+                    "A lump of charcoal lies in contact with the ground {}. The fire left it. It is cold.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            if self.loose_ids(other, Material::Charcoal).is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            lines.push(format!(
+                "A lump of charcoal is carried by {who}, {}. The fire left it. It is cold.",
+                self.cover_phrase(cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no charcoal from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_fish(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -4768,6 +4820,7 @@ impl World {
                 Material::Carcass => "carcass",
                 Material::Water => "water",
                 Material::Basket => "bark basket",
+                Material::Charcoal => "charcoal",
             };
             format!("You see no {name} from here.")
         } else {
@@ -6513,6 +6566,7 @@ impl World {
             "iron knife",
             "copper bead",
             "copper awl",
+            "lump of charcoal",
         ];
         let known = NOUNS
             .iter()
@@ -7601,6 +7655,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Fish, _) => "fish",
         (Material::Brand, _) => "brand",
         (Material::Basket, _) => "bark basket",
+        (Material::Charcoal, true) => "lump of charcoal",
+        (Material::Charcoal, false) => "lumps of charcoal",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",

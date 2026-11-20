@@ -12513,3 +12513,115 @@ fn a_walk_is_footsteps_one_cell_past_sight() {
         .iter()
         .all(|event| { !event.text.contains("footsteps") && !event.text.contains("walks") }));
 }
+
+#[test]
+fn a_small_fire_leaves_charcoal_when_it_goes_out() {
+    let mut rain = world_at(5);
+    let nils = rain.spawn_at("Nils", "n", 6, 1).unwrap();
+    let seen = rain.spawn_at("Seen", "s", 5, 2).unwrap();
+    let quiet = rain.spawn_at("Quiet", "q", 0, 4).unwrap();
+    let missing = rain.step(&[cmd("none", nils, Attempt::Gather(Material::Charcoal))]);
+    assert_eq!(
+        missing.results[0].message,
+        "There is no charcoal here to gather."
+    );
+    assert!(rain
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("charcoal")));
+    rain.step(&[cmd("branch", nils, Attempt::Gather(Material::Branch))]);
+    rain.step(&[cmd("bark", nils, Attempt::Gather(Material::Bark))]);
+    rain.step(&[cmd("west", nils, Attempt::Move(Dir::West))]);
+    rain.step(&[cmd("light", nils, Attempt::Light)]);
+    assert!(rain
+        .observe(nils)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+    rain.step(&[]);
+    let doused = rain.observe(nils).unwrap();
+    assert!(doused
+        .events
+        .iter()
+        .any(|event| event.text.contains("Rain puts out the fire.")));
+    assert!(doused.text.contains("A lump of charcoal lies here."));
+    assert!(!doused.text.contains("A small fire burns here."));
+    let named = rain.examine(nils, ExamineTarget::Charcoal);
+    assert!(
+        named.contains("A lump of charcoal lies")
+            && named.contains("The fire left it. It is cold."),
+        "{named}"
+    );
+    let from_sight = rain.examine(seen, ExamineTarget::Charcoal);
+    assert!(
+        from_sight.contains("The fire left it. It is cold."),
+        "{from_sight}"
+    );
+    assert_eq!(
+        rain.examine(quiet, ExamineTarget::Charcoal),
+        "You see no charcoal from here."
+    );
+    assert!(rain
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Rain puts out") && !event.text.contains("charcoal")));
+    let taken = rain.step(&[cmd("take", nils, Attempt::Gather(Material::Charcoal))]);
+    assert_eq!(taken.results[0].message, "You gather a lump of charcoal.");
+    let held = rain.observe(nils).unwrap();
+    assert!(!held.text.contains("A lump of charcoal lies here."));
+    assert!(held.text.contains("a lump of charcoal"), "{}", held.text);
+    assert!(rain
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Nils gathers a lump of charcoal."));
+    assert!(rain
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("charcoal")));
+
+    let mut fuel = world_at(1_000);
+    let linde = fuel.spawn_at("Linde", "l", 6, 1).unwrap();
+    let near = fuel.spawn_at("Near", "n", 4, 1).unwrap();
+    let far = fuel.spawn_at("Far", "f", 0, 4).unwrap();
+    let life = fuel.tuning.fire_ticks;
+    fuel.step(&[cmd("light", linde, Attempt::Light)]);
+    for _ in 1..life {
+        fuel.step(&[]);
+    }
+    assert!(fuel
+        .observe(linde)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+    assert!(!fuel.observe(linde).unwrap().text.contains("charcoal"));
+    fuel.step(&[]);
+    let cold = fuel.observe(linde).unwrap();
+    assert!(cold
+        .events
+        .iter()
+        .any(|event| event.text.contains("The fire burns down.")));
+    assert!(cold.text.contains("A lump of charcoal lies here."));
+    assert!(fuel
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A lump of charcoal lies there."));
+    assert_eq!(
+        fuel.examine(far, ExamineTarget::Charcoal),
+        "You see no charcoal from here."
+    );
+    assert!(fuel
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("burns down") && !event.text.contains("charcoal")));
+}
