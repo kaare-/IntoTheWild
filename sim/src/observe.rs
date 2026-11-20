@@ -301,6 +301,9 @@ impl World {
             if let Some(snare) = self.seen_snare(actor_id) {
                 lines.push(snare);
             }
+            if let Some(meat) = self.seen_meat(actor_id) {
+                lines.push(meat);
+            }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
             }
@@ -1383,6 +1386,35 @@ impl World {
                 )
             };
             lines.push(format!("A red ochre mark is {place}."));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// Meat lying on a cell this person can see, other than under their feet.
+    /// The compass still lists it on the next cell. A diagonal in sight gets
+    /// the same sentence, because the compass does not name that square.
+    fn seen_meat(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let ids = self.ground_ids(cell, Material::Meat);
+            if ids.is_empty() {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("under the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            lines.extend(self.meat_place_lines(&ids, &place));
         }
         if lines.is_empty() {
             None

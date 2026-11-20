@@ -10774,12 +10774,29 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         .events
         .iter()
         .any(|event| event.text == "The snare catches a hare."));
+    let far_meat = world.observe(far).unwrap().text;
+    assert!(
+        far_meat.contains("A portion of raw meat lies on the valley floor to the south and east."),
+        "{far_meat}"
+    );
     assert!(world
         .observe(west)
         .unwrap()
         .events
         .iter()
         .all(|event| !event.text.contains("hare") && !event.text.contains("snare")));
+    assert!(!world.observe(west).unwrap().text.contains("raw meat"));
+    world.step(&[cmd("back", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let beside = world.observe(near).unwrap().text;
+    assert!(
+        beside.contains("A portion of raw meat lies on the valley floor to the south."),
+        "{beside}"
+    );
+    assert!(
+        beside.contains("South:") && beside.contains("a portion of raw meat"),
+        "{beside}"
+    );
 }
 
 #[test]
