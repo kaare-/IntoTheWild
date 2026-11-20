@@ -8217,7 +8217,12 @@ fn a_carried_lump_of_ochre_marks_the_ground() {
         here.contains("A red ochre mark is on the ground here."),
         "{here}"
     );
+    assert!(!here.contains("on the ground on the slope"), "{here}");
     let beside = world.observe(far).unwrap().text;
+    assert!(
+        beside.contains("A red ochre mark is on the ground on the slope to the north."),
+        "{beside}"
+    );
     assert!(
         beside.contains("North: slope, a red ochre mark, 1 person."),
         "{beside}"
@@ -8232,7 +8237,7 @@ fn a_carried_lump_of_ochre_marks_the_ground() {
     assert_eq!(world.actor_cell(near), Some((4, 1)));
     let afar = world.observe(near).unwrap().text;
     assert!(
-        afar.contains("A red ochre mark is on the slope to the north and west."),
+        afar.contains("A red ochre mark is on the ground on the slope to the north and west."),
         "{afar}"
     );
 }

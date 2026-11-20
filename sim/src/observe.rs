@@ -784,22 +784,23 @@ impl World {
         }
     }
 
-    /// A red ochre mark in sight that the place line and the compass do not already name.
+    /// A red ochre mark in sight, other than the one under the looker's feet.
+    /// The compass may still list it. This is the sentence, as a lump is named from off the cell.
     fn seen_ochre_mark(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || orthogonal_neighbor(origin, cell) {
-                continue;
-            }
-            if !self.ochre_marks.contains(&cell) {
+            if cell == origin || !self.ochre_marks.contains(&cell) {
                 continue;
             }
             let place = if self.cell(cell).rock {
                 format!("on the rock to the {}", self.relative(origin, cell))
             } else {
                 let region = self.cell(cell).region.word();
-                format!("on the {region} to the {}", self.relative(origin, cell))
+                format!(
+                    "on the ground on the {region} to the {}",
+                    self.relative(origin, cell)
+                )
             };
             lines.push(format!("A red ochre mark is {place}."));
         }
