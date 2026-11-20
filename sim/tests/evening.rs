@@ -8395,7 +8395,7 @@ fn a_lump_of_copper_ore_on_the_brook_bank_can_be_carried() {
         "{beside}"
     );
     assert!(
-        !beside.contains("A lump of copper ore lies on the brook to the west."),
+        beside.contains("A lump of copper ore lies on the brook to the west."),
         "{beside}"
     );
 

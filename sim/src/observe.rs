@@ -794,12 +794,13 @@ impl World {
         }
     }
 
-    /// A lump of copper ore in sight that the place line and the compass do not already name.
+    /// A lump of copper ore in sight, other than the one under the looker's feet.
+    /// The compass may still list it. A neighbor hears the sentence too, as a mark does.
     fn seen_copper_ore(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || orthogonal_neighbor(origin, cell) {
+            if cell == origin {
                 continue;
             }
             let count = self.pile_count(cell, Material::CopperOre)
