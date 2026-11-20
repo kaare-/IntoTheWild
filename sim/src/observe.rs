@@ -2257,7 +2257,7 @@ impl World {
             if let Some(last) = self.deer_meal_this_tick(deer.cell) {
                 if last {
                     return Some(format!(
-                        "A deer stands {}. The last handful is gone.",
+                        "A deer stands {}, after eating the berries there.",
                         self.mark_place(origin, deer.cell)
                     ));
                 }

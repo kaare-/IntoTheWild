@@ -5940,6 +5940,20 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         last_look.text
     );
+    let off = world.spawn_at("Ash", "h", 5, 3).unwrap();
+    let off_look = world.observe(off).unwrap().text;
+    assert_eq!(world.sim_time(), 10);
+    assert!(
+        off_look.contains(
+            "A deer stands two cells north and one cell east, under the rock overhang, after eating the berries there."
+        ),
+        "{off_look}"
+    );
+    assert!(
+        !off_look.contains("The last handful is gone."),
+        "{off_look}"
+    );
+    assert!(!off_look.contains("A deer stands here."), "{off_look}");
     assert!(
         !last_look.text.contains("The deer here ate them"),
         "{}",
