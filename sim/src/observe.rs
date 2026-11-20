@@ -5921,6 +5921,7 @@ impl World {
             .filter(|event| {
                 self.event_visible(viewer, origin, event)
                     && self.shape_for_these_eyes(viewer, event).is_none()
+                    && self.gather_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6693,8 +6694,8 @@ impl World {
         Some(crate::model::spoken_act(None, "feed", rest))
     }
 
-    /// A successful gather, filled for the person who took it.
-    /// Anyone else keeps the stored sentence.
+    /// A successful gather. The gatherer already has this as the reply,
+    /// so the event list does not repeat it. Anyone else keeps the stored sentence.
     fn gather_for_these_eyes(
         &self,
         viewer: ActorId,
