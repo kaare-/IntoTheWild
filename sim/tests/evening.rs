@@ -2081,7 +2081,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
         .unwrap()
         .events
         .iter()
-        .any(|event| { event.text == "Nils gathers a branch. You hear branches breaking." }));
+        .any(|event| { event.text == "Nils gathers a branch." }));
     assert!(taken
         .observe(far)
         .unwrap()
@@ -2110,22 +2110,31 @@ fn a_branch_snap_is_heard_one_cell_past_sight() {
         .iter()
         .all(|event| !event.text.contains("no branch")));
     let snapped = world.step(&[cmd("snap", near, Attempt::Gather(Material::Branch))]);
-    assert_eq!(
-        snapped.results[0].message,
-        "You gather a branch. You hear branches breaking."
-    );
+    assert_eq!(snapped.results[0].message, "You gather a branch.");
     assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "You gather a branch. You hear branches breaking."));
+        .any(|event| event.text == "You gather a branch."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("You hear")));
     assert!(world
         .observe(far)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "Near gathers a branch. You hear branches breaking."));
+        .any(|event| event.text == "Near gathers a branch."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("You hear")));
     let heard = world.observe(west).unwrap();
     assert!(heard
         .events

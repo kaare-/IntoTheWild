@@ -5736,11 +5736,10 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} gathers "))?;
-        let (noun, tail) = if let Some(noun) = rest.strip_suffix(". You hear branches breaking.") {
-            (noun, ". You hear branches breaking.")
-        } else {
-            (rest.strip_suffix('.')?, ".")
-        };
+        let noun = rest
+            .strip_suffix(". You hear branches breaking.")
+            .unwrap_or(rest)
+            .strip_suffix('.')?;
         let an = noun.starts_with("an ");
         let noun = if an {
             noun.strip_prefix("an ").unwrap_or(noun)
@@ -5783,7 +5782,7 @@ impl World {
         Some(crate::model::spoken_act(
             None,
             "gather",
-            &format!("{article} {noun}{tail}"),
+            &format!("{article} {noun}."),
         ))
     }
 
@@ -5814,10 +5813,7 @@ impl World {
 
     /// The cell of a gathered branch, the act that already says the snap.
     fn branch_break_cell(&self, event: &crate::model::Event) -> Option<CellId> {
-        if !event
-            .text
-            .contains(" gathers a branch. You hear branches breaking.")
-        {
+        if !event.text.contains(" gathers a branch.") {
             return None;
         }
         event.affected_cells.first().copied()

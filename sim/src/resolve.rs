@@ -995,11 +995,6 @@ impl World {
                         );
                         continue;
                     };
-                    let breaking = if material == Material::Branch {
-                        " You hear branches breaking."
-                    } else {
-                        ""
-                    };
                     let from = if material == Material::Pot {
                         format!(" from the ground {}", self.cover_phrase(cell))
                     } else {
@@ -1010,7 +1005,7 @@ impl World {
                     let rest = if shaped {
                         "an unfired clay pot.".to_string()
                     } else {
-                        format!("{} {noun}{from}.{breaking}", material.article())
+                        format!("{} {noun}{from}.", material.article())
                     };
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
