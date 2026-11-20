@@ -665,6 +665,32 @@ impl World {
                 );
             }
         }
+        self.wash_open_ochre_marks();
+    }
+
+    /// Open rain takes a red ochre mark off the ground. The rock overhang keeps its mark.
+    fn wash_open_ochre_marks(&mut self) {
+        if !self.raining {
+            return;
+        }
+        let open: Vec<CellId> = self
+            .ochre_marks
+            .iter()
+            .copied()
+            .filter(|cell| self.exposure_millis(*cell) >= 1000)
+            .collect();
+        for cell in open {
+            self.ochre_marks.remove(&cell);
+            self.emit(
+                "The rain washes the red ochre mark off the ground.",
+                Scope::Cell(cell),
+                vec![],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
     }
 
     fn apply_illness(&mut self) {

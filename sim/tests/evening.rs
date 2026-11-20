@@ -8241,3 +8241,110 @@ fn a_carried_lump_of_ochre_marks_the_ground() {
         "{afar}"
     );
 }
+
+#[test]
+fn rain_washes_an_open_ochre_mark_and_leaves_one_under_the_rock() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    world.step(&[
+        cmd("n-near", near, Attempt::Move(Dir::North)),
+        cmd("n-far", far, Attempt::Move(Dir::North)),
+    ]);
+    world.step(&[
+        cmd("n2-near", near, Attempt::Move(Dir::North)),
+        cmd("n2-far", far, Attempt::Move(Dir::North)),
+    ]);
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    world.step(&[cmd("west", near, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("gather", near, Attempt::Gather(Material::Ochre))]);
+    world.step(&[cmd("mark", near, Attempt::Mark)]);
+    assert_eq!(world.actor_cell(near), Some((3, 0)));
+    assert_eq!(world.actor_cell(far), Some((3, 1)));
+    while world.sim_time() < 16 {
+        world.step(&[]);
+    }
+    assert!(!world.is_raining());
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A red ochre mark is on the ground here."));
+    world.step(&[]);
+    assert_eq!(world.sim_time(), 17);
+    assert!(world.is_raining());
+    let washed = "The rain washes the red ochre mark off the ground.";
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == washed));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == washed));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("ochre mark")));
+    assert!(!world.observe(near).unwrap().text.contains("ochre mark"));
+    assert!(!world.observe(far).unwrap().text.contains("ochre mark"));
+
+    let mut sheltered = World::valley(Tuning::evening(), 1);
+    let near = sheltered.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = sheltered.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = sheltered.spawn_at("West", "w", 5, 3).unwrap();
+    for (id, dir) in [
+        ("n", Dir::North),
+        ("n2", Dir::North),
+        ("n3", Dir::North),
+        ("w", Dir::West),
+    ] {
+        sheltered.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    sheltered.step(&[cmd("gather", near, Attempt::Gather(Material::Ochre))]);
+    for (id, dir) in [
+        ("e", Dir::East),
+        ("e2", Dir::East),
+        ("e3", Dir::East),
+        ("s", Dir::South),
+    ] {
+        sheltered.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(sheltered.actor_cell(near), Some((6, 1)));
+    let marked = sheltered.step(&[cmd("mark", near, Attempt::Mark)]);
+    assert_eq!(
+        marked.results[0].message,
+        "You mark the rock with red ochre."
+    );
+    while sheltered.sim_time() < 16 {
+        sheltered.step(&[]);
+    }
+    sheltered.step(&[]);
+    assert!(sheltered.is_raining());
+    assert!(sheltered
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A red ochre mark is on the rock here."));
+    assert!(sheltered
+        .observe(west)
+        .unwrap()
+        .text
+        .contains("A red ochre mark is on the rock to the north and east."));
+    for id in [near, far, west] {
+        assert!(sheltered
+            .observe(id)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("ochre mark")));
+    }
+    assert!(!sheltered.observe(far).unwrap().text.contains("ochre mark"));
+}
