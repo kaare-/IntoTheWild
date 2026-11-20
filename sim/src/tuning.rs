@@ -279,6 +279,12 @@ fn millis(value: f64, name: &str) -> Result<u32, String> {
 }
 
 impl Tuning {
+    /// How far smoke shows. One cell past sight, so someone who cannot
+    /// see the fire can still see the smoke. Farther than this, nothing.
+    pub(crate) fn smoke_range(&self) -> i32 {
+        self.sight.saturating_add(1)
+    }
+
     pub fn from_toml(text: &str) -> Result<Self, String> {
         let raw: RawFile = toml::from_str(text).map_err(|err| err.to_string())?;
         if raw.time.drag_ticks == 0

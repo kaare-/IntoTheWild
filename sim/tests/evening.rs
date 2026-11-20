@@ -8096,6 +8096,43 @@ fn rain_in_the_open_puts_a_carried_brand_out() {
 }
 
 #[test]
+fn smoke_shows_past_the_fire_and_stops_one_cell_farther() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let past = world.spawn_at("Past", "p", 0, 4).unwrap();
+    assert!(!world.observe(west).unwrap().text.contains("Smoke"));
+    assert!(!world.observe(far).unwrap().text.contains("Smoke"));
+    assert!(!world.observe(past).unwrap().text.contains("Smoke"));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("A small fire burns here. It warms you.") && !here.contains("Smoke rises"),
+        "{here}"
+    );
+    let mid = world.observe(west).unwrap().text;
+    assert!(
+        mid.contains("Smoke rises to the north and east.") && mid.contains("A small fire burns"),
+        "{mid}"
+    );
+    let smoke = world.observe(far).unwrap().text;
+    assert!(
+        smoke.contains("Smoke rises to the north and east.")
+            && !smoke.contains("small fire")
+            && !smoke.contains("A fire burns"),
+        "{smoke}"
+    );
+    let silent = world.observe(past).unwrap().text;
+    assert!(
+        !silent.contains("Smoke") && !silent.contains("small fire"),
+        "{silent}"
+    );
+}
+
+#[test]
 fn a_brook_stretch_is_quiet_after_a_fish_and_another_stretch_is_not() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 4, 0).unwrap();

@@ -285,6 +285,9 @@ impl World {
         if let Some(open) = self.seen_open_pool(actor_id) {
             lines.push(open);
         }
+        if let Some(smoke) = self.seen_smoke(actor_id) {
+            lines.push(smoke);
+        }
         lines.push("Around you:".into());
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor.cell, dir));
@@ -868,6 +871,30 @@ impl World {
                 "The still water to the {} is frozen.",
                 self.relative(origin, cell)
             ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// Smoke from a fire that is not under the looker's feet. Object detail
+    /// stops at sight. The smoke carries one cell farther.
+    fn seen_smoke(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for fire in self.fires.values() {
+            if fire.cell == origin {
+                continue;
+            }
+            if chebyshev(origin, fire.cell) > self.tuning.smoke_range() {
+                continue;
+            }
+            let line = format!("Smoke rises to the {}.", self.relative(origin, fire.cell));
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
         }
         if lines.is_empty() {
             None
