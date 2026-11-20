@@ -680,6 +680,8 @@ pub enum Wake {
     Stings,
     /// Wet clothes on this person dry at the fire they are standing by.
     DryClothes(ActorId),
+    /// A wolf howls once at the start of a night. There is no wolf to see.
+    Howl,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -954,6 +956,7 @@ impl World {
         world.schedule(0, Wake::Energy);
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
+        world.schedule(world.tuning.night_at, Wake::Howl);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
@@ -4755,5 +4758,86 @@ mod dry_clothes {
             .filter(|event| event.text == "Your clothes dry at the fire.")
             .count();
         assert_eq!(still, already);
+    }
+}
+
+#[cfg(test)]
+mod wolf {
+    use super::World;
+
+    fn howl_times(world: &World) -> Vec<u64> {
+        world
+            .events
+            .iter()
+            .filter(|event| event.text == "A wolf howls.")
+            .map(|event| event.time)
+            .collect()
+    }
+
+    #[test]
+    fn a_wolf_howls_once_when_night_falls() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        assert_eq!(world.time, night);
+        assert!(world.night());
+        assert!(howl_times(&world).is_empty());
+        for id in [near, seen, quiet] {
+            assert!(
+                !world.observe(id).unwrap().text.contains("wolf"),
+                "{}",
+                world.observe(id).unwrap().text
+            );
+        }
+        world.step(&[]);
+        assert!(world.night());
+        assert_eq!(howl_times(&world), vec![night]);
+        let near_line = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .find(|event| event.text.contains("howl"))
+            .map(|event| event.text.clone())
+            .unwrap();
+        let seen_line = world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .find(|event| event.text.contains("howl"))
+            .map(|event| event.text.clone())
+            .unwrap();
+        let quiet_line = world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .find(|event| event.text.contains("howl"))
+            .map(|event| event.text.clone())
+            .unwrap();
+        assert_eq!(near_line, "You hear a wolf howl.");
+        assert_eq!(seen_line, "You hear a wolf howl to the north and west.");
+        assert_eq!(quiet_line, "You hear a wolf howl to the north.");
+        assert!(!world.observe(near).unwrap().text.contains("wolf"));
+        let dawn = night + world.tuning.night_len;
+        while world.time < dawn {
+            world.step(&[]);
+        }
+        assert_eq!(howl_times(&world), vec![night]);
+        let next = dawn + world.tuning.day_len;
+        while world.time < next {
+            world.step(&[]);
+        }
+        assert_eq!(world.time, next);
+        assert!(world.night());
+        assert_eq!(howl_times(&world), vec![night]);
+        world.step(&[]);
+        assert_eq!(howl_times(&world), vec![night, next]);
     }
 }

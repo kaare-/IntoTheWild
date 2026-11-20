@@ -45,6 +45,7 @@ impl World {
                 Wake::DeerReturn => self.return_deer(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
+                Wake::Howl => self.howl(),
             }
         }
     }
@@ -527,6 +528,36 @@ impl World {
             vec![cell],
             vec![],
             vec![],
+            None,
+        );
+    }
+
+    /// Once, on the first tick of a night. The sound rises at the northwest
+    /// corner. There is no wolf on that ground. Someone within sight hears
+    /// it without a direction. Someone farther off hears the direction from
+    /// where they stand. The day schedules the next night and stays quiet.
+    fn howl(&mut self) {
+        let cycle = self.tuning.night_len.saturating_add(self.tuning.day_len);
+        let next = if self.time < self.tuning.night_at || cycle == 0 {
+            self.tuning.night_at
+        } else {
+            let into = (self.time - self.tuning.night_at) % cycle;
+            self.time.saturating_add(cycle - into)
+        };
+        if next > self.time {
+            self.schedule(next, Wake::Howl);
+        }
+        if !self.night() {
+            return;
+        }
+        let cell = cell_id(0, 0).unwrap_or(0);
+        self.emit(
+            "A wolf howls.",
+            Scope::Valley,
+            Vec::new(),
+            vec![cell],
+            Vec::new(),
+            Vec::new(),
             None,
         );
     }
