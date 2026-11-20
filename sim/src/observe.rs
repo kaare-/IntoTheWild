@@ -273,6 +273,9 @@ impl World {
         if let Some(lean_to) = self.seen_lean_to(actor_id) {
             lines.push(lean_to);
         }
+        if let Some(quiet) = self.seen_quiet_brook(actor_id) {
+            lines.push(quiet);
+        }
         if let Some(mark) = self.seen_ochre_mark(actor_id) {
             lines.push(mark);
         }
@@ -467,6 +470,12 @@ impl World {
         }
         if cell.region == crate::model::Region::Brook {
             parts.push("The water here is raw.".into());
+        }
+        if self
+            .brook_stretch(actor.cell)
+            .is_some_and(|stretch| self.brook_is_quiet(stretch))
+        {
+            parts.push("The brook is quiet. The fish are gone.".into());
         }
         if cell.still && cell.region != crate::model::Region::Brook {
             if self.still_frozen(actor.cell) {
@@ -1018,6 +1027,30 @@ impl World {
             lines.push(format!(
                 "A lean-to of branches stands on the {place} to the {dir}.{rain}"
             ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A brook cell a cast has just emptied, seen from off that stretch.
+    fn seen_quiet_brook(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let own = self.brook_stretch(origin);
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.cell(cell).region != crate::model::Region::Brook || !self.brook_is_quiet(cell) {
+                continue;
+            }
+            if own == Some(cell) {
+                continue;
+            }
+            let line = format!("The brook to the {} is quiet.", self.relative(origin, cell));
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
         }
         if lines.is_empty() {
             None

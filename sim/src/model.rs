@@ -669,6 +669,10 @@ pub struct World {
     /// A lean-to of branches. It stands in that cell and breaks the wind.
     #[serde(default)]
     pub(crate) lean_tos: BTreeSet<CellId>,
+    /// A brook cell stays quiet until this sim time after a fish is taken there.
+    /// Banks that touch that cell fish the same stretch.
+    #[serde(default)]
+    pub(crate) brook_quiet: BTreeMap<CellId, u64>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -735,6 +739,7 @@ impl World {
             deer_ate_berries: BTreeSet::new(),
             ochre_marks: BTreeSet::new(),
             lean_tos: BTreeSet::new(),
+            brook_quiet: BTreeMap::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -1540,13 +1545,28 @@ impl World {
 
     /// In the flowing brook, or on a cell that touches it. Still water is not the brook.
     pub(crate) fn fishing_water(&self, cell: CellId) -> bool {
+        self.brook_stretch(cell).is_some()
+    }
+
+    /// The brook cell a cast from here takes a fish from. Standing in the
+    /// brook, that cell. Standing on the bank, the brook cell beside it.
+    pub(crate) fn brook_stretch(&self, cell: CellId) -> Option<CellId> {
         if self.cell(cell).region == Region::Brook {
-            return true;
+            return Some(cell);
         }
         let (x, y) = cell_xy(cell);
-        [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
-            cell_id(x + dx, y + dy).is_some_and(|next| self.cell(next).region == Region::Brook)
-        })
+        [(1, 0), (-1, 0), (0, 1), (0, -1)]
+            .iter()
+            .filter_map(|(dx, dy)| cell_id(x + dx, y + dy))
+            .find(|next| self.cell(*next).region == Region::Brook)
+    }
+
+    /// A successful cast empties that stretch until this time. The next
+    /// cast on the step that begins then can take another fish.
+    pub(crate) fn brook_is_quiet(&self, cell: CellId) -> bool {
+        self.brook_quiet
+            .get(&cell)
+            .is_some_and(|until| self.time < *until)
     }
 
     /// One piece of raw meat lying on this cell. Cooked meat is not raw.

@@ -8096,6 +8096,90 @@ fn rain_in_the_open_puts_a_carried_brand_out() {
 }
 
 #[test]
+fn a_brook_stretch_is_quiet_after_a_fish_and_another_stretch_is_not() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 3, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 6, 4).unwrap();
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    assert!(haft.results[0].success, "{}", haft.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("bank-s", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let yours = "You spear a fish from the brook.";
+    let first = world.step(&[cmd("fish", near, Attempt::Fish)]);
+    assert_eq!(first.results[0].message, yours);
+    let quiet = "The fish are gone from this stretch of the brook.";
+    let again = world.step(&[cmd("again", near, Attempt::Fish)]);
+    assert_eq!(again.results[0].message, quiet);
+    assert_eq!(world.material_tally(Material::Fish), 1);
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("The brook is quiet. The fish are gone."),
+        "{here}"
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == quiet));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("fish are gone")));
+    let seen = world.observe(west).unwrap().text;
+    assert!(
+        seen.contains("The brook to the north and west is quiet."),
+        "{seen}"
+    );
+    assert!(
+        !world.observe(far).unwrap().text.contains("is quiet"),
+        "{}",
+        world.observe(far).unwrap().text
+    );
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    let from_the_pool = world.observe(near).unwrap().text;
+    assert!(
+        from_the_pool.contains("The brook to the south and west is quiet."),
+        "{from_the_pool}"
+    );
+    let other = world.step(&[cmd("other", near, Attempt::Fish)]);
+    assert_eq!(other.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Fish), 2);
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let back = world.step(&[cmd("back", near, Attempt::Fish)]);
+    assert_eq!(back.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Fish), 3);
+    let once = world.observe(west).unwrap().text;
+    let line = "The brook to the north and west is quiet.";
+    assert_eq!(once.matches(line).count(), 1, "{once}");
+}
+
+#[test]
 fn a_hardened_flint_spear_takes_a_fish_from_the_brook() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 4, 0).unwrap();
@@ -8190,6 +8274,7 @@ fn a_hardened_flint_spear_takes_a_fish_from_the_brook() {
     assert_eq!(raw.results[0].message, "Raw fish is not food.");
     world.step(&[cmd("into", near, Attempt::Move(Dir::West))]);
     assert_eq!(world.actor_cell(near), Some((1, 2)));
+    world.step(&[]);
     let again = world.step(&[cmd(
         "spear-fish",
         near,

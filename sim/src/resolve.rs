@@ -350,6 +350,11 @@ impl World {
                     Err("The brook is not here.".into())
                 } else if let Some(message) = self.fish_spear_refusal(actor.id) {
                     Err(message.into())
+                } else if self
+                    .brook_stretch(actor.cell)
+                    .is_some_and(|stretch| self.brook_is_quiet(stretch))
+                {
+                    Err("The fish are gone from this stretch of the brook.".into())
                 } else {
                     Ok(true)
                 }
@@ -2318,6 +2323,23 @@ impl World {
                 .actor(intent.actor_id)
                 .map(|actor| actor.cell)
                 .unwrap_or(0);
+            if self
+                .brook_stretch(cell)
+                .is_some_and(|stretch| self.brook_is_quiet(stretch))
+            {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The fish are gone from this stretch of the brook.",
+                    results,
+                );
+                continue;
+            }
+            if let Some(stretch) = self.brook_stretch(cell) {
+                let until = self.time.saturating_add(self.tuning.clay_ticks);
+                self.brook_quiet.insert(stretch, until);
+            }
             let carrier = if self.carry_count(intent.actor_id) < self.tuning.carry_slots {
                 Some(intent.actor_id)
             } else {

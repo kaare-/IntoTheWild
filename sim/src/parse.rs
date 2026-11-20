@@ -26,7 +26,7 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
 hunt                         a hardened spear; the deer on your cell or the next
-fish                         a fire-hardened flint spear, in the brook or beside it; the spear is not used up
+fish                         a fire-hardened flint spear, in the brook or beside it; the spear is not used up. That stretch is quiet for a short wait
 spear fish                   the same cast
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
