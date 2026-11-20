@@ -12630,8 +12630,28 @@ fn a_small_fire_leaves_charcoal_when_it_goes_out() {
 fn a_lump_of_charcoal_marks_the_rock_and_rain_washes_an_open_one() {
     let mut bare = world_at(1_000);
     let near = bare.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = bare.spawn_at("Seen", "s", 6, 2).unwrap();
+    let quiet = bare.spawn_at("Quiet", "q", 0, 4).unwrap();
     let none = bare.step(&[cmd("none", near, Attempt::Mark)]);
-    assert_eq!(none.results[0].message, "You have no ochre to mark with.");
+    assert_eq!(none.results[0].message, "You have nothing to mark with.");
+    assert!(bare
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You have nothing to mark with."));
+    assert!(bare
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("mark")));
+    assert!(bare
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("mark")));
 
     let mut rock = world_at(1_000);
     let near = rock.spawn_at("Near", "n", 6, 1).unwrap();
@@ -12708,10 +12728,25 @@ fn a_lump_of_charcoal_marks_the_rock_and_rain_washes_an_open_one() {
     assert_eq!(again.results[0].message, "A black mark is already here.");
     rock.step(&[cmd("west", near, Attempt::Move(Dir::West))]);
     let without = rock.step(&[cmd("empty", near, Attempt::Mark)]);
-    assert_eq!(
-        without.results[0].message,
-        "You have no ochre to mark with."
-    );
+    assert_eq!(without.results[0].message, "You have nothing to mark with.");
+    assert!(rock
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You have nothing to mark with."));
+    assert!(rock
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "You have nothing to mark with."));
+    assert!(rock
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "You have nothing to mark with."));
     assert!(rock
         .observe(near)
         .unwrap()

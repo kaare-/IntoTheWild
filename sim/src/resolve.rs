@@ -865,7 +865,7 @@ impl World {
                 {
                     Ok(true)
                 } else {
-                    Err("You have no ochre to mark with.".into())
+                    Err("You have nothing to mark with.".into())
                 }
             }
             Attempt::Light => {
@@ -4814,7 +4814,7 @@ impl World {
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "You have no ochre to mark with.",
+                    "You have nothing to mark with.",
                     results,
                 );
                 continue;
