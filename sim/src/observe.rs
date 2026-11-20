@@ -4409,7 +4409,7 @@ impl World {
         if event.text != format!("The deer bolts from {name}'s flint spear.") {
             return None;
         }
-        Some("The deer bolts. Your flint spear does not land.".to_string())
+        Some("The deer bolts from your flint spear.".to_string())
     }
 
     /// A flint tip finishing in the fire, filled for the person who held it.

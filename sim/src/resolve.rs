@@ -1863,7 +1863,7 @@ impl World {
                     let (heard, yours) = if flint {
                         (
                             format!("The deer bolts from {name}'s flint spear."),
-                            "The deer bolts. Your flint spear does not land.",
+                            "The deer bolts from your flint spear.",
                         )
                     } else {
                         (
