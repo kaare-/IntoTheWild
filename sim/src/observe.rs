@@ -1067,11 +1067,8 @@ impl World {
                 self.wind_word(self.exposure_millis(actor.cell))
             ),
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
-            format!("Your skin is {}.", self.mud_word(actor.mud)),
+            format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
-        if actor.ochre > 0 {
-            parts.push(format!("Your skin is {}.", self.ochre_word(actor.ochre)));
-        }
         if self.wearing_hide(actor_id) {
             parts.push("The deer hide is on you.".into());
         }
@@ -1159,21 +1156,22 @@ impl World {
             self.cold_word(actor.cold),
             self.wind_word(self.exposure_millis(actor.cell)),
             self.sun_word(actor.sunburn),
-            self.mud_word(actor.mud)
-        ) + &self.ochre_skin_clause(actor_id)
-            + &self.spear_clause(actor_id)
+            self.skin_cover(actor.mud, actor.ochre)
+        ) + &self.spear_clause(actor_id)
             + &self.carcass_clause(actor_id)
     }
 
-    fn ochre_skin_clause(&self, actor_id: ActorId) -> String {
-        let Some(actor) = self.actor(actor_id) else {
-            return String::new();
-        };
-        if actor.ochre == 0 {
-            String::new()
-        } else {
-            format!(" Their skin is {}.", self.ochre_word(actor.ochre))
+    fn skin_cover(&self, mud: u32, ochre: u32) -> String {
+        if mud == 0 && ochre == 0 {
+            return "bare skin".into();
         }
+        if ochre == 0 {
+            return self.mud_word(mud).into();
+        }
+        if mud == 0 {
+            return self.ochre_word(ochre).into();
+        }
+        format!("{} and {}", self.mud_word(mud), self.ochre_word(ochre))
     }
 
     fn carcass_clause(&self, actor_id: ActorId) -> String {

@@ -8101,14 +8101,15 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
         .all(|event| !event.text.contains("smear") && !event.text.contains("ochre")));
     let marked = world.observe(near).unwrap();
     assert!(marked.text.contains("Your skin is red-ochre-smeared."));
-    assert!(marked.text.contains("Your skin is bare skin."));
-    assert!(!marked.text.contains("Your skin is mud-smeared."));
+    assert!(!marked.text.contains("bare skin"), "{marked:?}");
+    assert!(!marked.text.contains("mud-smeared"));
     assert_eq!(marked.self_info.ochre, "red-ochre-smeared");
-    assert_eq!(marked.self_info.mud, "bare skin");
+    assert_eq!(marked.text.matches("Your skin is ").count(), 2);
     assert!(marked.text.contains("Your arms are empty."), "{marked:?}");
     assert_eq!(world.material_tally(Material::Ochre), 0);
     let seen = world.examine(far, ExamineTarget::Person("Near".into()));
     assert!(seen.contains("Their skin is red-ochre-smeared."), "{seen}");
+    assert!(!seen.contains("bare skin"), "{seen}");
     while world.observe(west).unwrap().self_info.sunburn != "burned" {
         assert!(
             !world.is_raining(),
@@ -8148,5 +8149,9 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
         .iter()
         .all(|event| !event.text.contains("ochre")));
     assert!(!washed.text.contains("red-ochre-smeared"));
+    assert!(
+        washed.text.contains("Your skin is bare skin."),
+        "{washed:?}"
+    );
     assert_eq!(washed.self_info.ochre, "bare");
 }
