@@ -2285,7 +2285,6 @@ impl World {
 
     fn person_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
-        let (x, y) = cell_xy(actor.cell);
         format!(
             "{} is on the {}, {}. Their clothes are {}. They are {}. They are {}. They are {}. They are {}.",
             actor.name,
@@ -2297,7 +2296,7 @@ impl World {
             self.body_word(actor.stings_until, actor.illness),
             self.energy_word(actor.energy)
         ) + &format!(
-            " They are {}. They are {}. Their skin is {}. Their skin is {}. ({x},{y})",
+            " They are {}. They are {}. Their skin is {}. Their skin is {}.",
             self.cold_word(actor.cold),
             self.wind_at(actor.cell),
             self.sun_word(actor.sunburn),
@@ -5463,7 +5462,6 @@ impl World {
             if chebyshev(origin, fire.cell) > self.tuning.sight {
                 continue;
             }
-            let (x, y) = cell_xy(fire.cell);
             let reach = if chebyshev(origin, fire.cell) == 1 {
                 " The heat does not reach you from here."
             } else {
@@ -5475,7 +5473,7 @@ impl World {
                 "A small fire burns"
             };
             lines.push(format!(
-                "{kind} {}. It was lit on this ground. It warms anyone standing at it.{reach} ({x},{y})",
+                "{kind} {}. It was lit on this ground. It warms anyone standing at it.{reach}",
                 self.place_phrase(origin, fire.cell)
             ));
         }

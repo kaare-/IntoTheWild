@@ -3108,10 +3108,28 @@ mod names {
             "You cannot see McKay from here."
         );
         let west = world.examine(seen, super::ExamineTarget::Person("near".into()));
-        assert!(west.starts_with("Near is on the"), "{west}");
+        assert!(
+            west.starts_with("Near is on the slope, in the open."),
+            "{west}"
+        );
         assert!(!west.contains("cannot see"), "{west}");
+        assert!(!west.contains('('), "{west}");
+        world.actors.get_mut(&near).unwrap().cell = super::cell_id(6, 1).unwrap();
+        let under = world.examine(seen, super::ExamineTarget::Person("near".into()));
+        assert!(
+            under.contains("on the valley floor, under the rock overhang."),
+            "{under}"
+        );
+        assert!(!under.contains('('), "{under}");
+        world.mint_fire(super::cell_id(6, 1).unwrap(), 0);
+        let fire = world.examine(seen, super::ExamineTarget::Fire);
+        assert!(fire.contains("under the rock overhang"), "{fire}");
+        assert!(!fire.contains('('), "{fire}");
+        let from_quiet = world.examine(quiet, super::ExamineTarget::Fire);
+        assert_eq!(from_quiet, "You see no fire from here.");
         let self_look = world.examine(quiet, super::ExamineTarget::Person("quiet".into()));
         assert!(!self_look.contains("cannot see"), "{self_look}");
         assert!(self_look.contains("You are"), "{self_look}");
+        assert!(!self_look.contains('('), "{self_look}");
     }
 }
