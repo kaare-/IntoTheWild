@@ -4518,6 +4518,7 @@ impl World {
         self.tracks.insert(deer.cell);
         self.leave_fresh_tracks(deer.cell);
         self.deer = None;
+        self.arm_deer_return();
         let id = self.mint_item(Material::Carcass, 0, deer.cell, None, Role::Loose);
         let rest = "the deer down with the bow.";
         self.emit(
@@ -4555,6 +4556,7 @@ impl World {
         self.tracks.insert(deer_cell);
         self.leave_fresh_tracks(deer_cell);
         self.deer = None;
+        self.arm_deer_return();
         let id = self.mint_item(Material::Carcass, 0, deer_cell, None, Role::Loose);
         let (heard, yours) = if flint {
             let rest = "the deer down with the flint spear.";

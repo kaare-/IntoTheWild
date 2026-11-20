@@ -41,6 +41,7 @@ impl World {
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::MossReturn(cell) => self.return_moss(cell),
+                Wake::DeerReturn => self.return_deer(),
                 Wake::Stings => self.apply_stings(),
             }
         }
@@ -183,6 +184,44 @@ impl World {
         self.add_pile(cell, Material::Moss, 1, 0);
         self.emit(
             "Moss grows on the damp bank again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The valley has waited out its ticks. A deer stands on the trail again.
+    /// The route step for this tick waits. Someone who cannot see that cell
+    /// hears nothing.
+    fn return_deer(&mut self) {
+        let Some(at) = self.deer_returns_at else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.deer_returns_at = None;
+        if self.deer.is_some() {
+            return;
+        }
+        let (x, y) = DEER_ROUTE[0];
+        let Some(cell) = cell_id(x, y) else {
+            return;
+        };
+        let id = self.next_deer_id;
+        self.next_deer_id = self.next_deer_id.saturating_add(1);
+        self.deer = Some(crate::model::Deer {
+            id,
+            cell,
+            route_at: 0,
+            last_event: None,
+            held: true,
+        });
+        self.emit(
+            "A deer stands in the valley again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

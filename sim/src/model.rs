@@ -666,6 +666,8 @@ pub enum Wake {
     EggReturn(CellId),
     /// The damp bank on this cell grows moss again.
     MossReturn(CellId),
+    /// A deer stands on the trail again after the last one was brought down.
+    DeerReturn,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
 }
@@ -826,6 +828,12 @@ pub struct World {
     /// When a bare bank grows moss again. Look says the bank is bare until then.
     #[serde(default)]
     pub(crate) moss_returns_at: BTreeMap<CellId, u64>,
+    /// When a deer stands on the trail again. Look names no standing deer until then.
+    #[serde(default)]
+    pub(crate) deer_returns_at: Option<u64>,
+    /// The next deer's id. The first deer is 1.
+    #[serde(default = "default_next_deer_id")]
+    pub(crate) next_deer_id: u32,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -833,6 +841,10 @@ pub struct World {
 }
 
 const SPAWNS: [(i32, i32); 7] = [(4, 3), (3, 3), (5, 3), (4, 4), (2, 3), (6, 3), (3, 4)];
+
+fn default_next_deer_id() -> u32 {
+    2
+}
 
 impl World {
     pub fn valley(tuning: Tuning, seed: u64) -> Self {
@@ -906,6 +918,8 @@ impl World {
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
+            deer_returns_at: None,
+            next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -1350,6 +1364,19 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.moss_returns_at.insert(cell, at);
         self.schedule(at, Wake::MossReturn(cell));
+    }
+
+    /// The deer is down. Another stands on the trail `deer_ticks` after this
+    /// step. A carcass that is butchered, or still lying where it fell, does
+    /// not move that tick. A wake that finds a deer already standing does not
+    /// add a second one.
+    pub(crate) fn arm_deer_return(&mut self) {
+        if self.deer.is_some() || self.deer_returns_at.is_some() {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.deer_ticks);
+        self.deer_returns_at = Some(at);
+        self.schedule(at, Wake::DeerReturn);
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -4177,5 +4204,108 @@ mod bow_hunt {
         assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
         assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
         assert!(world.deer_cell().is_none());
+    }
+}
+
+#[cfg(test)]
+mod deer_return {
+    use super::{Attempt, ExamineTarget, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_deer_stands_on_the_trail_again_and_can_be_hunted() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 4).unwrap();
+        let spear = world.mint_item(
+            Material::Spear,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            Role::Loose,
+        );
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        let first = world.step(&[intent("first", near, Attempt::Hunt)]);
+        assert_eq!(
+            first.results[0].message,
+            "You bring the deer down with the flint spear."
+        );
+        assert!(world.deer_cell().is_none());
+        assert!(world.deer_returns_at.is_some());
+        let down = world.observe(near).unwrap().text;
+        assert!(down.contains("A deer carcass lies here."), "{down}");
+        assert!(!down.contains("A deer stands"), "{down}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Deer),
+            "You cannot see a deer from here."
+        );
+        let ticks = world.tuning.deer_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world.deer_cell().is_none());
+        assert!(!world.observe(near).unwrap().text.contains("A deer stands"));
+        world.step(&[]);
+        assert_eq!(world.deer_cell(), Some((2, 3)));
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("A deer stands on that trail."),
+            "{}",
+            back.text
+        );
+        let arrived = "A deer stands in the valley again.";
+        assert!(back.events.iter().any(|event| event.text == arrived));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(seen_back.events.iter().any(|event| event.text == arrived));
+        let seen_deer = world.examine(seen, ExamineTarget::Deer);
+        assert!(seen_deer.contains("A deer stands"), "{seen_deer}");
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != arrived));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Deer),
+            "You cannot see a deer from here."
+        );
+        assert!(world.deer_returns_at.is_none());
+        let second = world.step(&[intent("second", near, Attempt::Hunt)]);
+        assert_eq!(
+            second.results[0].message,
+            "You bring the deer down with the flint spear."
+        );
+        assert!(world.deer_cell().is_none());
+        assert!(world.deer_returns_at.is_some());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You bring the deer down with the flint spear." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near brings the deer down with the flint spear." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("brings the deer") && event.text != arrived }));
     }
 }

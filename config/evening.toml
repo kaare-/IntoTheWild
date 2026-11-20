@@ -70,6 +70,11 @@ egg_ticks = 24
 # for this many ticks. Then moss grows there again. Someone who cannot see
 # the bank does not get the line.
 moss_ticks = 24
+# After a deer is brought down, look names no standing deer for this many
+# ticks. Then a deer stands on the trail again. Butchering the carcass, or
+# leaving it where it fell, does not change the wait. Someone who cannot see
+# that cell does not get the line.
+deer_ticks = 24
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up
 # on the step that opens at that first dawn and holds off through the next

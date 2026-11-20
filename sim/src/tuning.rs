@@ -59,6 +59,10 @@ pub struct Tuning {
     /// Look says the bank is bare until then.
     #[serde(default = "default_moss_ticks")]
     pub moss_ticks: u64,
+    /// Ticks after a deer is brought down before another stands on the trail.
+    /// Look names no standing deer until then. The carcass does not change the wait.
+    #[serde(default = "default_deer_ticks")]
+    pub deer_ticks: u64,
     /// Sim time when the first night falls. Night lasts `night_len` ticks,
     /// then morning. The day between nights is `day_len` ticks, and that repeats.
     #[serde(default = "default_night_at")]
@@ -195,6 +199,9 @@ fn default_egg_ticks() -> u64 {
 fn default_moss_ticks() -> u64 {
     24
 }
+fn default_deer_ticks() -> u64 {
+    24
+}
 fn default_night_at() -> u64 {
     72
 }
@@ -306,6 +313,8 @@ struct RawTime {
     egg_ticks: u64,
     #[serde(default = "default_moss_ticks")]
     moss_ticks: u64,
+    #[serde(default = "default_deer_ticks")]
+    deer_ticks: u64,
     #[serde(default = "default_night_at")]
     night_at: u64,
     #[serde(default = "default_night_len")]
@@ -399,6 +408,7 @@ impl Tuning {
             || raw.time.honey_ticks == 0
             || raw.time.egg_ticks == 0
             || raw.time.moss_ticks == 0
+            || raw.time.deer_ticks == 0
             || raw.time.night_len == 0
             || raw.time.day_len == 0
         {
@@ -458,6 +468,7 @@ impl Tuning {
             honey_ticks: raw.time.honey_ticks,
             egg_ticks: raw.time.egg_ticks,
             moss_ticks: raw.time.moss_ticks,
+            deer_ticks: raw.time.deer_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
             day_len: raw.time.day_len,
