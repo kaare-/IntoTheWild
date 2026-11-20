@@ -7214,7 +7214,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} brings "))?;
-        if rest != "the deer down with the bow." {
+        if rest != "the deer down with the bow. The flint flake is spent." {
             return None;
         }
         Some(crate::model::spoken_act(None, "bring", rest))

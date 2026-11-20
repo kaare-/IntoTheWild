@@ -4118,29 +4118,34 @@ mod bow_hunt {
             .allowed_actions
             .iter()
             .any(|action| action == "hunt"));
+        let before = world.observe(near).unwrap().text;
+        assert!(before.contains("a sharp flint flake"), "{before}");
         let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
         assert_eq!(
             shot.results[0].message,
-            "You bring the deer down with the bow."
+            "You bring the deer down with the bow. The flint flake is spent."
         );
         assert!(world.deer_cell().is_none());
         let deer_cell = super::cell_id(6, 1).unwrap();
         assert!(world.items.values().any(|item| {
             item.material == Material::Carcass && item.cell == deer_cell && item.carrier.is_none()
         }));
-        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(world.loose_ids(near, Material::Flake).is_empty());
         assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
         let near_view = world.observe(near).unwrap();
+        assert!(near_view.text.contains("a bow"), "{}", near_view.text);
+        assert!(
+            !near_view.text.contains("flint flake"),
+            "{}",
+            near_view.text
+        );
         assert!(near_view
             .events
             .iter()
             .all(|event| !event.text.contains("with the bow")));
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| { event.text == "Near brings the deer down with the bow." }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near brings the deer down with the bow. The flint flake is spent."
+        }));
         assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
             !event.text.contains("with the bow") && !event.text.contains("brings the deer")
         }));
@@ -4168,10 +4173,11 @@ mod bow_hunt {
         let past = world.step(&[intent("past", near, Attempt::Hunt)]);
         assert_eq!(
             past.results[0].message,
-            "You bring the deer down with the bow."
+            "You bring the deer down with the bow. The flint flake is spent."
         );
         assert_eq!(world.loose_ids(near, Material::Spear).len(), 1);
-        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(world.loose_ids(near, Material::Flake).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
         assert!(world
             .observe(near)
             .unwrap()

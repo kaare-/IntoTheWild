@@ -4477,7 +4477,8 @@ impl World {
     }
 
     /// A carried bow and a sharp flint flake. The deer can stand as far as
-    /// sight. The flake stays in the arms. The spear's sentences are not used.
+    /// sight. A kill spends one flake. A refusal leaves it. The bow stays.
+    /// The spear's sentences are not used.
     fn loose_the_bow(
         &mut self,
         intent: &Intent,
@@ -4515,12 +4516,15 @@ impl World {
             return;
         }
         let name = self.name_of(actor.id);
+        if let Some(flake) = self.loose_ids(actor.id, Material::Flake).first().copied() {
+            self.items.remove(&flake);
+        }
         self.tracks.insert(deer.cell);
         self.leave_fresh_tracks(deer.cell);
         self.deer = None;
         self.arm_deer_return();
         let id = self.mint_item(Material::Carcass, 0, deer.cell, None, Role::Loose);
-        let rest = "the deer down with the bow.";
+        let rest = "the deer down with the bow. The flint flake is spent.";
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "bring", rest),
             Scope::Cell(deer.cell),

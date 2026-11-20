@@ -27,7 +27,7 @@ drink                        raw water where you stand; still water freezes
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
-hunt                         a hardened spear; the deer on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is not used up.
+hunt                         a hardened spear; the deer on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer comes down. A refusal leaves it. The bow stays.
 fish                         a fire-hardened flint spear, in the brook or beside it; the spear is not used up. That stretch is quiet for a short wait
 spear fish                   the same cast
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
