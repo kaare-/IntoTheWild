@@ -264,6 +264,9 @@ impl World {
         if let Some(iron) = self.seen_iron_ore(actor_id) {
             lines.push(iron);
         }
+        if let Some(clay) = self.seen_clay(actor_id) {
+            lines.push(clay);
+        }
         if let Some(mark) = self.seen_ochre_mark(actor_id) {
             lines.push(mark);
         }
@@ -887,6 +890,55 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// Unfired clay in sight, other than the pile under the looker's feet.
+    /// The seeded pile is on the bank beside the brook, so the sentence says so.
+    fn seen_clay(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let count = self.unfired_clay_count(cell);
+            if count == 0 {
+                continue;
+            }
+            let place = if self.beside_the_brook(cell) {
+                "brook bank"
+            } else {
+                self.cell(cell).region.word()
+            };
+            let dir = self.relative(origin, cell);
+            if count == 1 {
+                lines.push(format!("A lump of clay lies on the {place} to the {dir}."));
+            } else {
+                lines.push(format!("Clay lies on the {place} to the {dir}."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn unfired_clay_count(&self, cell: CellId) -> u32 {
+        let firing = self.clay_firing_count(cell) as u32;
+        let loose = self.ground_ids(cell, Material::Clay).len() as u32;
+        self.pile_count(cell, Material::Clay) + loose.saturating_sub(firing)
+    }
+
+    fn beside_the_brook(&self, cell: CellId) -> bool {
+        if self.cell(cell).region == crate::model::Region::Brook {
+            return false;
+        }
+        let (x, y) = cell_xy(cell);
+        [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| {
+            cell_id(x + dx, y + dy)
+                .is_some_and(|next| self.cell(next).region == crate::model::Region::Brook)
+        })
     }
 
     /// A lump of iron ore in sight, other than the one under the looker's feet.

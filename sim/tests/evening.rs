@@ -3667,6 +3667,65 @@ fn a_stone_on_the_slope_can_be_carried_and_stays_unseen_from_far() {
 }
 
 #[test]
+fn clay_on_the_brook_bank_is_named_and_gathered() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 2).unwrap();
+    let west = world.spawn_at("West", "w", 6, 4).unwrap();
+    assert_eq!(world.material_tally(Material::Clay), 2);
+    let from_near = world.observe(near).unwrap().text;
+    assert!(
+        from_near.contains("Clay lies on the brook bank to the north and west."),
+        "{from_near}"
+    );
+    let from_far = world.observe(far).unwrap().text;
+    assert!(
+        from_far.contains("Clay lies on the brook bank to the west."),
+        "{from_far}"
+    );
+    assert!(!world.observe(west).unwrap().text.contains("brook bank"));
+    for (id, dir) in [("w1", Dir::West), ("w2", Dir::West), ("n", Dir::North)] {
+        let step = world.step(&[cmd(id, near, Attempt::Move(dir))]);
+        assert!(step.results[0].success, "{}", step.results[0].message);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let here = world.observe(near).unwrap().text;
+    assert!(here.contains("Clay lies on the bank here."), "{here}");
+    assert!(!here.contains("brook bank to the"), "{here}");
+    let yours = "You gather a lump of clay.";
+    let seen = "Near gathers a lump of clay.";
+    let gathered = world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
+    assert_eq!(gathered.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("gather")));
+    assert!(arms_sentence(&world.observe(near).unwrap().text).contains("a lump of clay"));
+    assert_eq!(world.material_tally(Material::Clay), 2);
+    assert_eq!(world.material_items(Material::Clay).len(), 1);
+    assert_eq!(world.material_items(Material::Clay)[0].1, Some(near));
+    let after = world.observe(far).unwrap().text;
+    assert!(
+        after.contains("A lump of clay lies on the brook bank to the west."),
+        "{after}"
+    );
+}
+
+#[test]
 fn clay_on_the_bank_hardens_by_the_fire_into_a_bowl() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 2, 2).unwrap();
