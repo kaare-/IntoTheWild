@@ -647,7 +647,7 @@ impl World {
             parts.push("Lumps of copper ore are smelting in the fire.".into());
         }
         if !self.ground_ids(actor.cell, Material::Copper).is_empty() {
-            parts.push("A copper bead lies here.".into());
+            parts.push("A copper bead lies here. It is metal from the fire.".into());
         }
         if self.ochre_marks.contains(&actor.cell) {
             let surface = if self.cell(actor.cell).rock {
@@ -1090,7 +1090,7 @@ impl World {
         } else if item.material == "copper ore" && item.count == 1 {
             "a lump of copper ore".into()
         } else if item.material == "copper" && item.count == 1 {
-            "a copper bead".into()
+            "a copper bead, metal from the fire".into()
         } else if item.material == "spear" && item.count == 1 {
             let spear = self
                 .loose_ids(actor_id, Material::Spear)
@@ -1562,7 +1562,7 @@ impl World {
             bits.push("a lump of copper ore".into());
         }
         if !self.ground_ids(dest, Material::Copper).is_empty() {
-            bits.push("a copper bead".into());
+            bits.push("a copper bead, metal from the fire".into());
         }
         if self.ochre_marks.contains(&dest) {
             bits.push("a red ochre mark".into());
@@ -3293,7 +3293,7 @@ impl World {
                 format!("on the ground to the {}", self.relative(origin, cell))
             };
             lines.push(format!(
-                "A copper bead lies {place}. It is metal. It is not a tool."
+                "A copper bead lies {place}. It is metal from the fire."
             ));
         }
         for actor in self.actors.values() {
@@ -3309,7 +3309,7 @@ impl World {
                 actor.name.as_str()
             };
             lines.push(format!(
-                "A copper bead is carried by {who}, {}. It is metal. It is not a tool.",
+                "A copper bead is carried by {who}, {}. It is metal from the fire.",
                 self.cover_phrase(actor.cell)
             ));
         }

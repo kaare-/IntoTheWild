@@ -8547,7 +8547,14 @@ fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
         .iter()
         .all(|event| event.text != bead));
     let here = world.observe(near).unwrap().text;
-    assert!(here.contains("A copper bead lies here."), "{here}");
+    assert!(
+        here.contains("A copper bead lies here. It is metal from the fire."),
+        "{here}"
+    );
+    assert_eq!(
+        world.examine(near, ExamineTarget::Copper),
+        "A copper bead lies here. It is metal from the fire."
+    );
     assert!(!here.contains("is smelting in the fire."), "{here}");
     assert!(!arms_sentence(&here).contains("bead"), "{here}");
     let gathered = "You gather a copper bead.";
@@ -8574,7 +8581,22 @@ fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
         .all(|event| !event.text.contains("bead")));
     let arms = world.observe(near).unwrap().text;
     assert!(!arms.contains("A copper bead lies here."), "{arms}");
-    assert!(arms_sentence(&arms).contains("a copper bead"), "{arms}");
+    assert_eq!(
+        arms_sentence(&arms),
+        "You have a copper bead, metal from the fire."
+    );
+    assert_eq!(
+        world.examine(near, ExamineTarget::Copper),
+        "A copper bead is carried by you, under the rock overhang. It is metal from the fire."
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Copper),
+        "A copper bead is carried by Near, under the rock overhang. It is metal from the fire."
+    );
+    assert_eq!(
+        world.examine(west, ExamineTarget::Copper),
+        "You see no copper bead from here."
+    );
     assert_eq!(world.material_items(Material::Copper)[0].1, Some(near));
     world.step(&[cmd("drop", near, Attempt::Drop(Material::Copper))]);
     let again = world.step(&[cmd("copper", near, parse_attempt("gather copper").unwrap())]);
