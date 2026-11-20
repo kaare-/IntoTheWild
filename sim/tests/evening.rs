@@ -2091,6 +2091,59 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
 }
 
 #[test]
+fn a_branch_snap_is_heard_one_cell_past_sight() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 2, 3).unwrap();
+    let otto = world.spawn_at("Otto", "o", 1, 4).unwrap();
+    assert_eq!(world.tuning.hearing, world.tuning.sight + 1);
+    let denied = world.step(&[cmd("no-branch", otto, Attempt::Gather(Material::Branch))]);
+    assert_eq!(
+        denied.results[0].message,
+        "There is no branch here to gather."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no branch")));
+    let snapped = world.step(&[cmd("snap", near, Attempt::Gather(Material::Branch))]);
+    assert_eq!(
+        snapped.results[0].message,
+        "You gather a branch. You hear branches breaking."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You gather a branch. You hear branches breaking."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near gathers a branch. You hear branches breaking."));
+    let heard = world.observe(west).unwrap();
+    assert!(heard
+        .events
+        .iter()
+        .any(|event| event.text == "You hear branches breaking."));
+    assert!(heard
+        .events
+        .iter()
+        .all(|event| !event.text.contains("gathers")));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branches breaking")));
+}
+
+#[test]
 fn still_water_sickens_more_often_than_the_brook() {
     let mut pool = World::valley(Tuning::evening(), 1);
     pool.tuning.still_chance = 1000;

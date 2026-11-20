@@ -5787,6 +5787,42 @@ impl World {
         ))
     }
 
+    /// A dry branch gathered out of sight. The gather sentence stays with
+    /// someone who can see it. Past hearing, the event is not delivered at all.
+    fn branch_break_for_these_ears(
+        &self,
+        origin: CellId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        let cell = self.branch_break_cell(event)?;
+        if chebyshev(origin, cell) <= self.tuning.sight {
+            return None;
+        }
+        if chebyshev(origin, cell) > self.tuning.hearing {
+            return None;
+        }
+        Some("You hear branches breaking.".into())
+    }
+
+    fn hears_a_branch_break(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.branch_break_cell(event) else {
+            return false;
+        };
+        chebyshev(origin, cell) > self.tuning.sight
+            && chebyshev(origin, cell) <= self.tuning.hearing
+    }
+
+    /// The cell of a gathered branch, the act that already says the snap.
+    fn branch_break_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !event
+            .text
+            .contains(" gathers a branch. You hear branches breaking.")
+        {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     /// A successful boil, filled for the person who drank it.
     /// The stored sentence names them and keeps the thirst words on the end.
     /// Anyone else hears the act without that private ending.
@@ -5834,6 +5870,9 @@ impl World {
     /// An event keeps the weather of its own tick. The wood is named, not counted.
     fn heard_text(&self, viewer: ActorId, origin: CellId, event: &crate::model::Event) -> String {
         if let Some(line) = self.gather_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.branch_break_for_these_ears(origin, event) {
             return line;
         }
         if let Some(line) = self.smelt_set_for_these_eyes(viewer, event) {
@@ -6063,6 +6102,7 @@ impl World {
             Scope::Cell(cell) => {
                 chebyshev(origin, cell) <= self.tuning.sight
                     || event.affected_actors.contains(&viewer)
+                    || self.hears_a_branch_break(origin, event)
             }
         }
     }

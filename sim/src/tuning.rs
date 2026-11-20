@@ -91,6 +91,9 @@ pub struct Tuning {
     pub illness_recovery: u32,
     pub carry_slots: u32,
     pub sight: i32,
+    /// How far a breaking branch carries. One cell past sight, so someone
+    /// who cannot see the gather can still hear it. Farther than this, nothing.
+    pub hearing: i32,
     pub drag_needed: u32,
     pub rock_roof: u32,
     pub dry_bark_roof: u32,
@@ -368,6 +371,7 @@ impl Tuning {
             illness_recovery: millis(raw.body.illness_recovery, "body.illness_recovery")?,
             carry_slots: raw.body.carry_slots,
             sight: raw.body.sight,
+            hearing: raw.body.sight.saturating_add(1),
             drag_needed: raw.forces.drag_needed,
             rock_roof: millis(raw.roof.rock, "roof.rock")?,
             dry_bark_roof: millis(raw.roof.dry_bark, "roof.dry_bark")?,
