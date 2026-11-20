@@ -6215,9 +6215,25 @@ impl World {
         Some(crate::model::spoken_act(None, "spear", rest))
     }
 
+    /// The walk, filled for the person who took it. Anyone else keeps the
+    /// stored sentence, or the footsteps line when they cannot see the arrival.
+    fn walk_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} walks ")) {
+            return Some(crate::model::spoken_act(None, "walk", rest));
+        }
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} wades ")) {
+            return Some(crate::model::spoken_act(None, "wade", rest));
+        }
+        None
+    }
+
     /// A successful walk, heard from out of sight. Someone who can see the
-    /// arrival keeps the walk sentence. The walker is standing on it, so they
-    /// do not also hear their own steps. Past hearing, nothing is delivered.
+    /// arrival keeps the walk sentence. The walker reads it in the second
+    /// person instead. Past hearing, nothing is delivered.
     fn footsteps_for_these_ears(
         &self,
         origin: CellId,
@@ -6630,6 +6646,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.splash_for_these_ears(origin, event) {
+            return line;
+        }
+        if let Some(line) = self.walk_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.footsteps_for_these_ears(origin, event) {

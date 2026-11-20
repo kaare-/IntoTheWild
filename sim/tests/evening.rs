@@ -12390,11 +12390,11 @@ fn a_walk_is_footsteps_one_cell_past_sight() {
     assert!(actor
         .events
         .iter()
-        .any(|event| event.text == "Near walks east."));
+        .any(|event| event.text == "You walk east."));
     assert!(actor
         .events
         .iter()
-        .all(|event| !event.text.contains("footsteps")));
+        .all(|event| { !event.text.contains("Near walks") && !event.text.contains("footsteps") }));
     let eyes = world.observe(seen).unwrap();
     assert!(eyes
         .events
@@ -12493,12 +12493,19 @@ fn a_walk_is_footsteps_one_cell_past_sight() {
             .count(),
         2
     );
-    assert!(world
-        .observe(near)
-        .unwrap()
+    let actor_after = world.observe(near).unwrap();
+    assert_eq!(
+        actor_after
+            .events
+            .iter()
+            .filter(|event| event.text == "You walk east.")
+            .count(),
+        2
+    );
+    assert!(actor_after
         .events
         .iter()
-        .all(|event| { !event.text.contains("footsteps") }));
+        .all(|event| { !event.text.contains("Near walks") && !event.text.contains("footsteps") }));
     assert!(world
         .observe(quiet)
         .unwrap()
