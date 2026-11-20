@@ -71,6 +71,7 @@ impl World {
         let mut shapes = Vec::new();
         let mut firings = Vec::new();
         let mut lean_tos = Vec::new();
+        let mut thatches = Vec::new();
         let mut wears = Vec::new();
         let mut removes = Vec::new();
         let mut rests = Vec::new();
@@ -132,6 +133,7 @@ impl World {
                         Attempt::Shape => shapes.push(intent),
                         Attempt::FirePot => firings.push(intent),
                         Attempt::BuildLeanTo => lean_tos.push(intent),
+                        Attempt::Thatch => thatches.push(intent),
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
@@ -235,6 +237,7 @@ impl World {
         self.apply_shapes(shapes, &mut results);
         self.apply_pot_firings(firings, &mut results);
         self.apply_lean_tos(lean_tos, &mut results);
+        self.apply_thatches(thatches, &mut results);
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
@@ -464,6 +467,23 @@ impl World {
                     Err("A lean-to already stands here.".into())
                 } else if self.dry_branches_for_lean_to(actor.id) < 3 {
                     Err("You need three dry branches to build a lean-to.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Thatch => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.lean_tos.contains(&actor.cell) {
+                    Err("There is no lean-to here to thatch.".into())
+                } else if self.thatched.contains(&actor.cell) {
+                    Err("The lean-to is already thatched.".into())
+                } else if !self.has_reeds(actor.id) {
+                    Err("You have no reeds to thatch with.".into())
                 } else {
                     Ok(true)
                 }
@@ -3196,6 +3216,86 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "build", rest),
+                results,
+            );
+        }
+    }
+
+    fn has_reeds(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Reed).is_empty()
+            || self.pile_count(cell, Material::Reed) > 0
+            || !self.ground_ids(cell, Material::Reed).is_empty()
+    }
+
+    fn take_one_reed(&mut self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
+        if let Some(id) = self.loose_ids(actor, Material::Reed).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        if self.pile_count(cell, Material::Reed) > 0
+            && self.take_from_pile(cell, Material::Reed, 1).is_some()
+        {
+            return true;
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Reed).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        false
+    }
+
+    fn apply_thatches(&mut self, thatches: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in thatches {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self.lean_tos.contains(&actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no lean-to here to thatch.",
+                    results,
+                );
+                continue;
+            }
+            if self.thatched.contains(&actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The lean-to is already thatched.",
+                    results,
+                );
+                continue;
+            }
+            if !self.take_one_reed(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no reeds to thatch with.",
+                    results,
+                );
+                continue;
+            }
+            self.thatched.insert(actor.cell);
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} thatches the lean-to with reeds."),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You thatch the lean-to with reeds.",
                 results,
             );
         }

@@ -476,6 +476,7 @@ impl Tuning {
             Material::Brand => 0,
             Material::Basket => 0,
             Material::Charcoal => 0,
+            Material::Reed => 0,
         }
     }
 }

@@ -80,6 +80,7 @@ pub enum Material {
     Brand,
     Basket,
     Charcoal,
+    Reed,
 }
 
 impl Material {
@@ -115,6 +116,7 @@ impl Material {
             Material::Brand => "brand",
             Material::Basket => "basket",
             Material::Charcoal => "charcoal",
+            Material::Reed => "reed",
         }
     }
 
@@ -150,6 +152,7 @@ impl Material {
             Material::Brand => "burning brand",
             Material::Basket => "bark basket",
             Material::Charcoal => "lump of charcoal",
+            Material::Reed => "bundle of reeds",
         }
     }
 
@@ -269,6 +272,7 @@ pub enum ExamineTarget {
     Person(String),
     Basket,
     Charcoal,
+    Reeds,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -320,6 +324,7 @@ pub enum Attempt {
     TakeBrand,
     WeaveBasket,
     PutFish,
+    Thatch,
 }
 
 impl Attempt {
@@ -368,6 +373,7 @@ impl Attempt {
                 | Attempt::TakeBrand
                 | Attempt::WeaveBasket
                 | Attempt::PutFish
+                | Attempt::Thatch
         )
     }
 }
@@ -687,6 +693,9 @@ pub struct World {
     /// A lean-to of branches. It stands in that cell and breaks the wind.
     #[serde(default)]
     pub(crate) lean_tos: BTreeSet<CellId>,
+    /// A lean-to thatched with reeds. The body is out of the wind. A little rain still reaches.
+    #[serde(default)]
+    pub(crate) thatched: BTreeSet<CellId>,
     /// A brook cell stays quiet until this sim time after a fish is taken there.
     /// Banks that touch that cell fish the same stretch.
     #[serde(default)]
@@ -762,6 +771,7 @@ impl World {
             ochre_marks: BTreeSet::new(),
             charcoal_marks: BTreeSet::new(),
             lean_tos: BTreeSet::new(),
+            thatched: BTreeSet::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
             grips: Vec::new(),
@@ -793,6 +803,7 @@ impl World {
         world.add_pile(cell_id(5, 0).unwrap(), Material::IronOre, 1, 0);
         world.add_pile(cell_id(1, 2).unwrap(), Material::CopperOre, 1, 0);
         world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
+        world.add_pile(cell_id(0, 3).unwrap(), Material::Reed, 4, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.normalize();
         world
@@ -1423,6 +1434,16 @@ impl World {
             "in a little wind"
         } else {
             "in the wind"
+        }
+    }
+
+    /// The wind on a body. A thatched lean-to is out of the wind. The rock
+    /// is too, and a bare lean-to is only a little wind.
+    pub(crate) fn wind_at(&self, cell: CellId) -> &'static str {
+        if self.thatched.contains(&cell) {
+            "out of the wind"
+        } else {
+            self.wind_word(self.exposure_millis(cell))
         }
     }
 

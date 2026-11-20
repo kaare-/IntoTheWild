@@ -12940,3 +12940,156 @@ fn a_lump_of_charcoal_feeds_a_fire_hot_enough_for_iron() {
         .iter()
         .all(|event| !event.text.contains("hot enough")));
 }
+
+#[test]
+fn reeds_thatch_a_lean_to_and_put_the_body_out_of_the_wind() {
+    let mut world = world_at(1_000);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+    let bank = world.spawn_at("Bank", "b", 0, 4).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("You are in the wind."));
+    assert!(!world.observe(near).unwrap().text.contains("little wind"));
+    let bare = world.step(&[cmd("none", near, Attempt::Thatch)]);
+    assert_eq!(
+        bare.results[0].message,
+        "There is no lean-to here to thatch."
+    );
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("thatch")));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("thatch")));
+
+    let built = world.step(&[cmd("build", near, Attempt::BuildLeanTo)]);
+    assert_eq!(
+        built.results[0].message,
+        "You build a lean-to of three branches."
+    );
+    let after_build = world.observe(near).unwrap().text;
+    assert!(
+        after_build.contains("You are in a little wind."),
+        "{after_build}"
+    );
+    assert!(after_build.contains("A lean-to of branches stands here."));
+    let no_reeds = world.step(&[cmd("empty", near, Attempt::Thatch)]);
+    assert_eq!(
+        no_reeds.results[0].message,
+        "You have no reeds to thatch with."
+    );
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "You have no reeds to thatch with."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("reeds")));
+
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("w5", Dir::West),
+        ("s", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((0, 3)));
+    let growing = world.observe(near).unwrap().text;
+    assert!(
+        growing.contains("Reeds grow here, at the brook's edge."),
+        "{growing}"
+    );
+    let gathered = world.step(&[cmd("reeds", near, Attempt::Gather(Material::Reed))]);
+    assert_eq!(gathered.results[0].message, "You gather a bundle of reeds.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You gather a bundle of reeds."));
+    assert!(world
+        .observe(bank)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near gathers a bundle of reeds."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("reeds")));
+    assert_eq!(world.material_tally(Material::Reed), 4);
+
+    for (id, dir) in [
+        ("n", Dir::North),
+        ("e1", Dir::East),
+        ("e2", Dir::East),
+        ("e3", Dir::East),
+        ("e4", Dir::East),
+        ("e5", Dir::East),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((5, 2)));
+    let thatched = world.step(&[cmd("thatch", near, Attempt::Thatch)]);
+    assert_eq!(
+        thatched.results[0].message,
+        "You thatch the lean-to with reeds."
+    );
+    assert_eq!(world.material_tally(Material::Reed), 3);
+    let here = world.observe(near).unwrap();
+    assert!(here
+        .events
+        .iter()
+        .any(|event| event.text == "You thatch the lean-to with reeds."));
+    assert!(
+        here.text.contains("A thatched lean-to stands here."),
+        "{}",
+        here.text
+    );
+    assert!(
+        here.text.contains("You are out of the wind."),
+        "{}",
+        here.text
+    );
+    assert!(!here.text.contains("little wind"), "{}", here.text);
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near thatches the lean-to with reeds."));
+    let from_seen = world.observe(seen).unwrap().text;
+    assert!(
+        from_seen.contains("A thatched lean-to stands on the valley floor to the north."),
+        "{from_seen}"
+    );
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("thatch")));
+    assert!(!world.observe(quiet).unwrap().text.contains("thatched"));
+    let again = world.step(&[cmd("again", near, Attempt::Thatch)]);
+    assert_eq!(again.results[0].message, "The lean-to is already thatched.");
+}

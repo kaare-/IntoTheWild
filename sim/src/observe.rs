@@ -149,7 +149,7 @@ impl World {
                 illness: self.illness_word(actor.illness).into(),
                 energy: self.energy_word(actor.energy).into(),
                 cold: self.cold_word(actor.cold).into(),
-                wind: self.wind_word(self.exposure_millis(actor.cell)).into(),
+                wind: self.wind_at(actor.cell).into(),
                 sunburn: self.sun_word(actor.sunburn).into(),
                 mud: self.mud_word(actor.mud).into(),
                 ochre: self.ochre_word(actor.ochre).into(),
@@ -203,6 +203,7 @@ impl World {
             ExamineTarget::Brand => self.examine_brand(actor_id),
             ExamineTarget::Basket => self.examine_basket(actor_id),
             ExamineTarget::Charcoal => self.examine_charcoal(actor_id),
+            ExamineTarget::Reeds => self.examine_reeds(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -528,7 +529,7 @@ impl World {
             parts.push(self.rock_overhead(actor_id));
         }
         if self.lean_tos.contains(&actor.cell) {
-            parts.push(self.lean_to_here_line());
+            parts.push(self.lean_to_here_line(actor.cell));
         }
         if cell.region == crate::model::Region::Brook {
             parts.push("The water here is raw.".into());
@@ -746,6 +747,15 @@ impl World {
             parts.push("A lump of charcoal lies here.".into());
         } else if charcoal_here > 1 {
             parts.push("Lumps of charcoal lie here.".into());
+        }
+        let reeds_here = self.pile_count(actor.cell, Material::Reed)
+            + self.ground_ids(actor.cell, Material::Reed).len() as u32;
+        if reeds_here > 0 && self.beside_the_brook(actor.cell) {
+            parts.push("Reeds grow here, at the brook's edge.".into());
+        } else if reeds_here == 1 {
+            parts.push("A bundle of reeds lies here.".into());
+        } else if reeds_here > 1 {
+            parts.push("Bundles of reeds lie here.".into());
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1119,11 +1129,16 @@ impl World {
     }
 
     /// Standing under the branches. In the rain, the line says the smear stays.
-    fn lean_to_here_line(&self) -> String {
-        if self.raining {
-            "A lean-to of branches stands here. It breaks the wind. Only a little rain reaches you under it, and it does not wash you.".into()
+    fn lean_to_here_line(&self, cell: CellId) -> String {
+        let name = if self.thatched.contains(&cell) {
+            "thatched lean-to"
         } else {
-            "A lean-to of branches stands here. It breaks the wind.".into()
+            "lean-to of branches"
+        };
+        if self.raining {
+            format!("A {name} stands here. It breaks the wind. Only a little rain reaches you under it, and it does not wash you.")
+        } else {
+            format!("A {name} stands here. It breaks the wind.")
         }
     }
 
@@ -1153,8 +1168,13 @@ impl World {
             } else {
                 String::new()
             };
+            let name = if self.thatched.contains(&cell) {
+                "thatched lean-to"
+            } else {
+                "lean-to of branches"
+            };
             lines.push(format!(
-                "A lean-to of branches stands on the {place} to the {dir}.{rain}"
+                "A {name} stands on the {place} to the {dir}.{rain}"
             ));
         }
         if lines.is_empty() {
@@ -1720,6 +1740,12 @@ impl World {
                     item.condition
                 )
             }
+        } else if item.material == "reed" {
+            if item.count == 1 {
+                "a bundle of reeds".into()
+            } else {
+                format!("{} bundles of reeds", count_word(item.count))
+            }
         } else if item.material == "charcoal" {
             if item.count == 1 {
                 "a lump of charcoal".into()
@@ -1782,10 +1808,7 @@ impl World {
             format!("You are {}.", self.illness_word(actor.illness)),
             format!("You are {}.", self.energy_word(actor.energy)),
             format!("You are {}.", self.cold_word(actor.cold)),
-            format!(
-                "You are {}.",
-                self.wind_word(self.exposure_millis(actor.cell))
-            ),
+            format!("You are {}.", self.wind_at(actor.cell)),
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
@@ -1888,7 +1911,7 @@ impl World {
         ) + &format!(
             " They are {}. They are {}. Their skin is {}. Their skin is {}. ({x},{y})",
             self.cold_word(actor.cold),
-            self.wind_word(self.exposure_millis(actor.cell)),
+            self.wind_at(actor.cell),
             self.sun_word(actor.sunburn),
             self.skin_cover(actor.mud, actor.ochre)
         ) + &self.spear_clause(actor_id)
@@ -2214,6 +2237,11 @@ impl World {
             bits.push("a sheet of bark".into());
         } else if bark_there > 1 {
             bits.push("a pile of bark".into());
+        }
+        if self.pile_count(dest, Material::Reed) > 0
+            || !self.ground_ids(dest, Material::Reed).is_empty()
+        {
+            bits.push("reeds".into());
         }
         if self.pile_count(dest, Material::Stone) > 0
             || !self.ground_ids(dest, Material::Stone).is_empty()
@@ -3932,6 +3960,53 @@ impl World {
         }
     }
 
+    fn examine_reeds(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::Reed)
+                + self.ground_ids(cell, Material::Reed).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                if self.beside_the_brook(cell) {
+                    "here, at the brook's edge".to_string()
+                } else {
+                    "here".to_string()
+                }
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!("Reeds grow {place}."));
+        }
+        for other in self.visible_actor_ids(viewer) {
+            let count = self.loose_ids(other, Material::Reed).len();
+            if count == 0 {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let bundle = if count == 1 {
+                "A bundle of reeds is".to_string()
+            } else {
+                format!("{count} bundles of reeds are")
+            };
+            lines.push(format!(
+                "{bundle} carried by {who}, {}.",
+                self.cover_phrase(self.actor(other).unwrap().cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no reeds from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_fish(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -4884,6 +4959,7 @@ impl World {
                 Material::Water => "water",
                 Material::Basket => "bark basket",
                 Material::Charcoal => "charcoal",
+                Material::Reed => "reeds",
             };
             format!("You see no {name} from here.")
         } else {
@@ -6242,6 +6318,23 @@ impl World {
         Some(crate::model::spoken_act(None, "build", rest))
     }
 
+    /// Reeds laid on a lean-to, filled for the person who thatched it.
+    fn thatch_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} thatches the lean-to with reeds.") {
+            Some("You thatch the lean-to with reeds.".into())
+        } else {
+            None
+        }
+    }
+
     /// A flint spear bringing the deer down, filled for the person who struck.
     /// Anyone else keeps the stored sentence. A stone spear keeps its own line.
     fn bring_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -6638,6 +6731,7 @@ impl World {
             "copper bead",
             "copper awl",
             "lump of charcoal",
+            "bundle of reeds",
         ];
         let known = NOUNS
             .iter()
@@ -6813,6 +6907,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.lean_to_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.thatch_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
@@ -7733,6 +7830,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Basket, _) => "bark basket",
         (Material::Charcoal, true) => "lump of charcoal",
         (Material::Charcoal, false) => "lumps of charcoal",
+        (Material::Reed, true) => "bundle of reeds",
+        (Material::Reed, false) => "bundles of reeds",
         (Material::Mud, true) => "handful of mud",
         (Material::Mud, false) => "handfuls of mud",
         (Material::Water, true) => "drink of water",
