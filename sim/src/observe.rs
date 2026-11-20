@@ -784,20 +784,22 @@ impl World {
         }
     }
 
-    /// A flint nodule in sight that the place line and the compass do not already name.
+    /// A flint nodule in sight, other than the one under the looker's feet.
+    /// The compass may still list it. The sentence names the slope, as ochre and iron do.
     fn seen_flint(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || orthogonal_neighbor(origin, cell) {
+            if cell == origin {
                 continue;
             }
             let count = self.pile_count(cell, Material::Flint)
                 + self.ground_ids(cell, Material::Flint).len() as u32;
             if count > 0 {
+                let region = self.cell(cell).region.word();
                 lines.push(format!(
-                    "A flint nodule lies {}.",
-                    self.place_phrase(origin, cell)
+                    "A flint nodule lies on the {region} to the {}.",
+                    self.relative(origin, cell)
                 ));
             }
         }

@@ -7106,6 +7106,11 @@ fn a_flint_nodule_on_the_slope_can_be_carried() {
     let here = world.observe(near).unwrap().text;
     assert!(here.contains("A flint nodule lies here."), "{here}");
     let beside = world.observe(west).unwrap().text;
+    assert!(
+        beside.contains("A flint nodule lies on the slope to the north."),
+        "{beside}"
+    );
+    assert!(beside.contains("North: slope, a flint nodule"), "{beside}");
     assert!(beside.contains("a flint nodule"), "{beside}");
     assert!(
         !world.observe(far).unwrap().text.contains("flint"),
@@ -9270,6 +9275,15 @@ fn a_lump_of_iron_ore_on_the_slope_can_be_carried() {
         from_near.contains("A lump of iron ore lies on the slope to the north and east."),
         "{from_near}"
     );
+    assert!(
+        from_near.contains("A flint nodule lies on the slope to the north."),
+        "{from_near}"
+    );
+    let north = from_near
+        .lines()
+        .find(|line| line.starts_with("North:"))
+        .unwrap_or("");
+    assert_eq!(north, "North: slope, a flint nodule.");
     assert!(
         from_near.contains("A lump of ochre lies on the slope to the north and west."),
         "{from_near}"
