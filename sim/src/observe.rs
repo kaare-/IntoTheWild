@@ -8259,8 +8259,9 @@ impl World {
         }
     }
 
-    /// A fish taken out of sight. The spear sentence stays with someone who
-    /// can see it. Past hearing, the event is not delivered at all.
+    /// A fish taken out of sight, by a spear or by a set net. The catch
+    /// sentence stays with someone who can see it. Past hearing, the event
+    /// is not delivered at all.
     fn splash_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
         let cell = self.splash_cell(event)?;
         if chebyshev(origin, cell) <= self.tuning.sight {
@@ -8282,7 +8283,9 @@ impl World {
     }
 
     fn splash_cell(&self, event: &crate::model::Event) -> Option<CellId> {
-        if !event.text.contains(" spears a fish from the brook.") {
+        let splash = event.text.contains(" spears a fish from the brook.")
+            || event.text == "The fishing net catches a fish.";
+        if !splash {
             return None;
         }
         event.affected_cells.first().copied()

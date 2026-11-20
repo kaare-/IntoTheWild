@@ -5203,6 +5203,7 @@ mod set_net {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 0, 3).unwrap();
         let seen = world.spawn_at("Seen", "s", 0, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 3, 2).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
         for (id, _) in [("one", 1), ("two", 2), ("three", 3)] {
             world.step(&[intent(id, near, Attempt::Gather(Material::Reed))]);
@@ -5287,8 +5288,16 @@ mod set_net {
             "{}",
             landed.text
         );
+        assert!(landed
+            .events
+            .iter()
+            .all(|event| !event.text.contains("splash")));
         let seen_landed = world.observe(seen).unwrap();
         assert!(seen_landed.events.iter().any(|event| event.text == caught));
+        assert!(seen_landed
+            .events
+            .iter()
+            .all(|event| !event.text.contains("splash")));
         assert!(
             seen_landed
                 .text
@@ -5296,13 +5305,18 @@ mod set_net {
             "{}",
             seen_landed.text
         );
-        assert!(world
-            .observe(quiet)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != caught));
-        assert!(!world.observe(quiet).unwrap().text.contains("fish"));
+        let splash = "You hear a splash to the west.";
+        let ears = world.observe(heard).unwrap();
+        assert!(ears.events.iter().any(|event| event.text == splash));
+        assert!(ears.events.iter().all(|event| event.text != caught));
+        assert!(!ears.text.contains("fishing net"), "{}", ears.text);
+        assert!(!ears.text.contains("raw fish"), "{}", ears.text);
+        let far = world.observe(quiet).unwrap();
+        assert!(far.events.iter().all(|event| {
+            event.text != caught && !event.text.contains("splash") && !event.text.contains("fish")
+        }));
+        assert!(!far.text.contains("fish"));
+        assert!(!far.text.contains("splash"));
         let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Net))]);
         assert_eq!(gathered.results[0].message, "You gather a fishing net.");
         let back = world.observe(near).unwrap();
