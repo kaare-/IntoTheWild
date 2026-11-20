@@ -107,6 +107,7 @@ pub enum Material {
     Egg,
     Moss,
     Bow,
+    Net,
 }
 
 impl Material {
@@ -149,6 +150,7 @@ impl Material {
             Material::Egg => "egg",
             Material::Moss => "moss",
             Material::Bow => "bow",
+            Material::Net => "net",
         }
     }
 
@@ -191,6 +193,7 @@ impl Material {
             Material::Egg => "eggs",
             Material::Moss => "handful of moss",
             Material::Bow => "bow",
+            Material::Net => "fishing net",
         }
     }
 
@@ -318,6 +321,7 @@ pub enum ExamineTarget {
     Eggs,
     Moss,
     Bow,
+    Net,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -378,6 +382,7 @@ pub enum Attempt {
     DressSting,
     CraftBow,
     DryClothes,
+    WeaveNet,
 }
 
 impl Attempt {
@@ -435,6 +440,7 @@ impl Attempt {
                 | Attempt::DressSting
                 | Attempt::CraftBow
                 | Attempt::DryClothes
+                | Attempt::WeaveNet
         )
     }
 }
@@ -5159,6 +5165,150 @@ mod ochre_arms {
             world.examine(quiet, ExamineTarget::Ochre),
             "You see no ochre from here."
         );
+    }
+}
+
+#[cfg(test)]
+mod fishing_net {
+    use super::{Attempt, Dir, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn three_bundles_of_reeds_weave_a_net_that_takes_a_fish() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Fish)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("spear")));
+        world.step(&[intent("one", near, Attempt::Gather(Material::Reed))]);
+        world.step(&[intent("two", near, Attempt::Gather(Material::Reed))]);
+        world.step(&[intent("off", near, Attempt::Move(Dir::East))]);
+        assert_eq!(world.actor_cell(near), Some((1, 3)));
+        let short = world.step(&[intent("short", near, Attempt::WeaveNet)]);
+        assert_eq!(
+            short.results[0].message,
+            "You need three bundles of reeds to weave a net."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("reeds")));
+        world.step(&[intent("back", near, Attempt::Move(Dir::West))]);
+        world.step(&[intent("three", near, Attempt::Gather(Material::Reed))]);
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveNet)]);
+        assert_eq!(woven.results[0].message, "You weave a fishing net.");
+        let yours = "You weave a fishing net.";
+        let witnessed = "Near weaves a fishing net.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("net")));
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("You have a fishing net."), "{arms}");
+        assert!(!arms.contains("2 net"), "{arms}");
+        let carried = world.examine(near, ExamineTarget::Net);
+        assert_eq!(
+            carried,
+            "A fishing net is carried by you, in the open. It is woven from reeds."
+        );
+        assert!(world
+            .examine(seen, ExamineTarget::Net)
+            .contains("A fishing net is carried by Near, in the open."));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Net),
+            "You see no fishing net from here."
+        );
+        let cast = world.step(&[intent("fish", near, Attempt::Fish)]);
+        assert_eq!(
+            cast.results[0].message,
+            "You take a fish from the brook with the net."
+        );
+        let took = "You take a fish from the brook with the net.";
+        let seen_took = "Near takes a fish from the brook with the net.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != took));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == seen_took));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fish") && !event.text.contains("splash")));
+        assert_eq!(world.material_tally(Material::Net), 1);
+        assert_eq!(world.material_tally(Material::Fish), 1);
+        let after = world.observe(near).unwrap().text;
+        assert!(after.contains("You have a fishing net"), "{after}");
+        assert!(
+            after.contains("a raw fish") || after.contains("a fish"),
+            "{after}"
+        );
+        let gone = world.step(&[intent("again", near, Attempt::Fish)]);
+        assert_eq!(
+            gone.results[0].message,
+            "The fish are gone from this stretch of the brook."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fish are gone")));
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Net))]);
+        let ground = world.observe(near).unwrap().text;
+        assert!(ground.contains("A fishing net lies here."), "{ground}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(west.contains("A fishing net lies to the west."), "{west}");
+        let exam = world.examine(near, ExamineTarget::Net);
+        assert!(
+            exam.starts_with("A fishing net lies here. It is woven from reeds."),
+            "{exam}"
+        );
+        let picked = world.step(&[intent("pick", near, Attempt::Gather(Material::Net))]);
+        assert_eq!(picked.results[0].message, "You gather a fishing net.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You have a fishing net"));
     }
 }
 

@@ -79,6 +79,7 @@ impl World {
         let mut fishes = Vec::new();
         let mut brands = Vec::new();
         let mut baskets = Vec::new();
+        let mut nets = Vec::new();
         let mut puts = Vec::new();
         let mut snares = Vec::new();
         let mut carves = Vec::new();
@@ -149,6 +150,7 @@ impl World {
                         Attempt::Fish => fishes.push(intent),
                         Attempt::TakeBrand => brands.push(intent),
                         Attempt::WeaveBasket => baskets.push(intent),
+                        Attempt::WeaveNet => nets.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
@@ -261,6 +263,7 @@ impl World {
         self.apply_fishes(fishes, &mut results);
         self.apply_brands(brands, &mut results);
         self.apply_baskets(baskets, &mut results);
+        self.apply_nets(nets, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_carves(carves, &mut results);
@@ -402,7 +405,7 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if !self.fishing_water(actor.cell) {
                     Err("The brook is not here.".into())
-                } else if let Some(message) = self.fish_spear_refusal(actor.id) {
+                } else if let Some(message) = self.fish_tool_refusal(actor.id) {
                     Err(message.into())
                 } else if self
                     .brook_stretch(actor.cell)
@@ -1231,6 +1234,7 @@ impl World {
                             | Material::Egg
                             | Material::Moss
                             | Material::Bow
+                            | Material::Net
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1331,6 +1335,24 @@ impl World {
                 }
                 Ok(true)
             }
+            Attempt::WeaveNet => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if !self.loose_ids(actor.id, Material::Net).is_empty() {
+                    return Err("You are already carrying a fishing net.".into());
+                }
+                let carried = self.loose_ids(actor.id, Material::Reed).len() as u32;
+                let piled = self.pile_count(actor.cell, Material::Reed);
+                if carried + piled < 3 {
+                    return Err("You need three bundles of reeds to weave a net.".into());
+                }
+                let spent = carried.min(3);
+                if self.carry_count(actor.id) - spent + 1 > self.tuning.carry_slots {
+                    return Err("Your arms are full.".into());
+                }
+                Ok(true)
+            }
             Attempt::PutFish => {
                 if gripping {
                     return Err("Your hands are on the log.".into());
@@ -1409,6 +1431,7 @@ impl World {
                     | Material::Salt
                     | Material::Honey
                     | Material::Egg
+                    | Material::Net
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -2867,8 +2890,21 @@ impl World {
         }
     }
 
+    /// A spear that can take a fish, or a fishing net when no spear is carried.
+    /// A spear that is not ready still refuses. The net does not override it.
+    fn fish_tool_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        match self.fish_spear_refusal(actor) {
+            None => None,
+            Some("You are not carrying a spear.")
+                if !self.loose_ids(actor, Material::Net).is_empty() =>
+            {
+                None
+            }
+            Some(message) => Some(message),
+        }
+    }
+
     fn apply_fishes(&mut self, fishes: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "a fish from the brook.";
         for intent in fishes {
             let cell = self
                 .actor(intent.actor_id)
@@ -2906,8 +2942,14 @@ impl World {
                 }
             }
             let name = self.name_of(intent.actor_id);
+            let with_net = self.fish_spear_refusal(intent.actor_id).is_some();
+            let (stem, rest) = if with_net {
+                ("take", "a fish from the brook with the net.")
+            } else {
+                ("spear", "a fish from the brook.")
+            };
             self.emit(
-                crate::model::spoken_act(Some(name.as_str()), "spear", rest),
+                crate::model::spoken_act(Some(name.as_str()), stem, rest),
                 Scope::Cell(cell),
                 vec![intent.actor_id],
                 vec![cell],
@@ -2919,7 +2961,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 true,
-                crate::model::spoken_act(None, "spear", rest),
+                crate::model::spoken_act(None, stem, rest),
                 results,
             );
         }
@@ -4558,6 +4600,62 @@ impl World {
                 vec![actor.id],
                 vec![actor.cell],
                 affected,
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "weave", rest),
+                results,
+            );
+        }
+    }
+
+    /// Three bundles of reeds, from the arms first and then the pile at the
+    /// feet, become one fishing net. The net stays in the arms.
+    fn apply_nets(&mut self, weaves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in weaves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let mut spent = Vec::new();
+            let mut left = 3u32;
+            for id in self.loose_ids(actor.id, Material::Reed) {
+                if left == 0 {
+                    break;
+                }
+                self.items.remove(&id);
+                spent.push(id);
+                left -= 1;
+            }
+            if left > 0 {
+                if self
+                    .take_from_pile(actor.cell, Material::Reed, left)
+                    .is_none()
+                {
+                    self.finish(
+                        intent.command_id,
+                        actor.id,
+                        false,
+                        "You need three bundles of reeds to weave a net.",
+                        results,
+                    );
+                    continue;
+                }
+                self.arm_reed_bed(actor.cell);
+            }
+            let id = self.mint_item(Material::Net, 0, actor.cell, Some(actor.id), Role::Loose);
+            spent.push(id);
+            let name = self.name_of(actor.id);
+            let rest = "a fishing net.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "weave", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                spent,
                 vec![],
                 None,
             );

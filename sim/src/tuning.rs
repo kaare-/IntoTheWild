@@ -707,6 +707,7 @@ impl Tuning {
             Material::Egg => 0,
             Material::Moss => 0,
             Material::Bow => 0,
+            Material::Net => 0,
         }
     }
 }

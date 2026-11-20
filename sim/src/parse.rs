@@ -30,8 +30,8 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
 hunt                         a hardened spear; the deer on your cell or the next, or a wolf while it stands on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer or the wolf comes down. A refusal leaves it. The bow stays.
-fish                         a fire-hardened flint spear, in the brook or beside it; the spear is not used up. That stretch is quiet for a short wait
-spear fish                   the same cast
+fish                         a fire-hardened flint spear, or a fishing net, in the brook or beside it; neither is used up. That stretch is quiet for a short wait
+spear fish                   the same cast with the spear
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
@@ -45,6 +45,8 @@ build lean-to                three dry branches into a lean-to in this cell. It 
 gather reeds                 a bundle at the brook's edge
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
+weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
+make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
@@ -192,6 +194,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "craft" | "make" if rest == "bow" || rest == "a bow" => Ok(Attempt::CraftBow),
         "weave" | "make" if rest == "basket" || rest == "a basket" || rest == "bark basket" => {
             Ok(Attempt::WeaveBasket)
+        }
+        "weave" | "make"
+            if rest == "net"
+                || rest == "a net"
+                || rest == "fishing net"
+                || rest == "a fishing net" =>
+        {
+            Ok(Attempt::WeaveNet)
         }
         "carve" | "make"
             if rest == "awl" || rest == "an awl" || rest == "bone awl" || rest == "a bone awl" =>
@@ -411,6 +421,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "basket" | "bark basket" => Ok(Material::Basket),
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
+        "net" | "fishing net" | "a fishing net" => Ok(Material::Net),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
@@ -478,6 +489,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "basket" | "bark basket" => ExamineTarget::Basket,
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
+        "net" | "fishing net" | "a fishing net" => ExamineTarget::Net,
         "bone" => ExamineTarget::Bone,
         "salt" | "salt crust" => ExamineTarget::Salt,
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,

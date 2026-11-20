@@ -215,6 +215,7 @@ impl World {
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
+            ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -334,6 +335,9 @@ impl World {
             }
             if let Some(reeds) = self.seen_reeds(actor_id) {
                 lines.push(reeds);
+            }
+            if let Some(net) = self.seen_net(actor_id) {
+                lines.push(net);
             }
             if let Some(lean_to) = self.seen_lean_to(actor_id) {
                 lines.push(lean_to);
@@ -828,6 +832,12 @@ impl World {
             parts.push("Bundles of reeds lie here.".into());
         } else if self.reed_bare(actor.cell) {
             parts.push("The brook's edge has no reeds.".into());
+        }
+        let nets_here = self.ground_ids(actor.cell, Material::Net).len();
+        if nets_here == 1 {
+            parts.push("A fishing net lies here.".into());
+        } else if nets_here > 1 {
+            parts.push("Fishing nets lie here.".into());
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1477,6 +1487,34 @@ impl World {
             } else if self.reed_bare(cell) {
                 lines.push(format!(
                     "The brook's edge to the {} has no reeds.",
+                    self.relative(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A fishing net in sight, other than the one under the looker's feet.
+    fn seen_net(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let count = self.ground_ids(cell, Material::Net).len() as u32;
+            if count == 1 {
+                lines.push(format!(
+                    "A fishing net lies to the {}.",
+                    self.relative(origin, cell)
+                ));
+            } else if count > 1 {
+                lines.push(format!(
+                    "Fishing nets lie to the {}.",
                     self.relative(origin, cell)
                 ));
             }
@@ -2628,6 +2666,10 @@ impl World {
             "a handful of moss".into()
         } else if item.material == "moss" {
             format!("{} handfuls of moss", count_word(item.count))
+        } else if item.material == "net" && item.count == 1 {
+            "a fishing net".into()
+        } else if item.material == "net" {
+            format!("{} fishing nets", count_word(item.count))
         } else if item.material == "bow" && item.count == 1 {
             "a bow".into()
         } else if item.material == "bow" {
@@ -3281,6 +3323,9 @@ impl World {
             || !self.ground_ids(dest, Material::Reed).is_empty()
         {
             bits.push("reeds".into());
+        }
+        if !self.ground_ids(dest, Material::Net).is_empty() {
+            bits.push("a fishing net".into());
         }
         if self.pile_count(dest, Material::Stone) > 0
             || !self.ground_ids(dest, Material::Stone).is_empty()
@@ -6311,6 +6356,7 @@ impl World {
                 Material::Basket => "bark basket",
                 Material::Charcoal => "charcoal",
                 Material::Reed => "reeds",
+                Material::Net => "fishing net",
             };
             format!("You see no {name} from here.")
         } else {
@@ -7282,6 +7328,8 @@ impl World {
                     && self.scare_for_these_eyes(viewer, event).is_none()
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
+                    && self.weave_net_for_these_eyes(viewer, event).is_none()
+                    && self.net_fish_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -7817,6 +7865,96 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "bring", rest))
+    }
+
+    fn examine_net(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::Net).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!(
+                    "A fishing net lies {place}. It is woven from reeds."
+                ));
+            } else {
+                lines.push(format!(
+                    "Fishing nets lie {place}. Each is woven from reeds."
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Net).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A fishing net is carried by {who}, {cover}. It is woven from reeds."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} fishing nets are carried by {who}, {cover}. Each is woven from reeds.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no fishing net from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
+    /// A fishing net woven from three bundles of reeds. The weaver already
+    /// has this as the reply, so the event list does not repeat it.
+    fn weave_net_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} weaves "))?;
+        if rest != "a fishing net." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "weave", rest))
+    }
+
+    /// A fish taken with a net. The fisher already has this as the reply.
+    fn net_fish_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} takes "))?;
+        if rest != "a fish from the brook with the net." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "take", rest))
     }
 
     /// A bark basket woven from a sheet of bark, filled for the weaver.
@@ -9694,6 +9832,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Moss, _) => "handful of moss",
         (Material::Bow, true) => "bow",
         (Material::Bow, false) => "bows",
+        (Material::Net, true) => "fishing net",
+        (Material::Net, false) => "fishing nets",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",
