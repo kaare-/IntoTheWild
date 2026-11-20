@@ -736,6 +736,9 @@ impl World {
             let mud_loss = if washed { mud_before } else { mud_fade };
             let ochre_washed = raining && exposure >= 1000 && ochre_before > 0;
             let ochre_loss = if ochre_washed { ochre_before } else { mud_fade };
+            // A fire in the cell, lean-to included, spends warmth instead of
+            // taking the sky. Across a night that holds the body warm. A fire
+            // on the next cell does not.
             let cold_after = if on_fire {
                 cold_before.saturating_sub(self.tuning.fire_warmth)
             } else if exposure == 0 {

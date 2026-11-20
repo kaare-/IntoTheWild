@@ -11922,3 +11922,100 @@ fn night_cold_in_the_open_is_faster_and_shelter_holds() {
     assert!(warmed.text.contains("Night has fallen."));
     assert!(!world.observe(lean).unwrap().text.contains("You are cold."));
 }
+
+#[test]
+fn a_fire_in_the_lean_to_holds_warm_through_the_night() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let alone = world.spawn_at("Alone", "a", 5, 2).unwrap();
+    let builder = world.spawn_at("Build", "b", 6, 1).unwrap();
+    let hearth = world.spawn_at("Hearth", "h", 6, 1).unwrap();
+    let built = world.step(&[cmd("lean-a", alone, Attempt::BuildLeanTo)]);
+    assert!(built.results[0].success, "{}", built.results[0].message);
+    for i in 0..3 {
+        let got = world.step(&[cmd(
+            &format!("br-{i}"),
+            builder,
+            Attempt::Gather(Material::Branch),
+        )]);
+        assert!(got.results[0].success, "{}", got.results[0].message);
+    }
+    let bark = world.step(&[cmd("bark", hearth, Attempt::Gather(Material::Bark))]);
+    assert!(bark.results[0].success, "{}", bark.results[0].message);
+    let branch = world.step(&[cmd("fuel", hearth, Attempt::Gather(Material::Branch))]);
+    assert!(branch.results[0].success, "{}", branch.results[0].message);
+    world.step(&[cmd("to-side", builder, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(builder), Some((5, 1)));
+    let second = world.step(&[cmd("lean-b", builder, Attempt::BuildLeanTo)]);
+    assert!(second.results[0].success, "{}", second.results[0].message);
+    world.step(&[
+        cmd("alone-e", alone, Attempt::Move(Dir::East)),
+        cmd("build-e", builder, Attempt::Move(Dir::East)),
+    ]);
+    world.step(&[cmd("alone-n", alone, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(alone), Some((6, 1)));
+    assert_eq!(world.actor_cell(builder), Some((6, 1)));
+    world.step(&[]);
+    assert_eq!(world.observe(alone).unwrap().self_info.cold, "warm");
+    assert_eq!(world.observe(hearth).unwrap().self_info.cold, "warm");
+
+    while world.sim_time() < world.tuning.night_at {
+        world.step(&[]);
+    }
+    assert!(world
+        .observe(alone)
+        .unwrap()
+        .text
+        .contains("Night has fallen."));
+    world.step(&[
+        cmd("out", alone, Attempt::Move(Dir::South)),
+        cmd("to-shelter", hearth, Attempt::Move(Dir::West)),
+    ]);
+    assert_eq!(world.actor_cell(alone), Some((6, 2)));
+    assert_eq!(world.actor_cell(hearth), Some((5, 1)));
+    let lit = world.step(&[
+        cmd("under", alone, Attempt::Move(Dir::West)),
+        cmd("light", hearth, Attempt::Light),
+    ]);
+    assert!(
+        lit.results
+            .iter()
+            .any(|result| result.success && result.message.contains("light")),
+        "{lit:?}"
+    );
+    assert_eq!(world.actor_cell(alone), Some((5, 2)));
+    let end = world.tuning.night_at + world.tuning.night_len - 1;
+    while world.sim_time() < end {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), end);
+
+    let warm = world.observe(hearth).unwrap();
+    assert_eq!(warm.self_info.cold, "warm", "{}", warm.text);
+    assert!(
+        warm.text.contains("You are warm.")
+            && warm.text.contains("You are in a little wind.")
+            && warm.text.contains("A small fire burns here. It warms you.")
+            && warm.text.contains("The lean-to keeps the fire.")
+            && warm.text.contains("Night has fallen.")
+            && !warm
+                .text
+                .contains("The heat of the fire does not reach you.")
+            && !warm.text.contains("You are chilly."),
+        "{}",
+        warm.text
+    );
+    let uncovered = world.observe(alone).unwrap();
+    assert_eq!(uncovered.self_info.cold, "chilly", "{}", uncovered.text);
+    assert!(
+        uncovered.text.contains("You are chilly.")
+            && uncovered.text.contains("You are in a little wind.")
+            && uncovered
+                .text
+                .contains("The heat of the fire does not reach you.")
+            && uncovered.text.contains("Night has fallen.")
+            && !uncovered.text.contains("It warms you.")
+            && !uncovered.text.contains("You are warm."),
+        "{}",
+        uncovered.text
+    );
+}
