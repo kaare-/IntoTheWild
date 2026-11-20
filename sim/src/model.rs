@@ -450,6 +450,9 @@ pub struct Item {
     /// A spear hafted from a flint flake. It is not the stone-bound spear.
     #[serde(default)]
     pub flint_tip: bool,
+    /// Hide strips lashing a flint tip to the haft. A stone spear leaves this false.
+    #[serde(default)]
+    pub bound: bool,
     /// Meat that has been held over a fire. Raw meat leaves this false.
     #[serde(default)]
     pub cooked: bool,
@@ -1042,6 +1045,7 @@ impl World {
                 hardened: false,
                 raw: false,
                 flint_tip: false,
+                bound: false,
                 cooked: false,
                 worn: false,
                 pierced: false,

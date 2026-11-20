@@ -770,10 +770,11 @@ impl World {
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let spear = self.item(id);
             let hardened = spear.is_some_and(|item| item.hardened);
-            if spear.is_some_and(|item| item.flint_tip && item.hardened) {
-                parts.push("A spear with a fire-hardened flint tip lies here.".into());
-            } else if spear.is_some_and(|item| item.flint_tip) {
-                parts.push("A spear with a flint tip, not yet fire-hardened, lies here.".into());
+            if let Some(item) = spear.filter(|item| item.flint_tip) {
+                parts.push(format!(
+                    "A spear with {} lies here.",
+                    self.flint_tip_words(item)
+                ));
             } else if hardened {
                 parts.push("A spear lies here. The point is hardened.".into());
             } else {
@@ -1391,20 +1392,22 @@ impl World {
             "a copper bead, metal from the fire".into()
         } else if item.material == "awl" && item.count == 1 {
             "a copper awl".into()
-        } else if item.material == "spear" && item.count == 1 {
-            let spear = self
+        } else if item.material == "spear" {
+            let bits: Vec<String> = self
                 .loose_ids(actor_id, Material::Spear)
-                .first()
-                .and_then(|id| self.item(*id));
-            if spear.is_some_and(|spear| spear.flint_tip && spear.hardened) {
-                "a spear with a fire-hardened flint tip".into()
-            } else if spear.is_some_and(|spear| spear.flint_tip) {
-                "a spear with a flint tip, not yet fire-hardened".into()
-            } else if spear.is_some_and(|spear| spear.hardened) {
-                "a spear with a hardened point".into()
-            } else {
-                "a spear with an unhardened point".into()
-            }
+                .iter()
+                .map(|id| {
+                    let spear = self.item(*id);
+                    if let Some(item) = spear.filter(|spear| spear.flint_tip) {
+                        format!("a spear with {}", self.flint_tip_words(item))
+                    } else if spear.is_some_and(|spear| spear.hardened) {
+                        "a spear with a hardened point".into()
+                    } else {
+                        "a spear with an unhardened point".into()
+                    }
+                })
+                .collect();
+            bits.join(", ")
         } else if item.material == "mushroom" {
             let ids = self.loose_ids(actor_id, Material::Mushroom);
             let cooked = ids
@@ -1633,16 +1636,23 @@ impl World {
         }
     }
 
+    fn flint_tip_words(&self, spear: &crate::model::Item) -> &'static str {
+        match (spear.hardened, spear.bound) {
+            (true, true) => "a fire-hardened flint tip bound with hide",
+            (true, false) => "a fire-hardened flint tip",
+            (false, true) => "a flint tip bound with hide, not yet fire-hardened",
+            (false, false) => "a flint tip, not yet fire-hardened",
+        }
+    }
+
     fn spear_clause(&self, actor_id: ActorId) -> String {
         let Some(id) = self.loose_ids(actor_id, Material::Spear).first().copied() else {
             return String::new();
         };
         let spear = self.item(id);
         let hardened = spear.is_some_and(|item| item.hardened);
-        if spear.is_some_and(|item| item.flint_tip && item.hardened) {
-            " They carry a spear with a fire-hardened flint tip.".into()
-        } else if spear.is_some_and(|item| item.flint_tip) {
-            " They carry a spear with a flint tip, not yet fire-hardened.".into()
+        if let Some(item) = spear.filter(|item| item.flint_tip) {
+            format!(" They carry a spear with {}.", self.flint_tip_words(item))
         } else if hardened {
             " They carry a spear with a hardened point.".into()
         } else if self.spear_is_hardening(actor_id) {
@@ -2016,10 +2026,8 @@ impl World {
                 .ground_ids(dest, Material::Spear)
                 .first()
                 .and_then(|id| self.item(*id));
-            if spear.is_some_and(|spear| spear.flint_tip && spear.hardened) {
-                bits.push("a spear with a fire-hardened flint tip".into());
-            } else if spear.is_some_and(|spear| spear.flint_tip) {
-                bits.push("a spear with a flint tip, not yet fire-hardened".into());
+            if let Some(item) = spear.filter(|spear| spear.flint_tip) {
+                bits.push(format!("a spear with {}", self.flint_tip_words(item)));
             } else if spear.is_some_and(|spear| spear.hardened) {
                 bits.push("a spear with a hardened point".into());
             } else {
@@ -3679,16 +3687,11 @@ impl World {
         for cell in self.visible_cell_ids(viewer) {
             for id in self.ground_ids(cell, Material::Spear) {
                 let spear = self.item(id);
-                if spear.is_some_and(|item| item.flint_tip && item.hardened) {
+                if let Some(item) = spear.filter(|item| item.flint_tip) {
+                    let comma = if item.hardened { "" } else { "," };
                     lines.push(format!(
-                        "A spear with a fire-hardened flint tip lies in contact with the ground {}.",
-                        self.place_phrase(origin, cell)
-                    ));
-                    continue;
-                }
-                if spear.is_some_and(|item| item.flint_tip) {
-                    lines.push(format!(
-                        "A spear with a flint tip, not yet fire-hardened, lies in contact with the ground {}.",
+                        "A spear with {}{comma} lies in contact with the ground {}.",
+                        self.flint_tip_words(item),
                         self.place_phrase(origin, cell)
                     ));
                     continue;
@@ -3714,26 +3717,18 @@ impl World {
             let cell = self.actor(other).unwrap().cell;
             for id in self.loose_ids(other, Material::Spear) {
                 let spear = self.item(id);
-                if spear.is_some_and(|item| item.flint_tip && item.hardened) {
-                    lines.push(format!(
-                        "A spear with a fire-hardened flint tip is carried by {who}, {}.",
+                if let Some(item) = spear.filter(|item| item.flint_tip) {
+                    let waiting = !item.hardened && item.firing_ready_at.is_some();
+                    let comma = if item.hardened { "" } else { "," };
+                    let mut line = format!(
+                        "A spear with {}{comma} is carried by {who}, {}.",
+                        self.flint_tip_words(item),
                         self.cover_phrase(cell)
-                    ));
-                    continue;
-                }
-                if spear.is_some_and(|item| item.flint_tip && !item.hardened) {
-                    let waiting = spear.is_some_and(|item| item.firing_ready_at.is_some());
+                    );
                     if waiting {
-                        lines.push(format!(
-                            "A spear with a flint tip, not yet fire-hardened, is carried by {who}, {}. The flint tip is hardening in the fire.",
-                            self.cover_phrase(cell)
-                        ));
-                    } else {
-                        lines.push(format!(
-                            "A spear with a flint tip, not yet fire-hardened, is carried by {who}, {}.",
-                            self.cover_phrase(cell)
-                        ));
+                        line.push_str(" The flint tip is hardening in the fire.");
                     }
+                    lines.push(line);
                     continue;
                 }
                 let hardened = spear.is_some_and(|item| item.hardened);
@@ -5712,7 +5707,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} hafts "))?;
-        if rest != "the flint flake and a dry branch into a spear." {
+        if rest != "the flint flake and a dry branch into a spear."
+            && rest != "the flint flake and a dry branch into a spear. The tip is bound with hide."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "haft", rest))

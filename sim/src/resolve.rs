@@ -2037,7 +2037,6 @@ impl World {
     }
 
     fn apply_hafts(&mut self, hafts: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "the flint flake and a dry branch into a spear.";
         for intent in hafts {
             let flake = self
                 .loose_ids(intent.actor_id, Material::Flake)
@@ -2061,12 +2060,25 @@ impl World {
                 .actor(intent.actor_id)
                 .map(|actor| actor.cell)
                 .unwrap_or(0);
+            let strips = self
+                .loose_ids(intent.actor_id, Material::Cord)
+                .first()
+                .copied();
             self.items.remove(&flake);
             self.items.remove(&branch);
+            if let Some(strips) = strips {
+                self.items.remove(&strips);
+            }
             let id = self.mint_item(Material::Spear, 0, cell, Some(intent.actor_id), Role::Loose);
             if let Some(spear) = self.items.get_mut(&id) {
                 spear.flint_tip = true;
+                spear.bound = strips.is_some();
             }
+            let rest = if strips.is_some() {
+                "the flint flake and a dry branch into a spear. The tip is bound with hide."
+            } else {
+                "the flint flake and a dry branch into a spear."
+            };
             let name = self.name_of(intent.actor_id);
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "haft", rest),

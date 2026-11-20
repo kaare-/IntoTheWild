@@ -7808,6 +7808,148 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
 }
 
 #[test]
+fn hide_strips_bind_the_flint_tip_when_the_spear_is_hafted() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let west = world.spawn_at("West", "w", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+    world.step(&[cmd("stash", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("bind-branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("stash-e", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("stash-n", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("drop-stash", near, Attempt::Drop(Material::Branch))]);
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("n", Dir::North),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 0)));
+    world.step(&[cmd("stone", near, Attempt::Gather(Material::Stone))]);
+    for (id, dir) in [
+        ("e1", Dir::East),
+        ("e2", Dir::East),
+        ("e3", Dir::East),
+        ("e4", Dir::East),
+        ("s", Dir::South),
+    ] {
+        let step = world.step(&[cmd(id, near, Attempt::Move(dir))]);
+        assert!(step.results[0].success, "{}", step.results[0].message);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let bound_stone = world.step(&[cmd("bind", near, Attempt::BindSpear)]);
+    assert!(
+        bound_stone.results[0].success,
+        "{}",
+        bound_stone.results[0].message
+    );
+    for (id, dir) in [("ore-n", Dir::North), ("ore-w", Dir::West)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((5, 0)));
+    world.step(&[cmd("ore", near, Attempt::Gather(Material::IronOre))]);
+    world.step(&[cmd("back-e", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("back-s", near, Attempt::Move(Dir::South))]);
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    let feed = world.step(&[cmd("feed", near, Attempt::Feed)]);
+    assert!(feed.results[0].success, "{}", feed.results[0].message);
+    let smelt = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
+    assert!(smelt.results[0].success, "{}", smelt.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a hardened point"),
+        "{}",
+        world.observe(near).unwrap().text
+    );
+    world.step(&[cmd("bloom", near, Attempt::Gather(Material::Iron))]);
+    let knife = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
+    assert!(knife.results[0].success, "{}", knife.results[0].message);
+    let mut waited = 0;
+    while world.deer_cell() != Some((6, 1)) && waited < 40 {
+        world.step(&[]);
+        waited += 1;
+    }
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    let hunt = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
+    assert!(hunt.results[0].success, "{}", hunt.results[0].message);
+    let butcher = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
+    assert!(
+        butcher.results[0].success,
+        "{}",
+        butcher.results[0].message
+    );
+    world.step(&[cmd("hide", near, Attempt::Gather(Material::Hide))]);
+    let cut = world.step(&[cmd("cut", near, Attempt::CutHide)]);
+    assert_eq!(
+        cut.results[0].message,
+        "You cut the deer hide into strips with the iron knife."
+    );
+    assert_eq!(world.material_tally(Material::Cord), 1);
+    let stashed = world.step(&[cmd("stash-back", near, Attempt::Gather(Material::Branch))]);
+    assert!(stashed.results[0].success, "{}", stashed.results[0].message);
+    world.step(&[cmd("drop-knife", near, Attempt::Drop(Material::Knife))]);
+    for (id, dir) in [
+        ("to-flint-n", Dir::North),
+        ("to-flint-w1", Dir::West),
+        ("to-flint-w2", Dir::West),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((4, 0)));
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    let yours =
+        "You haft the flint flake and a dry branch into a spear. The tip is bound with hide.";
+    let seen =
+        "Near hafts the flint flake and a dry branch into a spear. The tip is bound with hide.";
+    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    assert_eq!(haft.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Cord), 0);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("bound with hide")));
+    let text = world.observe(near).unwrap().text;
+    assert!(
+        text.contains("a spear with a flint tip bound with hide, not yet fire-hardened"),
+        "{text}"
+    );
+    let examined = world.examine(near, ExamineTarget::Spear);
+    assert!(
+        examined.contains(
+            "A spear with a flint tip bound with hide, not yet fire-hardened, is carried by you"
+        ),
+        "{examined}"
+    );
+}
+
+#[test]
 fn a_flint_flake_and_a_dry_branch_haft_into_a_spear() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 4, 0).unwrap();

@@ -13,7 +13,7 @@ drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochr
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
-haft                         a carried flint flake and a dry branch into a spear; hold it at a fire
+haft                         a carried flint flake and a dry branch into a spear; hide strips, if carried, bind the tip. Hold it at a fire
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
