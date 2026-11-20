@@ -4961,6 +4961,54 @@ mod ochre_return {
 }
 
 #[cfg(test)]
+mod ochre_arms {
+    use super::{ExamineTarget, Material, World};
+
+    #[test]
+    fn two_lumps_of_ochre_stay_lumps() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Ochre, 0, cell, Some(near), super::Role::Loose);
+        let one = world.observe(near).unwrap().text;
+        assert!(one.contains("You have a lump of ochre."), "{one}");
+        assert!(!one.contains("2 ochre"), "{one}");
+        assert!(!one.contains("carried by you (dry)"), "{one}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Ochre),
+            "A lump of ochre is carried by you, in the open."
+        );
+        assert_eq!(
+            world.examine(seen, ExamineTarget::Ochre),
+            "A lump of ochre is carried by Near, in the open."
+        );
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Ochre),
+            "You see no ochre from here."
+        );
+        world.mint_item(Material::Ochre, 0, cell, Some(near), super::Role::Loose);
+        let two = world.observe(near).unwrap().text;
+        assert!(two.contains("You have two lumps of ochre."), "{two}");
+        assert!(!two.contains("2 ochre"), "{two}");
+        assert!(!two.contains("carried by you (dry)"), "{two}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Ochre),
+            "Two lumps of ochre are carried by you, in the open."
+        );
+        assert_eq!(
+            world.examine(seen, ExamineTarget::Ochre),
+            "Two lumps of ochre are carried by Near, in the open."
+        );
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Ochre),
+            "You see no ochre from here."
+        );
+    }
+}
+
+#[cfg(test)]
 mod branch_return {
     use super::{Attempt, Material, World};
 

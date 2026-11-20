@@ -2543,6 +2543,8 @@ impl World {
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
+        } else if item.material == "ochre" {
+            format!("{} lumps of ochre", count_word(item.count))
         } else if item.material == "salt" && item.count == 1 {
             "a salt crust".into()
         } else if item.material == "honey" && item.count == 1 {
@@ -5491,7 +5493,8 @@ impl World {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::Ochre).is_empty() {
+            let count = self.loose_ids(actor.id, Material::Ochre).len() as u32;
+            if count == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -5499,10 +5502,15 @@ impl World {
             } else {
                 actor.name.as_str()
             };
-            lines.push(format!(
-                "A lump of ochre is carried by {who}, {}.",
-                self.cover_phrase(actor.cell)
-            ));
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!("A lump of ochre is carried by {who}, {cover}."));
+            } else {
+                lines.push(format!(
+                    "{} lumps of ochre are carried by {who}, {cover}.",
+                    capitalize(&count_word(count))
+                ));
+            }
         }
         if lines.is_empty() {
             "You see no ochre from here.".into()
