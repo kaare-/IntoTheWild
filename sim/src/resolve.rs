@@ -59,6 +59,7 @@ impl World {
         let mut hafts = Vec::new();
         let mut hunts = Vec::new();
         let mut butchers = Vec::new();
+        let mut cuts = Vec::new();
         let mut wears = Vec::new();
         let mut removes = Vec::new();
         let mut rests = Vec::new();
@@ -110,6 +111,7 @@ impl World {
                         Attempt::Haft => hafts.push(intent),
                         Attempt::Hunt => hunts.push(intent),
                         Attempt::Butcher => butchers.push(intent),
+                        Attempt::Cut => cuts.push(intent),
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
@@ -203,6 +205,7 @@ impl World {
         self.apply_hafts(hafts, &mut results);
         self.apply_hunts(hunts, &mut results);
         self.apply_butchers(butchers, &mut results);
+        self.apply_cuts(cuts, &mut results);
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
@@ -357,6 +360,22 @@ impl World {
                     Err("You are not wearing a deer hide.".into())
                 } else {
                     Ok(true)
+                }
+            }
+            Attempt::Cut => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Knife).is_empty() {
+                    Err("You need an iron knife to cut the meat.".into())
+                } else {
+                    match self.meat_to_cut(actor.id) {
+                        Ok(_) => Ok(true),
+                        Err(message) => Err(message.into()),
+                    }
                 }
             }
             Attempt::Butcher => {
@@ -740,7 +759,9 @@ impl World {
                             | Material::Bowl
                             | Material::Spear
                             | Material::Carcass
+                            | Material::Meat
                             | Material::Hide
+                            | Material::Branch
                             | Material::CopperOre
                             | Material::IronOre
                             | Material::Iron
@@ -869,7 +890,9 @@ impl World {
                     | Material::Bowl
                     | Material::Spear
                     | Material::Carcass
+                    | Material::Meat
                     | Material::Hide
+                    | Material::Branch
                     | Material::Flint
                     | Material::CopperOre
                     | Material::IronOre
@@ -2330,6 +2353,110 @@ impl World {
         }
     }
 
+    /// A whole portion in the arms, or else one on this cell.
+    /// Cutting a carried portion needs a free arm. If the arms are full and a
+    /// whole portion is also on the ground, that one is cut instead.
+    fn meat_to_cut(
+        &self,
+        actor: crate::model::ActorId,
+    ) -> Result<crate::model::ItemId, &'static str> {
+        let carried = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|meat| !meat.small));
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        let ground = self
+            .ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|meat| !meat.small));
+        if let Some(id) = carried {
+            if self.carry_count(actor) < self.tuning.carry_slots {
+                return Ok(id);
+            }
+            if ground.is_some() {
+                return Ok(ground.unwrap());
+            }
+            return Err("Your arms are full.");
+        }
+        if let Some(id) = ground {
+            return Ok(id);
+        }
+        let any = !self.loose_ids(actor, Material::Meat).is_empty()
+            || !self.ground_ids(cell, Material::Meat).is_empty();
+        if any {
+            Err("The piece of meat is already small.")
+        } else {
+            Err("There is no meat here to cut.")
+        }
+    }
+
+    fn apply_cuts(&mut self, cuts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in cuts {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Knife).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need an iron knife to cut the meat.",
+                    results,
+                );
+                continue;
+            }
+            let id = match self.meat_to_cut(actor.id) {
+                Ok(id) => id,
+                Err(message) => {
+                    self.finish(intent.command_id, actor.id, false, message, results);
+                    continue;
+                }
+            };
+            let Some(meat) = self.item(id).cloned() else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no meat here to cut.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&id);
+            let mut ids = Vec::new();
+            for _ in 0..2 {
+                let piece = self.mint_item(Material::Meat, 0, meat.cell, meat.carrier, Role::Loose);
+                if let Some(item) = self.items.get_mut(&piece) {
+                    item.cooked = meat.cooked;
+                    item.small = true;
+                }
+                ids.push(piece);
+            }
+            let name = self.name_of(actor.id);
+            let rest = if meat.cooked {
+                "the cooked meat into two smaller pieces with the iron knife."
+            } else {
+                "the raw meat into two smaller pieces with the iron knife."
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "cut", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                ids,
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "cut", rest),
+                results,
+            );
+        }
+    }
+
     /// A hardened spear on the deer's own cell. No draw: the point is already there.
     /// The next cell is the even case, and that success carries the draw.
     fn bring_down(
@@ -3235,7 +3362,12 @@ impl World {
             .actor(intent.actor_id)
             .map(|actor| actor.hunger)
             .unwrap_or(0);
-        let after = before.saturating_sub(self.tuning.cook_relief);
+        let relief = if self.item(id).is_some_and(|meat| meat.small) {
+            self.tuning.cook_relief / 2
+        } else {
+            self.tuning.cook_relief
+        };
+        let after = before.saturating_sub(relief);
         if let Some(person) = self.actors.get_mut(&intent.actor_id) {
             person.hunger = after;
         }

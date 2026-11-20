@@ -9739,39 +9739,89 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     let near = world.spawn_at("Near", "n", 4, 0).unwrap();
     let far = world.spawn_at("Far", "f", 4, 1).unwrap();
     let west = world.spawn_at("West", "w", 4, 4).unwrap();
-    let flint = world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
-    assert!(flint.results[0].success, "{}", flint.results[0].message);
-    let knap = world.step(&[cmd("knap", near, Attempt::Knap)]);
-    assert!(knap.results[0].success, "{}", knap.results[0].message);
-    let to_ore = world.step(&[cmd("to-ore", near, Attempt::Move(Dir::East))]);
-    assert!(to_ore.results[0].success, "{}", to_ore.results[0].message);
-    let ore = world.step(&[cmd("ore", near, Attempt::Gather(Material::IronOre))]);
-    assert!(ore.results[0].success, "{}", ore.results[0].message);
-    let to_rock_e = world.step(&[cmd("to-rock-e", near, Attempt::Move(Dir::East))]);
-    assert!(
-        to_rock_e.results[0].success,
-        "{}",
-        to_rock_e.results[0].message
-    );
-    let to_rock_s = world.step(&[cmd("to-rock-s", near, Attempt::Move(Dir::South))]);
-    assert!(
-        to_rock_s.results[0].success,
-        "{}",
-        to_rock_s.results[0].message
-    );
+    for (id, near_attempt, far_attempt, west_attempt) in [
+        (
+            "flint",
+            Attempt::Gather(Material::Flint),
+            Attempt::Move(Dir::East),
+            Attempt::Move(Dir::East),
+        ),
+        (
+            "knap",
+            Attempt::Knap,
+            Attempt::Move(Dir::East),
+            Attempt::Move(Dir::North),
+        ),
+        (
+            "to-ore",
+            Attempt::Move(Dir::East),
+            Attempt::Gather(Material::Berry),
+            Attempt::Move(Dir::North),
+        ),
+        (
+            "ore",
+            Attempt::Gather(Material::IronOre),
+            Attempt::Gather(Material::Berry),
+            Attempt::Gather(Material::Branch),
+        ),
+        (
+            "to-rock-e",
+            Attempt::Move(Dir::East),
+            Attempt::Gather(Material::Berry),
+            Attempt::Move(Dir::North),
+        ),
+        (
+            "to-rock-s",
+            Attempt::Move(Dir::South),
+            Attempt::Gather(Material::Berry),
+            Attempt::Move(Dir::East),
+        ),
+    ] {
+        let step = world.step(&[
+            cmd(id, near, near_attempt),
+            cmd(&format!("far-{id}"), far, far_attempt),
+            cmd(&format!("west-{id}"), west, west_attempt),
+        ]);
+        assert!(
+            step.results.iter().all(|result| result.success),
+            "{:?}",
+            step.results
+                .iter()
+                .map(|result| result.message.clone())
+                .collect::<Vec<_>>()
+        );
+    }
     assert_eq!(world.actor_cell(near), Some((6, 1)));
-    let bark = world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
-    assert!(bark.results[0].success, "{}", bark.results[0].message);
-    let light = world.step(&[cmd("light", near, Attempt::Light)]);
-    assert!(light.results[0].success, "{}", light.results[0].message);
-    let branch = world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
-    assert!(branch.results[0].success, "{}", branch.results[0].message);
-    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
-    assert!(haft.results[0].success, "{}", haft.results[0].message);
-    let feed = world.step(&[cmd("feed", near, Attempt::Feed)]);
-    assert!(feed.results[0].success, "{}", feed.results[0].message);
-    let smelt = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
-    assert!(smelt.results[0].success, "{}", smelt.results[0].message);
+    for (id, near_attempt, west_attempt) in [
+        (
+            "bark",
+            Attempt::Gather(Material::Bark),
+            Attempt::Drop(Material::Branch),
+        ),
+        ("light", Attempt::Light, Attempt::Move(Dir::South)),
+        (
+            "branch",
+            Attempt::Gather(Material::Branch),
+            Attempt::Move(Dir::South),
+        ),
+        ("haft", Attempt::Haft, Attempt::Move(Dir::South)),
+        ("feed", Attempt::Feed, Attempt::Move(Dir::West)),
+        ("smelt", Attempt::SmeltIron, Attempt::Move(Dir::West)),
+    ] {
+        let step = world.step(&[
+            cmd(id, near, near_attempt),
+            cmd(&format!("west-{id}"), west, west_attempt),
+        ]);
+        assert!(
+            step.results.iter().all(|result| result.success),
+            "{:?}",
+            step.results
+                .iter()
+                .map(|result| result.message.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(world.actor_cell(west), Some((4, 4)));
     for _ in 0..4 {
         world.step(&[]);
     }
@@ -9784,15 +9834,11 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     assert!(bloom.results[0].success, "{}", bloom.results[0].message);
     let knife = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
     assert!(knife.results[0].success, "{}", knife.results[0].message);
-    let mut waited = 0;
-    while world.deer_cell() != Some((6, 1)) && waited < 40 {
-        world.step(&[]);
-        waited += 1;
-    }
     assert_eq!(
         world.deer_cell(),
         Some((6, 1)),
-        "the deer returns under the rock"
+        "the deer is under the rock at sim time {}",
+        world.sim_time()
     );
     let hunt = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
     assert!(hunt.results[0].success, "{}", hunt.results[0].message);
@@ -9836,9 +9882,105 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     assert_eq!(world.material_items(Material::Spear)[0].1, Some(near));
     let examined = world.examine(near, ExamineTarget::Knife);
     assert!(examined.contains("It can cut."), "{examined}");
+    if !world.observe(near).unwrap().text.contains("fire burns") {
+        let branch = world.step(&[cmd(
+            "relight-branch",
+            near,
+            Attempt::Gather(Material::Branch),
+        )]);
+        assert!(branch.results[0].success, "{}", branch.results[0].message);
+        let bark = world.step(&[cmd("relight-bark", near, Attempt::Gather(Material::Bark))]);
+        assert!(bark.results[0].success, "{}", bark.results[0].message);
+        let light = world.step(&[cmd("relight", near, Attempt::Light)]);
+        assert!(light.results[0].success, "{}", light.results[0].message);
+    }
+    let cook = world.step(&[cmd("cook", near, Attempt::Cook)]);
+    assert!(cook.results[0].success, "{}", cook.results[0].message);
     let again = world.step(&[cmd("again", near, Attempt::Butcher)]);
     assert_eq!(
         again.results[0].message,
         "There is no carcass here to butcher."
     );
+
+    assert!(matches!(parse_attempt("cut meat").unwrap(), Attempt::Cut));
+    let denied = world.step(&[cmd("no-cut", far, parse_attempt("cut meat").unwrap())]);
+    assert_eq!(
+        denied.results[0].message,
+        "You need an iron knife to cut the meat."
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("iron knife to cut")));
+
+    let gathered = world.step(&[cmd("meat", near, Attempt::Gather(Material::Meat))]);
+    assert!(
+        gathered.results[0].success,
+        "{}",
+        gathered.results[0].message
+    );
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(arms.contains("a portion of cooked meat"), "{arms}");
+    let yours = "You cut the cooked meat into two smaller pieces with the iron knife.";
+    let seen = "Near cuts the cooked meat into two smaller pieces with the iron knife.";
+    let split = world.step(&[cmd("cut-carried", near, Attempt::Cut)]);
+    assert_eq!(split.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("cuts the")));
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(
+        arms.contains("two smaller pieces of cooked meat")
+            && arms.contains("an iron knife")
+            && arms.contains("fire-hardened flint tip"),
+        "{arms}"
+    );
+    assert_eq!(world.material_tally(Material::Meat), 4);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Two portions of raw meat lie here."));
+
+    let raw = "You cut the raw meat into two smaller pieces with the iron knife.";
+    let ground = world.step(&[cmd("cut-ground", near, Attempt::Cut)]);
+    assert_eq!(ground.results[0].message, raw);
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("A portion of raw meat lies here.")
+            && here.contains("Two smaller pieces of raw meat lie here."),
+        "{here}"
+    );
+    let last = world.step(&[cmd("cut-last", near, Attempt::Cut)]);
+    assert_eq!(last.results[0].message, raw);
+    let after = world.observe(near).unwrap().text;
+    assert!(
+        after.contains("Four smaller pieces of raw meat lie here."),
+        "{after}"
+    );
+    let too_small = world.step(&[cmd("cut-small", near, Attempt::Cut)]);
+    assert_eq!(
+        too_small.results[0].message,
+        "The piece of meat is already small."
+    );
+    assert_eq!(world.material_tally(Material::Knife), 1);
+    assert_eq!(world.material_items(Material::Knife)[0].1, Some(near));
+    assert_eq!(world.material_items(Material::Spear)[0].1, Some(near));
 }

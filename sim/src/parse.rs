@@ -8,8 +8,8 @@ look                         where you are, and the local map
 examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
-drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
@@ -25,6 +25,7 @@ light fire                   dry bark and a dry branch, from the arms if you car
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
+cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
@@ -107,6 +108,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" => Ok(Attempt::Butcher),
+        "cut" if rest == "meat" || rest == "raw meat" || rest == "cooked meat" => Ok(Attempt::Cut),
         "wear" | "wrap" if rest.is_empty() || rest == "hide" || rest == "deer hide" => {
             Ok(Attempt::Wear)
         }
@@ -183,9 +185,10 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
         "carcass" | "deer carcass" => Ok(Material::Carcass),
+        "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
         "hide" | "deer hide" => Ok(Material::Hide),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, hide, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, or log."
                 .into(),
         ),
     }

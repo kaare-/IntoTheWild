@@ -1245,11 +1245,25 @@ impl World {
                     item.condition
                 )
             }
+        } else if item.material == "meat" {
+            self.meat_carry_phrase(actor_id)
         } else {
             format!(
                 "{} {} carried by you ({})",
                 item.count, item.material, item.condition
             )
+        }
+    }
+
+    fn meat_carry_phrase(&self, actor_id: ActorId) -> String {
+        let ids = self.loose_ids(actor_id, Material::Meat);
+        let mut bits = Vec::new();
+        bits.extend(meat_kind_bits(&ids, self, false));
+        bits.extend(meat_kind_bits(&ids, self, true));
+        if bits.is_empty() {
+            "meat".into()
+        } else {
+            bits.join(", ")
         }
     }
 
@@ -3165,17 +3179,7 @@ impl World {
                 continue;
             }
             let place = self.place_phrase(origin, cell);
-            let raw = ids
-                .iter()
-                .filter(|id| self.item(**id).is_some_and(|meat| !meat.cooked))
-                .count() as u32;
-            let cooked = ids.len() as u32 - raw;
-            if raw > 0 {
-                lines.push(portions_lie_at("raw meat", raw, &place));
-            }
-            if cooked > 0 {
-                lines.push(portions_lie_at("cooked meat", cooked, &place));
-            }
+            lines.extend(self.meat_place_lines(&ids, &place));
         }
         if lines.is_empty() {
             "You see no meat from here.".into()
@@ -5094,19 +5098,32 @@ impl World {
         if ids.is_empty() {
             return None;
         }
-        let raw = ids
-            .iter()
-            .filter(|id| self.item(**id).is_some_and(|meat| !meat.cooked))
-            .count() as u32;
-        let cooked = ids.len() as u32 - raw;
-        let mut parts = Vec::new();
-        if raw > 0 {
-            parts.push(portions_lie("raw meat", raw));
+        Some(self.meat_place_lines(&ids, "here").join(" "))
+    }
+
+    fn meat_place_lines(&self, ids: &[crate::model::ItemId], place: &str) -> Vec<String> {
+        let mut lines = Vec::new();
+        for cooked in [false, true] {
+            let kind = if cooked { "cooked meat" } else { "raw meat" };
+            let full = self.meat_count(ids, cooked, false);
+            let small = self.meat_count(ids, cooked, true);
+            if full > 0 {
+                lines.push(portions_lie_at(kind, full, place));
+            }
+            if small > 0 {
+                lines.push(smaller_lie_at(kind, small, place));
+            }
         }
-        if cooked > 0 {
-            parts.push(portions_lie("cooked meat", cooked));
-        }
-        Some(parts.join(" "))
+        lines
+    }
+
+    fn meat_count(&self, ids: &[crate::model::ItemId], cooked: bool, small: bool) -> u32 {
+        ids.iter()
+            .filter(|id| {
+                self.item(**id)
+                    .is_some_and(|meat| meat.cooked == cooked && meat.small == small)
+            })
+            .count() as u32
     }
 
     fn meat_compass_bit(&self, cell: crate::model::CellId) -> Option<String> {
@@ -5114,17 +5131,17 @@ impl World {
         if ids.is_empty() {
             return None;
         }
-        let raw = ids
-            .iter()
-            .filter(|id| self.item(**id).is_some_and(|meat| !meat.cooked))
-            .count() as u32;
-        let cooked = ids.len() as u32 - raw;
         let mut parts = Vec::new();
-        if raw > 0 {
-            parts.push(portion_bit("raw meat", raw));
-        }
-        if cooked > 0 {
-            parts.push(portion_bit("cooked meat", cooked));
+        for cooked in [false, true] {
+            let kind = if cooked { "cooked meat" } else { "raw meat" };
+            let full = self.meat_count(&ids, cooked, false);
+            let small = self.meat_count(&ids, cooked, true);
+            if full > 0 {
+                parts.push(portion_bit(kind, full));
+            }
+            if small > 0 {
+                parts.push(smaller_bit(kind, small));
+            }
         }
         Some(parts.join(" and "))
     }
@@ -5146,6 +5163,21 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
+    }
+
+    /// A portion split with the iron knife, filled for the person who cut it.
+    fn cut_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} cuts "))?;
+        if rest != "the raw meat into two smaller pieces with the iron knife."
+            && rest != "the cooked meat into two smaller pieces with the iron knife."
+        {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "cut", rest))
     }
 
     /// A flint spear bringing the deer down, filled for the person who struck.
@@ -5489,6 +5521,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.butcher_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.cut_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
@@ -5951,6 +5986,11 @@ impl World {
         {
             actions.push("gather carcass".into());
         }
+        if !self.ground_ids(actor.cell, Material::Meat).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather meat".into());
+        }
         if !self.ground_ids(actor.cell, Material::Hide).is_empty()
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
@@ -5964,6 +6004,18 @@ impl World {
             && !self.ground_ids(actor.cell, Material::Carcass).is_empty()
         {
             actions.push("butcher".into());
+        }
+        if !self.loose_ids(actor_id, Material::Knife).is_empty()
+            && (self
+                .loose_ids(actor_id, Material::Meat)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|meat| !meat.small))
+                || self
+                    .ground_ids(actor.cell, Material::Meat)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|meat| !meat.small)))
+        {
+            actions.push("cut meat".into());
         }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)
@@ -6222,15 +6274,36 @@ fn drink_count_phrase(count: u32, raw: bool) -> String {
     }
 }
 
-fn portions_lie(kind: &str, count: u32) -> String {
-    if count == 1 {
-        format!("A portion of {kind} lies here.")
-    } else {
-        format!(
-            "{} portions of {kind} lie here.",
-            capitalize(&count_word(count))
-        )
+fn meat_kind_bits(ids: &[crate::model::ItemId], world: &World, cooked: bool) -> Vec<String> {
+    let kind = if cooked { "cooked meat" } else { "raw meat" };
+    let full = ids
+        .iter()
+        .filter(|id| {
+            world
+                .item(**id)
+                .is_some_and(|meat| meat.cooked == cooked && !meat.small)
+        })
+        .count() as u32;
+    let small = ids
+        .iter()
+        .filter(|id| {
+            world
+                .item(**id)
+                .is_some_and(|meat| meat.cooked == cooked && meat.small)
+        })
+        .count() as u32;
+    let mut bits = Vec::new();
+    if full == 1 {
+        bits.push(format!("a portion of {kind}"));
+    } else if full > 1 {
+        bits.push(format!("{} portions of {kind}", count_word(full)));
     }
+    if small == 1 {
+        bits.push(format!("a smaller piece of {kind}"));
+    } else if small > 1 {
+        bits.push(format!("{} smaller pieces of {kind}", count_word(small)));
+    }
+    bits
 }
 
 fn portions_lie_at(kind: &str, count: u32, place: &str) -> String {
@@ -6241,6 +6314,25 @@ fn portions_lie_at(kind: &str, count: u32, place: &str) -> String {
             "{} portions of {kind} lie {place}.",
             capitalize(&count_word(count))
         )
+    }
+}
+
+fn smaller_lie_at(kind: &str, count: u32, place: &str) -> String {
+    if count == 1 {
+        format!("A smaller piece of {kind} lies {place}.")
+    } else {
+        format!(
+            "{} smaller pieces of {kind} lie {place}.",
+            capitalize(&count_word(count))
+        )
+    }
+}
+
+fn smaller_bit(kind: &str, count: u32) -> String {
+    if count == 1 {
+        format!("a smaller piece of {kind}")
+    } else {
+        format!("{} smaller pieces of {kind}", count_word(count))
     }
 }
 

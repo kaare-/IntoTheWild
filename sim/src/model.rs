@@ -290,6 +290,7 @@ pub enum Attempt {
     Pierce,
     Sew,
     Rest,
+    Cut,
 }
 
 impl Attempt {
@@ -328,6 +329,7 @@ impl Attempt {
                 | Attempt::Pierce
                 | Attempt::Sew
                 | Attempt::Rest
+                | Attempt::Cut
         )
     }
 }
@@ -448,6 +450,9 @@ pub struct Item {
     /// A pierced hide sewn into a cloak. Other materials leave this false.
     #[serde(default)]
     pub sewn: bool,
+    /// A portion the iron knife has already split. A whole portion leaves this false.
+    #[serde(default)]
+    pub small: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1022,6 +1027,7 @@ impl World {
                 worn: false,
                 pierced: false,
                 sewn: false,
+                small: false,
             },
         );
         id
