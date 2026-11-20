@@ -76,6 +76,10 @@ pub struct Tuning {
     /// Ticks after the rock's dry branches are gone before that pile lies there again.
     #[serde(default = "default_branch_ticks")]
     pub branch_ticks: u64,
+    /// Ticks after the bark under the rock is gathered or used before that pile lies there again.
+    /// Look says there is no bark under the rock until then. Bark on the slope does not return.
+    #[serde(default = "default_bark_pile_ticks")]
+    pub bark_pile_ticks: u64,
     /// Ticks after a berry patch is emptied before the same pile lies there again.
     /// A person gathering the last handful, or the deer eating it, leaves the same wait.
     /// Look says the berries are gone until then.
@@ -238,6 +242,9 @@ fn default_flint_ticks() -> u64 {
 fn default_branch_ticks() -> u64 {
     24
 }
+fn default_bark_pile_ticks() -> u64 {
+    24
+}
 fn default_berry_ticks() -> u64 {
     24
 }
@@ -366,6 +373,8 @@ struct RawTime {
     flint_ticks: u64,
     #[serde(default = "default_branch_ticks")]
     branch_ticks: u64,
+    #[serde(default = "default_bark_pile_ticks")]
+    bark_pile_ticks: u64,
     #[serde(default = "default_berry_ticks")]
     berry_ticks: u64,
     #[serde(default = "default_mushroom_ticks")]
@@ -533,6 +542,7 @@ impl Tuning {
             moss_ticks: raw.time.moss_ticks,
             flint_ticks: raw.time.flint_ticks,
             branch_ticks: raw.time.branch_ticks,
+            bark_pile_ticks: raw.time.bark_pile_ticks,
             berry_ticks: raw.time.berry_ticks,
             mushroom_ticks: raw.time.mushroom_ticks,
             deer_ticks: raw.time.deer_ticks,

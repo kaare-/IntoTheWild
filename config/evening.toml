@@ -100,6 +100,11 @@ mushroom_ticks = 24
 # again. Someone who cannot see the rock does not get the line. Open branches
 # still rot and do not return.
 branch_ticks = 24
+# After the bark under the rock is gathered or used, look says there is
+# none for this many ticks. Then the same pile lies there again. Bark on
+# the slope does not return. Someone who cannot see the rock does not get
+# the line.
+bark_pile_ticks = 24
 # After a deer is brought down, look names no standing deer for this many
 # ticks. Then a deer stands on the trail again. Butchering the carcass, or
 # leaving it where it fell, does not change the wait. Someone who cannot see

@@ -317,6 +317,9 @@ impl World {
             if let Some(branches) = self.seen_rock_branches(actor_id) {
                 lines.push(branches);
             }
+            if let Some(bark) = self.seen_rock_bark(actor_id) {
+                lines.push(bark);
+            }
             if let Some(ochre) = self.seen_ochre(actor_id) {
                 lines.push(ochre);
             }
@@ -827,6 +830,8 @@ impl World {
             parts.push("A pile of bark lies here.".into());
         } else if bark_here == 1 {
             parts.push("A sheet of bark lies here.".into());
+        } else if self.bark_bare(actor.cell) {
+            parts.push("There is no bark under the rock.".into());
         }
         if self.pile_count(actor.cell, Material::Log) > 0
             || self.items.values().any(|item| {
@@ -2026,6 +2031,36 @@ impl World {
             if self.branch_bare(cell) {
                 lines.push(format!(
                     "There are no branches under the rock to the {}.",
+                    self.relative(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// The rock's bark was taken and has not lain there again.
+    fn bark_bare(&self, cell: crate::model::CellId) -> bool {
+        self.bark_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Bark) == 0
+            && self.ground_ids(cell, Material::Bark).is_empty()
+    }
+
+    /// The rock's bark, for someone who can see that ground and is not standing on it.
+    /// Past sight, nothing. At night, with no fire nearby, this line is not read.
+    fn seen_rock_bark(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.cell(cell).rock {
+                continue;
+            }
+            if self.bark_bare(cell) {
+                lines.push(format!(
+                    "There is no bark under the rock to the {}.",
                     self.relative(origin, cell)
                 ));
             }
@@ -5779,6 +5814,15 @@ impl World {
                     format!("to the {}", self.relative(origin, cell))
                 };
                 lines.push(format!("The mushrooms that were {way} are gone."));
+            } else if count == 0 && material == Material::Bark && self.bark_bare(cell) {
+                if cell == origin {
+                    lines.push("There is no bark under the rock.".into());
+                } else {
+                    lines.push(format!(
+                        "There is no bark under the rock to the {}.",
+                        self.relative(origin, cell)
+                    ));
+                }
             } else if count > 0 {
                 if material == Material::Stone && count == 1 {
                     lines.push(format!(

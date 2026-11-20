@@ -679,6 +679,8 @@ pub enum Wake {
     FlintReturn(CellId),
     /// Dry branches lie under this rock again.
     BranchReturn(CellId),
+    /// Bark lies under this rock again.
+    BarkReturn(CellId),
     /// A berry patch on this cell has fruit again.
     BerryReturn(CellId),
     /// A mushroom patch on this cell has mushrooms again.
@@ -879,6 +881,13 @@ pub struct World {
     /// none under the rock until then.
     #[serde(default)]
     pub(crate) branch_returns_at: BTreeMap<CellId, u64>,
+    /// The rock cells whose seeded bark returns after it is gathered or used.
+    /// The count is the pile that lies there again. Slope bark is not in this.
+    #[serde(default)]
+    pub(crate) bark_beds: BTreeMap<CellId, u32>,
+    /// When that rock has its bark again. Look says there is none until then.
+    #[serde(default)]
+    pub(crate) bark_returns_at: BTreeMap<CellId, u64>,
     /// Seeded berry patches. The count is what grows back after the pile is gone.
     #[serde(default)]
     pub(crate) berry_patches: BTreeMap<CellId, BerryPatch>,
@@ -987,6 +996,8 @@ impl World {
             flint_beds: BTreeSet::new(),
             branch_beds: BTreeSet::new(),
             branch_returns_at: BTreeMap::new(),
+            bark_beds: BTreeMap::new(),
+            bark_returns_at: BTreeMap::new(),
             berry_patches: BTreeMap::new(),
             berry_returns_at: BTreeMap::new(),
             mushroom_patches: BTreeMap::new(),
@@ -1014,6 +1025,7 @@ impl World {
         world.add_pile(rock, Material::Branch, 4, 0);
         world.branch_beds.insert(rock);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
+        world.bark_beds.insert(rock, 2);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
         world.berry_patches.insert(
             cell_id(6, 1).unwrap(),
@@ -1245,6 +1257,7 @@ impl World {
         self.tend_clothes();
         self.fire_due();
         self.tend_branch_beds();
+        self.tend_bark_beds();
         self.normalize();
         self.trim_events();
         self.time += 1;
@@ -1558,6 +1571,31 @@ impl World {
             let at = self.time.saturating_add(self.tuning.branch_ticks);
             self.branch_returns_at.insert(cell, at);
             self.schedule(at, Wake::BranchReturn(cell));
+        }
+    }
+
+    /// The seeded bark under a rock is gone, gathered or used.
+    /// The same pile lies there again `bark_pile_ticks` after this step.
+    /// A wake that finds bark already there does not add a second pile.
+    /// Bark on the slope is not a bed, so it does not return.
+    pub(crate) fn tend_bark_beds(&mut self) {
+        let beds: Vec<(CellId, u32)> = self
+            .bark_beds
+            .iter()
+            .map(|(cell, count)| (*cell, *count))
+            .collect();
+        for (cell, _count) in beds {
+            if self.bark_returns_at.contains_key(&cell) {
+                continue;
+            }
+            if self.pile_count(cell, Material::Bark) > 0
+                || !self.ground_ids(cell, Material::Bark).is_empty()
+            {
+                continue;
+            }
+            let at = self.time.saturating_add(self.tuning.bark_pile_ticks);
+            self.bark_returns_at.insert(cell, at);
+            self.schedule(at, Wake::BarkReturn(cell));
         }
     }
 
@@ -6555,5 +6593,135 @@ mod mushroom_return {
             world.pile_count(world.actor(near).unwrap().cell, Material::Mushroom),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod bark_return {
+    use super::{Attempt, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn bark_under_the_rock_returns_after_it_is_gathered() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        let slope = super::cell_id(1, 0).unwrap();
+        let stocked = world.observe(near).unwrap().text;
+        assert!(stocked.contains("A pile of bark lies here."), "{stocked}");
+        while world.pile_count(slope, Material::Bark) > 0 {
+            world.take_from_pile(slope, Material::Bark, 1);
+        }
+        let mut n = 0;
+        while world.pile_count(rock, Material::Bark) > 0 {
+            n += 1;
+            let took = world.step(&[intent(
+                &format!("gather-{n}"),
+                near,
+                Attempt::Gather(Material::Bark),
+            )]);
+            assert_eq!(took.results[0].message, "You gather a sheet of bark.");
+        }
+        assert!(!world.bark_returns_at.contains_key(&slope));
+        assert_eq!(world.pile_count(slope, Material::Bark), 0);
+        let gone = world.observe(near).unwrap().text;
+        assert!(gone.contains("There is no bark under the rock."), "{gone}");
+        assert!(!gone.contains("A pile of bark lies here."), "{gone}");
+        assert!(!gone.contains("A sheet of bark lies here."), "{gone}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("There is no bark under the rock to the east."),
+            "{west}"
+        );
+        let examined = world.examine(seen, super::ExamineTarget::Bark);
+        assert!(
+            examined.contains("There is no bark under the rock to the east."),
+            "{examined}"
+        );
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("bark under the rock"));
+        let ticks = world.tuning.bark_pile_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("There is no bark under the rock."));
+        world.step(&[]);
+        let back = "Bark lies under the rock again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("A pile of bark lies here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("There is no bark under the rock."),
+            "{}",
+            again.text
+        );
+        assert_eq!(world.pile_count(rock, Material::Bark), 2);
+        assert!(world.is_dry(world.pile_moisture(rock, Material::Bark)));
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back.text.contains("a pile of bark"),
+            "{}",
+            seen_back.text
+        );
+        assert!(
+            !seen_back.text.contains("no bark under the rock"),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert_eq!(world.pile_count(slope, Material::Bark), 0);
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Bark))]);
+        assert_eq!(second.results[0].message, "You gather a sheet of bark.");
+        assert_eq!(world.pile_count(rock, Material::Bark), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A sheet of bark lies here."));
+    }
+
+    #[test]
+    fn using_the_last_sheet_under_the_rock_starts_the_same_wait() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        let first = world.step(&[intent("weave-1", near, Attempt::WeaveBasket)]);
+        assert!(first.results[0].success, "{}", first.results[0].message);
+        assert_eq!(world.pile_count(rock, Material::Bark), 1);
+        assert!(!world.bark_returns_at.contains_key(&rock));
+        let light = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(light.results[0].success, "{}", light.results[0].message);
+        let gone = world.observe(near).unwrap().text;
+        assert!(gone.contains("There is no bark under the rock."), "{gone}");
+        assert!(world.bark_returns_at.contains_key(&rock));
+        assert!(!world
+            .bark_returns_at
+            .contains_key(&super::cell_id(1, 0).unwrap()));
     }
 }

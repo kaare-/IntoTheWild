@@ -43,6 +43,7 @@ impl World {
                 Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::BranchReturn(cell) => self.return_branches(cell),
+                Wake::BarkReturn(cell) => self.return_bark(cell),
                 Wake::BerryReturn(cell) => self.return_berries(cell),
                 Wake::MushroomReturn(cell) => self.return_mushrooms(cell),
                 Wake::DeerReturn => self.return_deer(),
@@ -216,6 +217,36 @@ impl World {
         self.add_pile(cell, Material::Branch, 4, 0);
         self.emit(
             "Branches lie under the rock again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The rock has waited out its ticks. The same pile of bark lies there again.
+    /// Someone who cannot see the rock hears nothing.
+    fn return_bark(&mut self, cell: CellId) {
+        let Some(at) = self.bark_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.bark_returns_at.remove(&cell);
+        let Some(count) = self.bark_beds.get(&cell).copied() else {
+            return;
+        };
+        if self.pile_count(cell, Material::Bark) > 0
+            || !self.ground_ids(cell, Material::Bark).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Bark, count, 0);
+        self.emit(
+            "Bark lies under the rock again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
