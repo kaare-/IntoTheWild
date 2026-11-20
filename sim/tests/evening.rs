@@ -2153,6 +2153,90 @@ fn a_branch_snap_is_heard_one_cell_past_sight() {
 }
 
 #[test]
+fn a_lean_to_of_three_branches_breaks_the_wind() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 0, 4).unwrap();
+    assert!(matches!(
+        parse_attempt("build shelter").unwrap(),
+        Attempt::BuildLeanTo
+    ));
+    let denied = world.step(&[cmd(
+        "no-wood",
+        west,
+        parse_attempt("build lean-to").unwrap(),
+    )]);
+    assert_eq!(
+        denied.results[0].message,
+        "You need three dry branches to build a lean-to."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("three dry branches")));
+    let before = world.observe(near).unwrap().text;
+    assert!(before.contains("You are in the wind."), "{before}");
+    assert!(!before.contains("lean-to"), "{before}");
+    let built = world.step(&[cmd("build", near, Attempt::BuildLeanTo)]);
+    assert_eq!(
+        built.results[0].message,
+        "You build a lean-to of three branches."
+    );
+    let yours = "You build a lean-to of three branches.";
+    let seen = "Near builds a lean-to of three branches.";
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("builds a lean-to")));
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("A lean-to of branches stands here. It breaks the wind.")
+            && here.contains("under a lean-to")
+            && here.contains("You are in a little wind."),
+        "{here}"
+    );
+    let branch_pile = world
+        .observe(near)
+        .unwrap()
+        .visible_cells
+        .iter()
+        .find(|cell| cell.x == 5 && cell.y == 2)
+        .unwrap()
+        .branch_pile;
+    assert_eq!(branch_pile, 1);
+    let distant = world.observe(far).unwrap().text;
+    assert!(
+        distant.contains("A lean-to of branches stands on the valley floor to the north and east.")
+            && distant.contains("You are in the wind."),
+        "{distant}"
+    );
+    for _ in 0..7 {
+        world.step(&[]);
+    }
+    let sheltered = world.observe(near).unwrap().self_info.cold;
+    let open = world.observe(far).unwrap().self_info.cold;
+    assert_eq!(sheltered, "warm");
+    assert_eq!(open, "cold");
+}
+
+#[test]
 fn still_water_sickens_more_often_than_the_brook() {
     let mut pool = World::valley(Tuning::evening(), 1);
     pool.tuning.still_chance = 1000;

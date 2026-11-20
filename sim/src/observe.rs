@@ -267,6 +267,9 @@ impl World {
         if let Some(clay) = self.seen_clay(actor_id) {
             lines.push(clay);
         }
+        if let Some(lean_to) = self.seen_lean_to(actor_id) {
+            lines.push(lean_to);
+        }
         if let Some(mark) = self.seen_ochre_mark(actor_id) {
             lines.push(mark);
         }
@@ -455,6 +458,9 @@ impl World {
         }
         if cell.rock {
             parts.push(self.rock_overhead(actor_id));
+        }
+        if self.lean_tos.contains(&actor.cell) {
+            parts.push("A lean-to of branches stands here. It breaks the wind.".into());
         }
         if cell.region == crate::model::Region::Brook {
             parts.push("The water here is raw.".into());
@@ -908,6 +914,33 @@ impl World {
                     self.relative(origin, cell)
                 ));
             }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A lean-to in sight, other than the one under the looker's feet.
+    fn seen_lean_to(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.lean_tos.contains(&cell) {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                "rock overhang"
+            } else if self.beside_the_brook(cell) {
+                "brook bank"
+            } else {
+                self.cell(cell).region.word()
+            };
+            let dir = self.relative(origin, cell);
+            lines.push(format!(
+                "A lean-to of branches stands on the {place} to the {dir}."
+            ));
         }
         if lines.is_empty() {
             None
@@ -5529,6 +5562,23 @@ impl World {
         Some(yours.to_string())
     }
 
+    /// A lean-to raised from branches, filled for the person who built it.
+    fn lean_to_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} builds "))?;
+        if rest != "a lean-to of three branches." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "build", rest))
+    }
+
     /// A flint spear bringing the deer down, filled for the person who struck.
     /// Anyone else keeps the stored sentence. A stone spear keeps its own line.
     fn bring_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -5918,6 +5968,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.fire_pot_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.lean_to_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {

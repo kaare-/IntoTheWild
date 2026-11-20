@@ -293,6 +293,7 @@ pub enum Attempt {
     Cut,
     Shape,
     FirePot,
+    BuildLeanTo,
 }
 
 impl Attempt {
@@ -334,6 +335,7 @@ impl Attempt {
                 | Attempt::Cut
                 | Attempt::Shape
                 | Attempt::FirePot
+                | Attempt::BuildLeanTo
         )
     }
 }
@@ -639,6 +641,9 @@ pub struct World {
     /// A red ochre mark left on a cell. It stays. Rain does not wash it.
     #[serde(default)]
     pub(crate) ochre_marks: BTreeSet<CellId>,
+    /// A lean-to of branches. It stands in that cell and breaks the wind.
+    #[serde(default)]
+    pub(crate) lean_tos: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -704,6 +709,7 @@ impl World {
             spent_berries: BTreeSet::new(),
             deer_ate_berries: BTreeSet::new(),
             ochre_marks: BTreeSet::new(),
+            lean_tos: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),

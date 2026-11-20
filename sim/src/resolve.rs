@@ -62,6 +62,7 @@ impl World {
         let mut cuts = Vec::new();
         let mut shapes = Vec::new();
         let mut firings = Vec::new();
+        let mut lean_tos = Vec::new();
         let mut wears = Vec::new();
         let mut removes = Vec::new();
         let mut rests = Vec::new();
@@ -116,6 +117,7 @@ impl World {
                         Attempt::Cut => cuts.push(intent),
                         Attempt::Shape => shapes.push(intent),
                         Attempt::FirePot => firings.push(intent),
+                        Attempt::BuildLeanTo => lean_tos.push(intent),
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
@@ -212,6 +214,7 @@ impl World {
         self.apply_cuts(cuts, &mut results);
         self.apply_shapes(shapes, &mut results);
         self.apply_pot_firings(firings, &mut results);
+        self.apply_lean_tos(lean_tos, &mut results);
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
@@ -364,6 +367,21 @@ impl World {
                     .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
                 {
                     Err("You are not wearing a deer hide.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::BuildLeanTo => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.lean_tos.contains(&actor.cell) {
+                    Err("A lean-to already stands here.".into())
+                } else if self.dry_branches_for_lean_to(actor.id) < 3 {
+                    Err("You need three dry branches to build a lean-to.".into())
                 } else {
                     Ok(true)
                 }
@@ -2496,6 +2514,136 @@ impl World {
                 self.item(*id)
                     .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_some())
             })
+    }
+
+    fn branch_is_dry(&self, id: crate::model::ItemId) -> bool {
+        self.item(id)
+            .is_some_and(|branch| branch.moisture < self.tuning.damp_at)
+    }
+
+    fn dry_branches_for_lean_to(&self, actor: crate::model::ActorId) -> u32 {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        let carried = self
+            .loose_ids(actor, Material::Branch)
+            .into_iter()
+            .filter(|id| self.branch_is_dry(*id))
+            .count() as u32;
+        let piled = self
+            .piles
+            .iter()
+            .filter(|pile| {
+                pile.cell == cell
+                    && pile.material == Material::Branch
+                    && pile.moisture < self.tuning.damp_at
+            })
+            .map(|pile| pile.count)
+            .sum::<u32>();
+        let lying = self
+            .ground_ids(cell, Material::Branch)
+            .into_iter()
+            .filter(|id| self.branch_is_dry(*id))
+            .count() as u32;
+        carried + piled + lying
+    }
+
+    fn spend_dry_branches(
+        &mut self,
+        actor: crate::model::ActorId,
+        cell: crate::model::CellId,
+        need: u32,
+    ) {
+        let mut left = need;
+        let carried: Vec<_> = self
+            .loose_ids(actor, Material::Branch)
+            .into_iter()
+            .filter(|id| self.branch_is_dry(*id))
+            .collect();
+        for id in carried {
+            if left == 0 {
+                break;
+            }
+            self.items.remove(&id);
+            left -= 1;
+        }
+        if left > 0 {
+            let piled = self
+                .piles
+                .iter()
+                .find(|pile| {
+                    pile.cell == cell
+                        && pile.material == Material::Branch
+                        && pile.moisture < self.tuning.damp_at
+                })
+                .map(|pile| pile.count)
+                .unwrap_or(0);
+            let take = left.min(piled);
+            if take > 0 {
+                self.take_from_pile(cell, Material::Branch, take);
+                left -= take;
+            }
+        }
+        if left > 0 {
+            let lying: Vec<_> = self
+                .ground_ids(cell, Material::Branch)
+                .into_iter()
+                .filter(|id| self.branch_is_dry(*id))
+                .collect();
+            for id in lying {
+                if left == 0 {
+                    break;
+                }
+                self.items.remove(&id);
+                left -= 1;
+            }
+        }
+    }
+
+    fn apply_lean_tos(&mut self, builds: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in builds {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.lean_tos.contains(&actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A lean-to already stands here.",
+                    results,
+                );
+                continue;
+            }
+            if self.dry_branches_for_lean_to(actor.id) < 3 {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need three dry branches to build a lean-to.",
+                    results,
+                );
+                continue;
+            }
+            self.spend_dry_branches(actor.id, actor.cell, 3);
+            self.lean_tos.insert(actor.cell);
+            let name = self.name_of(actor.id);
+            let rest = "a lean-to of three branches.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "build", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "build", rest),
+                results,
+            );
+        }
     }
 
     fn apply_pot_firings(&mut self, firings: Vec<Intent>, results: &mut Vec<CommandResult>) {

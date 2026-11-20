@@ -28,6 +28,7 @@ butcher                      a carcass at your feet into three portions; a flint
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
+build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
@@ -94,6 +95,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "interrupt" | "stop" => Ok(Attempt::Interrupt),
         "raise" if rest == "frame" => Ok(Attempt::RaiseFrame),
         "build" if rest == "frame" => Ok(Attempt::RaiseFrame),
+        "build"
+            if rest == "lean-to"
+                || rest == "leanto"
+                || rest == "shelter"
+                || rest == "a lean-to" =>
+        {
+            Ok(Attempt::BuildLeanTo)
+        }
         "lay" if rest == "bark" => Ok(Attempt::LayBark),
         "roof" => Ok(Attempt::LayBark),
         "drink" => Ok(Attempt::Drink),

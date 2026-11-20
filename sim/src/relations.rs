@@ -21,6 +21,9 @@ impl World {
                 return self.tuning.dry_bark_roof;
             }
         }
+        if self.lean_tos.contains(&cell) {
+            return self.tuning.lean_to;
+        }
         1000
     }
 
@@ -67,6 +70,8 @@ impl World {
             .unwrap_or(false)
         {
             "under a bark roof"
+        } else if self.lean_tos.contains(&cell) {
+            "under a lean-to"
         } else if self.raining {
             "in the rain"
         } else {
