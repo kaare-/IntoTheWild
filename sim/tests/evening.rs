@@ -7699,8 +7699,8 @@ fn a_fire_hardened_flint_spear_misses_the_deer_on_the_next_cell() {
     assert_eq!(world.deer_cell(), Some((2, 3)));
     let hash = contest_hash(world.seed, world.sim_time(), "hunt", "2,3:deer", near);
     assert_eq!(hash % 3, 1);
-    let yours = "You miss the deer. It moves off.";
-    let witnessed = "Near misses the deer. It moves off.";
+    let yours = "You miss the deer with the flint spear. It moves off.";
+    let witnessed = "Near misses the deer with the flint spear. It moves off.";
     let report = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
     assert!(!report.results[0].success);
     assert_eq!(report.results[0].message, yours);

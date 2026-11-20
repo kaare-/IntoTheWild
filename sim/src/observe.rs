@@ -4390,7 +4390,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} misses "))?;
-        if rest != "the deer. It moves off." {
+        if rest != "the deer. It moves off."
+            && rest != "the deer with the flint spear. It moves off."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "miss", rest))
