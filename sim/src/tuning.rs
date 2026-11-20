@@ -37,6 +37,10 @@ pub struct Tuning {
     /// A bolt or a kill leaves the same tracks. The old hoofprints stay.
     #[serde(default = "default_track_ticks")]
     pub track_ticks: u64,
+    /// Ticks a wolf stands on the howl corner, counting the nightfall tick.
+    /// Shorter than the tracks, so the prints can outlast the wolf.
+    #[serde(default = "default_wolf_ticks")]
+    pub wolf_ticks: u64,
     /// Ticks after `set snare` before the snare catches a hare.
     #[serde(default = "default_snare_ticks")]
     pub snare_ticks: u64,
@@ -194,6 +198,9 @@ fn default_spear_ticks() -> u64 {
 fn default_track_ticks() -> u64 {
     4
 }
+fn default_wolf_ticks() -> u64 {
+    2
+}
 fn default_snare_ticks() -> u64 {
     3
 }
@@ -323,6 +330,8 @@ struct RawTime {
     spear_ticks: u64,
     #[serde(default = "default_track_ticks")]
     track_ticks: u64,
+    #[serde(default = "default_wolf_ticks")]
+    wolf_ticks: u64,
     #[serde(default = "default_snare_ticks")]
     snare_ticks: u64,
     #[serde(default = "default_meat_ticks")]
@@ -430,6 +439,7 @@ impl Tuning {
             || raw.time.clothes_ticks == 0
             || raw.time.spear_ticks == 0
             || raw.time.track_ticks == 0
+            || raw.time.wolf_ticks == 0
             || raw.time.snare_ticks == 0
             || raw.time.meat_ticks == 0
             || raw.time.salt_ticks == 0
@@ -493,6 +503,7 @@ impl Tuning {
             clothes_ticks: raw.time.clothes_ticks,
             spear_ticks: raw.time.spear_ticks,
             track_ticks: raw.time.track_ticks,
+            wolf_ticks: raw.time.wolf_ticks,
             snare_ticks: raw.time.snare_ticks,
             meat_ticks: raw.time.meat_ticks,
             salt_ticks: raw.time.salt_ticks,

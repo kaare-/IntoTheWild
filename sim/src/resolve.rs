@@ -1673,6 +1673,7 @@ impl World {
             };
             let name = self.name_of(intent.actor_id);
             self.move_actor(intent.actor_id, dest);
+            self.frighten_wolf(origin, dest);
             let brook = self.cell(dest).region == Region::Brook;
             if brook {
                 if let Some(actor) = self.actors.get_mut(&intent.actor_id) {

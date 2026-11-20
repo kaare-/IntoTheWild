@@ -561,10 +561,10 @@ impl World {
 
     /// The clock has just become the first tick of a night, the same tick
     /// whose sky says night has fallen. The sound rises at the northwest
-    /// corner. There is no wolf on that ground. Someone within sight hears
-    /// it without a direction. Someone farther off hears the direction from
-    /// where they stand. Any other tick, including the rest of the night
-    /// and the whole day, stays quiet.
+    /// corner, and a wolf stands on that ground for a short wait. Someone
+    /// within sight hears it without a direction. Someone farther off hears
+    /// the direction from where they stand. Any other tick, including the
+    /// rest of the night and the whole day, stays quiet.
     pub(crate) fn howl_on_nightfall(&mut self) {
         let cycle = self.tuning.night_len.saturating_add(self.tuning.day_len);
         if cycle == 0 || self.time < self.tuning.night_at {
@@ -575,6 +575,8 @@ impl World {
         }
         let cell = cell_id(0, 0).unwrap_or(0);
         self.mark_wolf_tracks(cell);
+        self.wolf_cell = Some(cell);
+        self.wolf_until = self.time.saturating_add(self.tuning.wolf_ticks);
         self.emit(
             "A wolf howls.",
             Scope::Valley,

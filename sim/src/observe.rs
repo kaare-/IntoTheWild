@@ -271,6 +271,11 @@ impl World {
             {
                 lines.push("Deer tracks mark the ground here.".into());
             }
+            if self.wolf_standing()
+                == Some(self.actor(actor_id).map(|actor| actor.cell).unwrap_or(0))
+            {
+                lines.push("A wolf stands here.".into());
+            }
             if self
                 .seen_wolf_tracks(actor_id)
                 .is_some_and(|tracks| tracks.contains("Wolf tracks mark the ground here."))
@@ -284,6 +289,9 @@ impl World {
             }
             if let Some(tracks) = self.seen_deer_tracks(actor_id) {
                 lines.push(tracks);
+            }
+            if let Some(wolf) = self.seen_wolf(actor_id) {
+                lines.push(wolf);
             }
             if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
                 lines.push(tracks);
@@ -1092,7 +1100,27 @@ impl World {
         }
     }
 
-    /// Wolf tracks on ground this person can see. There is no wolf.
+    /// A wolf standing on ground this person can see. Past sight, nothing.
+    /// At night, with no fire nearby, only a wolf underfoot is named. A fire
+    /// nearby names the neighbor, the way day does. The wolf leaves after
+    /// `wolf_ticks`, and the day has none.
+    fn seen_wolf(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let cell = self.wolf_standing()?;
+        if !self.visible_cell_ids(viewer).contains(&cell) {
+            return None;
+        }
+        if cell == origin {
+            Some("A wolf stands here.".into())
+        } else {
+            Some(format!(
+                "A wolf stands to the {}.",
+                self.relative(origin, cell)
+            ))
+        }
+    }
+
+    /// Wolf tracks on ground this person can see. The wolf may already have left.
     /// Past sight, nothing. At night, with no fire nearby, only the tracks
     /// underfoot are named. A fire nearby names the neighbor tracks again,
     /// the way day does. They fade when `track_ticks` have passed.

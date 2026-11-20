@@ -49,8 +49,13 @@ spear_ticks = 4
 # A night howl leaves wolf tracks on the northwest corner for this same
 # wait, counting the nightfall tick. With no fire nearby, night names them
 # only underfoot. A fire nearby names the neighbor tracks, the way day does.
-# Someone who cannot see the ground reads nothing. There is no wolf.
+# Someone who cannot see the ground reads nothing. A wolf stands on that
+# corner for wolf_ticks, counting the nightfall tick, then leaves. The
+# tracks can still be there. At night, with no fire nearby, only someone
+# on that ground sees the wolf. A fire nearby names it the way day does.
+# Day has no wolf. Walking closer before the wait ends leaves it gone.
 track_ticks = 4
+wolf_ticks = 2
 # A hide snare set with hide strips catches a hare after this many ticks.
 # The strips are spent. The snare is gone. One portion of raw meat lies there.
 snare_ticks = 3

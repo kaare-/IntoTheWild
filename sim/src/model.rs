@@ -814,10 +814,16 @@ pub struct World {
     #[serde(default)]
     pub(crate) fresh_tracks: BTreeMap<CellId, u64>,
     /// The northwest corner, after a night howl, until this sim time.
-    /// There is no wolf on that ground. Look names the tracks for someone
-    /// who can see the cell, then they fade like deer tracks.
+    /// Look names the tracks for someone who can see the cell, then they
+    /// fade like deer tracks. The wolf may already have left.
     #[serde(default)]
     pub(crate) wolf_tracks: BTreeMap<CellId, u64>,
+    /// Where a wolf is standing after a night howl. Empty once it leaves.
+    #[serde(default)]
+    pub(crate) wolf_cell: Option<CellId>,
+    /// The wolf is gone at this sim time. Tracks can outlast it. Day shows no wolf.
+    #[serde(default)]
+    pub(crate) wolf_until: u64,
     /// Slope cells where a salt crust forms again after it is taken.
     #[serde(default)]
     pub(crate) salt_licks: BTreeSet<CellId>,
@@ -940,6 +946,8 @@ impl World {
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
             wolf_tracks: BTreeMap::new(),
+            wolf_cell: None,
+            wolf_until: 0,
             salt_licks: BTreeSet::new(),
             salt_returns_at: BTreeMap::new(),
             honey_nests: BTreeSet::new(),
@@ -2097,6 +2105,28 @@ impl World {
         self.wolf_tracks
             .get(&cell)
             .is_some_and(|until| self.time < *until)
+    }
+
+    /// The howl put a wolf on this ground. It stands through `wolf_ticks`
+    /// clocks, counting the nightfall tick, and only while it is night.
+    /// Tracks are separate and can still be fresh after it leaves.
+    pub(crate) fn wolf_standing(&self) -> Option<CellId> {
+        let cell = self.wolf_cell?;
+        if !self.night() || self.time >= self.wolf_until {
+            None
+        } else {
+            Some(cell)
+        }
+    }
+
+    /// Someone stepped closer to the wolf. It is gone. The tracks stay.
+    pub(crate) fn frighten_wolf(&mut self, origin: CellId, dest: CellId) {
+        let Some(cell) = self.wolf_standing() else {
+            return;
+        };
+        if chebyshev(dest, cell) < chebyshev(origin, cell) {
+            self.wolf_cell = None;
+        }
     }
 
     /// A successful cast empties that stretch until this time. The next
@@ -5093,12 +5123,13 @@ mod wolf {
         let on_it = world.observe(here).unwrap().text;
         assert!(
             on_it.contains("Night has fallen.")
-                && on_it.contains("Wolf tracks mark the ground here."),
+                && on_it.contains("Wolf tracks mark the ground here.")
+                && on_it.contains("A wolf stands here."),
             "{on_it}"
         );
-        assert!(!on_it.contains("A wolf stands"), "{on_it}");
         let dark = world.observe(seen).unwrap().text;
         assert!(!dark.contains("Wolf tracks"), "{dark}");
+        assert!(!dark.contains("A wolf stands"), "{dark}");
         assert!(
             dark.contains("The dark hides what lies farther off."),
             "{dark}"
@@ -5119,6 +5150,7 @@ mod wolf {
             lit.contains("Wolf tracks mark the ground to the north."),
             "{lit}"
         );
+        assert!(lit.contains("A wolf stands to the north."), "{lit}");
         assert!(
             lit.contains("Deer tracks mark the ground to the east."),
             "{lit}"
@@ -5130,6 +5162,7 @@ mod wolf {
         world.extinguish(fire, "The fire goes out.", None);
         let dark_again = world.observe(seen).unwrap().text;
         assert!(!dark_again.contains("Wolf tracks"), "{dark_again}");
+        assert!(!dark_again.contains("A wolf stands"), "{dark_again}");
         assert!(
             !dark_again.contains("Deer tracks mark the ground to the east."),
             "{dark_again}"
@@ -5153,5 +5186,100 @@ mod wolf {
                 world.observe(id).unwrap().text
             );
         }
+    }
+
+    fn intent(id: &str, actor: u32, attempt: super::Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_wolf_stands_on_the_howl_then_leaves_and_the_day_has_none() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let here = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let night = world.tuning.night_at;
+        while world.time + 1 < night {
+            world.step(&[]);
+        }
+        let day = world.observe(here).unwrap().text;
+        assert!(!day.contains("A wolf stands"), "{day}");
+        world.step(&[]);
+        assert_eq!(world.time, night);
+        let on_it = world.observe(here).unwrap().text;
+        assert!(on_it.contains("A wolf stands here."), "{on_it}");
+        assert!(
+            on_it.contains("Wolf tracks mark the ground here."),
+            "{on_it}"
+        );
+        assert!(!world.observe(seen).unwrap().text.contains("A wolf stands"));
+        assert!(!world.observe(quiet).unwrap().text.contains("A wolf stands"));
+        let fire = world.mint_fire(world.actor(seen).unwrap().cell, 0);
+        let lit = world.observe(seen).unwrap().text;
+        assert!(lit.contains("A wolf stands to the north."), "{lit}");
+        world.extinguish(fire, "The fire goes out.", None);
+        let ticks = world.tuning.wolf_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+            assert!(
+                world
+                    .observe(here)
+                    .unwrap()
+                    .text
+                    .contains("A wolf stands here."),
+                "clock {}",
+                world.time
+            );
+        }
+        world.step(&[]);
+        assert_eq!(world.time, night + ticks);
+        let left = world.observe(here).unwrap().text;
+        assert!(!left.contains("A wolf stands"), "{left}");
+        assert!(left.contains("Wolf tracks mark the ground here."), "{left}");
+        let dawn = night + world.tuning.night_len;
+        while world.time < dawn {
+            world.step(&[]);
+        }
+        assert!(!world.night());
+        let morning = world.observe(here).unwrap().text;
+        assert!(!morning.contains("A wolf stands"), "{morning}");
+        assert!(!morning.contains("wolf"), "{morning}");
+    }
+
+    #[test]
+    fn walking_closer_leaves_the_wolf_gone_and_the_tracks_stay() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let here = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let walker = world.spawn_at("Seen", "s", 2, 0).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(here)
+            .unwrap()
+            .text
+            .contains("A wolf stands here."));
+        let stepped = world.step(&[intent(
+            "closer",
+            walker,
+            super::Attempt::Move(super::Dir::West),
+        )]);
+        assert_eq!(stepped.results[0].message, "You walk west.");
+        let after = world.observe(here).unwrap().text;
+        assert!(!after.contains("A wolf stands"), "{after}");
+        assert!(
+            after.contains("Wolf tracks mark the ground here."),
+            "{after}"
+        );
+        assert!(!world
+            .observe(walker)
+            .unwrap()
+            .text
+            .contains("A wolf stands"));
     }
 }
