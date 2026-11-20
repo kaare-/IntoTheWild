@@ -86,6 +86,7 @@ impl World {
         let mut salt_fish = Vec::new();
         let mut smokes = Vec::new();
         let mut dresses = Vec::new();
+        let mut bows = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -154,6 +155,7 @@ impl World {
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeNest => smokes.push(intent),
                         Attempt::DressSting => dresses.push(intent),
+                        Attempt::CraftBow => bows.push(intent),
                     }
                 }
             }
@@ -264,6 +266,7 @@ impl World {
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smokes(smokes, &mut results);
         self.apply_dresses(dresses, &mut results);
+        self.apply_bows(bows, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -1002,6 +1005,19 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::CraftBow => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(message) = self.bow_refusal(actor.id) {
+                    Err(message.into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::DressSting => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -1142,6 +1158,7 @@ impl World {
                             | Material::Honey
                             | Material::Egg
                             | Material::Moss
+                            | Material::Bow
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -5581,6 +5598,85 @@ impl World {
             "You eat a handful of poison berries. You are still ill."
         };
         self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    fn bow_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let dry = !self.dry_loose_ids(actor, Material::Branch).is_empty();
+        let any_branch = !self.loose_ids(actor, Material::Branch).is_empty();
+        let strips = !self.loose_ids(actor, Material::Cord).is_empty();
+        if dry && strips {
+            None
+        } else if any_branch && strips {
+            Some("The branch is not dry.")
+        } else if !dry && !strips {
+            Some("You need a dry branch and hide strips.")
+        } else if !dry {
+            Some("You need a dry branch.")
+        } else {
+            Some("You need hide strips.")
+        }
+    }
+
+    fn apply_bows(&mut self, bows: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in bows {
+            if let Some(message) = self.bow_refusal(intent.actor_id) {
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
+                continue;
+            }
+            let Some(branch) = self
+                .dry_loose_ids(intent.actor_id, Material::Branch)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need a dry branch.",
+                    results,
+                );
+                continue;
+            };
+            let Some(strips) = self
+                .loose_ids(intent.actor_id, Material::Cord)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need hide strips.",
+                    results,
+                );
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.items.remove(&branch);
+            self.items.remove(&strips);
+            let id = self.mint_item(Material::Bow, 0, cell, Some(intent.actor_id), Role::Loose);
+            let name = self.name_of(intent.actor_id);
+            let rest = "a bow from a dry branch and hide strips.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "craft", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "craft", rest),
+                results,
+            );
+        }
     }
 
     fn apply_dresses(&mut self, dresses: Vec<Intent>, results: &mut Vec<CommandResult>) {

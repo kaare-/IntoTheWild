@@ -558,6 +558,7 @@ impl Tuning {
             Material::Honey => 0,
             Material::Egg => 0,
             Material::Moss => 0,
+            Material::Bow => 0,
         }
     }
 }

@@ -5,7 +5,7 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|bow|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
 gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
@@ -14,6 +14,8 @@ set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
 haft                         a carried flint flake and a dry branch into a spear; hide strips, if carried, bind the tip. Hold it at a fire
+craft bow                    a carried dry branch and hide strips. Both are spent. The bow stays in the arms.
+make bow                     the same bow
 dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
 take brand                   a burning brand from a fire already burning here; the fire stays lit. It goes out in the rain, or after a short wait.
 grab                         take hold of the heavy log
@@ -185,6 +187,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::Thatch)
         }
+        "craft" | "make" if rest == "bow" || rest == "a bow" => Ok(Attempt::CraftBow),
         "weave" | "make" if rest == "basket" || rest == "a basket" || rest == "bark basket" => {
             Ok(Attempt::WeaveBasket)
         }
@@ -359,6 +362,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "honey" | "honeycomb" | "bees nest" | "bee nest" => Ok(Material::Honey),
         "egg" | "eggs" => Ok(Material::Egg),
         "moss" | "handful of moss" => Ok(Material::Moss),
+        "bow" | "a bow" => Ok(Material::Bow),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
@@ -442,6 +446,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
         "moss" => ExamineTarget::Moss,
+        "bow" | "a bow" => ExamineTarget::Bow,
         "bone awl" => ExamineTarget::Awl,
         "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
         "slope" | "the slope" => ExamineTarget::Slope,

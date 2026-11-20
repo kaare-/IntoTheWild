@@ -106,6 +106,7 @@ pub enum Material {
     Honey,
     Egg,
     Moss,
+    Bow,
 }
 
 impl Material {
@@ -147,6 +148,7 @@ impl Material {
             Material::Honey => "honey",
             Material::Egg => "egg",
             Material::Moss => "moss",
+            Material::Bow => "bow",
         }
     }
 
@@ -188,6 +190,7 @@ impl Material {
             Material::Honey => "honeycomb",
             Material::Egg => "eggs",
             Material::Moss => "handful of moss",
+            Material::Bow => "bow",
         }
     }
 
@@ -314,6 +317,7 @@ pub enum ExamineTarget {
     Honey,
     Eggs,
     Moss,
+    Bow,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -372,6 +376,7 @@ pub enum Attempt {
     SaltFish,
     SmokeNest,
     DressSting,
+    CraftBow,
 }
 
 impl Attempt {
@@ -427,6 +432,7 @@ impl Attempt {
                 | Attempt::SaltFish
                 | Attempt::SmokeNest
                 | Attempt::DressSting
+                | Attempt::CraftBow
         )
     }
 }
@@ -3881,5 +3887,125 @@ mod moss {
             .events
             .iter()
             .all(|event| !event.text.contains("gathers")));
+    }
+}
+
+#[cfg(test)]
+mod bow {
+    use super::{Attempt, ExamineTarget, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_dry_branch_and_hide_strips_craft_into_a_bow() {
+        assert!(matches!(
+            crate::parse::parse_attempt("craft bow").unwrap(),
+            Attempt::CraftBow
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("make bow").unwrap(),
+            Attempt::CraftBow
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("examine bow").unwrap(),
+            Attempt::Examine(ExamineTarget::Bow)
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let missing = world.step(&[intent("missing", near, Attempt::CraftBow)]);
+        assert_eq!(
+            missing.results[0].message,
+            "You need a dry branch and hide strips."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("bow")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("bow")));
+        world.mint_item(Material::Branch, 1000, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Cord, 0, cell, Some(near), Role::Loose);
+        let damp = world.step(&[intent("damp", near, Attempt::CraftBow)]);
+        assert_eq!(damp.results[0].message, "The branch is not dry.");
+        assert_eq!(world.loose_ids(near, Material::Cord).len(), 1);
+        assert!(world.loose_ids(near, Material::Bow).is_empty());
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The branch is not dry."));
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let crafted = world.step(&[intent("craft", near, Attempt::CraftBow)]);
+        assert_eq!(
+            crafted.results[0].message,
+            "You craft a bow from a dry branch and hide strips."
+        );
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        assert!(world.loose_ids(near, Material::Cord).is_empty());
+        assert_eq!(world.dry_loose_ids(near, Material::Branch).len(), 0);
+        assert_eq!(world.loose_ids(near, Material::Branch).len(), 1);
+        let arms = world.observe(near).unwrap();
+        assert!(arms.text.contains("a bow."), "{}", arms.text);
+        assert!(arms
+            .events
+            .iter()
+            .all(|event| !event.text.contains("craft")));
+        let yours = world.examine(near, ExamineTarget::Bow);
+        assert!(yours.contains("A bow is carried by you"), "{yours}");
+        assert!(
+            yours.contains("It is a dry branch bound with hide strips."),
+            "{yours}"
+        );
+        let theirs = world.examine(seen, ExamineTarget::Bow);
+        assert!(theirs.contains("A bow is carried by Near"), "{theirs}");
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Bow),
+            "You see no bow from here."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near crafts a bow from a dry branch and hide strips."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("craft") && !event.text.contains("bow")));
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Bow))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop a bow. It is in contact with the ground."
+        );
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A bow lies here. It is a dry branch bound with hide strips."),
+            "{here}"
+        );
+        assert!(!here.contains("You have a bow."), "{here}");
+        let east = world.examine(seen, ExamineTarget::Bow);
+        assert!(east.contains("A bow lies to the east."), "{east}");
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Bow),
+            "You see no bow from here."
+        );
     }
 }

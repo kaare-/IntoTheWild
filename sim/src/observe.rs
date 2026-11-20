@@ -210,6 +210,7 @@ impl World {
             ExamineTarget::Honey => self.examine_honey(actor_id),
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
+            ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -972,6 +973,9 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Cord).is_empty() {
             parts.push("Hide strips lie here. They are cordage.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Bow).is_empty() {
+            parts.push("A bow lies here. It is a dry branch bound with hide strips.".into());
         }
         if self.snares.contains_key(&actor.cell) {
             parts.push("A hide snare is set here.".into());
@@ -1812,6 +1816,62 @@ impl World {
         }
     }
 
+    fn examine_bow(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::Bow).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!(
+                    "A bow lies {place}. It is a dry branch bound with hide strips."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bows lie {place}. Each is a dry branch bound with hide strips.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Bow).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A bow is carried by {who} {cover}. It is a dry branch bound with hide strips."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bows are carried by {who} {cover}. Each is a dry branch bound with hide strips.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no bow from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// The damp bank was gathered and moss has not grown there again.
     fn moss_bare(&self, cell: crate::model::CellId) -> bool {
         self.moss_returns_at.contains_key(&cell)
@@ -2240,6 +2300,10 @@ impl World {
             "a handful of moss".into()
         } else if item.material == "moss" {
             format!("{} handfuls of moss", count_word(item.count))
+        } else if item.material == "bow" && item.count == 1 {
+            "a bow".into()
+        } else if item.material == "bow" {
+            format!("{} bows", count_word(item.count))
         } else if item.material == "egg" {
             if self
                 .loose_ids(actor_id, Material::Egg)
@@ -2971,6 +3035,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Cord).is_empty() {
             bits.push("hide strips".into());
+        }
+        if !self.ground_ids(dest, Material::Bow).is_empty() {
+            bits.push("a bow".into());
         }
         if !self.ground_ids(dest, Material::Hide).is_empty() {
             let sewn = self
@@ -5643,6 +5710,7 @@ impl World {
                 Material::Honey => "honey",
                 Material::Egg => "eggs",
                 Material::Moss => "moss",
+                Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -6616,6 +6684,7 @@ impl World {
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
+                    && self.craft_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -7115,6 +7184,20 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "put", rest))
+    }
+
+    /// A bow crafted from a dry branch and hide strips. The crafter already
+    /// has this as the reply, so the event list does not repeat it.
+    fn craft_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} crafts "))?;
+        if rest != "a bow from a dry branch and hide strips." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "craft", rest))
     }
 
     /// A bark basket woven from a sheet of bark, filled for the weaver.
@@ -7815,6 +7898,9 @@ impl World {
         if let Some(line) = self.weave_for_these_eyes(viewer, event) {
             return line;
         }
+        if let Some(line) = self.craft_for_these_eyes(viewer, event) {
+            return line;
+        }
         if let Some(line) = self.put_fish_for_these_eyes(viewer, event) {
             return line;
         }
@@ -8289,6 +8375,13 @@ impl World {
         {
             actions.push("haft".into());
         }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && !self.dry_loose_ids(actor_id, Material::Branch).is_empty()
+            && !self.loose_ids(actor_id, Material::Cord).is_empty()
+        {
+            actions.push("craft bow".into());
+        }
         if self.actors.values().any(|other| {
             chebyshev(actor.cell, other.cell) <= self.tuning.sight
                 && !self.loose_ids(other.id, Material::Flake).is_empty()
@@ -8423,6 +8516,14 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Branch).is_empty() {
             actions.push("drop branch".into());
+        }
+        if !self.loose_ids(actor_id, Material::Bow).is_empty() {
+            actions.push("drop bow".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Bow).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather bow".into());
         }
         if !self.loose_ids(actor_id, Material::Bark).is_empty() {
             actions.push("drop bark".into());
@@ -8808,6 +8909,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Honey, _) => "honeycomb",
         (Material::Egg, _) => "eggs",
         (Material::Moss, _) => "handful of moss",
+        (Material::Bow, true) => "bow",
+        (Material::Bow, false) => "bows",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",
