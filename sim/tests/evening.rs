@@ -9677,7 +9677,7 @@ fn a_carried_lump_of_ochre_marks_the_ground() {
     let marked = world.step(&[cmd("mark", near, Attempt::Mark)]);
     assert_eq!(marked.results[0].message, yours);
     let near_text = world.observe(near).unwrap();
-    assert!(near_text.events.iter().any(|event| event.text == yours));
+    assert!(near_text.events.iter().all(|event| event.text != yours));
     assert!(near_text
         .events
         .iter()
@@ -12663,7 +12663,7 @@ fn a_lump_of_charcoal_marks_the_rock_and_rain_washes_an_open_one() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours));
     assert!(rock
         .observe(seen)
         .unwrap()

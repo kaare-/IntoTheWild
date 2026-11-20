@@ -5924,6 +5924,7 @@ impl World {
                     && self.gather_for_these_eyes(viewer, event).is_none()
                     && self.walk_for_these_eyes(viewer, event).is_none()
                     && self.smear_for_these_eyes(viewer, event).is_none()
+                    && self.mark_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6001,25 +6002,25 @@ impl World {
         Some(crate::model::spoken_smear(None, stuff))
     }
 
-    /// A red ochre mark left on this cell, filled for the person who made it.
+    /// A mark on the ground or the rock. The marker already has this as the
+    /// reply, so the event list does not repeat it. Anyone else keeps the
+    /// stored sentence.
     fn mark_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
         }
         let name = self.name_of(viewer);
-        if event.text == format!("{name} marks the ground with red ochre.") {
-            return Some("You mark the ground with red ochre.".into());
+        let rest = event.text.strip_prefix(&format!("{name} marks "))?;
+        if !matches!(
+            rest,
+            "the ground with red ochre."
+                | "the rock with red ochre."
+                | "the ground with charcoal."
+                | "the rock with charcoal."
+        ) {
+            return None;
         }
-        if event.text == format!("{name} marks the rock with red ochre.") {
-            return Some("You mark the rock with red ochre.".into());
-        }
-        if event.text == format!("{name} marks the ground with charcoal.") {
-            return Some("You mark the ground with charcoal.".into());
-        }
-        if event.text == format!("{name} marks the rock with charcoal.") {
-            return Some("You mark the rock with charcoal.".into());
-        }
-        None
+        Some(crate::model::spoken_act(None, "mark", rest))
     }
 
     /// Rain taking the mud, filled for the person it washed.
