@@ -466,6 +466,7 @@ impl World {
                         Material::Bowl => Err("A bowl is not food.".into()),
                         Material::Bark => Err("Bark is tinder, not food.".into()),
                         Material::Ochre => Err("Ochre is not food.".into()),
+                        Material::CopperOre => Err("Copper ore is not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
