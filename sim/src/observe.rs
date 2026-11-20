@@ -2267,6 +2267,8 @@ impl World {
             format!("a {} flint nodule", item.condition)
         } else if item.material == "flake" && item.count == 1 {
             "a sharp flint flake".into()
+        } else if item.material == "flake" {
+            format!("{} sharp flint flakes", count_word(item.count))
         } else if item.material == "branch" && item.count == 1 {
             format!("a {} branch", item.condition)
         } else if item.material == "bark" && item.count == 1 {
@@ -2558,8 +2560,11 @@ impl World {
                 .collect();
             parts.push(format!("You have {}.", bits.join(", ")));
         }
-        if !self.loose_ids(actor_id, Material::Flake).is_empty() {
+        let flakes = self.loose_ids(actor_id, Material::Flake).len();
+        if flakes == 1 {
             parts.push("It is sharp enough to cut or haft later.".into());
+        } else if flakes > 1 {
+            parts.push("They are sharp enough to cut or haft later.".into());
         }
         if self.flint_tip_is_hardening(actor_id) {
             parts.push("The flint tip of your spear is hardening in the fire.".into());
@@ -5415,7 +5420,8 @@ impl World {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::Flake).is_empty() {
+            let count = self.loose_ids(actor.id, Material::Flake).len() as u32;
+            if count == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -5423,10 +5429,17 @@ impl World {
             } else {
                 actor.name.as_str()
             };
-            lines.push(format!(
-                "A flint flake is carried by {who}, {}. It is sharp enough to cut or haft later.",
-                self.cover_phrase(actor.cell)
-            ));
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A flint flake is carried by {who}, {cover}. It is sharp enough to cut or haft later."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} sharp flint flakes are carried by {who}, {cover}. They are sharp enough to cut or haft later.",
+                    capitalize(&count_word(count))
+                ));
+            }
         }
         lines
     }
