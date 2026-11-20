@@ -217,16 +217,23 @@ impl World {
             ExamineTarget::Rock => self.examine_rock(actor_id),
             ExamineTarget::Slope => self.examine_slope(actor_id),
             ExamineTarget::Person(name) => {
+                let origin = actor.cell;
                 if actor.name.eq_ignore_ascii_case(&name) {
                     return self.self_text(actor_id);
                 }
-                let found = self.actors.values().find(|other| {
-                    other.name.eq_ignore_ascii_case(&name)
-                        && chebyshev(actor.cell, other.cell) <= self.tuning.sight
-                });
-                match found {
-                    Some(other) => self.person_text(other.id),
-                    None => format!("You cannot see {name} from here."),
+                let named = self
+                    .actors
+                    .values()
+                    .find(|other| other.name.eq_ignore_ascii_case(&name))
+                    .map(|other| (other.id, other.cell, other.name.clone()));
+                match named {
+                    Some((id, cell, _)) if chebyshev(origin, cell) <= self.tuning.sight => {
+                        self.person_text(id)
+                    }
+                    Some((_, _, display)) => {
+                        format!("You cannot see {display} from here.")
+                    }
+                    None => format!("You cannot see {} from here.", capitalize(&name)),
                 }
             }
         }

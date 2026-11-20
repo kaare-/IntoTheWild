@@ -3062,3 +3062,56 @@ mod honey {
         );
     }
 }
+
+#[cfg(test)]
+mod names {
+    use super::{Attempt, World};
+
+    #[test]
+    fn examine_out_of_sight_uses_the_display_name() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("Seen", "w", 5, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        let _mckay = world.spawn_at("McKay", "m", 0, 0).unwrap();
+        let Attempt::Examine(lower) = crate::parse::parse_attempt("examine near").unwrap() else {
+            panic!("examine near");
+        };
+        assert_eq!(
+            world.examine(quiet, lower),
+            "You cannot see Near from here."
+        );
+        let Attempt::Examine(typed) = crate::parse::parse_attempt("examine Near").unwrap() else {
+            panic!("examine Near");
+        };
+        assert_eq!(
+            world.examine(quiet, typed),
+            "You cannot see Near from here."
+        );
+        let Attempt::Examine(seen_name) = crate::parse::parse_attempt("examine seen").unwrap()
+        else {
+            panic!("examine seen");
+        };
+        assert_eq!(
+            world.examine(quiet, seen_name),
+            "You cannot see Seen from here."
+        );
+        let Attempt::Examine(mixed) = crate::parse::parse_attempt("examine mckay").unwrap() else {
+            panic!("examine mckay");
+        };
+        assert_eq!(
+            world.examine(quiet, mixed.clone()),
+            "You cannot see McKay from here."
+        );
+        assert_eq!(
+            world.examine(near, mixed),
+            "You cannot see McKay from here."
+        );
+        let west = world.examine(seen, super::ExamineTarget::Person("near".into()));
+        assert!(west.starts_with("Near is on the"), "{west}");
+        assert!(!west.contains("cannot see"), "{west}");
+        let self_look = world.examine(quiet, super::ExamineTarget::Person("quiet".into()));
+        assert!(!self_look.contains("cannot see"), "{self_look}");
+        assert!(self_look.contains("You are"), "{self_look}");
+    }
+}
