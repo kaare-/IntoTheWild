@@ -59,6 +59,10 @@ wolf_ticks = 2
 # A hide snare set with hide strips catches a hare after this many ticks.
 # The strips are spent. The snare is gone. One portion of raw meat lies there.
 snare_ticks = 3
+# A fishing net set in the brook catches a fish after this many ticks.
+# The net stays set until someone gathers it. Someone who cannot see
+# that brook does not get the line.
+net_ticks = 3
 # Raw meat spoils this many ticks after the step that cut it. A raw fish
 # spoils the same number of ticks after the step it was speared. On the tick
 # before that, look and examine say it is going bad. Then it is not food.

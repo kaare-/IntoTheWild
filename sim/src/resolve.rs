@@ -82,6 +82,7 @@ impl World {
         let mut nets = Vec::new();
         let mut puts = Vec::new();
         let mut snares = Vec::new();
+        let mut set_nets = Vec::new();
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
@@ -153,6 +154,7 @@ impl World {
                         Attempt::WeaveNet => nets.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
+                        Attempt::SetNet => set_nets.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
@@ -266,6 +268,7 @@ impl World {
         self.apply_nets(nets, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
+        self.apply_set_nets(set_nets, &mut results);
         self.apply_carves(carves, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
@@ -585,6 +588,23 @@ impl World {
                     Err("You have no bone to carve.".into())
                 } else if !self.has_carve_tool(actor.id) {
                     Err("You need a flint flake or an iron knife to carve the bone.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SetNet => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Net).is_empty() {
+                    Err("You are not carrying a fishing net.".into())
+                } else if self.cell(actor.cell).region != Region::Brook {
+                    Err("You cannot set a net out of the brook.".into())
+                } else if self.set_nets.contains(&actor.cell) {
+                    Err("A fishing net is already set here.".into())
                 } else {
                     Ok(true)
                 }
@@ -1551,6 +1571,9 @@ impl World {
                     }
                     if material == Material::Reed {
                         self.arm_reed_bed(cell);
+                    }
+                    if material == Material::Net {
+                        self.clear_set_net(cell);
                     }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
@@ -4277,6 +4300,71 @@ impl World {
                 vec![actor.id],
                 vec![actor.cell],
                 vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "set", rest),
+                results,
+            );
+        }
+    }
+
+    /// A carried fishing net leaves the arms and is set in this brook cell.
+    fn apply_set_nets(&mut self, sets: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in sets {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.cell(actor.cell).region != Region::Brook {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You cannot set a net out of the brook.",
+                    results,
+                );
+                continue;
+            }
+            if self.set_nets.contains(&actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A fishing net is already set here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(id) = self.loose_ids(actor.id, Material::Net).first().copied() else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a fishing net.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(net) = self.items.get_mut(&id) {
+                net.carrier = None;
+                net.cell = actor.cell;
+            }
+            let ready = self.time.saturating_add(self.tuning.net_ticks);
+            self.set_nets.insert(actor.cell);
+            self.net_catches_at.insert(actor.cell, ready);
+            self.schedule(ready, crate::model::Wake::NetCatch(actor.cell));
+            let name = self.name_of(actor.id);
+            let rest = "a fishing net in the brook.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
                 vec![],
                 None,
             );

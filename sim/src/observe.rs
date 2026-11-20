@@ -833,11 +833,15 @@ impl World {
         } else if self.reed_bare(actor.cell) {
             parts.push("The brook's edge has no reeds.".into());
         }
-        let nets_here = self.ground_ids(actor.cell, Material::Net).len();
-        if nets_here == 1 {
-            parts.push("A fishing net lies here.".into());
-        } else if nets_here > 1 {
-            parts.push("Fishing nets lie here.".into());
+        if self.set_nets.contains(&actor.cell) {
+            parts.push("A fishing net is set here.".into());
+        } else {
+            let nets_here = self.ground_ids(actor.cell, Material::Net).len();
+            if nets_here == 1 {
+                parts.push("A fishing net lies here.".into());
+            } else if nets_here > 1 {
+                parts.push("Fishing nets lie here.".into());
+            }
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1504,6 +1508,17 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             if cell == origin {
+                continue;
+            }
+            if self.set_nets.contains(&cell) {
+                let mut line = format!(
+                    "A fishing net is set in the brook to the {}.",
+                    self.relative(origin, cell)
+                );
+                if !self.ground_ids(cell, Material::Fish).is_empty() {
+                    line.push_str(" A raw fish lies there.");
+                }
+                lines.push(line);
                 continue;
             }
             let count = self.ground_ids(cell, Material::Net).len() as u32;
@@ -7318,6 +7333,7 @@ impl World {
                     && self.mark_for_these_eyes(viewer, event).is_none()
                     && self.cut_for_these_eyes(viewer, event).is_none()
                     && self.snare_for_these_eyes(viewer, event).is_none()
+                    && self.set_net_for_these_eyes(viewer, event).is_none()
                     && self.carve_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
@@ -7651,6 +7667,24 @@ impl World {
         Some(crate::model::spoken_act(None, "butcher", rest))
     }
 
+    /// A fishing net set in the brook. The person who set it already has this
+    /// as the reply, so the event list does not repeat it.
+    fn set_net_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} sets "))?;
+        if rest != "a fishing net in the brook." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "set", rest))
+    }
+
     /// A snare of hide strips. The person who set it already has this as the
     /// reply, so the event list does not repeat it. A witness keeps the
     /// stored sentence.
@@ -7871,6 +7905,19 @@ impl World {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
+            if self.set_nets.contains(&cell) {
+                let place = if origin == cell {
+                    "here, in the brook".to_string()
+                } else {
+                    format!("in the brook to the {}", self.relative(origin, cell))
+                };
+                let mut line = format!("A fishing net is set {place}. It is woven from reeds.");
+                if !self.ground_ids(cell, Material::Fish).is_empty() {
+                    line.push_str(" A raw fish lies there.");
+                }
+                lines.push(line);
+                continue;
+            }
             let count = self.ground_ids(cell, Material::Net).len() as u32;
             if count == 0 {
                 continue;
@@ -8540,6 +8587,7 @@ impl World {
             "honeycomb",
             "the eggs",
             "handful of moss",
+            "fishing net",
         ];
         let known = NOUNS
             .iter()

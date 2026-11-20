@@ -375,6 +375,7 @@ pub enum Attempt {
     PutFish,
     Thatch,
     SetSnare,
+    SetNet,
     CarveAwl,
     SaltMeat,
     SaltFish,
@@ -433,6 +434,7 @@ impl Attempt {
                 | Attempt::PutFish
                 | Attempt::Thatch
                 | Attempt::SetSnare
+                | Attempt::SetNet
                 | Attempt::CarveAwl
                 | Attempt::SaltMeat
                 | Attempt::SaltFish
@@ -671,6 +673,8 @@ pub enum Wake {
     BrandOut(ItemId),
     /// A hide snare set on this cell. It springs on that tick.
     Snare(CellId),
+    /// A fishing net set in this brook cell. It catches on that tick.
+    NetCatch(CellId),
     /// Raw unsalted meat spoils on this tick. Salted meat and cooked meat do not.
     Spoil(ItemId),
     /// The salt lick on this cell forms another crust.
@@ -838,6 +842,12 @@ pub struct World {
     /// A hide snare set on a cell, springing at this sim time. The strips are spent.
     #[serde(default)]
     pub(crate) snares: BTreeMap<CellId, u64>,
+    /// Brook cells where a fishing net is set. It stays until someone gathers it.
+    #[serde(default)]
+    pub(crate) set_nets: BTreeSet<CellId>,
+    /// When that set net catches a fish. Absent once it has caught, or was gathered.
+    #[serde(default)]
+    pub(crate) net_catches_at: BTreeMap<CellId, u64>,
     /// A brook cell stays quiet until this sim time after a fish is taken there.
     /// Banks that touch that cell fish the same stretch.
     #[serde(default)]
@@ -1027,6 +1037,8 @@ impl World {
             lean_tos: BTreeSet::new(),
             thatched: BTreeSet::new(),
             snares: BTreeMap::new(),
+            set_nets: BTreeSet::new(),
+            net_catches_at: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
             wolf_tracks: BTreeMap::new(),
@@ -2411,6 +2423,12 @@ impl World {
 
     pub(crate) fn raw_fish_near(&self, actor: ActorId) -> bool {
         self.raw_fish_id(actor).is_some()
+    }
+
+    /// The fishing net on this brook is no longer set. A catch that was waiting does not land.
+    pub(crate) fn clear_set_net(&mut self, cell: CellId) {
+        self.set_nets.remove(&cell);
+        self.net_catches_at.remove(&cell);
     }
 
     /// In the flowing brook, or on a cell that touches it. Still water is not the brook.
@@ -5165,6 +5183,151 @@ mod ochre_arms {
             world.examine(quiet, ExamineTarget::Ochre),
             "You see no ochre from here."
         );
+    }
+}
+
+#[cfg(test)]
+mod set_net {
+    use super::{Attempt, Dir, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_net_set_in_the_brook_catches_a_fish_and_can_be_gathered() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        for (id, _) in [("one", 1), ("two", 2), ("three", 3)] {
+            world.step(&[intent(id, near, Attempt::Gather(Material::Reed))]);
+        }
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveNet)]);
+        assert_eq!(woven.results[0].message, "You weave a fishing net.");
+        let bank = world.step(&[intent("bank", near, Attempt::SetNet)]);
+        assert_eq!(
+            bank.results[0].message,
+            "You cannot set a net out of the brook."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("out of the brook")));
+        let wade = world.step(&[intent("wade", near, Attempt::Move(Dir::North))]);
+        assert_eq!(wade.results[0].message, "You wade north.");
+        assert_eq!(world.actor_cell(near), Some((0, 2)));
+        let set = world.step(&[intent("set", near, Attempt::SetNet)]);
+        assert_eq!(
+            set.results[0].message,
+            "You set a fishing net in the brook."
+        );
+        let yours = "You set a fishing net in the brook.";
+        let witnessed = "Near sets a fishing net in the brook.";
+        let after = world.observe(near).unwrap();
+        assert!(after.events.iter().all(|event| event.text != yours));
+        assert!(
+            after.text.contains("A fishing net is set here."),
+            "{}",
+            after.text
+        );
+        assert!(
+            !after.text.contains("You have a fishing net"),
+            "{}",
+            after.text
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        let south = world.observe(seen).unwrap().text;
+        assert!(
+            south.contains("A fishing net is set in the brook to the north."),
+            "{south}"
+        );
+        assert_eq!(
+            world.examine(near, ExamineTarget::Net),
+            "A fishing net is set here, in the brook. It is woven from reeds."
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("net"));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("net")));
+        let ticks = world.tuning.net_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A raw fish lies here."));
+        world.step(&[]);
+        let caught = "The fishing net catches a fish.";
+        let landed = world.observe(near).unwrap();
+        assert!(landed.events.iter().any(|event| event.text == caught));
+        assert!(
+            landed.text.contains("A fishing net is set here."),
+            "{}",
+            landed.text
+        );
+        assert!(
+            landed.text.contains("A raw fish lies here."),
+            "{}",
+            landed.text
+        );
+        let seen_landed = world.observe(seen).unwrap();
+        assert!(seen_landed.events.iter().any(|event| event.text == caught));
+        assert!(
+            seen_landed
+                .text
+                .contains("A fishing net is set in the brook to the north. A raw fish lies there."),
+            "{}",
+            seen_landed.text
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != caught));
+        assert!(!world.observe(quiet).unwrap().text.contains("fish"));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Net))]);
+        assert_eq!(gathered.results[0].message, "You gather a fishing net.");
+        let back = world.observe(near).unwrap();
+        assert!(back.events.iter().all(|event| {
+            event.text != "You gather a fishing net." && event.text != "Near gathers a fishing net."
+        }));
+        assert!(
+            back.text.contains("You have a fishing net"),
+            "{}",
+            back.text
+        );
+        assert!(
+            !back.text.contains("A fishing net is set here."),
+            "{}",
+            back.text
+        );
+        assert!(back.text.contains("A raw fish lies here."), "{}", back.text);
+        assert_eq!(world.material_tally(Material::Net), 1);
+        assert_eq!(world.material_tally(Material::Fish), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a fishing net."));
     }
 }
 

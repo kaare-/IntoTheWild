@@ -36,6 +36,7 @@ impl World {
                 Wake::DryBranch(id) => self.dry_branch(id),
                 Wake::BrandOut(id) => self.brand_out(id),
                 Wake::Snare(cell) => self.spring_snare(cell),
+                Wake::NetCatch(cell) => self.catch_in_net(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
@@ -539,6 +540,33 @@ impl World {
             vec![],
             vec![cell],
             vec![meat],
+            vec![],
+            None,
+        );
+    }
+
+    /// The fishing net in this brook has waited out its ticks. A raw fish lies
+    /// there. The net stays set until someone gathers it. Someone who cannot
+    /// see the cell hears nothing.
+    fn catch_in_net(&mut self, cell: CellId) {
+        let Some(ready) = self.net_catches_at.get(&cell).copied() else {
+            return;
+        };
+        if ready > self.time {
+            return;
+        }
+        self.net_catches_at.remove(&cell);
+        if !self.set_nets.contains(&cell) || self.ground_ids(cell, Material::Net).is_empty() {
+            self.set_nets.remove(&cell);
+            return;
+        }
+        let fish = self.mint_item(Material::Fish, 0, cell, None, Role::Loose);
+        self.emit(
+            "The fishing net catches a fish.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![fish],
             vec![],
             None,
         );

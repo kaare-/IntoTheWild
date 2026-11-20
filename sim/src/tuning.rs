@@ -44,6 +44,10 @@ pub struct Tuning {
     /// Ticks after `set snare` before the snare catches a hare.
     #[serde(default = "default_snare_ticks")]
     pub snare_ticks: u64,
+    /// Ticks after `set net` in the brook before the net catches a fish.
+    /// The net stays set. Gathering it takes it back to the arms.
+    #[serde(default = "default_net_ticks")]
+    pub net_ticks: u64,
     /// Ticks after raw meat is cut before it spoils. The tick before that,
     /// look says it is going bad. Salted meat is not on this timer.
     /// Cooked meat stays good.
@@ -243,6 +247,9 @@ fn default_wolf_ticks() -> u64 {
 fn default_snare_ticks() -> u64 {
     3
 }
+fn default_net_ticks() -> u64 {
+    3
+}
 fn default_meat_ticks() -> u64 {
     24
 }
@@ -397,6 +404,8 @@ struct RawTime {
     wolf_ticks: u64,
     #[serde(default = "default_snare_ticks")]
     snare_ticks: u64,
+    #[serde(default = "default_net_ticks")]
+    net_ticks: u64,
     #[serde(default = "default_meat_ticks")]
     meat_ticks: u64,
     #[serde(default = "default_salt_ticks")]
@@ -520,6 +529,7 @@ impl Tuning {
             || raw.time.track_ticks == 0
             || raw.time.wolf_ticks == 0
             || raw.time.snare_ticks == 0
+            || raw.time.net_ticks == 0
             || raw.time.meat_ticks == 0
             || raw.time.salt_ticks == 0
             || raw.time.sting_ticks == 0
@@ -589,6 +599,7 @@ impl Tuning {
             track_ticks: raw.time.track_ticks,
             wolf_ticks: raw.time.wolf_ticks,
             snare_ticks: raw.time.snare_ticks,
+            net_ticks: raw.time.net_ticks,
             meat_ticks: raw.time.meat_ticks,
             salt_ticks: raw.time.salt_ticks,
             sting_ticks: raw.time.sting_ticks,

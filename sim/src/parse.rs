@@ -46,6 +46,7 @@ gather reeds                 a bundle at the brook's edge
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
+set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
 make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
 make basket                  the same weave
@@ -247,6 +248,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
+        "set"
+            if rest == "net"
+                || rest == "a net"
+                || rest == "the net"
+                || rest == "fishing net"
+                || rest == "a fishing net" =>
+        {
+            Ok(Attempt::SetNet)
+        }
         "set"
             if rest == "snare"
                 || rest == "a snare"
