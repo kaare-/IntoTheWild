@@ -8138,7 +8138,9 @@ fn smoke_shows_past_the_fire_and_stops_one_cell_farther() {
     assert!(west_key.map.contains('*'), "{}", west_key.map);
     let far_key = world.observe(far).unwrap();
     assert!(
-        far_key.legend.contains("* fire") && !far_key.map.contains('*'),
+        far_key.text.contains("Smoke rises to the north and east.")
+            && !far_key.legend.contains("* fire")
+            && !far_key.map.contains('*'),
         "legend:\n{}\nmap:\n{}",
         far_key.legend,
         far_key.map

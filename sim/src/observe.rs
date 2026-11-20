@@ -5160,9 +5160,10 @@ impl World {
         }
     }
 
-    /// `* fire` stays in the key only when this person can see a fire or its smoke.
+    /// `* fire` stays in the key only when a fire cell is inside sight,
+    /// so the star is on the map. Smoke past sight does not add it.
     fn legend_for(&self, viewer: ActorId) -> String {
-        if self.perceives_a_fire(viewer) {
+        if self.sees_a_fire_cell(viewer) {
             return LEGEND.to_string();
         }
         LEGEND
@@ -5175,14 +5176,14 @@ impl World {
             .join("\n")
     }
 
-    /// A fire on this cell, or smoke from it: inside sight, or one cell past it.
-    fn perceives_a_fire(&self, viewer: ActorId) -> bool {
+    /// A fire on a cell this person can see. The map draws the star there.
+    fn sees_a_fire_cell(&self, viewer: ActorId) -> bool {
         let Some(origin) = self.actor(viewer).map(|actor| actor.cell) else {
             return false;
         };
         self.fires
             .values()
-            .any(|fire| chebyshev(origin, fire.cell) <= self.tuning.smoke_range())
+            .any(|fire| chebyshev(origin, fire.cell) <= self.tuning.sight)
     }
 
     fn map_string(&self, viewer: ActorId) -> String {
