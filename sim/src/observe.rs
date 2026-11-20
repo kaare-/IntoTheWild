@@ -5918,7 +5918,10 @@ impl World {
         let mut views: Vec<EventView> = self
             .events
             .iter()
-            .filter(|event| self.event_visible(viewer, origin, event))
+            .filter(|event| {
+                self.event_visible(viewer, origin, event)
+                    && self.shape_for_these_eyes(viewer, event).is_none()
+            })
             .map(|event| EventView {
                 id: event.id,
                 time: event.time,
@@ -6272,7 +6275,8 @@ impl World {
         Some(crate::model::spoken_act(None, "weave", rest))
     }
 
-    /// A lump shaped into a pot, filled for the person who shaped it.
+    /// A lump shaped into a pot. The shaper already has this as the reply,
+    /// so the event list does not repeat it. A witness keeps the stored line.
     fn shape_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;

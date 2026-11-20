@@ -4132,7 +4132,7 @@ fn an_unfired_pot_is_shaped_from_clay() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours && !event.text.contains("shapes the clay")));
     assert!(world
         .observe(far)
         .unwrap()
