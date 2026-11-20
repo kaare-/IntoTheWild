@@ -143,7 +143,11 @@ impl World {
                 y,
                 region: self.cell(actor.cell).region.word().into(),
                 under_roof: self.exposure_millis(actor.cell) < 1000,
-                wetness: self.clothes_word(actor.wetness).into(),
+                wetness: if actor.clothes_dry_at.is_some() {
+                    "drying".into()
+                } else {
+                    self.clothes_word(actor.wetness).into()
+                },
                 thirst: self.thirst_word(actor.thirst).into(),
                 hunger: self.hunger_word(actor.hunger).into(),
                 illness: self.body_word(actor.stings_until, actor.illness).into(),
@@ -2236,6 +2240,12 @@ impl World {
     }
 
     fn clothes_line(&self, actor_id: ActorId, moisture: u32) -> String {
+        if self
+            .actor(actor_id)
+            .is_some_and(|actor| actor.clothes_dry_at.is_some())
+        {
+            return "Your clothes are drying by the fire.".into();
+        }
         let word = self.clothes_word(moisture);
         let under_lean_to = self.actor(actor_id).is_some_and(|actor| {
             self.lean_tos.contains(&actor.cell)
@@ -2591,12 +2601,17 @@ impl World {
 
     fn person_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
+        let clothes = if actor.clothes_dry_at.is_some() {
+            "drying by the fire".to_string()
+        } else {
+            self.clothes_for_them(actor.wetness)
+        };
         format!(
             "{} is on the {}, {}. Their clothes are {}. They are {}. They are {}. They are {}. They are {}.",
             actor.name,
             self.cell(actor.cell).region.word(),
             self.cover_phrase(actor.cell),
-            self.clothes_for_them(actor.wetness),
+            clothes,
             self.thirst_sentence(actor.thirst),
             self.hunger_word(actor.hunger),
             self.body_word(actor.stings_until, actor.illness),
@@ -6727,6 +6742,7 @@ impl World {
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
                     && self.craft_for_these_eyes(viewer, event).is_none()
+                    && self.clothes_for_these_eyes(viewer, event).is_none()
                     && self.bow_hunt_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
@@ -7557,6 +7573,43 @@ impl World {
         None
     }
 
+    /// Starting to dry clothes. The person who said it already has the reply,
+    /// so their event list does not repeat it. Anyone else keeps the sentence.
+    fn clothes_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} holds their "))?;
+        if rest == "wet clothes by the fire. They are not dry yet."
+            || rest == "damp clothes by the fire. They are not dry yet."
+            || rest == "soaked clothes by the fire. They are not dry yet."
+        {
+            return Some(format!("You hold your {rest}"));
+        }
+        None
+    }
+
+    /// Clothes that have finished drying, in the first person for the wearer.
+    fn clothes_dry_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name}'s clothes dry at the fire.") {
+            return Some("Your clothes dry at the fire.".into());
+        }
+        None
+    }
+
     /// A successful haft, filled for the person who bound it.
     /// Anyone else keeps the stored sentence.
     fn haft_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -7919,6 +7972,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.dry_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.clothes_dry_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.fish_for_these_eyes(viewer, event) {
@@ -8669,6 +8725,14 @@ impl World {
             && self.exposure_millis(actor.cell) < 1000
         {
             actions.push("rest".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && self.fire_at(actor.cell).is_some()
+            && actor.wetness > 0
+            && actor.clothes_dry_at.is_none()
+        {
+            actions.push("dry clothes".into());
         }
         if !self.loose_ids(actor_id, Material::Hide).is_empty() {
             actions.push("drop hide".into());

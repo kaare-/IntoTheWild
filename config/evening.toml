@@ -34,6 +34,10 @@ warmth_hold = 4
 # ticks, if the fire is still burning. Unfired clay cannot boil water.
 # The fire still dies in the rain. There is no kiln.
 clay_ticks = 4
+# Wet, damp, or soaked clothes at a lit fire take this many ticks to dry.
+# Look says they are drying until then. Stepping off the fire stops the wait.
+# Someone who cannot see that person does not get the line.
+clothes_ticks = 4
 # Holding a spear at a burning fire hardens the point after this many ticks.
 # The stone and the branch are already spent. Leaving the fire starts the
 # wait over. The deer is not hunted.

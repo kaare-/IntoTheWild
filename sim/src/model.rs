@@ -377,6 +377,7 @@ pub enum Attempt {
     SmokeNest,
     DressSting,
     CraftBow,
+    DryClothes,
 }
 
 impl Attempt {
@@ -433,6 +434,7 @@ impl Attempt {
                 | Attempt::SmokeNest
                 | Attempt::DressSting
                 | Attempt::CraftBow
+                | Attempt::DryClothes
         )
     }
 }
@@ -520,6 +522,10 @@ pub struct Actor {
     /// Mud and ochre do not change it.
     #[serde(default)]
     pub stings_until: Option<u64>,
+    /// When wet clothes at a fire become dry. None means they are not drying.
+    /// Stepping off the fire clears it. The clothes stay as wet as they were.
+    #[serde(default)]
+    pub clothes_dry_at: Option<u64>,
     pub busy: Option<WorkId>,
 }
 
@@ -672,6 +678,8 @@ pub enum Wake {
     DeerReturn,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
+    /// Wet clothes on this person dry at the fire they are standing by.
+    DryClothes(ActorId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -1039,6 +1047,7 @@ impl World {
                 mud: 0,
                 ochre: 0,
                 stings_until: None,
+                clothes_dry_at: None,
                 busy: None,
             },
         );
@@ -1158,6 +1167,7 @@ impl World {
         let results = self.resolve(intents);
         self.arm_spears();
         self.tend_drying();
+        self.tend_clothes();
         self.fire_due();
         self.normalize();
         self.trim_events();
@@ -4582,5 +4592,168 @@ mod flake_arms {
             world.examine(seen, ExamineTarget::Flake),
             "Two sharp flint flakes are carried by Near, in the rain. They are sharp enough to cut or haft later."
         );
+    }
+}
+
+#[cfg(test)]
+mod dry_clothes {
+    use super::{Attempt, Dir, ExamineTarget, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn wet_clothes_dry_beside_the_fire() {
+        assert!(matches!(
+            crate::parse::parse_attempt("dry clothes").unwrap(),
+            Attempt::DryClothes
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("wait by the fire").unwrap(),
+            Attempt::DryClothes
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 4).unwrap();
+        world.actors.get_mut(&near).unwrap().wetness = 600;
+        let none = world.step(&[intent("none", near, Attempt::DryClothes)]);
+        assert_eq!(none.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no fire burning here."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no fire burning here."));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_fire(cell, 0);
+        let start = world.step(&[intent("start", near, Attempt::DryClothes)]);
+        assert_eq!(
+            start.results[0].message,
+            "You hold your soaked clothes by the fire. They are not dry yet."
+        );
+        let look = world.observe(near).unwrap();
+        assert!(
+            look.text.contains("Your clothes are drying by the fire."),
+            "{}",
+            look.text
+        );
+        assert!(look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("clothes")));
+        let seen_body = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(
+            seen_body.contains("Their clothes are drying by the fire."),
+            "{seen_body}"
+        );
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near holds their soaked clothes by the fire. They are not dry yet."
+        }));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Person("Near".into())),
+            "You cannot see Near from here."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("clothes")));
+        let again = world.step(&[intent("again", near, Attempt::DryClothes)]);
+        assert_eq!(
+            again.results[0].message,
+            "Your clothes are already drying by the fire."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Your clothes are already drying by the fire." }));
+        let ticks = world.tuning.clothes_ticks;
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("Your clothes are drying by the fire."));
+        assert!(world.actor(near).unwrap().wetness > 0);
+        world.step(&[]);
+        assert_eq!(world.actor(near).unwrap().wetness, 0);
+        assert!(world.actor(near).unwrap().clothes_dry_at.is_none());
+        let done = world.observe(near).unwrap();
+        assert!(!done.text.contains("drying by the fire"), "{}", done.text);
+        assert!(done.text.contains("Your clothes are dry."), "{}", done.text);
+        assert!(done
+            .events
+            .iter()
+            .any(|event| event.text == "Your clothes dry at the fire."));
+        let seen_done = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(seen_done.contains("Their clothes are dry."), "{seen_done}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near's clothes dry at the fire."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Near's clothes dry at the fire."));
+        let repeat = world.step(&[intent("repeat", near, Attempt::DryClothes)]);
+        assert_eq!(repeat.results[0].message, "Your clothes are already dry.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Your clothes are already dry."));
+        world.actors.get_mut(&near).unwrap().wetness = 250;
+        let damp = world.step(&[intent("damp", near, Attempt::DryClothes)]);
+        assert_eq!(
+            damp.results[0].message,
+            "You hold your damp clothes by the fire. They are not dry yet."
+        );
+        world.step(&[intent("leave", near, Attempt::Move(Dir::North))]);
+        let left = world.observe(near).unwrap().text;
+        assert!(!left.contains("drying by the fire"), "{left}");
+        assert!(left.contains("Your clothes are damp."), "{left}");
+        let already = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == "Your clothes dry at the fire.")
+            .count();
+        let ticks = world.tuning.clothes_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        assert_eq!(world.actor(near).unwrap().wetness, 250);
+        assert!(world.actor(near).unwrap().clothes_dry_at.is_none());
+        let still = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == "Your clothes dry at the fire.")
+            .count();
+        assert_eq!(still, already);
     }
 }

@@ -87,6 +87,7 @@ impl World {
         let mut smokes = Vec::new();
         let mut dresses = Vec::new();
         let mut bows = Vec::new();
+        let mut clothes = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -156,6 +157,7 @@ impl World {
                         Attempt::SmokeNest => smokes.push(intent),
                         Attempt::DressSting => dresses.push(intent),
                         Attempt::CraftBow => bows.push(intent),
+                        Attempt::DryClothes => clothes.push(intent),
                     }
                 }
             }
@@ -267,6 +269,7 @@ impl World {
         self.apply_smokes(smokes, &mut results);
         self.apply_dresses(dresses, &mut results);
         self.apply_bows(bows, &mut results);
+        self.apply_dry_clothes(clothes, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -1024,6 +1027,23 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if let Some(message) = self.bow_refusal(actor.id) {
                     Err(message.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::DryClothes => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if actor.wetness == 0 {
+                    Err("Your clothes are already dry.".into())
+                } else if actor.clothes_dry_at.is_some() {
+                    Err("Your clothes are already drying by the fire.".into())
                 } else {
                     Ok(true)
                 }
@@ -5809,6 +5829,76 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, "craft", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_dry_clothes(&mut self, clothes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in clothes {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if self.fire_at(cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let wetness = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.wetness)
+                .unwrap_or(0);
+            if wetness == 0 {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "Your clothes are already dry.",
+                    results,
+                );
+                continue;
+            }
+            if self
+                .actor(intent.actor_id)
+                .is_some_and(|actor| actor.clothes_dry_at.is_some())
+            {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "Your clothes are already drying by the fire.",
+                    results,
+                );
+                continue;
+            }
+            let word = self.clothes_word(wetness);
+            let at = self.time.saturating_add(self.tuning.clothes_ticks);
+            if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                person.clothes_dry_at = Some(at);
+            }
+            self.schedule(at, crate::model::Wake::DryClothes(intent.actor_id));
+            let name = self.name_of(intent.actor_id);
+            let rest = format!("their {word} clothes by the fire. They are not dry yet.");
+            self.emit(
+                format!("{name} holds {rest}"),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                format!("You hold your {word} clothes by the fire. They are not dry yet."),
                 results,
             );
         }

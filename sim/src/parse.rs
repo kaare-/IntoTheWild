@@ -17,6 +17,8 @@ haft                         a carried flint flake and a dry branch into a spear
 craft bow                    a dry branch and hide strips, from the arms if you carry them, or lying in this cell. Both are spent. The bow stays in the arms.
 make bow                     the same bow
 dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
+dry clothes                  wet, damp, or soaked clothes at a burning fire. You wait there until they are dry. Leaving the fire stops the wait. The fire is not used up.
+wait by the fire             the same wait for wet clothes
 take brand                   a burning brand from a fire already burning here; the fire stays lit. It goes out in the rain, or after a short wait.
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
@@ -256,6 +258,12 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "fish" if rest.is_empty() || rest == "spear" => Ok(Attempt::Fish),
         "spear" if rest == "fish" => Ok(Attempt::Fish),
+        "dry" if rest == "clothes" || rest == "my clothes" || rest == "the clothes" => {
+            Ok(Attempt::DryClothes)
+        }
+        "wait" if rest == "by the fire" || rest == "by fire" || rest == "at the fire" => {
+            Ok(Attempt::DryClothes)
+        }
         "dry" if rest.is_empty() || rest == "branch" || rest == "wood" || rest == "the branch" => {
             Ok(Attempt::DryBranch)
         }

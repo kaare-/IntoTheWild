@@ -44,6 +44,7 @@ impl World {
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::DeerReturn => self.return_deer(),
                 Wake::Stings => self.apply_stings(),
+                Wake::DryClothes(actor) => self.dry_clothes(actor),
             }
         }
     }
@@ -496,6 +497,54 @@ impl World {
             vec![],
             None,
         );
+    }
+
+    /// The wait at the fire is over. The clothes are dry. Someone who cannot
+    /// see that person hears nothing. Leaving the fire earlier cleared the wait.
+    fn dry_clothes(&mut self, actor: ActorId) {
+        let Some(at) = self.actor(actor).and_then(|person| person.clothes_dry_at) else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        if self.fire_at(cell).is_none() {
+            if let Some(person) = self.actors.get_mut(&actor) {
+                person.clothes_dry_at = None;
+            }
+            return;
+        }
+        if let Some(person) = self.actors.get_mut(&actor) {
+            person.wetness = 0;
+            person.clothes_dry_at = None;
+        }
+        let name = self.name_of(actor);
+        self.emit(
+            format!("{name}'s clothes dry at the fire."),
+            Scope::Cell(cell),
+            vec![actor],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// A drying wait ends when the person steps off the fire. The clothes
+    /// stay as wet as they were. Standing still at the fire lets the wait finish.
+    pub(crate) fn tend_clothes(&mut self) {
+        let actors: Vec<ActorId> = self.actors.keys().copied().collect();
+        for actor in actors {
+            let Some(person) = self.actor(actor) else {
+                continue;
+            };
+            if person.clothes_dry_at.is_some() && self.fire_at(person.cell).is_none() {
+                if let Some(person) = self.actors.get_mut(&actor) {
+                    person.clothes_dry_at = None;
+                }
+            }
+        }
     }
 
     /// A carried spear at a burning fire starts its wait. Stepping off, or
