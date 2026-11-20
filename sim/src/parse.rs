@@ -47,7 +47,9 @@ put fish                     a raw fish from the arms into that basket. Berries 
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
-eat meat                     cooked meat; raw meat is not food
+eat meat                     cooked meat, or salted meat; raw meat is not food
+gather salt                  a salt crust from the slope
+salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
 eat fish                     a cooked fish; raw fish is not food
 eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
 eat carcass                  a carcass must be cooked
@@ -147,6 +149,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             if rest == "awl" || rest == "an awl" || rest == "bone awl" || rest == "a bone awl" =>
         {
             Ok(Attempt::CarveAwl)
+        }
+        "salt" if rest == "meat" || rest == "raw meat" || rest == "the meat" => {
+            Ok(Attempt::SaltMeat)
         }
         "put"
             if matches!(
@@ -298,6 +303,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
         "awl" | "copper awl" | "bone awl" => Ok(Material::Awl),
         "bone" => Ok(Material::Bone),
+        "salt" | "salt crust" => Ok(Material::Salt),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
@@ -375,6 +381,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
         "bone" => ExamineTarget::Bone,
+        "salt" | "salt crust" => ExamineTarget::Salt,
         "bone awl" => ExamineTarget::Awl,
         "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
         "slope" | "the slope" => ExamineTarget::Slope,

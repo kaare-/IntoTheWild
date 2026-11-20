@@ -102,6 +102,7 @@ pub enum Material {
     Charcoal,
     Reed,
     Bone,
+    Salt,
 }
 
 impl Material {
@@ -139,6 +140,7 @@ impl Material {
             Material::Charcoal => "charcoal",
             Material::Reed => "reed",
             Material::Bone => "bone",
+            Material::Salt => "salt",
         }
     }
 
@@ -176,6 +178,7 @@ impl Material {
             Material::Charcoal => "lump of charcoal",
             Material::Reed => "bundle of reeds",
             Material::Bone => "bone",
+            Material::Salt => "salt crust",
         }
     }
 
@@ -298,6 +301,7 @@ pub enum ExamineTarget {
     Reeds,
     Snare,
     Bone,
+    Salt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +356,7 @@ pub enum Attempt {
     Thatch,
     SetSnare,
     CarveAwl,
+    SaltMeat,
 }
 
 impl Attempt {
@@ -403,6 +408,7 @@ impl Attempt {
                 | Attempt::Thatch
                 | Attempt::SetSnare
                 | Attempt::CarveAwl
+                | Attempt::SaltMeat
         )
     }
 }
@@ -517,6 +523,9 @@ pub struct Item {
     /// Meat that has been held over a fire. Raw meat leaves this false.
     #[serde(default)]
     pub cooked: bool,
+    /// Raw meat rubbed with salt. It can be eaten cold. Cooked meat leaves this false.
+    #[serde(default)]
+    pub salted: bool,
     /// A hide worn against the cold. Other materials leave this false.
     #[serde(default)]
     pub worn: bool,
@@ -843,6 +852,7 @@ impl World {
         world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
         world.add_pile(cell_id(0, 3).unwrap(), Material::Reed, 4, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
+        world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
         world.normalize();
         world
     }
@@ -1142,6 +1152,7 @@ impl World {
                 flint_tip: false,
                 bound: false,
                 cooked: false,
+                salted: false,
                 worn: false,
                 pierced: false,
                 sewn: false,
@@ -1580,20 +1591,42 @@ impl World {
             .find(|id| self.item(*id).is_some_and(|meat| meat.cooked))
     }
 
-    pub(crate) fn raw_meat_near(&self, actor: ActorId) -> bool {
+    /// Salted raw meat, from the arms before the ground. It can be eaten cold.
+    pub(crate) fn salted_meat_id(&self, actor: ActorId) -> Option<ItemId> {
         let carried = self
             .loose_ids(actor, Material::Meat)
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|meat| !meat.cooked));
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|meat| meat.salted && !meat.cooked)
+            });
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|meat| meat.salted && !meat.cooked)
+            })
+    }
+
+    pub(crate) fn raw_meat_near(&self, actor: ActorId) -> bool {
+        let carried = self.loose_ids(actor, Material::Meat).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|meat| !meat.cooked && !meat.salted)
+        });
         if carried {
             return true;
         }
         let Some(cell) = self.actor(actor).map(|person| person.cell) else {
             return false;
         };
-        self.ground_ids(cell, Material::Meat)
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|meat| !meat.cooked))
+        self.ground_ids(cell, Material::Meat).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|meat| !meat.cooked && !meat.salted)
+        })
     }
 
     /// A raw fish in the arms, else one on this cell.
@@ -1859,4 +1892,113 @@ fn feed(hash: &mut u64, bytes: &[u8]) {
     }
     *hash ^= 0xff;
     *hash = hash.wrapping_mul(0x100000001b3);
+}
+
+#[cfg(test)]
+mod salt_meat {
+    use super::{Attempt, ExamineTarget, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_salt_crust_on_the_slope_makes_raw_meat_edible_cold() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 1, 0).unwrap();
+        let far = world.spawn_at("Far", "f", 6, 3).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A salt crust lies here."), "{here}");
+        let from_west = world.observe(seen).unwrap().text;
+        assert!(
+            from_west.contains("A salt crust lies on the slope to the west."),
+            "{from_west}"
+        );
+        assert!(!world.observe(far).unwrap().text.contains("salt"));
+        let bare = world.step(&[intent("bare", near, Attempt::SaltMeat)]);
+        assert_eq!(
+            bare.results[0].message,
+            "There is no raw meat here to salt."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("salt")));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(gathered.results[0].message, "You gather a salt crust.");
+        assert!(world.observe(near).unwrap().text.contains("a salt crust"));
+        let meat = world.mint_item(
+            Material::Meat,
+            0,
+            world.actor(near).unwrap().cell,
+            None,
+            Role::Loose,
+        );
+        let yours = "You salt a portion of raw meat. It will keep, and it can be eaten cold.";
+        let witnessed = "West salts a portion of raw meat. It will keep, and it can be eaten cold.";
+        let _ = witnessed;
+        let salted = world.step(&[intent("salt", near, Attempt::SaltMeat)]);
+        assert_eq!(salted.results[0].message, yours);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && !event.text.contains("Near salts")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text
+                == "Near salts a portion of raw meat. It will keep, and it can be eaten cold."));
+        assert!(world
+            .observe(far)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("salt")));
+        let ground = world.observe(near).unwrap().text;
+        assert!(
+            ground.contains("A portion of salted meat lies here. It can be eaten cold."),
+            "{ground}"
+        );
+        assert_eq!(world.material_tally(Material::Salt), 0);
+        assert!(world.item(meat).unwrap().salted);
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Meat))]);
+        assert!(
+            eaten.results[0]
+                .message
+                .starts_with("You eat the salted meat."),
+            "{}",
+            eaten.results[0].message
+        );
+        assert_eq!(world.material_tally(Material::Meat), 0);
+        let raw = world.mint_item(
+            Material::Meat,
+            0,
+            world.actor(near).unwrap().cell,
+            None,
+            Role::Loose,
+        );
+        let refused = world.step(&[intent("raw", near, Attempt::Eat(Material::Meat))]);
+        assert_eq!(refused.results[0].message, "Raw meat is not food.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("not food")));
+        let _ = (raw, ExamineTarget::Salt);
+        assert!(world
+            .examine(near, ExamineTarget::Salt)
+            .contains("You see no salt from here."));
+    }
 }

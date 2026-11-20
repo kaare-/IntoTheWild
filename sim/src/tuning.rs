@@ -488,6 +488,7 @@ impl Tuning {
             Material::Charcoal => 0,
             Material::Reed => 0,
             Material::Bone => 0,
+            Material::Salt => 0,
         }
     }
 }

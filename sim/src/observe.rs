@@ -206,6 +206,7 @@ impl World {
             ExamineTarget::Reeds => self.examine_reeds(actor_id),
             ExamineTarget::Snare => self.examine_snare(actor_id),
             ExamineTarget::Bone => self.examine_bone(actor_id),
+            ExamineTarget::Salt => self.examine_salt(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -307,6 +308,9 @@ impl World {
             }
             if let Some(bone) = self.seen_bone(actor_id) {
                 lines.push(bone);
+            }
+            if let Some(salt) = self.seen_salt(actor_id) {
+                lines.push(salt);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -808,6 +812,11 @@ impl World {
             || !self.ground_ids(actor.cell, Material::Ochre).is_empty()
         {
             parts.push("A lump of ochre lies here.".into());
+        }
+        if self.pile_count(actor.cell, Material::Salt) > 0
+            || !self.ground_ids(actor.cell, Material::Salt).is_empty()
+        {
+            parts.push("A salt crust lies here.".into());
         }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
@@ -1439,6 +1448,70 @@ impl World {
         }
     }
 
+    /// A salt crust on a cell this person can see but is not standing on.
+    fn seen_salt(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            if self.pile_count(cell, Material::Salt) == 0
+                && self.ground_ids(cell, Material::Salt).is_empty()
+            {
+                continue;
+            }
+            let region = self.cell(cell).region.word();
+            lines.push(format!(
+                "A salt crust lies on the {region} to the {}.",
+                self.relative(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_salt(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.pile_count(cell, Material::Salt) == 0
+                && self.ground_ids(cell, Material::Salt).is_empty()
+            {
+                continue;
+            }
+            lines.push(format!(
+                "A salt crust lies {}. It can salt raw meat.",
+                self.place_phrase(origin, cell)
+            ));
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Salt).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A salt crust is carried by {who}, {}. It can salt raw meat.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no salt from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// A bone, or a bone awl, on a cell this person can see but is not standing on.
     fn seen_bone(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -1832,6 +1905,8 @@ impl World {
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
+        } else if item.material == "salt" && item.count == 1 {
+            "a salt crust".into()
         } else if item.material == "iron ore" && item.count == 1 {
             "a lump of iron ore".into()
         } else if item.material == "iron" && item.count == 1 {
@@ -1972,8 +2047,9 @@ impl World {
     fn meat_carry_phrase(&self, actor_id: ActorId) -> String {
         let ids = self.loose_ids(actor_id, Material::Meat);
         let mut bits = Vec::new();
-        bits.extend(meat_kind_bits(&ids, self, false));
-        bits.extend(meat_kind_bits(&ids, self, true));
+        bits.extend(meat_kind_bits(&ids, self, false, false));
+        bits.extend(meat_kind_bits(&ids, self, false, true));
+        bits.extend(meat_kind_bits(&ids, self, true, false));
         if bits.is_empty() {
             "meat".into()
         } else {
@@ -2442,6 +2518,11 @@ impl World {
             || !self.ground_ids(dest, Material::Ochre).is_empty()
         {
             bits.push("a lump of ochre".into());
+        }
+        if self.pile_count(dest, Material::Salt) > 0
+            || !self.ground_ids(dest, Material::Salt).is_empty()
+        {
+            bits.push("a salt crust".into());
         }
         if self.pile_count(dest, Material::IronOre) > 0
             || self.ground_ids(dest, Material::IronOre).len() > self.iron_smelting_count(dest)
@@ -5163,6 +5244,7 @@ impl World {
                 Material::Copper => "copper bead",
                 Material::Awl => "awl",
                 Material::Bone => "bone",
+                Material::Salt => "salt",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -6134,6 +6216,7 @@ impl World {
                     && self.snare_for_these_eyes(viewer, event).is_none()
                     && self.carve_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
+                    && self.salt_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6258,7 +6341,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} eats "))?;
-        if rest != "the cooked meat." && rest != "the cooked fish." {
+        if rest != "the cooked meat." && rest != "the salted meat." && rest != "the cooked fish." {
             return None;
         }
         Some(crate::model::spoken_act(None, "eat", rest))
@@ -6325,10 +6408,13 @@ impl World {
 
     fn meat_place_lines(&self, ids: &[crate::model::ItemId], place: &str) -> Vec<String> {
         let mut lines = Vec::new();
-        for cooked in [false, true] {
-            let kind = if cooked { "cooked meat" } else { "raw meat" };
-            let full = self.meat_count(ids, cooked, false);
-            let small = self.meat_count(ids, cooked, true);
+        for (cooked, salted, kind) in [
+            (false, false, "raw meat"),
+            (false, true, "salted meat"),
+            (true, false, "cooked meat"),
+        ] {
+            let full = self.meat_count(ids, cooked, salted, false);
+            let small = self.meat_count(ids, cooked, salted, true);
             if full > 0 {
                 lines.push(portions_lie_at(kind, full, place));
             }
@@ -6339,11 +6425,23 @@ impl World {
         lines
     }
 
-    fn meat_count(&self, ids: &[crate::model::ItemId], cooked: bool, small: bool) -> u32 {
+    fn meat_count(
+        &self,
+        ids: &[crate::model::ItemId],
+        cooked: bool,
+        salted: bool,
+        small: bool,
+    ) -> u32 {
         ids.iter()
             .filter(|id| {
-                self.item(**id)
-                    .is_some_and(|meat| meat.cooked == cooked && meat.small == small)
+                self.item(**id).is_some_and(|meat| {
+                    meat.small == small
+                        && if cooked {
+                            meat.cooked
+                        } else {
+                            !meat.cooked && meat.salted == salted
+                        }
+                })
             })
             .count() as u32
     }
@@ -6354,10 +6452,13 @@ impl World {
             return None;
         }
         let mut parts = Vec::new();
-        for cooked in [false, true] {
-            let kind = if cooked { "cooked meat" } else { "raw meat" };
-            let full = self.meat_count(&ids, cooked, false);
-            let small = self.meat_count(&ids, cooked, true);
+        for (cooked, salted, kind) in [
+            (false, false, "raw meat"),
+            (false, true, "salted meat"),
+            (true, false, "cooked meat"),
+        ] {
+            let full = self.meat_count(&ids, cooked, salted, false);
+            let small = self.meat_count(&ids, cooked, salted, true);
             if full > 0 {
                 parts.push(portion_bit(kind, full));
             }
@@ -6414,6 +6515,7 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} cuts "))?;
         if rest != "the raw meat into two smaller pieces with the iron knife."
             && rest != "the cooked meat into two smaller pieces with the iron knife."
+            && rest != "the salted meat into two smaller pieces with the iron knife."
             && rest != "the deer hide into strips with the iron knife."
         {
             return None;
@@ -6860,6 +6962,21 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "pierce", rest))
+    }
+
+    /// Raw meat rubbed with salt. The person who salted it already has the reply.
+    fn salt_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} salts "))?;
+        if rest != "a portion of raw meat. It will keep, and it can be eaten cold."
+            && rest != "a smaller piece of raw meat. It will keep, and it can be eaten cold."
+        {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "salt", rest))
     }
 
     /// A bone carved into an awl. The carver already has this as the reply.
@@ -7714,6 +7831,15 @@ impl World {
         if self.has_bone(actor_id) && self.has_carve_tool(actor_id) {
             actions.push("carve awl".into());
         }
+        if self.has_salt(actor_id) && self.raw_portion_to_salt(actor_id).is_some() {
+            actions.push("salt meat".into());
+        }
+        if (self.pile_count(actor.cell, Material::Salt) > 0
+            || !self.ground_ids(actor.cell, Material::Salt).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather salt".into());
+        }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty()
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
@@ -7983,23 +8109,34 @@ fn drink_count_phrase(count: u32, raw: bool) -> String {
     }
 }
 
-fn meat_kind_bits(ids: &[crate::model::ItemId], world: &World, cooked: bool) -> Vec<String> {
-    let kind = if cooked { "cooked meat" } else { "raw meat" };
+fn meat_kind_bits(
+    ids: &[crate::model::ItemId],
+    world: &World,
+    cooked: bool,
+    salted: bool,
+) -> Vec<String> {
+    let kind = if cooked {
+        "cooked meat"
+    } else if salted {
+        "salted meat"
+    } else {
+        "raw meat"
+    };
+    let matches = |meat: &crate::model::Item, small: bool| {
+        meat.small == small
+            && if cooked {
+                meat.cooked
+            } else {
+                !meat.cooked && meat.salted == salted
+            }
+    };
     let full = ids
         .iter()
-        .filter(|id| {
-            world
-                .item(**id)
-                .is_some_and(|meat| meat.cooked == cooked && !meat.small)
-        })
+        .filter(|id| world.item(**id).is_some_and(|meat| matches(meat, false)))
         .count() as u32;
     let small = ids
         .iter()
-        .filter(|id| {
-            world
-                .item(**id)
-                .is_some_and(|meat| meat.cooked == cooked && meat.small)
-        })
+        .filter(|id| world.item(**id).is_some_and(|meat| matches(meat, true)))
         .count() as u32;
     let mut bits = Vec::new();
     if full == 1 {
@@ -8016,13 +8153,18 @@ fn meat_kind_bits(ids: &[crate::model::ItemId], world: &World, cooked: bool) -> 
 }
 
 fn portions_lie_at(kind: &str, count: u32, place: &str) -> String {
-    if count == 1 {
+    let line = if count == 1 {
         format!("A portion of {kind} lies {place}.")
     } else {
         format!(
             "{} portions of {kind} lie {place}.",
             capitalize(&count_word(count))
         )
+    };
+    if kind == "salted meat" {
+        format!("{line} It can be eaten cold.")
+    } else {
+        line
     }
 }
 
@@ -8105,6 +8247,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Awl, false) => "copper awls",
         (Material::Bone, true) => "bone",
         (Material::Bone, false) => "bones",
+        (Material::Salt, _) => "salt crust",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",
