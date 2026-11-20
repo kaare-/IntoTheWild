@@ -84,6 +84,7 @@ impl World {
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
+        let mut smokes = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -150,6 +151,7 @@ impl World {
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
+                        Attempt::SmokeNest => smokes.push(intent),
                     }
                 }
             }
@@ -258,6 +260,7 @@ impl World {
         self.apply_carves(carves, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
+        self.apply_smokes(smokes, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -356,6 +359,27 @@ impl World {
                     Err("You are already carrying a burning brand.".into())
                 } else if self.carry_count(actor.id) >= self.tuning.carry_slots {
                     Err("Your arms are full.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SmokeNest => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.honey_nests.contains(&actor.cell) {
+                    Err("There is no bees' nest here to smoke.".into())
+                } else if self.pile_count(actor.cell, Material::Honey) == 0
+                    && self.ground_ids(actor.cell, Material::Honey).is_empty()
+                {
+                    Err("The bees' nest is empty.".into())
+                } else if self.smoked_nests.contains(&actor.cell) {
+                    Err("Smoke already hangs in the bees' nest.".into())
+                } else if !self.smoke_reaches(actor.id, actor.cell) {
+                    Err("You have no smoke to quiet the bees.".into())
                 } else {
                     Ok(true)
                 }
@@ -1324,6 +1348,8 @@ impl World {
                     } else if material == Material::Awl {
                         let kind = if awl_kind { "bone awl" } else { "copper awl" };
                         format!("a {kind}{from}.")
+                    } else if material == Material::Honey && self.smoked_nests.contains(&cell) {
+                        "a honeycomb.".to_string()
                     } else if material == Material::Honey {
                         "a honeycomb. The bees sting.".to_string()
                     } else {
@@ -1332,7 +1358,9 @@ impl World {
                     if material == Material::Salt {
                         self.arm_salt_lick(cell);
                     }
-                    if material == Material::Honey {
+                    if material == Material::Honey && self.smoked_nests.contains(&cell) {
+                        self.smoked_nests.remove(&cell);
+                    } else if material == Material::Honey {
                         let until = self.time.saturating_add(self.tuning.sting_ticks);
                         if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                             person.stings_until = Some(until);
@@ -2488,6 +2516,47 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, verb, &rest),
+                results,
+            );
+        }
+    }
+
+    /// A carried brand, or a fire in this cell or the next.
+    pub(crate) fn smoke_reaches(
+        &self,
+        actor: crate::model::ActorId,
+        cell: crate::model::CellId,
+    ) -> bool {
+        !self.loose_ids(actor, Material::Brand).is_empty()
+            || self
+                .fires
+                .values()
+                .any(|fire| crate::model::chebyshev(fire.cell, cell) <= 1)
+    }
+
+    fn apply_smokes(&mut self, smokes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the bees' nest. The bees quiet.";
+        for intent in smokes {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.smoked_nests.insert(cell);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "smoke", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "smoke", rest),
                 results,
             );
         }

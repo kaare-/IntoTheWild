@@ -362,6 +362,7 @@ pub enum Attempt {
     CarveAwl,
     SaltMeat,
     SaltFish,
+    SmokeNest,
 }
 
 impl Attempt {
@@ -415,6 +416,7 @@ impl Attempt {
                 | Attempt::CarveAwl
                 | Attempt::SaltMeat
                 | Attempt::SaltFish
+                | Attempt::SmokeNest
         )
     }
 }
@@ -784,6 +786,9 @@ pub struct World {
     /// A tree that holds a bees' nest. Empty once the honeycomb is taken.
     #[serde(default)]
     pub(crate) honey_nests: BTreeSet<CellId>,
+    /// A nest the bees have been smoked out of. The next gather there does not sting.
+    #[serde(default)]
+    pub(crate) smoked_nests: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -858,6 +863,7 @@ impl World {
             salt_licks: BTreeSet::new(),
             salt_returns_at: BTreeMap::new(),
             honey_nests: BTreeSet::new(),
+            smoked_nests: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -2787,5 +2793,102 @@ mod honey {
         assert!(world.actor(near).unwrap().mud > 0);
         assert!(world.actor(near).unwrap().ochre > 0);
         assert!(world.actor(near).unwrap().stings_until.is_none());
+    }
+
+    #[test]
+    fn a_brand_smokes_the_nest_and_the_next_gather_does_not_sting() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 5, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        let none = world.step(&[intent("none", near, Attempt::SmokeNest)]);
+        assert_eq!(
+            none.results[0].message,
+            "You have no smoke to quiet the bees."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no smoke to quiet the bees."));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Brand, 0, cell, Some(near), super::Role::Loose);
+        let smoked = world.step(&[intent("smoke", near, Attempt::SmokeNest)]);
+        assert_eq!(
+            smoked.results[0].message,
+            "You smoke the bees' nest. The bees quiet."
+        );
+        let yours = "You smoke the bees' nest. The bees quiet.";
+        let named = "Near smokes the bees' nest. The bees quiet.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != named }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == named));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("smoke")));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Smoke hangs in the bees' nest."), "{here}");
+        assert!(here.contains("You are well."), "{here}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(west.contains("Smoke hangs in it."), "{west}");
+        assert!(!world.observe(quiet).unwrap().text.contains("Smoke"));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
+        assert_eq!(gathered.results[0].message, "You gather a honeycomb.");
+        let body = world.observe(near).unwrap();
+        assert!(body.text.contains("You are well."), "{}", body.text);
+        assert!(!body.text.contains("You are stung."), "{}", body.text);
+        assert!(body.self_info.illness != "stung");
+        assert!(world.actor(near).unwrap().stings_until.is_none());
+        assert!(body
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near gathers") && !event.text.contains("sting")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a honeycomb."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("sting") }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("honeycomb") && !event.text.contains("sting")));
+    }
+
+    #[test]
+    fn a_fire_next_to_the_nest_smokes_it_without_a_brand() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        world.mint_fire(super::cell_id(6, 1).unwrap(), 0);
+        let smoked = world.step(&[intent("smoke", near, Attempt::SmokeNest)]);
+        assert_eq!(
+            smoked.results[0].message,
+            "You smoke the bees' nest. The bees quiet."
+        );
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
+        assert_eq!(gathered.results[0].message, "You gather a honeycomb.");
+        assert!(world.actor(near).unwrap().stings_until.is_none());
+        assert!(!world.observe(near).unwrap().text.contains("You are stung."));
     }
 }

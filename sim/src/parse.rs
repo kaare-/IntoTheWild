@@ -50,6 +50,7 @@ eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat, or salted meat; raw meat is not food
 gather salt                  a salt crust from the slope. The slope is bare, then the crust forms again.
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
+smoke nest                   a burning brand, or a fire in this cell or the next. The bees quiet, and the next gather does not sting.
 eat honey                    the honeycomb. Hunger eases.
 salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
 salt fish                    salt on a raw fish. The salt is spent. The fish can be eaten cold, and it does not spoil.
@@ -107,6 +108,18 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "e" | "east" => Ok(Attempt::Move(Dir::East)),
         "w" | "west" => Ok(Attempt::Move(Dir::West)),
         "move" | "go" | "walk" => parse_dir(rest).map(Attempt::Move),
+        "smoke"
+            if rest == "nest"
+                || rest == "the nest"
+                || rest == "bees"
+                || rest == "the bees"
+                || rest == "bees nest"
+                || rest == "the bees nest"
+                || rest == "bees' nest"
+                || rest == "the bees' nest" =>
+        {
+            Ok(Attempt::SmokeNest)
+        }
         "take"
             if rest == "brand"
                 || rest == "ember"

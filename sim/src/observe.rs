@@ -823,6 +823,9 @@ impl World {
             || !self.ground_ids(actor.cell, Material::Honey).is_empty()
         {
             parts.push("A bees' nest hangs in the tree here.".into());
+            if self.smoked_nests.contains(&actor.cell) {
+                parts.push("Smoke hangs in the bees' nest.".into());
+            }
         } else if self.honey_nests.contains(&actor.cell) {
             parts.push("The bees' nest is empty.".into());
         }
@@ -1532,9 +1535,15 @@ impl World {
             if self.pile_count(cell, Material::Honey) > 0
                 || !self.ground_ids(cell, Material::Honey).is_empty()
             {
-                lines.push(format!(
-                    "A bees' nest hangs in a tree on the {region} to the {way}."
-                ));
+                if self.smoked_nests.contains(&cell) {
+                    lines.push(format!(
+                        "A bees' nest hangs in a tree on the {region} to the {way}. Smoke hangs in it."
+                    ));
+                } else {
+                    lines.push(format!(
+                        "A bees' nest hangs in a tree on the {region} to the {way}."
+                    ));
+                }
             } else if self.honey_nests.contains(&cell) {
                 lines.push(format!(
                     "The bees' nest in the tree on the {region} to the {way} is empty."
@@ -1556,9 +1565,15 @@ impl World {
             if self.pile_count(cell, Material::Honey) > 0
                 || !self.ground_ids(cell, Material::Honey).is_empty()
             {
-                lines.push(format!(
-                    "A bees' nest hangs in a tree {place}. The bees sting if you gather the honeycomb."
-                ));
+                if self.smoked_nests.contains(&cell) {
+                    lines.push(format!(
+                        "A bees' nest hangs in a tree {place}. Smoke hangs in it. The bees will not sting."
+                    ));
+                } else {
+                    lines.push(format!(
+                        "A bees' nest hangs in a tree {place}. The bees sting if you gather the honeycomb."
+                    ));
+                }
             } else if self.honey_nests.contains(&cell) {
                 lines.push(format!("The bees' nest {place} is empty."));
             }
@@ -6333,6 +6348,7 @@ impl World {
                 self.event_visible(viewer, origin, event)
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
+                    && self.smoke_for_these_eyes(viewer, event).is_none()
                     && self.walk_for_these_eyes(viewer, event).is_none()
                     && self.smear_for_these_eyes(viewer, event).is_none()
                     && self.mark_for_these_eyes(viewer, event).is_none()
@@ -6437,6 +6453,21 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "mark", rest))
+    }
+
+    /// Smoking the nest, hidden from the person who smoked it.
+    /// Someone who can see the tree still reads the name.
+    fn smoke_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = format!("{name} smokes the bees' nest. The bees quiet.");
+        if event.text == text {
+            Some(text)
+        } else {
+            None
+        }
     }
 
     /// Bee stings leaving, filled for the person they were on.
@@ -8070,6 +8101,12 @@ impl World {
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
             actions.push("gather honey".into());
+            if self.honey_nests.contains(&actor.cell)
+                && !self.smoked_nests.contains(&actor.cell)
+                && self.smoke_reaches(actor_id, actor.cell)
+            {
+                actions.push("smoke nest".into());
+            }
         }
         if !self.loose_ids(actor_id, Material::Honey).is_empty() {
             actions.push("eat honey".into());
