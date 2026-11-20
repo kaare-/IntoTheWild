@@ -36,8 +36,41 @@ impl World {
                 Wake::DryBranch(id) => self.dry_branch(id),
                 Wake::BrandOut(id) => self.brand_out(id),
                 Wake::Snare(cell) => self.spring_snare(cell),
+                Wake::Spoil(id) => self.spoil_meat(id),
             }
         }
+    }
+
+    /// Raw unsalted meat has waited out its ticks. It is not food.
+    /// Salted meat and cooked meat keep. Someone who cannot see the cell hears nothing.
+    fn spoil_meat(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Meat || item.cooked || item.salted || item.spoiled {
+            return;
+        }
+        if item.spoils_at != Some(self.time) {
+            return;
+        }
+        if let Some(meat) = self.items.get_mut(&id) {
+            meat.spoiled = true;
+            meat.spoils_at = None;
+        }
+        let text = if item.small {
+            "A smaller piece of raw meat spoils. It is not food."
+        } else {
+            "A portion of raw meat spoils. It is not food."
+        };
+        self.emit(
+            text,
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
     }
 
     /// The hide snare on this cell has waited out its ticks. It is gone.

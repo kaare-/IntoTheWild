@@ -35,6 +35,11 @@ pub struct Tuning {
     /// Ticks after `set snare` before the snare catches a hare.
     #[serde(default = "default_snare_ticks")]
     pub snare_ticks: u64,
+    /// Ticks after raw meat is cut before it spoils. The tick before that,
+    /// look says it is going bad. Salted meat is not on this timer.
+    /// Cooked meat stays good.
+    #[serde(default = "default_meat_ticks")]
+    pub meat_ticks: u64,
     /// Sim time when the first night falls. Night lasts `night_len` ticks,
     /// then morning. The day between nights is `day_len` ticks, and that repeats.
     #[serde(default = "default_night_at")]
@@ -153,6 +158,9 @@ fn default_track_ticks() -> u64 {
 fn default_snare_ticks() -> u64 {
     3
 }
+fn default_meat_ticks() -> u64 {
+    24
+}
 fn default_night_at() -> u64 {
     72
 }
@@ -252,6 +260,8 @@ struct RawTime {
     track_ticks: u64,
     #[serde(default = "default_snare_ticks")]
     snare_ticks: u64,
+    #[serde(default = "default_meat_ticks")]
+    meat_ticks: u64,
     #[serde(default = "default_night_at")]
     night_at: u64,
     #[serde(default = "default_night_len")]
@@ -339,6 +349,7 @@ impl Tuning {
             || raw.time.spear_ticks == 0
             || raw.time.track_ticks == 0
             || raw.time.snare_ticks == 0
+            || raw.time.meat_ticks == 0
             || raw.time.night_len == 0
             || raw.time.day_len == 0
         {
@@ -392,6 +403,7 @@ impl Tuning {
             spear_ticks: raw.time.spear_ticks,
             track_ticks: raw.time.track_ticks,
             snare_ticks: raw.time.snare_ticks,
+            meat_ticks: raw.time.meat_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
             day_len: raw.time.day_len,

@@ -2047,9 +2047,16 @@ impl World {
     fn meat_carry_phrase(&self, actor_id: ActorId) -> String {
         let ids = self.loose_ids(actor_id, Material::Meat);
         let mut bits = Vec::new();
-        bits.extend(meat_kind_bits(&ids, self, false, false));
-        bits.extend(meat_kind_bits(&ids, self, false, true));
-        bits.extend(meat_kind_bits(&ids, self, true, false));
+        for face in ["raw", "going", "spoiled", "salted", "cooked"] {
+            let full = self.meat_tally(&ids, face, false);
+            let small = self.meat_tally(&ids, face, true);
+            if full > 0 {
+                bits.push(meat_bit(face, full, false));
+            }
+            if small > 0 {
+                bits.push(meat_bit(face, small, true));
+            }
+        }
         if bits.is_empty() {
             "meat".into()
         } else {
@@ -6408,40 +6415,39 @@ impl World {
 
     fn meat_place_lines(&self, ids: &[crate::model::ItemId], place: &str) -> Vec<String> {
         let mut lines = Vec::new();
-        for (cooked, salted, kind) in [
-            (false, false, "raw meat"),
-            (false, true, "salted meat"),
-            (true, false, "cooked meat"),
-        ] {
-            let full = self.meat_count(ids, cooked, salted, false);
-            let small = self.meat_count(ids, cooked, salted, true);
+        for face in ["raw", "going", "spoiled", "salted", "cooked"] {
+            let full = self.meat_tally(ids, face, false);
+            let small = self.meat_tally(ids, face, true);
             if full > 0 {
-                lines.push(portions_lie_at(kind, full, place));
+                lines.push(meat_lie(face, full, place, false));
             }
             if small > 0 {
-                lines.push(smaller_lie_at(kind, small, place));
+                lines.push(meat_lie(face, small, place, true));
             }
         }
         lines
     }
 
-    fn meat_count(
-        &self,
-        ids: &[crate::model::ItemId],
-        cooked: bool,
-        salted: bool,
-        small: bool,
-    ) -> u32 {
+    /// Raw, going bad, spoiled, salted, or cooked. Look is rebuilt from the item.
+    fn meat_face(&self, meat: &crate::model::Item) -> &'static str {
+        if meat.cooked {
+            "cooked"
+        } else if meat.spoiled {
+            "spoiled"
+        } else if meat.salted {
+            "salted"
+        } else if meat.spoils_at == Some(self.time) {
+            "going"
+        } else {
+            "raw"
+        }
+    }
+
+    fn meat_tally(&self, ids: &[crate::model::ItemId], face: &str, small: bool) -> u32 {
         ids.iter()
             .filter(|id| {
-                self.item(**id).is_some_and(|meat| {
-                    meat.small == small
-                        && if cooked {
-                            meat.cooked
-                        } else {
-                            !meat.cooked && meat.salted == salted
-                        }
-                })
+                self.item(**id)
+                    .is_some_and(|meat| meat.small == small && self.meat_face(meat) == face)
             })
             .count() as u32
     }
@@ -6452,18 +6458,14 @@ impl World {
             return None;
         }
         let mut parts = Vec::new();
-        for (cooked, salted, kind) in [
-            (false, false, "raw meat"),
-            (false, true, "salted meat"),
-            (true, false, "cooked meat"),
-        ] {
-            let full = self.meat_count(&ids, cooked, salted, false);
-            let small = self.meat_count(&ids, cooked, salted, true);
+        for face in ["raw", "going", "spoiled", "salted", "cooked"] {
+            let full = self.meat_tally(&ids, face, false);
+            let small = self.meat_tally(&ids, face, true);
             if full > 0 {
-                parts.push(portion_bit(kind, full));
+                parts.push(meat_bit(face, full, false));
             }
             if small > 0 {
-                parts.push(smaller_bit(kind, small));
+                parts.push(meat_bit(face, small, true));
             }
         }
         Some(parts.join(" and "))
@@ -8109,51 +8111,27 @@ fn drink_count_phrase(count: u32, raw: bool) -> String {
     }
 }
 
-fn meat_kind_bits(
-    ids: &[crate::model::ItemId],
-    world: &World,
-    cooked: bool,
-    salted: bool,
-) -> Vec<String> {
-    let kind = if cooked {
-        "cooked meat"
-    } else if salted {
-        "salted meat"
-    } else {
-        "raw meat"
-    };
-    let matches = |meat: &crate::model::Item, small: bool| {
-        meat.small == small
-            && if cooked {
-                meat.cooked
-            } else {
-                !meat.cooked && meat.salted == salted
-            }
-    };
-    let full = ids
-        .iter()
-        .filter(|id| world.item(**id).is_some_and(|meat| matches(meat, false)))
-        .count() as u32;
-    let small = ids
-        .iter()
-        .filter(|id| world.item(**id).is_some_and(|meat| matches(meat, true)))
-        .count() as u32;
-    let mut bits = Vec::new();
-    if full == 1 {
-        bits.push(format!("a portion of {kind}"));
-    } else if full > 1 {
-        bits.push(format!("{} portions of {kind}", count_word(full)));
+fn meat_kind_name(face: &str) -> &'static str {
+    match face {
+        "salted" => "salted meat",
+        "cooked" => "cooked meat",
+        "spoiled" => "spoiled meat",
+        _ => "raw meat",
     }
-    if small == 1 {
-        bits.push(format!("a smaller piece of {kind}"));
-    } else if small > 1 {
-        bits.push(format!("{} smaller pieces of {kind}", count_word(small)));
-    }
-    bits
 }
 
-fn portions_lie_at(kind: &str, count: u32, place: &str) -> String {
-    let line = if count == 1 {
+fn meat_lie(face: &str, count: u32, place: &str, small: bool) -> String {
+    let kind = meat_kind_name(face);
+    let line = if small {
+        if count == 1 {
+            format!("A smaller piece of {kind} lies {place}.")
+        } else {
+            format!(
+                "{} smaller pieces of {kind} lie {place}.",
+                capitalize(&count_word(count))
+            )
+        }
+    } else if count == 1 {
         format!("A portion of {kind} lies {place}.")
     } else {
         format!(
@@ -8161,21 +8139,38 @@ fn portions_lie_at(kind: &str, count: u32, place: &str) -> String {
             capitalize(&count_word(count))
         )
     };
-    if kind == "salted meat" {
-        format!("{line} It can be eaten cold.")
-    } else {
-        line
-    }
+    let tail = match face {
+        "salted" => " It can be eaten cold.",
+        "going" => {
+            if count == 1 {
+                " It is going bad."
+            } else {
+                " They are going bad."
+            }
+        }
+        "spoiled" => {
+            if count == 1 {
+                " It is not food."
+            } else {
+                " They are not food."
+            }
+        }
+        _ => "",
+    };
+    format!("{line}{tail}")
 }
 
-fn smaller_lie_at(kind: &str, count: u32, place: &str) -> String {
-    if count == 1 {
-        format!("A smaller piece of {kind} lies {place}.")
+fn meat_bit(face: &str, count: u32, small: bool) -> String {
+    let kind = meat_kind_name(face);
+    let bit = if small {
+        smaller_bit(kind, count)
     } else {
-        format!(
-            "{} smaller pieces of {kind} lie {place}.",
-            capitalize(&count_word(count))
-        )
+        portion_bit(kind, count)
+    };
+    if face == "going" {
+        format!("{bit}, going bad")
+    } else {
+        bit
     }
 }
 

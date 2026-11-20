@@ -494,9 +494,14 @@ impl World {
                         .loose_ids(actor.id, Material::Meat)
                         .iter()
                         .chain(self.ground_ids(actor.cell, Material::Meat).iter())
-                        .any(|id| self.item(*id).is_some_and(|meat| meat.salted))
+                        .any(|id| {
+                            self.item(*id)
+                                .is_some_and(|meat| meat.salted && !meat.spoiled)
+                        })
                     {
                         Err("The meat is already salted.".into())
+                    } else if self.spoiled_meat_near(actor.id) {
+                        Err("The meat has spoiled.".into())
                     } else {
                         Err("There is no raw meat here to salt.".into())
                     }
@@ -890,6 +895,8 @@ impl World {
                                 Ok(true)
                             } else if self.raw_meat_near(actor.id) {
                                 Err("Raw meat is not food.".into())
+                            } else if self.spoiled_meat_near(actor.id) {
+                                Err("The meat has spoiled.".into())
                             } else {
                                 Err("There is no cooked meat here to eat.".into())
                             }
@@ -1840,6 +1847,9 @@ impl World {
             && self.raw_meat_at(person.cell).is_none()
             && !self.raw_fish_near(actor)
         {
+            if self.spoiled_meat_near(actor) {
+                return Some("The meat has spoiled.".into());
+            }
             if self.has_material_at_hand(actor, Material::BitterBerry) {
                 return Some("Cooking does not make poison berries food.".into());
             }
@@ -2094,6 +2104,8 @@ impl World {
         };
         if let Some(meat) = self.items.get_mut(&id) {
             meat.cooked = true;
+            meat.spoiled = false;
+            meat.spoils_at = None;
         }
         let rest = "the raw meat over the fire.";
         let name = self.name_of(intent.actor_id);
@@ -3318,13 +3330,12 @@ impl World {
                 continue;
             }
             let Some(meat_id) = self.raw_portion_to_salt(actor.id) else {
-                self.finish(
-                    intent.command_id,
-                    actor.id,
-                    false,
-                    "There is no raw meat here to salt.",
-                    results,
-                );
+                let message = if self.spoiled_meat_near(actor.id) {
+                    "The meat has spoiled."
+                } else {
+                    "There is no raw meat here to salt."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
                 continue;
             };
             if !self.take_one_salt(actor.id, actor.cell) {
@@ -3340,6 +3351,8 @@ impl World {
             let small = self.item(meat_id).is_some_and(|meat| meat.small);
             if let Some(meat) = self.items.get_mut(&meat_id) {
                 meat.salted = true;
+                meat.spoiled = false;
+                meat.spoils_at = None;
             }
             let name = self.name_of(actor.id);
             let rest = if small {
@@ -3399,7 +3412,7 @@ impl World {
             .into_iter()
             .find(|id| {
                 self.item(*id)
-                    .is_some_and(|meat| !meat.cooked && !meat.salted)
+                    .is_some_and(|meat| !meat.cooked && !meat.salted && !meat.spoiled)
             });
         if carried.is_some() {
             return carried;
@@ -3409,7 +3422,7 @@ impl World {
             .into_iter()
             .find(|id| {
                 self.item(*id)
-                    .is_some_and(|meat| !meat.cooked && !meat.salted)
+                    .is_some_and(|meat| !meat.cooked && !meat.salted && !meat.spoiled)
             })
     }
 
@@ -4056,6 +4069,17 @@ impl World {
                     item.cooked = meat.cooked;
                     item.salted = meat.salted;
                     item.small = true;
+                    item.spoiled = meat.spoiled;
+                    if meat.cooked || meat.salted || meat.spoiled {
+                        item.spoils_at = None;
+                    } else {
+                        item.spoils_at = meat.spoils_at;
+                    }
+                }
+                if !meat.cooked && !meat.salted && !meat.spoiled {
+                    if let Some(at) = meat.spoils_at {
+                        self.schedule(at, Wake::Spoil(piece));
+                    }
                 }
                 ids.push(piece);
             }
@@ -5001,6 +5025,8 @@ impl World {
         let Some(id) = self.cooked_meat_id(intent.actor_id).or(salted) else {
             let message = if self.raw_meat_near(intent.actor_id) {
                 "Raw meat is not food."
+            } else if self.spoiled_meat_near(intent.actor_id) {
+                "The meat has spoiled."
             } else {
                 "There is no cooked meat here to eat."
             };
