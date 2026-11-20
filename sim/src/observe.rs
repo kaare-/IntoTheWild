@@ -4842,10 +4842,10 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} sets "))?;
-        if rest != "a lump of copper ore by the fire." {
+        if rest != "a lump of copper ore by the fire. It leaves their arms." {
             return None;
         }
-        Some(crate::model::spoken_act(None, "set", rest))
+        Some("You set a lump of copper ore by the fire. It leaves your arms.".into())
     }
 
     /// A successful gather, filled for the person who took it.

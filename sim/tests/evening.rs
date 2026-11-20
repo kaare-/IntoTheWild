@@ -783,6 +783,14 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("gather copper ore").unwrap(),
         Attempt::Gather(Material::CopperOre)
     ));
+    assert!(matches!(
+        parse_attempt("gather bead").unwrap(),
+        Attempt::Gather(Material::Copper)
+    ));
+    assert!(matches!(
+        parse_attempt("gather copper").unwrap(),
+        Attempt::Gather(Material::Copper)
+    ));
     assert!(matches!(parse_attempt("smelt").unwrap(), Attempt::Smelt));
     assert!(matches!(
         parse_attempt("smelt copper ore").unwrap(),
@@ -8473,12 +8481,12 @@ fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
     world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
     world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
     world.step(&[cmd("light", near, Attempt::Light)]);
-    let yours = "You set a lump of copper ore by the fire.";
-    let witnessed = "Near sets a lump of copper ore by the fire.";
+    let yours = "You set a lump of copper ore by the fire. It leaves your arms.";
+    let witnessed = "Near sets a lump of copper ore by the fire. It leaves their arms.";
     let set = world.step(&[cmd("smelt", near, Attempt::Smelt)]);
     assert_eq!(
         set.results[0].message,
-        "You set a lump of copper ore by the fire. It is not metal yet."
+        "You set a lump of copper ore by the fire. It leaves your arms. It is not metal yet."
     );
     let after_set = world.sim_time();
     assert!(world
@@ -8542,5 +8550,35 @@ fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
     assert!(here.contains("A copper bead lies here."), "{here}");
     assert!(!here.contains("is smelting in the fire."), "{here}");
     assert!(!arms_sentence(&here).contains("bead"), "{here}");
+    let gathered = "You gather a copper bead.";
+    let seen = "Near gathers a copper bead.";
+    let took = world.step(&[cmd("bead", near, parse_attempt("gather bead").unwrap())]);
+    assert_eq!(took.results[0].message, gathered);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == gathered));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("bead")));
+    let arms = world.observe(near).unwrap().text;
+    assert!(!arms.contains("A copper bead lies here."), "{arms}");
+    assert!(arms_sentence(&arms).contains("a copper bead"), "{arms}");
+    assert_eq!(world.material_items(Material::Copper)[0].1, Some(near));
+    world.step(&[cmd("drop", near, Attempt::Drop(Material::Copper))]);
+    let again = world.step(&[cmd("copper", near, parse_attempt("gather copper").unwrap())]);
+    assert_eq!(again.results[0].message, gathered);
+    assert_eq!(world.material_items(Material::Copper)[0].1, Some(near));
     assert!(parse_attempt("forge").is_err());
 }

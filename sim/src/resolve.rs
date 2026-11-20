@@ -2309,9 +2309,8 @@ impl World {
             }
             self.schedule(ready, Wake::Smelt(id));
             let name = self.name_of(intent.actor_id);
-            let rest = "a lump of copper ore by the fire.";
             self.emit(
-                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                format!("{name} sets a lump of copper ore by the fire. It leaves their arms."),
                 Scope::Cell(cell),
                 vec![intent.actor_id],
                 vec![cell],
@@ -2323,7 +2322,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 true,
-                "You set a lump of copper ore by the fire. It is not metal yet.",
+                "You set a lump of copper ore by the fire. It leaves your arms. It is not metal yet.",
                 results,
             );
         }

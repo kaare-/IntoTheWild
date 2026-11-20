@@ -8,7 +8,7 @@ look                         where you are, and the local map
 examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|clay|bowl|spear|carcass|hide
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|clay|bowl|spear|carcass|hide
 drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass|hide
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
