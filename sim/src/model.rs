@@ -658,6 +658,8 @@ pub enum Wake {
     HoneyReturn(CellId),
     /// The bird's nest on this cell holds eggs again.
     EggReturn(CellId),
+    /// The damp bank on this cell grows moss again.
+    MossReturn(CellId),
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
 }
@@ -812,6 +814,12 @@ pub struct World {
     /// When an emptied bird's nest holds eggs again. Look says the nest is empty until then.
     #[serde(default)]
     pub(crate) egg_returns_at: BTreeMap<CellId, u64>,
+    /// Damp banks where moss grows. Bare once the handful is taken.
+    #[serde(default)]
+    pub(crate) moss_banks: BTreeSet<CellId>,
+    /// When a bare bank grows moss again. Look says the bank is bare until then.
+    #[serde(default)]
+    pub(crate) moss_returns_at: BTreeMap<CellId, u64>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -890,6 +898,8 @@ impl World {
             smoked_nests: BTreeSet::new(),
             bird_nests: BTreeSet::new(),
             egg_returns_at: BTreeMap::new(),
+            moss_banks: BTreeSet::new(),
+            moss_returns_at: BTreeMap::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -931,7 +941,9 @@ impl World {
         world.add_pile(bird, Material::Egg, 1, 0);
         world.bird_nests.insert(bird);
         // The south bank of the brook. Damp stones, and moss on them.
-        world.add_pile(cell_id(1, 3).unwrap(), Material::Moss, 1, 0);
+        let bank = cell_id(1, 3).unwrap();
+        world.add_pile(bank, Material::Moss, 1, 0);
+        world.moss_banks.insert(bank);
         world.normalize();
         world
     }
@@ -1316,6 +1328,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.egg_ticks);
         self.egg_returns_at.insert(cell, at);
         self.schedule(at, Wake::EggReturn(cell));
+    }
+
+    /// The bank is bare. Moss returns `moss_ticks` after this step.
+    /// A wake that finds moss already there does not add a second handful.
+    pub(crate) fn arm_moss_bank(&mut self, cell: CellId) {
+        if !self.moss_banks.contains(&cell) || self.moss_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Moss) > 0
+            || !self.ground_ids(cell, Material::Moss).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.moss_ticks);
+        self.moss_returns_at.insert(cell, at);
+        self.schedule(at, Wake::MossReturn(cell));
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -3570,6 +3598,11 @@ mod moss {
             "{}",
             taken.text
         );
+        assert!(
+            taken.text.contains("The damp bank here is bare."),
+            "{}",
+            taken.text
+        );
         assert!(!taken.text.contains("Moss grows"), "{}", taken.text);
         assert!(taken
             .events
@@ -3581,7 +3614,13 @@ mod moss {
             .events
             .iter()
             .any(|event| event.text == "Near gathers a handful of moss."));
-        assert!(!world.observe(seen).unwrap().text.contains("Moss grows"));
+        let seen_bare = world.observe(seen).unwrap().text;
+        assert!(
+            seen_bare.contains("The damp bank to the west is bare."),
+            "{seen_bare}"
+        );
+        assert!(!seen_bare.contains("Moss grows"));
+        assert!(!world.observe(quiet).unwrap().text.contains("damp bank"));
         assert!(world
             .observe(quiet)
             .unwrap()
@@ -3637,5 +3676,87 @@ mod moss {
             .all(|event| !event.text.contains("press") && !event.text.contains("sting")));
         let spent = world.step(&[intent("spent", near, Attempt::DressSting)]);
         assert_eq!(spent.results[0].message, "You have no moss.");
+    }
+
+    #[test]
+    fn the_damp_bank_is_bare_until_moss_grows_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Moss))]);
+        assert_eq!(gathered.results[0].message, "You gather a handful of moss.");
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The damp bank here is bare."), "{empty}");
+        assert!(!empty.contains("Moss grows"), "{empty}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("The damp bank to the west is bare."),
+            "{west}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("damp bank"));
+        let ticks = world.tuning.moss_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The damp bank here is bare."));
+        world.step(&[]);
+        let grown = "Moss grows on the damp bank again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("Moss grows on the damp bank here."),
+            "{}",
+            back.text
+        );
+        assert!(
+            !back.text.contains("The damp bank here is bare."),
+            "{}",
+            back.text
+        );
+        assert!(back.events.iter().any(|event| event.text == grown));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("Moss grows on the damp bank to the west."),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == grown));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown));
+        assert!(!world.observe(quiet).unwrap().text.contains("damp bank"));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Moss))]);
+        assert_eq!(again.results[0].message, "You gather a handful of moss.");
+        let taken = world.observe(near).unwrap();
+        assert!(
+            taken.text.contains("The damp bank here is bare."),
+            "{}",
+            taken.text
+        );
+        assert!(taken
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a handful of moss."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
     }
 }

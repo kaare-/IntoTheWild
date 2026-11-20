@@ -66,6 +66,10 @@ honey_ticks = 24
 # many ticks. Then the nest holds eggs again. Someone who cannot see the tree
 # does not get the line.
 egg_ticks = 24
+# After the moss on the damp bank is gathered, look says the bank is bare
+# for this many ticks. Then moss grows there again. Someone who cannot see
+# the bank does not get the line.
+moss_ticks = 24
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up
 # on the step that opens at that first dawn and holds off through the next

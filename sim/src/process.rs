@@ -40,6 +40,7 @@ impl World {
                 Wake::SaltReturn(cell) => self.return_salt(cell),
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::EggReturn(cell) => self.return_eggs(cell),
+                Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::Stings => self.apply_stings(),
             }
         }
@@ -155,6 +156,33 @@ impl World {
         self.add_pile(cell, Material::Egg, 1, 0);
         self.emit(
             "The bird's nest fills again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The damp bank has waited out its ticks. Moss grows there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_moss(&mut self, cell: CellId) {
+        let Some(at) = self.moss_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.moss_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Moss) > 0
+            || !self.ground_ids(cell, Material::Moss).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Moss, 1, 0);
+        self.emit(
+            "Moss grows on the damp bank again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

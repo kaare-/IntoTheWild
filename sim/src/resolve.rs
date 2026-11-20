@@ -1410,6 +1410,9 @@ impl World {
                     if material == Material::Egg {
                         self.arm_bird_nest(cell);
                     }
+                    if material == Material::Moss {
+                        self.arm_moss_bank(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
