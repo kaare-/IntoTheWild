@@ -941,6 +941,13 @@ impl World {
                         Material::Awl => Err("A copper awl is not food.".into()),
                         Material::Bone => Err("A bone is not food.".into()),
                         Material::Salt => Err("Salt is not food.".into()),
+                        Material::Honey => {
+                            if self.loose_ids(actor.id, Material::Honey).is_empty() {
+                                Err("You are not carrying honey.".into())
+                            } else {
+                                Ok(true)
+                            }
+                        }
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
@@ -1075,6 +1082,7 @@ impl World {
                             | Material::Fish
                             | Material::Brand
                             | Material::Charcoal
+                            | Material::Honey
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1251,6 +1259,7 @@ impl World {
                     | Material::Charcoal
                     | Material::Bone
                     | Material::Salt
+                    | Material::Honey
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1315,6 +1324,8 @@ impl World {
                     } else if material == Material::Awl {
                         let kind = if awl_kind { "bone awl" } else { "copper awl" };
                         format!("a {kind}{from}.")
+                    } else if material == Material::Honey {
+                        "a honeycomb. The bees sting.".to_string()
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -5018,6 +5029,10 @@ impl World {
                 self.eat_mushroom(intent, results);
                 continue;
             }
+            if material == Material::Honey {
+                self.eat_honey(intent, results);
+                continue;
+            }
             if material == Material::BitterBerry {
                 self.eat_poison(intent, results);
                 continue;
@@ -5074,6 +5089,65 @@ impl World {
             };
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
+    }
+
+    fn eat_honey(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self
+            .loose_ids(intent.actor_id, Material::Honey)
+            .first()
+            .copied()
+        else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You are not carrying honey.",
+                results,
+            );
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the honeycomb.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+            self.emit(
+                "The hunger eases.",
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
     fn eat_mushroom(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {

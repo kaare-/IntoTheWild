@@ -103,6 +103,7 @@ pub enum Material {
     Reed,
     Bone,
     Salt,
+    Honey,
 }
 
 impl Material {
@@ -141,6 +142,7 @@ impl Material {
             Material::Reed => "reed",
             Material::Bone => "bone",
             Material::Salt => "salt",
+            Material::Honey => "honey",
         }
     }
 
@@ -179,6 +181,7 @@ impl Material {
             Material::Reed => "bundle of reeds",
             Material::Bone => "bone",
             Material::Salt => "salt crust",
+            Material::Honey => "honeycomb",
         }
     }
 
@@ -302,6 +305,7 @@ pub enum ExamineTarget {
     Snare,
     Bone,
     Salt,
+    Honey,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -771,6 +775,9 @@ pub struct World {
     /// When the bare lick forms another crust. Look says the slope is bare until then.
     #[serde(default)]
     pub(crate) salt_returns_at: BTreeMap<CellId, u64>,
+    /// A tree that holds a bees' nest. Empty once the honeycomb is taken.
+    #[serde(default)]
+    pub(crate) honey_nests: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -844,6 +851,7 @@ impl World {
             fresh_tracks: BTreeMap::new(),
             salt_licks: BTreeSet::new(),
             salt_returns_at: BTreeMap::new(),
+            honey_nests: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -877,6 +885,9 @@ impl World {
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
         world.salt_licks.insert(cell_id(0, 0).unwrap());
+        let tree = cell_id(6, 0).unwrap();
+        world.add_pile(tree, Material::Honey, 1, 0);
+        world.honey_nests.insert(tree);
         world.normalize();
         world
     }
@@ -2586,5 +2597,117 @@ mod salt_lick {
             .text
             .contains("The slope is bare."));
         assert_eq!(world.material_tally(Material::Salt), 2);
+    }
+}
+
+#[cfg(test)]
+mod honey {
+    use super::{Attempt, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_bees_nest_in_the_east_tree_feeds_and_stings() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 5, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A bees' nest hangs in the tree here."),
+            "{here}"
+        );
+        let from_west = world.observe(seen).unwrap().text;
+        assert!(
+            from_west.contains("A bees' nest hangs in a tree on the slope to the east."),
+            "{from_west}"
+        );
+        let missed = world.observe(quiet).unwrap().text;
+        assert!(!missed.contains("bees"), "{missed}");
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Honey))]);
+        assert_eq!(none.results[0].message, "There is no honey here to gather.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no honey here to gather."));
+        let bare = world.step(&[intent("bare", near, Attempt::Eat(Material::Honey))]);
+        assert_eq!(bare.results[0].message, "You are not carrying honey.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You are not carrying honey."));
+        let yours = "You gather a honeycomb. The bees sting.";
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
+        assert_eq!(gathered.results[0].message, yours);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && !event.text.contains("Near gathers") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a honeycomb. The bees sting."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("honeycomb") && !event.text.contains("sting")));
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The bees' nest is empty."), "{empty}");
+        assert!(!empty.contains("A bees' nest hangs"), "{empty}");
+        assert!(empty.contains("a honeycomb"), "{empty}");
+        let west_empty = world.observe(seen).unwrap().text;
+        assert!(
+            west_empty.contains("The bees' nest in the tree on the slope to the east is empty."),
+            "{west_empty}"
+        );
+        if let Some(person) = world.actors.get_mut(&near) {
+            person.hunger = world.tuning.hungry_at;
+        }
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Honey))]);
+        assert_eq!(
+            eaten.results[0].message,
+            "You eat the honeycomb. The hunger eases."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You eat the honeycomb."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near eats")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near eats the honeycomb."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("honeycomb")));
+        assert_eq!(world.material_tally(Material::Honey), 0);
     }
 }

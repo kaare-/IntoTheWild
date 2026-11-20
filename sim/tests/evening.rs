@@ -5351,7 +5351,11 @@ fn examine_slope_names_the_open_ground_you_can_see() {
     let under = world.spawn_at("Near", "n", 6, 1).unwrap();
     let clock = world.sim_time();
     let looked = world.observe(under).unwrap();
-    assert!(looked.text.contains("North: slope."), "{}", looked.text);
+    assert!(
+        looked.text.contains("North: slope, a bees' nest."),
+        "{}",
+        looked.text
+    );
     let slope = world.examine(under, ExamineTarget::Slope);
     assert_eq!(world.sim_time(), clock);
     assert_eq!(
