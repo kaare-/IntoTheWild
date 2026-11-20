@@ -5922,6 +5922,7 @@ impl World {
                 self.event_visible(viewer, origin, event)
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
+                    && self.walk_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6440,8 +6441,9 @@ impl World {
         Some(crate::model::spoken_act(None, "spear", rest))
     }
 
-    /// The walk, filled for the person who took it. Anyone else keeps the
-    /// stored sentence, or the footsteps line when they cannot see the arrival.
+    /// The walk. The walker already has this as the reply, so the event
+    /// list does not repeat it. Anyone else keeps the stored sentence, or
+    /// the footsteps line when they cannot see the arrival.
     fn walk_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
