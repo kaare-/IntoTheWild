@@ -1440,6 +1440,9 @@ impl World {
                     if material == Material::Moss {
                         self.arm_moss_bank(cell);
                     }
+                    if material == Material::Flint {
+                        self.arm_flint_bed(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -2517,6 +2520,10 @@ impl World {
                 .map(|actor| actor.cell)
                 .unwrap_or(0);
             self.items.remove(&nodule);
+            let beds: Vec<_> = self.flint_beds.iter().copied().collect();
+            for bed in beds {
+                self.arm_flint_bed(bed);
+            }
             let id = self.mint_item(Material::Flake, 0, cell, Some(intent.actor_id), Role::Loose);
             let name = self.name_of(intent.actor_id);
             self.emit(

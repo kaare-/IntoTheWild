@@ -822,6 +822,8 @@ impl World {
             || !self.ground_ids(actor.cell, Material::Flint).is_empty()
         {
             parts.push("A flint nodule lies here.".into());
+        } else if self.flint_bare(actor.cell) {
+            parts.push("The slope has no flint.".into());
         }
         if self.pile_count(actor.cell, Material::Ochre) > 0
             || !self.ground_ids(actor.cell, Material::Ochre).is_empty()
@@ -1137,6 +1139,11 @@ impl World {
                 let region = self.cell(cell).region.word();
                 lines.push(format!(
                     "A flint nodule lies on the {region} to the {}.",
+                    self.relative(origin, cell)
+                ));
+            } else if self.flint_bare(cell) {
+                lines.push(format!(
+                    "The slope to the {} has no flint.",
                     self.relative(origin, cell)
                 ));
             }
@@ -1870,6 +1877,13 @@ impl World {
         } else {
             lines.join(" ")
         }
+    }
+
+    /// The slope's flint was gathered and a nodule has not lain there again.
+    fn flint_bare(&self, cell: crate::model::CellId) -> bool {
+        self.flint_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Flint) == 0
+            && self.ground_ids(cell, Material::Flint).is_empty()
     }
 
     /// The damp bank was gathered and moss has not grown there again.
@@ -5050,6 +5064,21 @@ impl World {
                 "A flint nodule is carried by {who}, {}. It is a sharp stone. It can be knapped.",
                 self.cover_phrase(actor.cell)
             ));
+        }
+        if lines.is_empty() {
+            for cell in self.visible_cell_ids(viewer) {
+                if !self.flint_bare(cell) {
+                    continue;
+                }
+                if origin == cell {
+                    lines.push("The slope here has no flint.".into());
+                } else {
+                    lines.push(format!(
+                        "The slope to the {} has no flint.",
+                        self.relative(origin, cell)
+                    ));
+                }
+            }
         }
         lines.extend(self.flake_lines(viewer));
         if lines.is_empty() {

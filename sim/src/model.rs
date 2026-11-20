@@ -666,6 +666,8 @@ pub enum Wake {
     EggReturn(CellId),
     /// The damp bank on this cell grows moss again.
     MossReturn(CellId),
+    /// A flint nodule lies on this slope cell again.
+    FlintReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
@@ -828,6 +830,12 @@ pub struct World {
     /// When a bare bank grows moss again. Look says the bank is bare until then.
     #[serde(default)]
     pub(crate) moss_returns_at: BTreeMap<CellId, u64>,
+    /// Slope cells where a flint nodule lies again after it is taken.
+    #[serde(default)]
+    pub(crate) flint_beds: BTreeSet<CellId>,
+    /// When a bare slope has a flint nodule again. Look says the slope has no flint until then.
+    #[serde(default)]
+    pub(crate) flint_returns_at: BTreeMap<CellId, u64>,
     /// When a deer stands on the trail again. Look names no standing deer until then.
     #[serde(default)]
     pub(crate) deer_returns_at: Option<u64>,
@@ -918,6 +926,8 @@ impl World {
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
+            flint_beds: BTreeSet::new(),
+            flint_returns_at: BTreeMap::new(),
             deer_returns_at: None,
             next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
@@ -945,7 +955,9 @@ impl World {
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
-        world.add_pile(cell_id(4, 0).unwrap(), Material::Flint, 1, 0);
+        let flint = cell_id(4, 0).unwrap();
+        world.add_pile(flint, Material::Flint, 1, 0);
+        world.flint_beds.insert(flint);
         world.add_pile(cell_id(3, 0).unwrap(), Material::Ochre, 1, 0);
         world.add_pile(cell_id(5, 0).unwrap(), Material::IronOre, 1, 0);
         world.add_pile(cell_id(1, 2).unwrap(), Material::CopperOre, 1, 0);
@@ -1364,6 +1376,24 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.moss_returns_at.insert(cell, at);
         self.schedule(at, Wake::MossReturn(cell));
+    }
+
+    /// The slope has no flint nodule. Another lies there `flint_ticks` after
+    /// this step. Gathering it, or knapping the one that was carried, leaves
+    /// the same wait. A wake that finds a nodule already there does not add
+    /// a second one.
+    pub(crate) fn arm_flint_bed(&mut self, cell: CellId) {
+        if !self.flint_beds.contains(&cell) || self.flint_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Flint) > 0
+            || !self.ground_ids(cell, Material::Flint).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.flint_ticks);
+        self.flint_returns_at.insert(cell, at);
+        self.schedule(at, Wake::FlintReturn(cell));
     }
 
     /// The deer is down. Another stands on the trail `deer_ticks` after this
@@ -4313,5 +4343,102 @@ mod deer_return {
             .events
             .iter()
             .all(|event| { !event.text.contains("brings the deer") && event.text != arrived }));
+    }
+}
+
+#[cfg(test)]
+mod flint_return {
+    use super::{Attempt, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_slope_has_no_flint_until_a_nodule_lies_there_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A flint nodule lies here."), "{here}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("A flint nodule lies on the slope to the north."));
+        assert!(!world.observe(quiet).unwrap().text.contains("flint"));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(gathered.results[0].message, "You gather a flint nodule.");
+        let knapped = world.step(&[intent("knap", near, Attempt::Knap)]);
+        assert_eq!(
+            knapped.results[0].message,
+            "You knap the flint nodule into a sharp flake."
+        );
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The slope has no flint."), "{empty}");
+        assert!(!empty.contains("A flint nodule lies here."), "{empty}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Flint),
+            "The slope here has no flint.\nA flint flake is carried by you, in the open. It is sharp enough to cut or haft later."
+        );
+        let south = world.observe(seen).unwrap().text;
+        assert!(
+            south.contains("The slope to the north has no flint."),
+            "{south}"
+        );
+        assert!(!south.contains("A flint nodule lies"), "{south}");
+        assert!(!world.observe(quiet).unwrap().text.contains("flint"));
+        let ticks = world.tuning.flint_ticks;
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The slope has no flint."));
+        world.step(&[]);
+        let back = "A flint nodule lies on the slope again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("A flint nodule lies here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("The slope has no flint."),
+            "{}",
+            again.text
+        );
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("A flint nodule lies on the slope to the north."),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("flint"));
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(second.results[0].message, "You gather a flint nodule.");
+        let taken = world.observe(near).unwrap().text;
+        assert!(taken.contains("The slope has no flint."), "{taken}");
+        assert!(!taken.contains("A flint nodule lies here."), "{taken}");
+        assert!(world
+            .flint_returns_at
+            .contains_key(&world.actor(near).unwrap().cell));
     }
 }

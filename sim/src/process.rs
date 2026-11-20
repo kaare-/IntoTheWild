@@ -41,6 +41,7 @@ impl World {
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::MossReturn(cell) => self.return_moss(cell),
+                Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::DeerReturn => self.return_deer(),
                 Wake::Stings => self.apply_stings(),
             }
@@ -184,6 +185,33 @@ impl World {
         self.add_pile(cell, Material::Moss, 1, 0);
         self.emit(
             "Moss grows on the damp bank again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The slope has waited out its ticks. A flint nodule lies there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_flint(&mut self, cell: CellId) {
+        let Some(at) = self.flint_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.flint_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Flint) > 0
+            || !self.ground_ids(cell, Material::Flint).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Flint, 1, 0);
+        self.emit(
+            "A flint nodule lies on the slope again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

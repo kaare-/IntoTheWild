@@ -59,6 +59,11 @@ pub struct Tuning {
     /// Look says the bank is bare until then.
     #[serde(default = "default_moss_ticks")]
     pub moss_ticks: u64,
+    /// Ticks after the flint nodule on the slope is gathered before another lies there.
+    /// Look says the slope has no flint until then. Knapping the carried nodule
+    /// leaves the same wait.
+    #[serde(default = "default_flint_ticks")]
+    pub flint_ticks: u64,
     /// Ticks after a deer is brought down before another stands on the trail.
     /// Look names no standing deer until then. The carcass does not change the wait.
     #[serde(default = "default_deer_ticks")]
@@ -199,6 +204,9 @@ fn default_egg_ticks() -> u64 {
 fn default_moss_ticks() -> u64 {
     24
 }
+fn default_flint_ticks() -> u64 {
+    24
+}
 fn default_deer_ticks() -> u64 {
     24
 }
@@ -313,6 +321,8 @@ struct RawTime {
     egg_ticks: u64,
     #[serde(default = "default_moss_ticks")]
     moss_ticks: u64,
+    #[serde(default = "default_flint_ticks")]
+    flint_ticks: u64,
     #[serde(default = "default_deer_ticks")]
     deer_ticks: u64,
     #[serde(default = "default_night_at")]
@@ -408,6 +418,7 @@ impl Tuning {
             || raw.time.honey_ticks == 0
             || raw.time.egg_ticks == 0
             || raw.time.moss_ticks == 0
+            || raw.time.flint_ticks == 0
             || raw.time.deer_ticks == 0
             || raw.time.night_len == 0
             || raw.time.day_len == 0
@@ -468,6 +479,7 @@ impl Tuning {
             honey_ticks: raw.time.honey_ticks,
             egg_ticks: raw.time.egg_ticks,
             moss_ticks: raw.time.moss_ticks,
+            flint_ticks: raw.time.flint_ticks,
             deer_ticks: raw.time.deer_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
