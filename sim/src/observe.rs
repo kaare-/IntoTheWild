@@ -8088,6 +8088,7 @@ impl World {
             "spear",
             "carcass",
             "deer hide",
+            "wolf hide",
             "drink of water",
             "flint nodule",
             "lump of ochre",

@@ -6086,4 +6086,129 @@ mod wolf {
             .iter()
             .all(|event| { !event.text.contains("wolf") }));
     }
+
+    #[test]
+    fn gathering_a_wolf_hide_names_the_wolf() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let missed = world.step(&[intent(
+            "none",
+            quiet,
+            super::Attempt::Gather(super::Material::Hide),
+        )]);
+        assert!(!missed.results[0].success);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no hide here to gather."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no hide here to gather." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no hide here to gather." }));
+        let wolf = world.mint_item(super::Material::Hide, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&wolf).unwrap().wolf = true;
+        world.mint_item(super::Material::Hide, 0, cell, None, super::Role::Loose);
+        let lifted = world.step(&[intent(
+            "wolf",
+            near,
+            super::Attempt::Gather(super::Material::Hide),
+        )]);
+        assert_eq!(lifted.results[0].message, "You gather a wolf hide.");
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("You have a wolf hide."), "{arms}");
+        assert!(arms.contains("A deer hide lies here."), "{arms}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf hide") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a wolf hide." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("wolf hide") }));
+        let deer = world.step(&[intent(
+            "deer",
+            near,
+            super::Attempt::Gather(super::Material::Hide),
+        )]);
+        assert_eq!(deer.results[0].message, "You gather a deer hide.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a deer hide." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers a deer hide") }));
+        let again = world.mint_item(super::Material::Hide, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&again).unwrap().wolf = true;
+        let race = world.step(&[
+            intent(
+                "near-race",
+                near,
+                super::Attempt::Gather(super::Material::Hide),
+            ),
+            intent(
+                "seen-race",
+                seen,
+                super::Attempt::Gather(super::Material::Hide),
+            ),
+        ]);
+        let win = race.results.iter().find(|result| result.success).unwrap();
+        let lose = race.results.iter().find(|result| !result.success).unwrap();
+        assert_eq!(win.message, "You gather a wolf hide.");
+        assert_eq!(
+            lose.message,
+            "Your hand meets someone else's on the same wolf hide."
+        );
+        let heard = format!("{} gathers a wolf hide.", world.name_of(win.actor_id));
+        assert!(world
+            .observe(lose.actor_id)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(win.actor_id)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && !event.text.contains("same wolf hide")));
+        for id in [near, seen, quiet] {
+            assert!(world.observe(id).unwrap().events.iter().all(|event| {
+                !event.text.contains("reaches for a wolf hide")
+                    && event.text != "Your hand meets someone else's on the same wolf hide."
+            }));
+        }
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != heard }));
+    }
 }

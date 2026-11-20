@@ -1427,7 +1427,16 @@ impl World {
                 .map(|intent| intent.actor_id)
                 .collect();
             claims.sort_by_key(|intent| intent.actor_id);
-            let noun = material.gather_noun();
+            let noun = if material == Material::Hide
+                && self
+                    .ground_ids(cell, Material::Hide)
+                    .first()
+                    .is_some_and(|id| self.item(*id).is_some_and(|hide| hide.wolf))
+            {
+                "wolf hide"
+            } else {
+                material.gather_noun()
+            };
             for intent in claims {
                 let hash = contest_hash(self.seed, self.time, "gather", &subject, intent.actor_id);
                 let draw = Some(Draw {
@@ -1520,6 +1529,14 @@ impl World {
                         intent.actor_id,
                         true,
                         crate::model::spoken_act(None, "gather", &rest),
+                        results,
+                    );
+                } else if noun == "wolf hide" {
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        false,
+                        format!("Your hand meets someone else's on the same {noun}."),
                         results,
                     );
                 } else {
