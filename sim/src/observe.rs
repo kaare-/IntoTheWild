@@ -1582,7 +1582,8 @@ impl World {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::Honey).is_empty() {
+            let count = self.loose_ids(actor.id, Material::Honey).len() as u32;
+            if count == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -1590,10 +1591,15 @@ impl World {
             } else {
                 actor.name.as_str()
             };
-            lines.push(format!(
-                "A honeycomb is carried by {who}, {}.",
-                self.cover_phrase(actor.cell)
-            ));
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!("A honeycomb is carried by {who}, {cover}."));
+            } else {
+                lines.push(format!(
+                    "{} honeycombs are carried by {who}, {cover}.",
+                    capitalize(&count_word(count))
+                ));
+            }
         }
         if lines.is_empty() {
             "You see no honey from here.".into()
@@ -2006,6 +2012,8 @@ impl World {
             "a salt crust".into()
         } else if item.material == "honey" && item.count == 1 {
             "a honeycomb".into()
+        } else if item.material == "honey" {
+            format!("{} honeycombs", count_word(item.count))
         } else if item.material == "iron ore" && item.count == 1 {
             "a lump of iron ore".into()
         } else if item.material == "iron" && item.count == 1 {

@@ -2983,4 +2983,42 @@ mod honey {
             .text
             .contains("The bees' nest is empty."));
     }
+
+    #[test]
+    fn two_honeycombs_in_the_arms_stay_honeycombs() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 5, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
+        let one = world.observe(near).unwrap().text;
+        assert!(one.contains("You have a honeycomb."), "{one}");
+        assert!(!one.contains("2 honey"), "{one}");
+        let exam = world.examine(near, super::ExamineTarget::Honey);
+        assert!(exam.contains("A honeycomb is carried by you"), "{exam}");
+        let west = world.examine(seen, super::ExamineTarget::Honey);
+        assert!(west.contains("A honeycomb is carried by Near"), "{west}");
+        assert_eq!(
+            world.examine(quiet, super::ExamineTarget::Honey),
+            "You see no honey from here."
+        );
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Honey, 0, cell, Some(near), super::Role::Loose);
+        let two = world.observe(near).unwrap().text;
+        assert!(two.contains("You have two honeycombs."), "{two}");
+        assert!(!two.contains("2 honey"), "{two}");
+        assert!(!two.contains("carried by you (dry)"), "{two}");
+        let exam = world.examine(near, super::ExamineTarget::Honey);
+        assert!(exam.contains("Two honeycombs are carried by you"), "{exam}");
+        let west = world.examine(seen, super::ExamineTarget::Honey);
+        assert!(
+            west.contains("Two honeycombs are carried by Near"),
+            "{west}"
+        );
+        assert!(!west.contains("2 honey"), "{west}");
+        assert_eq!(
+            world.examine(quiet, super::ExamineTarget::Honey),
+            "You see no honey from here."
+        );
+    }
 }
