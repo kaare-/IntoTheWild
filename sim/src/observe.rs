@@ -3191,7 +3191,17 @@ impl World {
         if !self.ground_ids(dest, Material::Bowl).is_empty() {
             bits.push("a bowl".into());
         }
-        if !self.ground_ids(dest, Material::Carcass).is_empty() {
+        let carcasses = self.ground_ids(dest, Material::Carcass);
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
+        {
+            bits.push("a wolf carcass".into());
+        }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| !carcass.wolf))
+        {
             bits.push("a carcass".into());
         }
         if let Some(bit) = self.meat_compass_bit(dest) {

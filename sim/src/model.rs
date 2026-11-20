@@ -5746,4 +5746,66 @@ mod wolf {
             .values()
             .all(|item| item.material != super::Material::Carcass));
     }
+
+    #[test]
+    fn a_neighbor_who_can_see_reads_a_wolf_carcass() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 1).unwrap();
+        let wolf_cell = world.actor(near).unwrap().cell;
+        let deer_cell = super::cell_id(1, 1).unwrap();
+        let wolf = world.mint_item(
+            super::Material::Carcass,
+            0,
+            wolf_cell,
+            None,
+            super::Role::Loose,
+        );
+        world.items.get_mut(&wolf).unwrap().wolf = true;
+        world.mint_item(
+            super::Material::Carcass,
+            0,
+            deer_cell,
+            None,
+            super::Role::Loose,
+        );
+        let day = world.observe(seen).unwrap().text;
+        let north = day
+            .lines()
+            .find(|line| line.starts_with("North:"))
+            .unwrap_or("");
+        assert!(north.contains("a wolf carcass"), "{north}");
+        assert!(!north.contains("a carcass"), "{north}");
+        let east = day
+            .lines()
+            .find(|line| line.starts_with("East:"))
+            .unwrap_or("");
+        assert!(east.contains("a carcass"), "{east}");
+        assert!(!east.contains("wolf"), "{east}");
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A wolf carcass lies here."), "{here}");
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        let dark = world.observe(seen).unwrap().text;
+        assert!(
+            dark.contains("North: you cannot make out the ground."),
+            "{dark}"
+        );
+        assert!(!dark.contains("wolf carcass"), "{dark}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A wolf carcass lies here."));
+        world.mint_fire(wolf_cell, 0);
+        let lit = world.observe(seen).unwrap().text;
+        let lit_north = lit
+            .lines()
+            .find(|line| line.starts_with("North:"))
+            .unwrap_or("");
+        assert!(lit_north.contains("a wolf carcass"), "{lit_north}");
+        assert!(!lit_north.contains("a carcass"), "{lit_north}");
+    }
 }
