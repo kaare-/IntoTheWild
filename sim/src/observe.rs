@@ -4234,7 +4234,15 @@ impl World {
         if rest != "the deer hide." {
             return None;
         }
-        Some(crate::model::spoken_act(None, "remove", rest))
+        let mut line = crate::model::spoken_act(None, "remove", rest);
+        let open = event
+            .affected_cells
+            .first()
+            .is_some_and(|cell| self.exposure_millis(*cell) >= 1000);
+        if open {
+            line.push_str(" The wind reaches you again.");
+        }
+        Some(line)
     }
 
     /// Mud put on the skin, filled for the person who smeared it.

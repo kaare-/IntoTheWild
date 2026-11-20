@@ -1984,13 +1984,11 @@ impl World {
                 vec![],
                 None,
             );
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                true,
-                crate::model::spoken_act(None, "remove", rest),
-                results,
-            );
+            let mut yours = crate::model::spoken_act(None, "remove", rest);
+            if self.exposure_millis(cell) >= 1000 {
+                yours.push_str(" The wind reaches you again.");
+            }
+            self.finish(intent.command_id, intent.actor_id, true, yours, results);
         }
     }
 

@@ -7872,6 +7872,10 @@ fn removing_a_worn_hide_returns_it_to_the_arms() {
     }
     let wore = world.step(&[cmd("wear", near, Attempt::Wear)]);
     assert_eq!(wore.results[0].message, "You wear the deer hide.");
+    let mut sheltered = world.clone();
+    let under = sheltered.step(&[cmd("off-rock", near, Attempt::Remove)]);
+    assert_eq!(under.results[0].message, "You remove the deer hide.");
+    assert!(!under.results[0].message.contains("wind"));
     world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
     assert_eq!(world.actor_cell(near), Some((6, 2)));
     let mut kept = world.clone();
@@ -7887,7 +7891,7 @@ fn removing_a_worn_hide_returns_it_to_the_arms() {
         "{}",
         before.text
     );
-    let yours = "You remove the deer hide.";
+    let yours = "You remove the deer hide. The wind reaches you again.";
     let witnessed = "Near removes the deer hide.";
     let report = world.step(&[cmd("remove", near, Attempt::Remove)]);
     assert!(report.results[0].success);
@@ -7926,6 +7930,7 @@ fn removing_a_worn_hide_returns_it_to_the_arms() {
         .filter(|text| text.contains("remove"))
         .collect();
     assert_eq!(west_lines, vec![witnessed.to_string()]);
+    assert!(west_lines.iter().all(|line| !line.contains("wind")));
     assert!(world
         .observe(far)
         .unwrap()
