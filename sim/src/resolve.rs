@@ -5714,10 +5714,39 @@ impl World {
         self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
-    fn bow_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
-        let dry = !self.dry_loose_ids(actor, Material::Branch).is_empty();
-        let any_branch = !self.loose_ids(actor, Material::Branch).is_empty();
-        let strips = !self.loose_ids(actor, Material::Cord).is_empty();
+    fn bow_cell(&self, actor: crate::model::ActorId) -> crate::model::CellId {
+        self.actor(actor).map(|person| person.cell).unwrap_or(0)
+    }
+
+    /// A dry branch for the bow. One in the arms is spent before one lying in the cell.
+    fn bow_branch_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        if let Some(id) = self.dry_loose_ids(actor, Material::Branch).first().copied() {
+            return Some(id);
+        }
+        self.ground_ids(self.bow_cell(actor), Material::Branch)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+    }
+
+    /// Hide strips for the bow. A bundle in the arms is spent before one lying in the cell.
+    fn bow_strips_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        if let Some(id) = self.loose_ids(actor, Material::Cord).first().copied() {
+            return Some(id);
+        }
+        self.ground_ids(self.bow_cell(actor), Material::Cord)
+            .first()
+            .copied()
+    }
+
+    pub(crate) fn bow_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let cell = self.bow_cell(actor);
+        let dry = self.bow_branch_id(actor).is_some();
+        let any_branch = !self.loose_ids(actor, Material::Branch).is_empty()
+            || !self.ground_ids(cell, Material::Branch).is_empty();
+        let strips = self.bow_strips_id(actor).is_some();
         if dry && strips {
             None
         } else if any_branch && strips {
@@ -5737,11 +5766,7 @@ impl World {
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             }
-            let Some(branch) = self
-                .dry_loose_ids(intent.actor_id, Material::Branch)
-                .first()
-                .copied()
-            else {
+            let Some(branch) = self.bow_branch_id(intent.actor_id) else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
@@ -5751,11 +5776,7 @@ impl World {
                 );
                 continue;
             };
-            let Some(strips) = self
-                .loose_ids(intent.actor_id, Material::Cord)
-                .first()
-                .copied()
-            else {
+            let Some(strips) = self.bow_strips_id(intent.actor_id) else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,

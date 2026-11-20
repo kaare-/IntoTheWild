@@ -4065,6 +4065,79 @@ mod bow {
             "You see no bow from here."
         );
     }
+
+    #[test]
+    fn a_branch_and_strips_lying_here_craft_into_a_bow() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Branch, 1000, cell, None, Role::Loose);
+        world.mint_item(Material::Cord, 0, cell, None, Role::Loose);
+        let damp = world.step(&[intent("damp", near, Attempt::CraftBow)]);
+        assert_eq!(damp.results[0].message, "The branch is not dry.");
+        assert_eq!(world.ground_ids(cell, Material::Branch).len(), 1);
+        assert_eq!(world.ground_ids(cell, Material::Cord).len(), 1);
+        assert!(world.loose_ids(near, Material::Bow).is_empty());
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The branch is not dry."));
+        let lying = world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        let from_ground = world.step(&[intent("ground", near, Attempt::CraftBow)]);
+        assert_eq!(
+            from_ground.results[0].message,
+            "You craft a bow from a dry branch and hide strips."
+        );
+        assert!(world.items.get(&lying).is_none());
+        assert_eq!(world.ground_ids(cell, Material::Cord).len(), 0);
+        assert_eq!(world.ground_ids(cell, Material::Branch).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("craft")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near crafts a bow from a dry branch and hide strips."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("craft") && !event.text.contains("bow")));
+        let carried_branch = world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let carried_strips = world.mint_item(Material::Cord, 0, cell, Some(near), Role::Loose);
+        let ground_branch = world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        let ground_strips = world.mint_item(Material::Cord, 0, cell, None, Role::Loose);
+        let from_arms = world.step(&[intent("arms", near, Attempt::CraftBow)]);
+        assert_eq!(
+            from_arms.results[0].message,
+            "You craft a bow from a dry branch and hide strips."
+        );
+        assert!(world.items.get(&carried_branch).is_none());
+        assert!(world.items.get(&carried_strips).is_none());
+        assert!(world.items.get(&ground_branch).is_some());
+        assert!(world.items.get(&ground_strips).is_some());
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 2);
+        let again = world.step(&[intent("again", near, Attempt::CraftBow)]);
+        assert_eq!(
+            again.results[0].message,
+            "You craft a bow from a dry branch and hide strips."
+        );
+        assert!(world.items.get(&ground_branch).is_none());
+        assert!(world.items.get(&ground_strips).is_none());
+        assert_eq!(world.ground_ids(cell, Material::Branch).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 3);
+    }
 }
 
 #[cfg(test)]

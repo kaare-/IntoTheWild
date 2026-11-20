@@ -8442,8 +8442,7 @@ impl World {
         }
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()
-            && !self.dry_loose_ids(actor_id, Material::Branch).is_empty()
-            && !self.loose_ids(actor_id, Material::Cord).is_empty()
+            && self.bow_refusal(actor_id).is_none()
         {
             actions.push("craft bow".into());
         }
