@@ -10628,7 +10628,7 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours));
     assert!(world
         .observe(far)
         .unwrap()

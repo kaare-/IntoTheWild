@@ -5925,6 +5925,7 @@ impl World {
                     && self.walk_for_these_eyes(viewer, event).is_none()
                     && self.smear_for_these_eyes(viewer, event).is_none()
                     && self.mark_for_these_eyes(viewer, event).is_none()
+                    && self.hide_cut_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6176,6 +6177,18 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
+    }
+
+    /// Hide cut into strips. The cutter already has this as the reply, so
+    /// the event list does not repeat it. A witness keeps the stored sentence.
+    /// A cut of meat is a different act and still reaches the cutter.
+    fn hide_cut_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        let line = self.cut_for_these_eyes(viewer, event)?;
+        (line == "You cut the deer hide into strips with the iron knife.").then_some(line)
     }
 
     /// A portion split with the iron knife, filled for the person who cut it.
