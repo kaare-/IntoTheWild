@@ -6725,3 +6725,63 @@ mod bark_return {
             .contains_key(&super::cell_id(1, 0).unwrap()));
     }
 }
+
+#[cfg(test)]
+mod bark_arms {
+    use super::{ExamineTarget, Material, World};
+
+    #[test]
+    fn two_sheets_of_bark_stay_sheets() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), super::Role::Loose);
+        let one = world.observe(near).unwrap().text;
+        assert!(one.contains("You have a dry sheet of bark."), "{one}");
+        assert!(!one.contains("2 bark"), "{one}");
+        assert!(!one.contains("carried by you (dry)"), "{one}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Bark),
+            "A dry sheet of bark is carried by you, in the open."
+        );
+        assert_eq!(
+            world.examine(seen, ExamineTarget::Bark),
+            "A dry sheet of bark is carried by Near, in the open."
+        );
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Bark),
+            "You see no bark from here."
+        );
+        world.mint_item(Material::Bark, 0, cell, Some(near), super::Role::Loose);
+        let two = world.observe(near).unwrap().text;
+        assert!(two.contains("You have two dry sheets of bark."), "{two}");
+        assert!(!two.contains("2 bark"), "{two}");
+        assert!(!two.contains("carried by you (dry)"), "{two}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Bark),
+            "Two dry sheets of bark are carried by you, in the open."
+        );
+        assert_eq!(
+            world.examine(seen, ExamineTarget::Bark),
+            "Two dry sheets of bark are carried by Near, in the open."
+        );
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Bark),
+            "You see no bark from here."
+        );
+        world.mint_item(Material::Bark, 0, cell, Some(near), super::Role::Loose);
+        let three = world.observe(near).unwrap().text;
+        assert!(
+            three.contains("You have three dry sheets of bark."),
+            "{three}"
+        );
+        assert!(!three.contains("3 bark"), "{three}");
+        assert!(!three.contains("carried by you (dry)"), "{three}");
+        assert_eq!(
+            world.examine(seen, ExamineTarget::Bark),
+            "Three dry sheets of bark are carried by Near, in the open."
+        );
+    }
+}

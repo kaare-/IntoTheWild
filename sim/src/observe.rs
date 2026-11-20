@@ -2476,6 +2476,12 @@ impl World {
             format!("a {} branch", item.condition)
         } else if item.material == "bark" && item.count == 1 {
             format!("a {} sheet of bark", item.condition)
+        } else if item.material == "bark" {
+            format!(
+                "{} {} sheets of bark",
+                count_word(item.count),
+                item.condition
+            )
         } else if item.material == "basket" && item.count == 1 {
             self.basket_arm_phrase(actor_id)
         } else if item.material == "pot" && item.count == 1 {
@@ -5996,12 +6002,20 @@ impl World {
                     self.condition_word(moisture),
                     self.cover_phrase(cell)
                 ));
-            } else if material == Material::Bark && ids.len() == 1 {
-                lines.push(format!(
-                    "A {} sheet of bark is carried by {who}, {}.",
-                    self.condition_word(moisture),
-                    self.cover_phrase(cell)
-                ));
+            } else if material == Material::Bark {
+                let word = self.condition_word(moisture);
+                if ids.len() == 1 {
+                    lines.push(format!(
+                        "A {word} sheet of bark is carried by {who}, {}.",
+                        self.cover_phrase(cell)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "{} {word} sheets of bark are carried by {who}, {}.",
+                        capitalize(&count_word(ids.len() as u32)),
+                        self.cover_phrase(cell)
+                    ));
+                }
             } else if material == Material::Pot && ids.len() == 1 {
                 lines.push(format!(
                     "A {} pot is carried by {who}, {}, and it can boil water over a fire.",
