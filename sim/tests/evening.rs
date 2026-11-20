@@ -3820,6 +3820,18 @@ fn an_unfired_pot_hardens_in_the_fire_and_boils() {
         .all(|event| !event.text.contains("unfired pot")));
     world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
     world.step(&[cmd("shape", near, Attempt::Shape)]);
+    let before = world.observe(near).unwrap().text;
+    let before_pot = world.examine(near, ExamineTarget::Pot);
+    assert!(
+        before.contains("an unfired clay pot") && !before.contains("not done yet"),
+        "{before}"
+    );
+    assert!(
+        before_pot.contains("An unfired clay pot is carried by you")
+            && before_pot.contains("It is not hard yet.")
+            && !before_pot.contains("not done yet"),
+        "{before_pot}"
+    );
     let cold = world.step(&[cmd("cold", near, Attempt::FirePot)]);
     assert_eq!(cold.results[0].message, "There is no fire burning here.");
     assert!(world
@@ -3872,11 +3884,18 @@ fn an_unfired_pot_hardens_in_the_fire_and_boils() {
         .iter()
         .all(|event| !event.text.contains("sets the unfired pot")));
     let waiting = world.observe(near).unwrap().text;
+    let waiting_pot = world.examine(near, ExamineTarget::Pot);
     assert!(
-        waiting.contains("An unfired clay pot is hardening in the fire.")
+        waiting.contains("An unfired clay pot is hardening in the fire. It is not done yet.")
             && waiting.contains("A small fire burns here."),
         "{waiting}"
     );
+    assert!(
+        waiting_pot.contains("An unfired clay pot is hardening in the fire. It is not done yet."),
+        "{waiting_pot}"
+    );
+    let far_wait = world.observe(far).unwrap().text;
+    assert!(far_wait.contains("It is not done yet."), "{far_wait}");
     assert_eq!(world.material_tally(Material::Bowl), 0);
     let after_set = world.sim_time();
     for _ in 0..3 {
@@ -3910,9 +3929,10 @@ fn an_unfired_pot_hardens_in_the_fire_and_boils() {
         "{hard}"
     );
     assert!(!hard.contains("hardening in the fire."), "{hard}");
+    assert!(!hard.contains("not done yet"), "{hard}");
     let examined = world.examine(near, ExamineTarget::Pot);
     assert!(
-        examined.contains("It can boil water over a fire."),
+        examined.contains("It can boil water over a fire.") && !examined.contains("not done yet"),
         "{examined}"
     );
     world.step(&[cmd("take-pot", near, Attempt::Gather(Material::Pot))]);

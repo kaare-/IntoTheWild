@@ -182,7 +182,7 @@ impl World {
             ExamineTarget::Berries => self.examine_material(actor_id, Material::Berry),
             ExamineTarget::BitterBerries => self.examine_material(actor_id, Material::BitterBerry),
             ExamineTarget::Mushrooms => self.examine_material(actor_id, Material::Mushroom),
-            ExamineTarget::Pot => self.examine_material(actor_id, Material::Pot),
+            ExamineTarget::Pot => self.examine_pot(actor_id),
             ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
             ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
             ExamineTarget::Flint => self.examine_flint(actor_id),
@@ -716,9 +716,10 @@ impl World {
             parts.push("Lumps of clay are hardening in the fire.".into());
         }
         if pot_firing == 1 {
-            parts.push("An unfired clay pot is hardening in the fire.".into());
+            parts.push("An unfired clay pot is hardening in the fire. It is not done yet.".into());
         } else if pot_firing > 1 {
-            parts.push("Unfired clay pots are hardening in the fire.".into());
+            parts
+                .push("Unfired clay pots are hardening in the fire. They are not done yet.".into());
         }
         if clay_pile > 1 {
             parts.push("Clay lies on the bank here.".into());
@@ -926,7 +927,8 @@ impl World {
             }
             let count = self.unfired_clay_count(cell);
             let pots = self.clay_pot_count(cell);
-            if count == 0 && pots == 0 {
+            let firing = self.pot_firing_count(cell);
+            if count == 0 && pots == 0 && firing == 0 {
                 continue;
             }
             let place = if self.beside_the_brook(cell) {
@@ -947,6 +949,25 @@ impl World {
             } else if pots > 1 {
                 lines.push(format!(
                     "Unfired clay pots lie on the {place} to the {dir}."
+                ));
+            }
+            if firing == 1 {
+                let spot = if self.cell(cell).rock {
+                    format!("under the rock overhang to the {dir}")
+                } else {
+                    format!("on the {place} to the {dir}")
+                };
+                lines.push(format!(
+                    "An unfired clay pot is hardening in the fire {spot}. It is not done yet."
+                ));
+            } else if firing > 1 {
+                let spot = if self.cell(cell).rock {
+                    format!("under the rock overhang to the {dir}")
+                } else {
+                    format!("on the {place} to the {dir}")
+                };
+                lines.push(format!(
+                    "Unfired clay pots are hardening in the fire {spot}. They are not done yet."
                 ));
             }
         }
@@ -995,7 +1016,10 @@ impl World {
     fn clay_pot_count(&self, cell: CellId) -> usize {
         self.ground_ids(cell, Material::Clay)
             .iter()
-            .filter(|id| self.item(**id).is_some_and(|clay| clay.shaped))
+            .filter(|id| {
+                self.item(**id)
+                    .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_none())
+            })
             .count()
     }
 
@@ -3189,6 +3213,87 @@ impl World {
         None
     }
 
+    /// A fired pot, and an unfired one when that is what `examine pot` is asking about.
+    /// The wait is named only while the unfired pot is still in the fire.
+    fn examine_pot(&self, viewer: ActorId) -> String {
+        let fired = self.examine_material(viewer, Material::Pot);
+        let waiting = self.unfired_pot_lines(viewer);
+        let none = fired == "You see no pot from here.";
+        match (none, waiting) {
+            (true, None) => fired,
+            (true, Some(waiting)) => waiting,
+            (false, None) => fired,
+            (false, Some(waiting)) => format!("{fired}\n{waiting}"),
+        }
+    }
+
+    fn unfired_pot_lines(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for id in self.ground_ids(cell, Material::Clay) {
+                if !self.item(id).is_some_and(|clay| clay.shaped) {
+                    continue;
+                }
+                let firing = self
+                    .item(id)
+                    .and_then(|clay| clay.firing_ready_at)
+                    .is_some();
+                if firing {
+                    if origin == cell {
+                        lines.push(
+                            "An unfired clay pot is hardening in the fire. It is not done yet."
+                                .to_string(),
+                        );
+                    } else {
+                        lines.push(format!(
+                            "An unfired clay pot is hardening in the fire {}. It is not done yet.",
+                            self.place_phrase(origin, cell)
+                        ));
+                    }
+                } else {
+                    lines.push(format!(
+                        "An unfired clay pot lies {}. It is not hard yet.",
+                        self.place_phrase(origin, cell)
+                    ));
+                }
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            let ids: Vec<_> = self
+                .loose_ids(other, Material::Clay)
+                .into_iter()
+                .filter(|id| self.item(*id).is_some_and(|clay| clay.shaped))
+                .collect();
+            if ids.is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cell = self.actor(other).unwrap().cell;
+            if ids.len() == 1 {
+                lines.push(format!(
+                    "An unfired clay pot is carried by {who}, {}. It is not hard yet.",
+                    self.cover_phrase(cell)
+                ));
+            } else {
+                lines.push(format!(
+                    "{} unfired clay pots are carried by {who}, {}. They are not hard yet.",
+                    ids.len(),
+                    self.cover_phrase(cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
+        }
+    }
+
     fn examine_clay(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3215,10 +3320,13 @@ impl World {
                         .is_some();
                     if firing {
                         if origin == cell {
-                            lines.push("An unfired clay pot is hardening in the fire.".into());
+                            lines.push(
+                                "An unfired clay pot is hardening in the fire. It is not done yet."
+                                    .into(),
+                            );
                         } else {
                             lines.push(format!(
-                                "An unfired clay pot is hardening in the fire {}.",
+                                "An unfired clay pot is hardening in the fire {}. It is not done yet.",
                                 self.place_phrase(origin, cell)
                             ));
                         }
