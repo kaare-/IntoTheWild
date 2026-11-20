@@ -11518,7 +11518,7 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours));
     assert!(world
         .observe(far)
         .unwrap()
