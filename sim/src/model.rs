@@ -267,6 +267,7 @@ pub enum Attempt {
     Hammer,
     Pierce,
     Sew,
+    Rest,
 }
 
 impl Attempt {
@@ -301,6 +302,7 @@ impl Attempt {
                 | Attempt::Hammer
                 | Attempt::Pierce
                 | Attempt::Sew
+                | Attempt::Rest
         )
     }
 }

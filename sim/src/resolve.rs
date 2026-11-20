@@ -60,6 +60,7 @@ impl World {
         let mut butchers = Vec::new();
         let mut wears = Vec::new();
         let mut removes = Vec::new();
+        let mut rests = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -109,6 +110,7 @@ impl World {
                         Attempt::Butcher => butchers.push(intent),
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
+                        Attempt::Rest => rests.push(intent),
                     }
                 }
             }
@@ -200,6 +202,7 @@ impl World {
         self.apply_butchers(butchers, &mut results);
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
+        self.apply_rests(rests, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -471,6 +474,19 @@ impl World {
                     .all(|id| self.item(*id).is_some_and(|hide| hide.pierced))
                 {
                     Err("The deer hide is already pierced.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Rest => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.exposure_millis(actor.cell) >= 1000 {
+                    Err("The wind will not let you rest.".into())
                 } else {
                     Ok(true)
                 }
@@ -2135,6 +2151,38 @@ impl World {
                 yours.push_str(" The wind reaches you again.");
             }
             self.finish(intent.command_id, intent.actor_id, true, yours, results);
+        }
+    }
+
+    fn apply_rests(&mut self, rests: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in rests {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let before = actor.energy;
+            let after = before.saturating_sub(self.tuning.eat_relief);
+            let was = self.energy_word(before);
+            let now = self.energy_word(after);
+            if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                person.energy = after;
+            }
+            let under_rock = self.cell(actor.cell).rock;
+            let place = if under_rock { " under the rock" } else { "" };
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                format!("{name} rests{place}."),
+                Scope::Cell(actor.cell),
+                vec![intent.actor_id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            let mut message = format!("You rest{place}.");
+            if was != now {
+                message.push_str(&format!(" You are {now}."));
+            }
+            self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
     }
 

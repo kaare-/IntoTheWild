@@ -807,6 +807,8 @@ fn parser_accepts_the_evening_commands() {
     ));
     assert!(matches!(parse_attempt("sew hide").unwrap(), Attempt::Sew));
     assert!(matches!(parse_attempt("sew").unwrap(), Attempt::Sew));
+    assert!(matches!(parse_attempt("rest").unwrap(), Attempt::Rest));
+    assert!(matches!(parse_attempt("sleep").unwrap(), Attempt::Rest));
     assert!(matches!(
         parse_attempt("smear ochre").unwrap(),
         Attempt::SmearOchre
@@ -9084,4 +9086,100 @@ fn a_sewn_cloak_in_the_open_wind_stays_warmer_than_bare_skin() {
     assert!(bare_line.contains(&format!("You are {bare}.")));
     assert!(cloak_line.contains("The sewn deer-hide cloak is on you."));
     assert!(!bare_line.contains("cloak"));
+}
+
+fn wait_until_tiring(world: &mut World, actor: u32) {
+    let mut ticks = 0;
+    while world.observe(actor).unwrap().self_info.energy != "tiring" {
+        world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 80, "tiredness should arrive");
+    }
+}
+
+#[test]
+fn rest_under_the_rock_eases_tiredness_and_the_open_wind_refuses() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 5, 3).unwrap();
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .allowed_actions
+        .iter()
+        .any(|action| action == "rest"));
+    wait_until_tiring(&mut world, near);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("You are tiring."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("You are out of the wind."));
+    let rested = world.step(&[cmd("rest", near, Attempt::Rest)]);
+    assert!(rested.results[0].success, "{}", rested.results[0].message);
+    assert_eq!(
+        rested.results[0].message,
+        "You rest under the rock. You are rested."
+    );
+    let near_look = world.observe(near).unwrap();
+    assert_eq!(near_look.self_info.energy, "rested");
+    assert!(near_look.text.contains("You are rested."));
+    assert!(near_look.text.contains("You are out of the wind."));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "You rest under the rock."));
+    let far_look = world.observe(far).unwrap();
+    assert!(far_look
+        .events
+        .iter()
+        .any(|event| event.text == "Near rests under the rock."));
+    assert!(far_look
+        .events
+        .iter()
+        .all(|event| !event.text.contains("You are rested")));
+    world.step(&[cmd("out", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    wait_until_tiring(&mut world, near);
+    let open = world.observe(near).unwrap();
+    assert!(open.text.contains("You are tiring."));
+    assert!(open.text.contains("You are in the wind."));
+    assert!(open.allowed_actions.iter().all(|action| action != "rest"));
+    let refused = world.step(&[cmd("rest-open", near, Attempt::Rest)]);
+    assert!(!refused.results[0].success);
+    assert_eq!(
+        refused.results[0].message,
+        "The wind will not let you rest."
+    );
+    let after = world.observe(near).unwrap();
+    assert_eq!(after.self_info.energy, "tiring");
+    assert!(after.text.contains("You are tiring."));
+    assert!(after.text.contains("You are in the wind."));
+    assert!(after
+        .events
+        .iter()
+        .any(|event| event.text == "The wind will not let you rest."));
+    let far_after = world.observe(far).unwrap();
+    assert!(far_after
+        .events
+        .iter()
+        .all(|event| event.text != "The wind will not let you rest."));
+    assert!(far_after
+        .events
+        .iter()
+        .all(|event| event.text != "Near rests."));
+    let slept = {
+        let mut sheltered = World::valley(Tuning::evening(), 1);
+        let near = sheltered.spawn_at("Near", "n", 6, 1).unwrap();
+        wait_until_tiring(&mut sheltered, near);
+        sheltered.step(&[cmd("sleep", near, Attempt::Rest)])
+    };
+    assert_eq!(
+        slept.results[0].message,
+        "You rest under the rock. You are rested."
+    );
 }

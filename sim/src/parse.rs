@@ -40,6 +40,7 @@ smelt                        a carried lump of copper ore at a burning fire; aft
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew
 sew hide                     a pierced deer hide into a cloak, worn against the cold
+rest|sleep                   under the rock, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
 }
@@ -126,6 +127,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "sew" if rest.is_empty() || rest == "hide" || rest == "deer hide" || rest == "cloak" => {
             Ok(Attempt::Sew)
         }
+        "rest" | "sleep" if rest.is_empty() => Ok(Attempt::Rest),
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }

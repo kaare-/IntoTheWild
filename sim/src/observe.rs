@@ -5033,6 +5033,20 @@ impl World {
         Some(crate::model::spoken_act(None, "sew", rest))
     }
 
+    /// Rest under shelter, filled for the person who lay down.
+    /// Anyone else keeps the stored sentence. The open wind never starts one.
+    fn rest_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} rests"))?;
+        if rest != "." && rest != " under the rock." {
+            return None;
+        }
+        Some(format!("You rest{rest}"))
+    }
+
     /// A lump of copper ore set by the fire, filled for the person who set it.
     /// Anyone else keeps the stored sentence. The bead, when it comes, is the same words for both.
     fn smelt_set_for_these_eyes(
@@ -5166,6 +5180,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.sew_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.rest_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.haft_for_these_eyes(viewer, event) {
@@ -5696,6 +5713,12 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|hide| hide.pierced))
         {
             actions.push("sew hide".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && self.exposure_millis(actor.cell) < 1000
+        {
+            actions.push("rest".into());
         }
         if !self.loose_ids(actor_id, Material::Hide).is_empty() {
             actions.push("drop hide".into());

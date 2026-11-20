@@ -61,6 +61,8 @@ parched_at = 0.60
 # does not make them food. Mushrooms still have to be heat-treated. Cooking
 # a mushroom or sweet berries over a fire takes off 0.45 of hunger. Energy
 # uses these same hunger numbers. Rain does not feed you.
+# Rest under the rock takes off the same 0.45 of tiredness. The open wind
+# refuses rest. The wind is still named either way.
 hunger_per_tick = 0.01
 cook_relief = 0.45
 hungry_at = 0.25
