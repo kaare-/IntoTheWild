@@ -209,6 +209,7 @@ impl World {
             ExamineTarget::Salt => self.examine_salt(actor_id),
             ExamineTarget::Honey => self.examine_honey(actor_id),
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
+            ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -326,6 +327,9 @@ impl World {
             }
             if let Some(eggs) = self.seen_eggs(actor_id) {
                 lines.push(eggs);
+            }
+            if let Some(moss) = self.seen_moss(actor_id) {
+                lines.push(moss);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -846,6 +850,11 @@ impl World {
             parts.push("A bird's nest sits in the tree here. It holds eggs.".into());
         } else if self.bird_nests.contains(&actor.cell) {
             parts.push("The bird's nest in the tree here is empty.".into());
+        }
+        if self.pile_count(actor.cell, Material::Moss) > 0
+            || !self.ground_ids(actor.cell, Material::Moss).is_empty()
+        {
+            parts.push("Moss grows on the damp bank here.".into());
         }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
@@ -1724,6 +1733,67 @@ impl World {
         }
     }
 
+    /// Moss on a damp bank this person can see but is not standing on.
+    fn seen_moss(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            if self.pile_count(cell, Material::Moss) == 0
+                && self.ground_ids(cell, Material::Moss).is_empty()
+            {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            lines.push(format!("Moss grows on the damp bank to the {way}."));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_moss(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.pile_count(cell, Material::Moss) == 0
+                && self.ground_ids(cell, Material::Moss).is_empty()
+            {
+                continue;
+            }
+            lines.push(format!(
+                "Moss grows on the damp bank {}. It can be pressed on a sting.",
+                self.place_phrase(origin, cell)
+            ));
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Moss).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A handful of moss is carried by {who} {}. It can be pressed on a sting.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no moss from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// The salt lick on this cell was gathered and has not formed again.
     fn salt_lick_bare(&self, cell: crate::model::CellId) -> bool {
         self.salt_returns_at.contains_key(&cell)
@@ -2141,6 +2211,8 @@ impl World {
             "a honeycomb".into()
         } else if item.material == "honey" {
             format!("{} honeycombs", count_word(item.count))
+        } else if item.material == "moss" && item.count == 1 {
+            "a handful of moss".into()
         } else if item.material == "egg" {
             if self
                 .loose_ids(actor_id, Material::Egg)
@@ -2790,6 +2862,11 @@ impl World {
             bits.push("a bird's nest".into());
         } else if self.bird_nests.contains(&dest) {
             bits.push("an empty bird's nest".into());
+        }
+        if self.pile_count(dest, Material::Moss) > 0
+            || !self.ground_ids(dest, Material::Moss).is_empty()
+        {
+            bits.push("moss".into());
         }
         if self.pile_count(dest, Material::IronOre) > 0
             || self.ground_ids(dest, Material::IronOre).len() > self.iron_smelting_count(dest)
@@ -5536,6 +5613,7 @@ impl World {
                 Material::Salt => "salt",
                 Material::Honey => "honey",
                 Material::Egg => "eggs",
+                Material::Moss => "moss",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -6508,6 +6586,7 @@ impl World {
                     && self.carve_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
+                    && self.press_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6567,6 +6646,20 @@ impl World {
             line.push_str(" The wind reaches you again.");
         }
         Some(line)
+    }
+
+    /// Moss pressed on a sting. The person already has this as the reply,
+    /// so the event list does not repeat it. Anyone else keeps the stored sentence.
+    fn press_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} presses moss on the stings.") {
+            Some("You press moss on the stings.".into())
+        } else {
+            None
+        }
     }
 
     /// Mud or ochre put on the skin. The smearer already has this as the
@@ -7524,6 +7617,7 @@ impl World {
             "hide strips",
             "honeycomb",
             "the eggs",
+            "handful of moss",
         ];
         let known = NOUNS
             .iter()
@@ -8272,6 +8366,15 @@ impl World {
         if self.cooked_egg_id(actor_id).is_some() {
             actions.push("eat eggs".into());
         }
+        if (self.pile_count(actor.cell, Material::Moss) > 0
+            || !self.ground_ids(actor.cell, Material::Moss).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather moss".into());
+        }
+        if !self.loose_ids(actor_id, Material::Moss).is_empty() && actor.stings_until.is_some() {
+            actions.push("press moss".into());
+        }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty()
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
@@ -8675,6 +8778,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Salt, _) => "salt crust",
         (Material::Honey, _) => "honeycomb",
         (Material::Egg, _) => "eggs",
+        (Material::Moss, _) => "handful of moss",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

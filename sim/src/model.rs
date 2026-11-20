@@ -105,6 +105,7 @@ pub enum Material {
     Salt,
     Honey,
     Egg,
+    Moss,
 }
 
 impl Material {
@@ -145,6 +146,7 @@ impl Material {
             Material::Salt => "salt",
             Material::Honey => "honey",
             Material::Egg => "egg",
+            Material::Moss => "moss",
         }
     }
 
@@ -185,6 +187,7 @@ impl Material {
             Material::Salt => "salt crust",
             Material::Honey => "honeycomb",
             Material::Egg => "eggs",
+            Material::Moss => "handful of moss",
         }
     }
 
@@ -310,6 +313,7 @@ pub enum ExamineTarget {
     Salt,
     Honey,
     Eggs,
+    Moss,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -367,6 +371,7 @@ pub enum Attempt {
     SaltMeat,
     SaltFish,
     SmokeNest,
+    DressSting,
 }
 
 impl Attempt {
@@ -421,6 +426,7 @@ impl Attempt {
                 | Attempt::SaltMeat
                 | Attempt::SaltFish
                 | Attempt::SmokeNest
+                | Attempt::DressSting
         )
     }
 }
@@ -924,6 +930,8 @@ impl World {
         let bird = cell_id(1, 0).unwrap();
         world.add_pile(bird, Material::Egg, 1, 0);
         world.bird_nests.insert(bird);
+        // The south bank of the brook. Damp stones, and moss on them.
+        world.add_pile(cell_id(1, 3).unwrap(), Material::Moss, 1, 0);
         world.normalize();
         world
     }
@@ -3497,5 +3505,137 @@ mod brook_clothes {
             !raining.contains("The brook wets your clothes."),
             "{raining}"
         );
+    }
+}
+
+#[cfg(test)]
+mod moss {
+    use super::{Attempt, ExamineTarget, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn moss_on_the_damp_bank_clears_a_sting() {
+        assert!(matches!(
+            crate::parse::parse_attempt("press moss").unwrap(),
+            Attempt::DressSting
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("dress sting").unwrap(),
+            Attempt::DressSting
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("use moss").unwrap(),
+            Attempt::DressSting
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Moss grows on the damp bank here."), "{here}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("Moss grows on the damp bank to the west."),
+            "{west}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("moss"));
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Moss))]);
+        assert_eq!(none.results[0].message, "There is no moss here to gather.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no moss here to gather."));
+        let bare = world.step(&[intent("bare", near, Attempt::DressSting)]);
+        assert_eq!(bare.results[0].message, "You have no moss.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no moss."));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Moss))]);
+        assert_eq!(gathered.results[0].message, "You gather a handful of moss.");
+        let taken = world.observe(near).unwrap();
+        assert!(
+            taken.text.contains("You have a handful of moss."),
+            "{}",
+            taken.text
+        );
+        assert!(!taken.text.contains("Moss grows"), "{}", taken.text);
+        assert!(taken
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a handful of moss."));
+        assert!(!world.observe(seen).unwrap().text.contains("Moss grows"));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "There is no moss here to gather."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        let clear = world.step(&[intent("clear", near, Attempt::DressSting)]);
+        assert_eq!(clear.results[0].message, "You are not stung.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You are not stung."));
+        if let Some(person) = world.actors.get_mut(&near) {
+            person.stings_until = Some(world.time.saturating_add(4));
+        }
+        let stung = world.observe(near).unwrap().text;
+        assert!(stung.contains("You are stung."), "{stung}");
+        let seen_body = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(seen_body.contains("They are stung."), "{seen_body}");
+        let dressed = world.step(&[intent("dress", near, Attempt::DressSting)]);
+        assert_eq!(dressed.results[0].message, "You press moss on the stings.");
+        let eased = world.observe(near).unwrap();
+        assert!(eased.text.contains("You are well."), "{}", eased.text);
+        assert!(!eased.text.contains("You are stung."), "{}", eased.text);
+        assert!(!eased.text.contains("handful of moss"), "{}", eased.text);
+        assert!(eased
+            .events
+            .iter()
+            .all(|event| !event.text.contains("press")));
+        assert!(world.actor(near).unwrap().stings_until.is_none());
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near presses moss on the stings."));
+        let after = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(after.contains("They are well."), "{after}");
+        assert!(!after.contains("stung"), "{after}");
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("press") && !event.text.contains("sting")));
+        let spent = world.step(&[intent("spent", near, Attempt::DressSting)]);
+        assert_eq!(spent.results[0].message, "You have no moss.");
     }
 }

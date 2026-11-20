@@ -85,6 +85,7 @@ impl World {
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smokes = Vec::new();
+        let mut dresses = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -152,6 +153,7 @@ impl World {
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeNest => smokes.push(intent),
+                        Attempt::DressSting => dresses.push(intent),
                     }
                 }
             }
@@ -261,6 +263,7 @@ impl World {
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smokes(smokes, &mut results);
+        self.apply_dresses(dresses, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -981,6 +984,7 @@ impl World {
                                 Err("There are no cooked eggs here to eat.".into())
                             }
                         }
+                        Material::Moss => Err("Moss is for a sting, not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
@@ -994,6 +998,21 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Mud).is_empty() {
                     Err("You have no mud to smear.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::DressSting => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Moss).is_empty() {
+                    Err("You have no moss.".into())
+                } else if actor.stings_until.is_none() {
+                    Err("You are not stung.".into())
                 } else {
                     Ok(true)
                 }
@@ -1122,6 +1141,7 @@ impl World {
                             | Material::Charcoal
                             | Material::Honey
                             | Material::Egg
+                            | Material::Moss
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -5558,6 +5578,64 @@ impl World {
             "You eat a handful of poison berries. You are still ill."
         };
         self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    fn apply_dresses(&mut self, dresses: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in dresses {
+            let Some(item_id) = self
+                .loose_ids(intent.actor_id, Material::Moss)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no moss.",
+                    results,
+                );
+                continue;
+            };
+            if self
+                .actor(intent.actor_id)
+                .is_some_and(|actor| actor.stings_until.is_none())
+            {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not stung.",
+                    results,
+                );
+                continue;
+            }
+            self.items.remove(&item_id);
+            if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                person.stings_until = None;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            let rest = "moss on the stings.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "press", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![item_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "press", rest),
+                results,
+            );
+        }
     }
 
     fn apply_smears(&mut self, smears: Vec<Intent>, results: &mut Vec<CommandResult>) {

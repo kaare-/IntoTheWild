@@ -5,7 +5,7 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
 gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
@@ -51,6 +51,10 @@ eat meat                     cooked meat, or salted meat; raw meat is not food
 gather salt                  a salt crust from the slope. The slope is bare, then the crust forms again.
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
+gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
+press moss                   a carried handful on a sting. The stings clear.
+dress sting                  the same press
+use moss                     the same press
 smoke nest                   a burning brand, or a fire in this cell or the next. The bees quiet, and the next gather does not sting.
 eat honey                    the honeycomb. Hunger eases.
 eat eggs                     cooked eggs. Raw eggs are not food. Hunger eases once they are cooked.
@@ -134,6 +138,27 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::TakeBrand)
         }
+        "press"
+            if rest == "moss"
+                || rest == "the moss"
+                || rest == "a handful of moss"
+                || rest == "sting"
+                || rest == "the sting"
+                || rest == "stings" =>
+        {
+            Ok(Attempt::DressSting)
+        }
+        "dress"
+            if rest == "sting"
+                || rest == "the sting"
+                || rest == "stings"
+                || rest == "the stings"
+                || rest == "moss"
+                || rest == "the moss" =>
+        {
+            Ok(Attempt::DressSting)
+        }
+        "use" if rest == "moss" || rest == "the moss" => Ok(Attempt::DressSting),
         "gather" | "get" | "take" => parse_material(rest).map(Attempt::Gather),
         "drop" => parse_material(rest).map(Attempt::Drop),
         "grab" | "grip" => Ok(Attempt::Grab),
@@ -333,6 +358,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "salt" | "salt crust" => Ok(Material::Salt),
         "honey" | "honeycomb" | "bees nest" | "bee nest" => Ok(Material::Honey),
         "egg" | "eggs" => Ok(Material::Egg),
+        "moss" | "handful of moss" => Ok(Material::Moss),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
@@ -415,6 +441,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "salt" | "salt crust" => ExamineTarget::Salt,
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
+        "moss" => ExamineTarget::Moss,
         "bone awl" => ExamineTarget::Awl,
         "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
         "slope" | "the slope" => ExamineTarget::Slope,
