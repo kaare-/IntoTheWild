@@ -3307,10 +3307,17 @@ impl World {
             let on_ground = self.pile_count(cell, Material::Flint)
                 + self.ground_ids(cell, Material::Flint).len() as u32;
             if on_ground > 0 {
-                lines.push(format!(
-                    "A flint nodule lies {}. It is a sharp stone.",
+                let region = self.cell(cell).region.word();
+                let place = if region == "slope" {
+                    if origin == cell {
+                        "here, on the slope".to_string()
+                    } else {
+                        format!("on the slope to the {}", self.relative(origin, cell))
+                    }
+                } else {
                     self.place_phrase(origin, cell)
-                ));
+                };
+                lines.push(format!("A flint nodule lies {place}. It is a sharp stone."));
             }
         }
         for actor in self.actors.values() {

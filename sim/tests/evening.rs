@@ -7105,12 +7105,24 @@ fn a_flint_nodule_on_the_slope_can_be_carried() {
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let here = world.observe(near).unwrap().text;
     assert!(here.contains("A flint nodule lies here."), "{here}");
+    assert_eq!(
+        world.examine(near, ExamineTarget::Flint),
+        "A flint nodule lies here, on the slope. It is a sharp stone."
+    );
     let beside = world.observe(west).unwrap().text;
     assert!(
         beside.contains("A flint nodule lies on the slope to the north."),
         "{beside}"
     );
     assert!(beside.contains("North: slope, a flint nodule"), "{beside}");
+    assert_eq!(
+        world.examine(west, ExamineTarget::Flint),
+        "A flint nodule lies on the slope to the north. It is a sharp stone."
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Flint),
+        "You see no flint from here."
+    );
     assert!(beside.contains("a flint nodule"), "{beside}");
     assert!(
         !world.observe(far).unwrap().text.contains("flint"),
