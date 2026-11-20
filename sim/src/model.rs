@@ -71,6 +71,7 @@ pub enum Material {
     Ochre,
     CopperOre,
     Copper,
+    Awl,
 }
 
 impl Material {
@@ -97,6 +98,7 @@ impl Material {
             Material::Ochre => "ochre",
             Material::CopperOre => "copper ore",
             Material::Copper => "copper",
+            Material::Awl => "awl",
         }
     }
 
@@ -123,6 +125,7 @@ impl Material {
             Material::Ochre => "lump of ochre",
             Material::CopperOre => "lump of copper ore",
             Material::Copper => "copper bead",
+            Material::Awl => "copper awl",
         }
     }
 
@@ -212,6 +215,7 @@ pub enum ExamineTarget {
     Ochre,
     CopperOre,
     Copper,
+    Awl,
     Flake,
     Clay,
     Bowl,
@@ -260,6 +264,7 @@ pub enum Attempt {
     Mark,
     MarkRock,
     Smelt,
+    Hammer,
 }
 
 impl Attempt {
@@ -291,6 +296,7 @@ impl Attempt {
                 | Attempt::Mark
                 | Attempt::MarkRock
                 | Attempt::Smelt
+                | Attempt::Hammer
         )
     }
 }

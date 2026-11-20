@@ -5,11 +5,11 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|clay|bowl|spear|carcass|hide
-drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass|hide
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
+drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|copper ore|copper bead|awl|clay|bowl|spear|carcass|hide
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
@@ -37,6 +37,7 @@ smear ochre                  red ochre on the skin, a mark unlike mud
 mark                         a carried lump of ochre leaves a red mark on this ground
 mark rock                    the same red mark on the rock, when you stand under it
 smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead
+hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 interrupt                    stop the work your body is in
 help"
 }
@@ -114,6 +115,11 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "smelt" if rest.is_empty() || rest == "ore" || rest == "copper" || rest == "copper ore" => {
             Ok(Attempt::Smelt)
         }
+        "hammer" | "forge"
+            if rest.is_empty() || rest == "bead" || rest == "copper" || rest == "copper bead" =>
+        {
+            Ok(Attempt::Hammer)
+        }
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
@@ -145,13 +151,14 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "ochre" => Ok(Material::Ochre),
         "copper ore" | "ore" => Ok(Material::CopperOre),
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
+        "awl" | "copper awl" => Ok(Material::Awl),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "hide" | "deer hide" => Ok(Material::Hide),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, copper ore, copper bead, clay, bowl, spear, carcass, hide, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, copper ore, copper bead, awl, clay, bowl, spear, carcass, hide, or log."
                 .into(),
         ),
     }
@@ -189,6 +196,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "ochre" => ExamineTarget::Ochre,
         "copper" | "copper ore" | "ore" => ExamineTarget::CopperOre,
         "copper bead" | "bead" => ExamineTarget::Copper,
+        "awl" | "copper awl" => ExamineTarget::Awl,
         "flake" | "flint flake" | "sharp flake" => ExamineTarget::Flake,
         "clay" => ExamineTarget::Clay,
         "bowl" => ExamineTarget::Bowl,

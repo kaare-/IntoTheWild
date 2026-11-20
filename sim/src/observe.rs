@@ -18,6 +18,7 @@ m mushrooms    q poison berries
 k pot          u water
 s stone         c clay
 o ochre        C copper ore   e copper bead
+i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
 d deer         \" tracks
@@ -187,6 +188,7 @@ impl World {
             ExamineTarget::Ochre => self.examine_ochre(actor_id),
             ExamineTarget::CopperOre => self.examine_copper_ore(actor_id),
             ExamineTarget::Copper => self.examine_copper(actor_id),
+            ExamineTarget::Awl => self.examine_awl(actor_id),
             ExamineTarget::Flake => self.examine_flake(actor_id),
             ExamineTarget::Clay => self.examine_clay(actor_id),
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
@@ -649,6 +651,9 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Copper).is_empty() {
             parts.push("A copper bead lies here. It is metal from the fire.".into());
         }
+        if !self.ground_ids(actor.cell, Material::Awl).is_empty() {
+            parts.push("A copper awl lies here.".into());
+        }
         if self.ochre_marks.contains(&actor.cell) {
             let surface = if self.cell(actor.cell).rock {
                 "rock"
@@ -1091,6 +1096,8 @@ impl World {
             "a lump of copper ore".into()
         } else if item.material == "copper" && item.count == 1 {
             "a copper bead, metal from the fire".into()
+        } else if item.material == "awl" && item.count == 1 {
+            "a copper awl".into()
         } else if item.material == "spear" && item.count == 1 {
             let spear = self
                 .loose_ids(actor_id, Material::Spear)
@@ -1563,6 +1570,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Copper).is_empty() {
             bits.push("a copper bead, metal from the fire".into());
+        }
+        if !self.ground_ids(dest, Material::Awl).is_empty() {
+            bits.push("a copper awl".into());
         }
         if self.ochre_marks.contains(&dest) {
             bits.push("a red ochre mark".into());
@@ -3320,6 +3330,44 @@ impl World {
         }
     }
 
+    fn examine_awl(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.ground_ids(cell, Material::Awl).is_empty() {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("on the ground to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!("A copper awl lies {place}. It can pierce hide."));
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Awl).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A copper awl is carried by {who}, {}. It can pierce hide.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no copper awl from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_flake(&self, viewer: ActorId) -> String {
         let lines = self.flake_lines(viewer);
         if lines.is_empty() {
@@ -3616,6 +3664,7 @@ impl World {
                 Material::Ochre => "ochre",
                 Material::CopperOre => "copper ore",
                 Material::Copper => "copper bead",
+                Material::Awl => "copper awl",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -4279,6 +4328,11 @@ impl World {
         {
             marks.push('e');
         }
+        if self.pile_count(cell, Material::Awl) > 0
+            || self.worst_loose(cell, Material::Awl).is_some()
+        {
+            marks.push('i');
+        }
         if self.pile_count(cell, Material::Clay) > 0
             || self.worst_loose(cell, Material::Clay).is_some()
         {
@@ -4830,6 +4884,26 @@ impl World {
         Some(crate::model::spoken_act(None, "knap", rest))
     }
 
+    /// A bead hammered into an awl, filled for the person who struck it.
+    /// Anyone else keeps the stored sentence.
+    fn hammer_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} hammers "))?;
+        if rest != "the copper bead into a copper awl at the fire."
+            && rest != "the copper bead into a copper awl with a stone."
+        {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "hammer", rest))
+    }
+
     /// A lump of copper ore set by the fire, filled for the person who set it.
     /// Anyone else keeps the stored sentence. The bead, when it comes, is the same words for both.
     fn smelt_set_for_these_eyes(
@@ -4885,6 +4959,7 @@ impl World {
             "lump of ochre",
             "lump of copper ore",
             "copper bead",
+            "copper awl",
         ];
         let known = NOUNS
             .iter()
@@ -4953,6 +5028,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.knap_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.hammer_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.haft_for_these_eyes(viewer, event) {
@@ -5337,6 +5415,20 @@ impl World {
         {
             actions.push("gather copper bead".into());
         }
+        if (self.pile_count(actor.cell, Material::Awl) > 0
+            || !self.ground_ids(actor.cell, Material::Awl).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather copper awl".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && !self.loose_ids(actor_id, Material::Copper).is_empty()
+            && (self.fire_at(actor.cell).is_some()
+                || !self.loose_ids(actor_id, Material::Stone).is_empty())
+        {
+            actions.push("hammer".into());
+        }
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()
             && self.fire_at(actor.cell).is_some()
@@ -5433,6 +5525,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Copper).is_empty() {
             actions.push("drop copper bead".into());
+        }
+        if !self.loose_ids(actor_id, Material::Awl).is_empty() {
+            actions.push("drop copper awl".into());
         }
         if !self.loose_ids(actor_id, Material::Clay).is_empty() {
             actions.push("drop clay".into());
@@ -5688,6 +5783,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::CopperOre, false) => "lumps of copper ore",
         (Material::Copper, true) => "copper bead",
         (Material::Copper, false) => "copper beads",
+        (Material::Awl, true) => "copper awl",
+        (Material::Awl, false) => "copper awls",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",
