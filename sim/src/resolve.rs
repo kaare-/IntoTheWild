@@ -1517,6 +1517,9 @@ impl World {
                     if material == Material::Ochre {
                         self.arm_ochre_bed(cell);
                     }
+                    if material == Material::Clay {
+                        self.arm_clay_bank(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -4595,6 +4598,7 @@ impl World {
                 if let Some(clay) = self.items.get_mut(&id) {
                     clay.shaped = true;
                 }
+                self.arm_clay_bank(actor.cell);
                 id
             };
             let name = self.name_of(actor.id);

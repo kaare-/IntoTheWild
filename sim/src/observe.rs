@@ -1001,6 +1001,8 @@ impl World {
             parts.push("Clay lies on the bank here.".into());
         } else if clay_pile == 1 || (loose_clay > firing as u32) {
             parts.push("A lump of clay lies here. It is unfired.".into());
+        } else if self.clay_bare(actor.cell) {
+            parts.push("There is no clay on the bank.".into());
         }
         if clay_pots == 1 {
             parts.push("An unfired clay pot lies here. It is not hard yet.".into());
@@ -1455,15 +1457,18 @@ impl World {
             let count = self.unfired_clay_count(cell);
             let pots = self.clay_pot_count(cell);
             let firing = self.pot_firing_count(cell);
-            if count == 0 && pots == 0 && firing == 0 {
-                continue;
-            }
             let place = if self.beside_the_brook(cell) {
                 "brook bank"
             } else {
                 self.cell(cell).region.word()
             };
             let dir = self.relative(origin, cell);
+            if count == 0 && pots == 0 && firing == 0 {
+                if self.clay_bare(cell) {
+                    lines.push(format!("There is no clay on the brook bank to the {dir}."));
+                }
+                continue;
+            }
             if count == 1 {
                 lines.push(format!("A lump of clay lies on the {place} to the {dir}."));
             } else if count > 1 {
@@ -2080,6 +2085,11 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// The brook bank's clay was gathered and has not lain there again.
+    fn clay_bare(&self, cell: crate::model::CellId) -> bool {
+        self.clay_returns_at.contains_key(&cell) && !self.clay_bed_holding(cell)
     }
 
     /// The slope's ochre was gathered and a lump has not lain there again.
@@ -4696,6 +4706,15 @@ impl World {
                     "A lump of clay lies in contact with the ground {}. It is unfired. It cannot boil water.",
                     self.place_phrase(origin, cell)
                 ));
+            } else if self.clay_bare(cell) {
+                if origin == cell {
+                    lines.push("There is no clay on the bank.".into());
+                } else {
+                    lines.push(format!(
+                        "There is no clay on the brook bank to the {}.",
+                        self.relative(origin, cell)
+                    ));
+                }
             }
             for id in self.ground_ids(cell, Material::Clay) {
                 if self.item(id).is_some_and(|clay| clay.shaped) {
@@ -4783,7 +4802,7 @@ impl World {
             } else {
                 lines.push(format!(
                     "{} lumps of clay are carried by {who}, {}. They are unfired. They cannot boil water.",
-                    lumps,
+                    capitalize(&count_word(lumps as u32)),
                     self.cover_phrase(cell)
                 ));
             }

@@ -93,6 +93,11 @@ flint_ticks = 24
 # marking with the one that was carried does not change the wait. Someone
 # who cannot see that slope does not get the line.
 ochre_ticks = 24
+# After the clay on the brook bank is gathered, look says there is no clay
+# on the bank for this many ticks. Then the same pile lies there again.
+# Shaping the last lump off the pile leaves the same wait. Someone who
+# cannot see that bank does not get the line.
+clay_bank_ticks = 24
 # After a berry patch is emptied, by gathering or by the deer, the same
 # pile lies there again. Look says the berries are gone until then.
 berry_ticks = 24

@@ -43,6 +43,7 @@ impl World {
                 Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
+                Wake::ClayReturn(cell) => self.return_clay(cell),
                 Wake::BranchReturn(cell) => self.return_branches(cell),
                 Wake::BarkReturn(cell) => self.return_bark(cell),
                 Wake::BerryReturn(cell) => self.return_berries(cell),
@@ -365,6 +366,34 @@ impl World {
         self.add_pile(cell, Material::Ochre, 1, 0);
         self.emit(
             "A lump of ochre lies on the slope again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The bank has waited out its ticks. Clay lies there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_clay(&mut self, cell: CellId) {
+        let Some(at) = self.clay_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.clay_returns_at.remove(&cell);
+        let Some(count) = self.clay_beds.get(&cell).copied() else {
+            return;
+        };
+        if self.clay_bed_holding(cell) {
+            return;
+        }
+        self.add_pile(cell, Material::Clay, count, 0);
+        self.emit(
+            "Clay lies on the bank again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

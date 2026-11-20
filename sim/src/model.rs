@@ -679,6 +679,8 @@ pub enum Wake {
     FlintReturn(CellId),
     /// A lump of ochre lies on this slope cell again.
     OchreReturn(CellId),
+    /// Clay lies on this brook bank again.
+    ClayReturn(CellId),
     /// Dry branches lie under this rock again.
     BranchReturn(CellId),
     /// Bark lies under this rock again.
@@ -882,6 +884,13 @@ pub struct World {
     /// When a bare slope has a lump of ochre again. Look says the slope has no ochre until then.
     #[serde(default)]
     pub(crate) ochre_returns_at: BTreeMap<CellId, u64>,
+    /// Brook-bank cells whose seeded clay returns after the lumps are gathered.
+    /// The count is the pile that lies there again.
+    #[serde(default)]
+    pub(crate) clay_beds: BTreeMap<CellId, u32>,
+    /// When that bank has clay again. Look says there is none until then.
+    #[serde(default)]
+    pub(crate) clay_returns_at: BTreeMap<CellId, u64>,
     /// The rock cells whose seeded dry branches return after they are taken.
     #[serde(default)]
     pub(crate) branch_beds: BTreeSet<CellId>,
@@ -1005,6 +1014,8 @@ impl World {
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
             ochre_returns_at: BTreeMap::new(),
+            clay_beds: BTreeMap::new(),
+            clay_returns_at: BTreeMap::new(),
             branch_beds: BTreeSet::new(),
             branch_returns_at: BTreeMap::new(),
             bark_beds: BTreeMap::new(),
@@ -1067,7 +1078,9 @@ impl World {
         world.ochre_beds.insert(ochre);
         world.add_pile(cell_id(5, 0).unwrap(), Material::IronOre, 1, 0);
         world.add_pile(cell_id(1, 2).unwrap(), Material::CopperOre, 1, 0);
-        world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
+        let clay = cell_id(2, 2).unwrap();
+        world.add_pile(clay, Material::Clay, 2, 0);
+        world.clay_beds.insert(clay, 2);
         world.add_pile(cell_id(0, 3).unwrap(), Material::Reed, 4, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
@@ -1582,6 +1595,34 @@ impl World {
         let at = self.time.saturating_add(self.tuning.ochre_ticks);
         self.ochre_returns_at.insert(cell, at);
         self.schedule(at, Wake::OchreReturn(cell));
+    }
+
+    /// An unshaped lump is still on this bank, in the pile or lying loose.
+    /// A pot, or a lump already in the fire, does not count.
+    pub(crate) fn clay_bed_holding(&self, cell: CellId) -> bool {
+        if self.pile_count(cell, Material::Clay) > 0 {
+            return true;
+        }
+        self.ground_ids(cell, Material::Clay).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|clay| !clay.shaped && clay.firing_ready_at.is_none())
+        })
+    }
+
+    /// The brook bank has no clay lumps. The same pile lies there `clay_bank_ticks`
+    /// after this step. Gathering the last lump, or shaping it off the pile,
+    /// leaves that wait. A wake that finds clay already there does not add
+    /// a second pile.
+    pub(crate) fn arm_clay_bank(&mut self, cell: CellId) {
+        if !self.clay_beds.contains_key(&cell) || self.clay_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.clay_bed_holding(cell) {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.clay_bank_ticks);
+        self.clay_returns_at.insert(cell, at);
+        self.schedule(at, Wake::ClayReturn(cell));
     }
 
     /// The seeded branches under a rock are gone, gathered or snapped away.
@@ -5005,6 +5046,137 @@ mod ochre_arms {
             world.examine(quiet, ExamineTarget::Ochre),
             "You see no ochre from here."
         );
+    }
+}
+
+#[cfg(test)]
+mod clay_return {
+    use super::{Attempt, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_bank_has_no_clay_until_it_lies_there_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let bank = world.actor(near).unwrap().cell;
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Clay lies on the bank here."), "{here}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Clay lies on the brook bank to the west."));
+        assert!(!world.observe(quiet).unwrap().text.contains("clay"));
+        let first = world.step(&[intent("first", near, Attempt::Gather(Material::Clay))]);
+        assert_eq!(first.results[0].message, "You gather a lump of clay.");
+        let one = world.observe(near).unwrap().text;
+        assert!(
+            one.contains("A lump of clay lies here. It is unfired."),
+            "{one}"
+        );
+        assert!(one.contains("You have a lump of clay."), "{one}");
+        assert!(!one.contains("There is no clay on the bank."), "{one}");
+        assert!(!one.contains("2 clay"), "{one}");
+        assert!(!world.clay_returns_at.contains_key(&bank));
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Clay))]);
+        assert_eq!(second.results[0].message, "You gather a lump of clay.");
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("There is no clay on the bank."), "{empty}");
+        assert!(!empty.contains("Clay lies on the bank here."), "{empty}");
+        assert!(!empty.contains("A lump of clay lies here."), "{empty}");
+        assert!(empty.contains("You have two lumps of clay."), "{empty}");
+        assert!(!empty.contains("2 clay"), "{empty}");
+        assert!(!empty.contains("carried by you (dry)"), "{empty}");
+        let near_exam = world.examine(near, ExamineTarget::Clay);
+        assert!(
+            near_exam.contains("There is no clay on the bank."),
+            "{near_exam}"
+        );
+        assert!(
+            near_exam.contains(
+                "Two lumps of clay are carried by you, in the open. They are unfired. They cannot boil water."
+            ),
+            "{near_exam}"
+        );
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("There is no clay on the brook bank to the west."),
+            "{west}"
+        );
+        assert!(!west.contains("Clay lies on the brook bank"), "{west}");
+        let seen_exam = world.examine(seen, ExamineTarget::Clay);
+        assert!(
+            seen_exam.contains("There is no clay on the brook bank to the west."),
+            "{seen_exam}"
+        );
+        assert!(
+            seen_exam.contains("Two lumps of clay are carried by Near, in the open."),
+            "{seen_exam}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("clay"));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Clay),
+            "You see no clay from here."
+        );
+        let ticks = world.tuning.clay_bank_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("There is no clay on the bank."));
+        world.step(&[]);
+        let back = "Clay lies on the bank again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("Clay lies on the bank here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("There is no clay on the bank."),
+            "{}",
+            again.text
+        );
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("Clay lies on the brook bank to the west."),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("clay"));
+        let third = world.step(&[intent("third", near, Attempt::Gather(Material::Clay))]);
+        assert_eq!(third.results[0].message, "You gather a lump of clay.");
+        let taken = world.observe(near).unwrap().text;
+        assert!(
+            taken.contains("A lump of clay lies here. It is unfired."),
+            "{taken}"
+        );
+        assert!(taken.contains("You have three lumps of clay."), "{taken}");
+        assert!(!taken.contains("2 clay"), "{taken}");
+        assert!(!taken.contains("3 clay"), "{taken}");
+        assert!(!taken.contains("There is no clay on the bank."), "{taken}");
     }
 }
 
