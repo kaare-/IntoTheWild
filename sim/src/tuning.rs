@@ -83,6 +83,11 @@ pub struct Tuning {
     /// off the pile leaves the same wait.
     #[serde(default = "default_clay_bank_ticks")]
     pub clay_bank_ticks: u64,
+    /// Ticks after the copper ore on the brook is gathered before another lump lies there.
+    /// Look says the brook has no copper ore until then. Smelting the carried lump
+    /// leaves the same wait.
+    #[serde(default = "default_copper_ore_ticks")]
+    pub copper_ore_ticks: u64,
     /// Ticks after the rock's dry branches are gone before that pile lies there again.
     #[serde(default = "default_branch_ticks")]
     pub branch_ticks: u64,
@@ -255,6 +260,9 @@ fn default_ochre_ticks() -> u64 {
 fn default_clay_bank_ticks() -> u64 {
     24
 }
+fn default_copper_ore_ticks() -> u64 {
+    24
+}
 fn default_branch_ticks() -> u64 {
     24
 }
@@ -391,6 +399,8 @@ struct RawTime {
     ochre_ticks: u64,
     #[serde(default = "default_clay_bank_ticks")]
     clay_bank_ticks: u64,
+    #[serde(default = "default_copper_ore_ticks")]
+    copper_ore_ticks: u64,
     #[serde(default = "default_branch_ticks")]
     branch_ticks: u64,
     #[serde(default = "default_bark_pile_ticks")]
@@ -499,6 +509,7 @@ impl Tuning {
             || raw.time.flint_ticks == 0
             || raw.time.ochre_ticks == 0
             || raw.time.clay_bank_ticks == 0
+            || raw.time.copper_ore_ticks == 0
             || raw.time.branch_ticks == 0
             || raw.time.deer_ticks == 0
             || raw.time.night_len == 0
@@ -565,6 +576,7 @@ impl Tuning {
             flint_ticks: raw.time.flint_ticks,
             ochre_ticks: raw.time.ochre_ticks,
             clay_bank_ticks: raw.time.clay_bank_ticks,
+            copper_ore_ticks: raw.time.copper_ore_ticks,
             branch_ticks: raw.time.branch_ticks,
             bark_pile_ticks: raw.time.bark_pile_ticks,
             berry_ticks: raw.time.berry_ticks,

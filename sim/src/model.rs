@@ -681,6 +681,8 @@ pub enum Wake {
     OchreReturn(CellId),
     /// Clay lies on this brook bank again.
     ClayReturn(CellId),
+    /// A lump of copper ore lies on this brook cell again.
+    CopperReturn(CellId),
     /// Dry branches lie under this rock again.
     BranchReturn(CellId),
     /// Bark lies under this rock again.
@@ -891,6 +893,12 @@ pub struct World {
     /// When that bank has clay again. Look says there is none until then.
     #[serde(default)]
     pub(crate) clay_returns_at: BTreeMap<CellId, u64>,
+    /// Brook cells where a lump of copper ore lies again after it is gathered.
+    #[serde(default)]
+    pub(crate) copper_beds: BTreeSet<CellId>,
+    /// When that brook has copper ore again. Look says the brook has none until then.
+    #[serde(default)]
+    pub(crate) copper_returns_at: BTreeMap<CellId, u64>,
     /// The rock cells whose seeded dry branches return after they are taken.
     #[serde(default)]
     pub(crate) branch_beds: BTreeSet<CellId>,
@@ -1016,6 +1024,8 @@ impl World {
             ochre_returns_at: BTreeMap::new(),
             clay_beds: BTreeMap::new(),
             clay_returns_at: BTreeMap::new(),
+            copper_beds: BTreeSet::new(),
+            copper_returns_at: BTreeMap::new(),
             branch_beds: BTreeSet::new(),
             branch_returns_at: BTreeMap::new(),
             bark_beds: BTreeMap::new(),
@@ -1077,7 +1087,9 @@ impl World {
         world.add_pile(ochre, Material::Ochre, 1, 0);
         world.ochre_beds.insert(ochre);
         world.add_pile(cell_id(5, 0).unwrap(), Material::IronOre, 1, 0);
-        world.add_pile(cell_id(1, 2).unwrap(), Material::CopperOre, 1, 0);
+        let copper = cell_id(1, 2).unwrap();
+        world.add_pile(copper, Material::CopperOre, 1, 0);
+        world.copper_beds.insert(copper);
         let clay = cell_id(2, 2).unwrap();
         world.add_pile(clay, Material::Clay, 2, 0);
         world.clay_beds.insert(clay, 2);
@@ -1623,6 +1635,33 @@ impl World {
         let at = self.time.saturating_add(self.tuning.clay_bank_ticks);
         self.clay_returns_at.insert(cell, at);
         self.schedule(at, Wake::ClayReturn(cell));
+    }
+
+    /// A lump of copper ore is still lying on this brook, not set in a fire.
+    pub(crate) fn copper_bed_holding(&self, cell: CellId) -> bool {
+        if self.pile_count(cell, Material::CopperOre) > 0 {
+            return true;
+        }
+        self.ground_ids(cell, Material::CopperOre).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|ore| ore.firing_ready_at.is_none())
+        })
+    }
+
+    /// The brook has no copper ore. Another lump lies there `copper_ore_ticks`
+    /// after this step. Gathering it leaves that wait. Smelting the lump that
+    /// was carried does not start another. A wake that finds a lump already
+    /// there does not add a second one.
+    pub(crate) fn arm_copper_bed(&mut self, cell: CellId) {
+        if !self.copper_beds.contains(&cell) || self.copper_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.copper_bed_holding(cell) {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.copper_ore_ticks);
+        self.copper_returns_at.insert(cell, at);
+        self.schedule(at, Wake::CopperReturn(cell));
     }
 
     /// The seeded branches under a rock are gone, gathered or snapped away.
@@ -5045,6 +5084,143 @@ mod ochre_arms {
         assert_eq!(
             world.examine(quiet, ExamineTarget::Ochre),
             "You see no ochre from here."
+        );
+    }
+}
+
+#[cfg(test)]
+mod copper_return {
+    use super::{Attempt, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_brook_has_no_copper_ore_until_a_lump_lies_there_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A lump of copper ore lies here."), "{here}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("A lump of copper ore lies on the brook to the west."));
+        assert!(!world.observe(quiet).unwrap().text.contains("copper"));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::CopperOre))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a lump of copper ore."
+        );
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The brook has no copper ore."), "{empty}");
+        assert!(
+            !empty.contains("A lump of copper ore lies here."),
+            "{empty}"
+        );
+        assert!(empty.contains("You have a lump of copper ore."), "{empty}");
+        assert!(!empty.contains("2 ore"), "{empty}");
+        assert!(!empty.contains("2 copper"), "{empty}");
+        let near_exam = world.examine(near, ExamineTarget::CopperOre);
+        assert!(
+            near_exam.contains("The brook here has no copper ore."),
+            "{near_exam}"
+        );
+        assert!(
+            near_exam.contains("A lump of copper ore is carried by you, in the open."),
+            "{near_exam}"
+        );
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("The brook to the west has no copper ore."),
+            "{west}"
+        );
+        assert!(
+            !west.contains("A lump of copper ore lies on the brook"),
+            "{west}"
+        );
+        let seen_exam = world.examine(seen, ExamineTarget::CopperOre);
+        assert!(
+            seen_exam.contains("The brook to the west has no copper ore."),
+            "{seen_exam}"
+        );
+        assert!(
+            seen_exam.contains("A lump of copper ore is carried by Near, in the open."),
+            "{seen_exam}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("copper"));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::CopperOre),
+            "You see no copper ore from here."
+        );
+        let ticks = world.tuning.copper_ore_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The brook has no copper ore."));
+        world.step(&[]);
+        let back = "A lump of copper ore lies on the brook again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("A lump of copper ore lies here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("The brook has no copper ore."),
+            "{}",
+            again.text
+        );
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("A lump of copper ore lies on the brook to the west."),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("copper"));
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::CopperOre))]);
+        assert_eq!(
+            second.results[0].message,
+            "You gather a lump of copper ore."
+        );
+        let taken = world.observe(near).unwrap().text;
+        assert!(taken.contains("The brook has no copper ore."), "{taken}");
+        assert!(
+            !taken.contains("A lump of copper ore lies here."),
+            "{taken}"
+        );
+        assert!(
+            taken.contains("You have two lumps of copper ore."),
+            "{taken}"
+        );
+        assert!(!taken.contains("2 ore"), "{taken}");
+        assert!(!taken.contains("2 copper"), "{taken}");
+        assert!(!taken.contains("carried by you (dry)"), "{taken}");
+        let two = world.examine(seen, ExamineTarget::CopperOre);
+        assert!(
+            two.contains("Two lumps of copper ore are carried by Near"),
+            "{two}"
         );
     }
 }

@@ -1520,6 +1520,9 @@ impl World {
                     if material == Material::Clay {
                         self.arm_clay_bank(cell);
                     }
+                    if material == Material::CopperOre {
+                        self.arm_copper_bed(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,

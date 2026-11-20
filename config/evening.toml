@@ -98,6 +98,11 @@ ochre_ticks = 24
 # Shaping the last lump off the pile leaves the same wait. Someone who
 # cannot see that bank does not get the line.
 clay_bank_ticks = 24
+# After the lump of copper ore on the brook is gathered, look says the brook
+# has no copper ore for this many ticks. Then a lump lies there again.
+# Smelting the one that was carried does not change the wait. Someone who
+# cannot see that brook does not get the line.
+copper_ore_ticks = 24
 # After a berry patch is emptied, by gathering or by the deer, the same
 # pile lies there again. Look says the berries are gone until then.
 berry_ticks = 24
