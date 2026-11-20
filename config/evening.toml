@@ -46,6 +46,9 @@ spear_ticks = 4
 # names deer tracks for this many ticks. Then that sentence is gone. The
 # older hoofprints on the trail stay. Someone who cannot see the cell does
 # not get the line. The deer does not have to still be there.
+# A night howl leaves wolf tracks on the northwest corner for this same
+# wait, counting the nightfall tick. Someone who can see that ground reads
+# them. Someone who cannot see it reads nothing. There is no wolf.
 track_ticks = 4
 # A hide snare set with hide strips catches a hare after this many ticks.
 # The strips are spent. The snare is gone. One portion of raw meat lies there.

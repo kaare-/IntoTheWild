@@ -271,12 +271,18 @@ impl World {
             {
                 lines.push("Deer tracks mark the ground here.".into());
             }
+            if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
+                lines.push(tracks);
+            }
             lines.push("The dark hides what lies farther off.".into());
         } else {
             if let Some(deer) = self.deer_look_line(actor_id) {
                 lines.push(deer);
             }
             if let Some(tracks) = self.seen_deer_tracks(actor_id) {
+                lines.push(tracks);
+            }
+            if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
                 lines.push(tracks);
             }
             if let Some(person) = self.person_on_the_trail_west_of_the_south_floor(actor_id) {
@@ -1064,6 +1070,35 @@ impl World {
             } else {
                 format!(
                     "Deer tracks mark the ground to the {}.",
+                    self.relative(origin, cell)
+                )
+            };
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// Wolf tracks on a cell this person can see. There is no wolf.
+    /// Past sight, nothing. Night does not hide them: they are only there
+    /// while the dark is up, and they fade when `track_ticks` have passed.
+    fn seen_wolf_tracks(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.wolf_tracks_fresh(cell) {
+                continue;
+            }
+            let line = if cell == origin {
+                "Wolf tracks mark the ground here.".to_string()
+            } else {
+                format!(
+                    "Wolf tracks mark the ground to the {}.",
                     self.relative(origin, cell)
                 )
             };

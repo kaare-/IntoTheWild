@@ -811,6 +811,11 @@ pub struct World {
     /// until this sim time. The permanent hoofprints are separate.
     #[serde(default)]
     pub(crate) fresh_tracks: BTreeMap<CellId, u64>,
+    /// The northwest corner, after a night howl, until this sim time.
+    /// There is no wolf on that ground. Look names the tracks for someone
+    /// who can see the cell, then they fade like deer tracks.
+    #[serde(default)]
+    pub(crate) wolf_tracks: BTreeMap<CellId, u64>,
     /// Slope cells where a salt crust forms again after it is taken.
     #[serde(default)]
     pub(crate) salt_licks: BTreeSet<CellId>,
@@ -925,6 +930,7 @@ impl World {
             snares: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
+            wolf_tracks: BTreeMap::new(),
             salt_licks: BTreeSet::new(),
             salt_returns_at: BTreeMap::new(),
             honey_nests: BTreeSet::new(),
@@ -2039,6 +2045,22 @@ impl World {
 
     pub(crate) fn deer_tracks_fresh(&self, cell: CellId) -> bool {
         self.fresh_tracks
+            .get(&cell)
+            .is_some_and(|until| self.time < *until)
+    }
+
+    /// The howl has just been heard. The tracks are on that corner for
+    /// `track_ticks` clocks, counting this one. A later howl starts the wait again.
+    pub(crate) fn mark_wolf_tracks(&mut self, cell: CellId) {
+        let until = self.time.saturating_add(self.tuning.track_ticks);
+        let entry = self.wolf_tracks.entry(cell).or_insert(0);
+        if *entry < until {
+            *entry = until;
+        }
+    }
+
+    pub(crate) fn wolf_tracks_fresh(&self, cell: CellId) -> bool {
+        self.wolf_tracks
             .get(&cell)
             .is_some_and(|until| self.time < *until)
     }
@@ -4841,5 +4863,63 @@ mod wolf {
         assert_eq!(howl_times(&world), vec![night, next]);
         let again = world.observe(near).unwrap().text;
         assert!(again.contains("Night has fallen."), "{again}");
+    }
+
+    #[test]
+    fn wolf_tracks_show_for_who_can_see_the_ground_and_then_fade() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let here = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let night = world.tuning.night_at;
+        while world.time + 1 < night {
+            world.step(&[]);
+        }
+        for id in [here, seen, quiet] {
+            assert!(
+                !world.observe(id).unwrap().text.contains("Wolf tracks"),
+                "{}",
+                world.observe(id).unwrap().text
+            );
+        }
+        world.step(&[]);
+        assert_eq!(world.time, night);
+        let on_it = world.observe(here).unwrap().text;
+        assert!(
+            on_it.contains("Night has fallen.")
+                && on_it.contains("Wolf tracks mark the ground here."),
+            "{on_it}"
+        );
+        assert!(!on_it.contains("A wolf stands"), "{on_it}");
+        let toward = world.observe(seen).unwrap().text;
+        assert!(
+            toward.contains("Wolf tracks mark the ground to the north."),
+            "{toward}"
+        );
+        let out = world.observe(quiet).unwrap().text;
+        assert!(!out.contains("Wolf tracks"), "{out}");
+        let ticks = world.tuning.track_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+            assert!(world
+                .observe(here)
+                .unwrap()
+                .text
+                .contains("Wolf tracks mark the ground here."));
+            assert!(world
+                .observe(seen)
+                .unwrap()
+                .text
+                .contains("Wolf tracks mark the ground to the north."));
+        }
+        world.step(&[]);
+        assert_eq!(world.time, night + ticks);
+        for id in [here, seen, quiet] {
+            assert!(
+                !world.observe(id).unwrap().text.contains("Wolf tracks"),
+                "{}",
+                world.observe(id).unwrap().text
+            );
+        }
     }
 }

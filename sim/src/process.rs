@@ -546,6 +546,7 @@ impl World {
             return;
         }
         let cell = cell_id(0, 0).unwrap_or(0);
+        self.mark_wolf_tracks(cell);
         self.emit(
             "A wolf howls.",
             Scope::Valley,
