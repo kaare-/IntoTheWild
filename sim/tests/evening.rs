@@ -11787,4 +11787,37 @@ fn night_shortens_the_look_until_a_fire_is_nearby() {
             && still.contains("You are on the"),
         "{still}"
     );
+    let dawn_at = world.tuning.night_at + world.tuning.night_len;
+    while world.sim_time() < dawn_at {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), dawn_at);
+    let morning = world.observe(near).unwrap().text;
+    assert!(
+        morning.contains("Morning is on the valley.")
+            && morning.contains("North: valley floor")
+            && !morning.contains("Night has fallen")
+            && !morning.contains("you cannot make out the ground")
+            && !morning.contains("The dark hides"),
+        "{morning}"
+    );
+    if let (Some((dx, dy)), Some((nx, ny))) = (world.deer_cell(), world.actor_cell(near)) {
+        let dist = (dx - nx).abs().max((dy - ny).abs());
+        if dist > 0 && dist <= world.tuning.sight {
+            assert!(
+                morning.contains("A deer stands") || morning.contains("a deer"),
+                "{morning}"
+            );
+        }
+    }
+    let next_night = dawn_at + world.tuning.day_len;
+    while world.sim_time() < next_night {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), next_night);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Night has fallen."));
 }

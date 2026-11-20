@@ -442,6 +442,10 @@ impl World {
             "Night has fallen. Rain is falling on the valley."
         } else if self.night() {
             "Night has fallen."
+        } else if self.morning() && self.raining {
+            "Morning is on the valley. Rain is falling on the valley."
+        } else if self.morning() {
+            "Morning is on the valley."
         } else if self.raining {
             "Rain is falling on the valley."
         } else if self.time + 2 >= self.tuning.rain_starts_at {
@@ -451,8 +455,21 @@ impl World {
         }
     }
 
+    /// The first night starts at `night_at` and lasts `night_len` ticks.
+    /// Then `day_len` ticks of morning, and the pair repeats.
     fn night(&self) -> bool {
-        self.time >= self.tuning.night_at
+        if self.time < self.tuning.night_at {
+            return false;
+        }
+        let cycle = self.tuning.night_len.saturating_add(self.tuning.day_len);
+        if cycle == 0 {
+            return false;
+        }
+        (self.time - self.tuning.night_at) % cycle < self.tuning.night_len
+    }
+
+    fn morning(&self) -> bool {
+        self.time >= self.tuning.night_at && !self.night()
     }
 
     /// A fire underfoot or on the next cell. Farther light does not help.

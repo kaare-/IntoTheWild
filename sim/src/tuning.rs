@@ -32,10 +32,16 @@ pub struct Tuning {
     /// A bolt or a kill leaves the same tracks. The old hoofprints stay.
     #[serde(default = "default_track_ticks")]
     pub track_ticks: u64,
-    /// Sim time when night falls. It stays night after that. A fire in the
-    /// cell, or on the next cell, gives that person the daytime detail again.
+    /// Sim time when the first night falls. Night lasts `night_len` ticks,
+    /// then morning. The day between nights is `day_len` ticks, and that repeats.
     #[serde(default = "default_night_at")]
     pub night_at: u64,
+    /// Ticks a night lasts before dawn.
+    #[serde(default = "default_night_len")]
+    pub night_len: u64,
+    /// Ticks of morning between one dawn and the next night.
+    #[serde(default = "default_day_len")]
+    pub day_len: u64,
     pub body_rain: u32,
     pub brook_rain: u32,
     pub wade: u32,
@@ -144,6 +150,12 @@ fn default_track_ticks() -> u64 {
 fn default_night_at() -> u64 {
     72
 }
+fn default_night_len() -> u64 {
+    8
+}
+fn default_day_len() -> u64 {
+    16
+}
 fn default_season_at() -> u64 {
     18
 }
@@ -234,6 +246,10 @@ struct RawTime {
     track_ticks: u64,
     #[serde(default = "default_night_at")]
     night_at: u64,
+    #[serde(default = "default_night_len")]
+    night_len: u64,
+    #[serde(default = "default_day_len")]
+    day_len: u64,
     chill_at: u64,
 }
 
@@ -314,6 +330,8 @@ impl Tuning {
             || raw.time.clay_ticks == 0
             || raw.time.spear_ticks == 0
             || raw.time.track_ticks == 0
+            || raw.time.night_len == 0
+            || raw.time.day_len == 0
         {
             return Err("work durations must be at least 1 tick".into());
         }
@@ -365,6 +383,8 @@ impl Tuning {
             spear_ticks: raw.time.spear_ticks,
             track_ticks: raw.time.track_ticks,
             night_at: raw.time.night_at,
+            night_len: raw.time.night_len,
+            day_len: raw.time.day_len,
             chill_at: raw.time.chill_at,
             body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
             brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,

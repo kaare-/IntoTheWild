@@ -43,10 +43,13 @@ spear_ticks = 4
 # older hoofprints on the trail stay. Someone who cannot see the cell does
 # not get the line. The deer does not have to still be there.
 track_ticks = 4
-# Night falls on this tick and stays. Look keeps the cell underfoot and
-# shortens everything farther off, unless a fire burns here or on the next
-# cell. That person gets the daytime detail again. The sky still says night.
+# The first night falls on this tick, lasts night_len ticks, then morning.
+# day_len ticks of morning follow, and then night again. During a night, look
+# keeps the cell underfoot and shortens everything farther off, unless a fire
+# burns here or on the next cell. Dawn restores the day look for everyone.
 night_at = 72
+night_len = 8
+day_len = 16
 # From this tick, still water is frozen unless a fire burns on it.
 # The brook keeps running. A body in the open is already getting cold before this.
 chill_at = 12
