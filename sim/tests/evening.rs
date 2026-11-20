@@ -13093,3 +13093,244 @@ fn reeds_thatch_a_lean_to_and_put_the_body_out_of_the_wind() {
     let again = world.step(&[cmd("again", near, Attempt::Thatch)]);
     assert_eq!(again.results[0].message, "The lean-to is already thatched.");
 }
+
+#[test]
+fn a_thatched_lean_to_keeps_the_rain_off_and_a_bare_one_does_not() {
+    let mut world = world_at(28);
+    let thatch = world.spawn_at("Thatch", "t", 0, 3).unwrap();
+    let bare = world.spawn_at("Bare", "b", 6, 1).unwrap();
+    let open = world.spawn_at("Open", "o", 4, 3).unwrap();
+    let seen = world.spawn_at("Seen", "s", 3, 2).unwrap();
+    let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+
+    let go = |world: &mut World, id: &str, actor: u32, attempt: Attempt| {
+        let step = world.step(&[cmd(id, actor, attempt)]);
+        assert!(step.results[0].success, "{}", step.results[0].message);
+    };
+
+    go(&mut world, "reeds", thatch, Attempt::Gather(Material::Reed));
+    for (n, dir) in [
+        (1, Dir::East),
+        (2, Dir::East),
+        (3, Dir::East),
+        (4, Dir::East),
+        (5, Dir::East),
+        (6, Dir::North),
+    ] {
+        go(&mut world, &format!("t{n}"), thatch, Attempt::Move(dir));
+    }
+    assert_eq!(world.actor_cell(thatch), Some((5, 2)));
+    go(&mut world, "build-t", thatch, Attempt::BuildLeanTo);
+    go(&mut world, "thatch", thatch, Attempt::Thatch);
+
+    for n in 1..=3 {
+        go(
+            &mut world,
+            &format!("wood{n}"),
+            bare,
+            Attempt::Gather(Material::Branch),
+        );
+    }
+    go(&mut world, "bw1", bare, Attempt::Move(Dir::West));
+    go(&mut world, "bw2", bare, Attempt::Move(Dir::West));
+    go(&mut world, "bs", bare, Attempt::Move(Dir::South));
+    assert_eq!(world.actor_cell(bare), Some((4, 2)));
+    go(&mut world, "build-b", bare, Attempt::BuildLeanTo);
+    assert!(!world.is_raining());
+
+    let thatch_path = [Dir::West, Dir::West, Dir::West, Dir::North];
+    let bare_path = [Dir::North, Dir::West, Dir::West];
+    let open_path = [Dir::West, Dir::West, Dir::North, Dir::North];
+    for (n, dir) in thatch_path.into_iter().enumerate() {
+        let mut intents = vec![cmd(&format!("to-mud-t{n}"), thatch, Attempt::Move(dir))];
+        if n < bare_path.len() {
+            intents.push(cmd(
+                &format!("to-mud-b{n}"),
+                bare,
+                Attempt::Move(bare_path[n]),
+            ));
+        }
+        if n < open_path.len() {
+            intents.push(cmd(
+                &format!("to-mud-o{n}"),
+                open,
+                Attempt::Move(open_path[n]),
+            ));
+        }
+        let step = world.step(&intents);
+        for result in &step.results {
+            assert!(result.success, "{}", result.message);
+        }
+    }
+    assert_eq!(world.actor_cell(thatch), Some((2, 1)));
+    assert_eq!(world.actor_cell(bare), Some((2, 1)));
+    assert_eq!(world.actor_cell(open), Some((2, 1)));
+    let gathered = world.step(&[
+        cmd("mud-t", thatch, Attempt::Gather(Material::Mud)),
+        cmd("mud-b", bare, Attempt::Gather(Material::Mud)),
+        cmd("mud-o", open, Attempt::Gather(Material::Mud)),
+    ]);
+    for result in &gathered.results {
+        assert_eq!(result.message, "You gather a handful of mud.");
+    }
+    let smeared = world.step(&[
+        cmd("smear-t", thatch, Attempt::Smear),
+        cmd("smear-b", bare, Attempt::Smear),
+        cmd("smear-o", open, Attempt::Smear),
+    ]);
+    for result in &smeared.results {
+        assert_eq!(result.message, "You smear mud on your skin.");
+    }
+    let back_t = [Dir::South, Dir::East, Dir::East, Dir::East];
+    let back_b = [Dir::East, Dir::East, Dir::South];
+    let back_o = [Dir::South, Dir::South, Dir::East, Dir::East];
+    for (n, dir) in back_t.into_iter().enumerate() {
+        let mut intents = vec![cmd(&format!("back-t{n}"), thatch, Attempt::Move(dir))];
+        if n < back_b.len() {
+            intents.push(cmd(&format!("back-b{n}"), bare, Attempt::Move(back_b[n])));
+        }
+        if n < back_o.len() {
+            intents.push(cmd(&format!("back-o{n}"), open, Attempt::Move(back_o[n])));
+        }
+        let step = world.step(&intents);
+        for result in &step.results {
+            assert!(result.success, "{}", result.message);
+        }
+    }
+    assert_eq!(world.actor_cell(thatch), Some((5, 2)));
+    assert_eq!(world.actor_cell(bare), Some((4, 2)));
+    assert_eq!(world.actor_cell(open), Some((4, 3)));
+    assert_eq!(world.actor_cell(seen), Some((3, 2)));
+    assert_eq!(world.actor_cell(rock), Some((6, 1)));
+    assert_eq!(world.observe(thatch).unwrap().self_info.mud, "mud-smeared");
+    assert_eq!(world.observe(bare).unwrap().self_info.mud, "mud-smeared");
+    assert_eq!(world.observe(open).unwrap().self_info.mud, "mud-smeared");
+    world.wet_season = false;
+    while !world.is_raining() {
+        world.step(&[]);
+    }
+    world.step(&[]);
+
+    let under_thatch = world.observe(thatch).unwrap();
+    let under_bare = world.observe(bare).unwrap();
+    let in_rain = world.observe(open).unwrap();
+    let under_rock = world.observe(rock).unwrap();
+    let from_seen = world.observe(seen).unwrap();
+
+    assert!(
+        under_thatch
+            .text
+            .contains("You are on the valley floor, under a thatched lean-to."),
+        "{}",
+        under_thatch.text
+    );
+    assert!(
+        under_thatch
+            .text
+            .contains("The rain does not wet your clothes."),
+        "{}",
+        under_thatch.text
+    );
+    assert!(
+        under_thatch
+            .text
+            .contains("The rain does not reach you under it, and it does not wash you."),
+        "{}",
+        under_thatch.text
+    );
+    assert_eq!(under_thatch.self_info.wetness, "dry");
+    assert_eq!(under_thatch.self_info.mud, "mud-smeared");
+    assert!(under_thatch.events.iter().all(|event| {
+        !event.text.contains("washes the mud off you")
+            && !event.text.contains("washes the mud off Thatch")
+    }));
+    assert!(under_thatch
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off Open."));
+
+    assert!(
+        under_bare
+            .text
+            .contains("You are on the valley floor, under a lean-to."),
+        "{}",
+        under_bare.text
+    );
+    assert!(!under_bare.text.contains("under a thatched lean-to"));
+    assert!(
+        under_bare
+            .text
+            .contains("A little rain dampens your clothes."),
+        "{}",
+        under_bare.text
+    );
+    assert!(
+        under_bare
+            .text
+            .contains("Only a little rain reaches you under it, and it does not wash you."),
+        "{}",
+        under_bare.text
+    );
+    assert_eq!(under_bare.self_info.wetness, "damp");
+    assert_eq!(under_bare.self_info.mud, "mud-smeared");
+    assert!(under_bare.events.iter().all(|event| {
+        !event.text.contains("washes the mud off you")
+            && !event.text.contains("washes the mud off Bare")
+    }));
+    assert!(under_bare
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off Open."));
+
+    assert!(
+        in_rain
+            .text
+            .contains("You are on the valley floor, in the rain."),
+        "{}",
+        in_rain.text
+    );
+    assert!(
+        in_rain.text.contains("The rain wets your clothes."),
+        "{}",
+        in_rain.text
+    );
+    assert_eq!(in_rain.self_info.wetness, "wet");
+    assert_eq!(in_rain.self_info.mud, "bare skin");
+    assert!(in_rain
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off you."));
+
+    assert!(
+        under_rock
+            .text
+            .contains("The rain does not wet your clothes."),
+        "{}",
+        under_rock.text
+    );
+    assert_eq!(under_thatch.self_info.wetness, under_rock.self_info.wetness);
+
+    assert!(
+        from_seen.text.contains(
+            "A thatched lean-to stands on the valley floor to the east. The rain does not reach anyone under it."
+        ),
+        "{}",
+        from_seen.text
+    );
+    assert!(
+        from_seen.text.contains(
+            "A lean-to of branches stands on the valley floor to the east. The rain does not wash anyone under it."
+        ),
+        "{}",
+        from_seen.text
+    );
+    assert!(from_seen
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off Open."));
+    assert!(from_seen.events.iter().all(|event| {
+        !event.text.contains("washes the mud off Thatch")
+            && !event.text.contains("washes the mud off Bare")
+    }));
+    assert_eq!(world.actor_cell(seen), Some((3, 2)));
+}

@@ -27,6 +27,16 @@ impl World {
         1000
     }
 
+    /// Rain on a cell. A thatched lean-to keeps it off the way the rock does.
+    /// A bare lean-to still lets a little through.
+    pub(crate) fn rain_exposure(&self, cell: CellId) -> u32 {
+        if self.thatched.contains(&cell) {
+            self.tuning.rock_roof
+        } else {
+            self.exposure_millis(cell)
+        }
+    }
+
     pub(crate) fn supported_at_both_ends(&self, id: ConstructionId) -> bool {
         let Some(frame) = self.constructions.get(&id) else {
             return false;
@@ -56,9 +66,9 @@ impl World {
         }
         if let Some(carrier) = item.carrier {
             let cell = self.actor(carrier).map(|a| a.cell).unwrap_or(item.cell);
-            return self.exposure_millis(cell);
+            return self.rain_exposure(cell);
         }
-        self.exposure_millis(item.cell)
+        self.rain_exposure(item.cell)
     }
 
     pub(crate) fn cover_phrase(&self, cell: CellId) -> &'static str {
@@ -70,6 +80,8 @@ impl World {
             .unwrap_or(false)
         {
             "under a bark roof"
+        } else if self.thatched.contains(&cell) {
+            "under a thatched lean-to"
         } else if self.lean_tos.contains(&cell) {
             "under a lean-to"
         } else if self.raining {
@@ -80,7 +92,7 @@ impl World {
     }
 
     pub(crate) fn rain_reaches_phrase(&self, cell: CellId) -> &'static str {
-        let exposure = self.exposure_millis(cell);
+        let exposure = self.rain_exposure(cell);
         if exposure == 0 {
             "Rain does not reach it."
         } else if exposure < 1000 {

@@ -1135,7 +1135,9 @@ impl World {
         } else {
             "lean-to of branches"
         };
-        if self.raining {
+        if self.raining && self.thatched.contains(&cell) {
+            "A thatched lean-to stands here. It breaks the wind. The rain does not reach you under it, and it does not wash you.".into()
+        } else if self.raining {
             format!("A {name} stands here. It breaks the wind. Only a little rain reaches you under it, and it does not wash you.")
         } else {
             format!("A {name} stands here. It breaks the wind.")
@@ -1164,7 +1166,11 @@ impl World {
                 } else {
                     ""
                 };
-                format!(" The rain does not wash anyone under it.{kept}")
+                if self.thatched.contains(&cell) {
+                    format!(" The rain does not reach anyone under it.{kept}")
+                } else {
+                    format!(" The rain does not wash anyone under it.{kept}")
+                }
             } else {
                 String::new()
             };
@@ -1609,7 +1615,7 @@ impl World {
             && self.raining
             && self
                 .actor(actor_id)
-                .is_some_and(|actor| self.exposure_millis(actor.cell) == 0)
+                .is_some_and(|actor| self.rain_exposure(actor.cell) == 0)
         {
             "The rain does not wet your clothes.".into()
         } else {

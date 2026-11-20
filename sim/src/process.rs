@@ -732,9 +732,10 @@ impl World {
             if (mud_before >= smear_at || ochre_before >= smear_at) && sun_gain > 0 {
                 sun_gain = ((u64::from(sun_gain) * u64::from(mud_sun)) / 1000) as u32;
             }
-            let washed = raining && exposure >= 1000 && mud_before > 0;
+            let rain = self.rain_exposure(cell);
+            let washed = raining && rain >= 1000 && mud_before > 0;
             let mud_loss = if washed { mud_before } else { mud_fade };
-            let ochre_washed = raining && exposure >= 1000 && ochre_before > 0;
+            let ochre_washed = raining && rain >= 1000 && ochre_before > 0;
             let ochre_loss = if ochre_washed { ochre_before } else { mud_fade };
             // A fire in the cell, lean-to included, spends warmth instead of
             // taking the sky. Across a night that holds the body warm. A fire
@@ -971,7 +972,7 @@ impl World {
             .piles
             .iter()
             .map(|pile| {
-                let exposure = self.exposure_millis(pile.cell);
+                let exposure = self.rain_exposure(pile.cell);
                 self.wet_add(
                     self.season_gain(self.tuning.rain_gain(pile.material), exposure >= 1000),
                     exposure,
@@ -1010,14 +1011,17 @@ impl World {
             .map(|id| {
                 let cell = self.actor(*id).unwrap().cell;
                 let exposure = self.exposure_millis(cell);
+                let rain = self.rain_exposure(cell);
                 let wetness = self.actor(*id).unwrap().wetness;
-                let mut gain = self.wet_add(
-                    self.season_gain(self.tuning.body_rain, exposure >= 1000),
-                    exposure,
-                );
-                // A lean-to is one step short of the rock. A little rain
-                // dampens the clothes, and it stops there. Open sky still soaks.
-                if self.lean_tos.contains(&cell) && exposure == self.tuning.lean_to {
+                let mut gain =
+                    self.wet_add(self.season_gain(self.tuning.body_rain, rain >= 1000), rain);
+                // A bare lean-to is one step short of the rock. A little rain
+                // dampens the clothes, and it stops there. Thatch keeps the
+                // rain off, the way the rock does. Open sky still soaks.
+                if self.lean_tos.contains(&cell)
+                    && !self.thatched.contains(&cell)
+                    && exposure == self.tuning.lean_to
+                {
                     gain = self.tuning.damp_at.saturating_sub(wetness);
                 }
                 if self.cell(cell).region == Region::Brook {
