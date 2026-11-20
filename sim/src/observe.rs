@@ -3317,7 +3317,9 @@ impl World {
                 } else {
                     self.place_phrase(origin, cell)
                 };
-                lines.push(format!("A flint nodule lies {place}. It is a sharp stone."));
+                lines.push(format!(
+                    "A flint nodule lies {place}. It is a sharp stone. It can be knapped."
+                ));
             }
         }
         for actor in self.actors.values() {
@@ -3333,7 +3335,7 @@ impl World {
                 actor.name.as_str()
             };
             lines.push(format!(
-                "A flint nodule is carried by {who}, {}.",
+                "A flint nodule is carried by {who}, {}. It is a sharp stone. It can be knapped.",
                 self.cover_phrase(actor.cell)
             ));
         }

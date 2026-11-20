@@ -7107,7 +7107,7 @@ fn a_flint_nodule_on_the_slope_can_be_carried() {
     assert!(here.contains("A flint nodule lies here."), "{here}");
     assert_eq!(
         world.examine(near, ExamineTarget::Flint),
-        "A flint nodule lies here, on the slope. It is a sharp stone."
+        "A flint nodule lies here, on the slope. It is a sharp stone. It can be knapped."
     );
     let beside = world.observe(west).unwrap().text;
     assert!(
@@ -7117,7 +7117,7 @@ fn a_flint_nodule_on_the_slope_can_be_carried() {
     assert!(beside.contains("North: slope, a flint nodule"), "{beside}");
     assert_eq!(
         world.examine(west, ExamineTarget::Flint),
-        "A flint nodule lies on the slope to the north. It is a sharp stone."
+        "A flint nodule lies on the slope to the north. It is a sharp stone. It can be knapped."
     );
     assert_eq!(
         world.examine(far, ExamineTarget::Flint),
@@ -7204,6 +7204,14 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
     world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
     let before = world.observe(near).unwrap().text;
     assert_eq!(arms_sentence(&before), "You have a dry flint nodule.");
+    assert_eq!(
+        world.examine(near, ExamineTarget::Flint),
+        "A flint nodule is carried by you, in the open. It is a sharp stone. It can be knapped."
+    );
+    assert_eq!(
+        world.examine(west, ExamineTarget::Flint),
+        "A flint nodule is carried by Near, in the open. It is a sharp stone. It can be knapped."
+    );
     let report = world.step(&[cmd("knap", near, Attempt::Knap)]);
     let sentence = "You knap the flint nodule into a sharp flake.";
     let witnessed = "Near knaps the flint nodule into a sharp flake.";
@@ -7250,6 +7258,8 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
         from_west.contains("It is sharp enough to cut or haft later."),
         "{from_west}"
     );
+    assert!(!examined.contains("knapped"), "{examined}");
+    assert!(!from_west.contains("knapped"), "{from_west}");
     let again = world.step(&[cmd("again", near, Attempt::Knap)]);
     assert_eq!(
         again.results[0].message,
