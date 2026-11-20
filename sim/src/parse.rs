@@ -47,7 +47,7 @@ hammer|forge                 a carried copper bead at a fire, or with a stone, i
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew
 sew hide                     a pierced deer hide into a cloak, worn against the cold
-rest|sleep                   under the rock, tiredness eases; the open wind refuses
+rest|sleep                   under the rock or a lean-to, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
 }

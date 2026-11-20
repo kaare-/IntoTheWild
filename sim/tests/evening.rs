@@ -2258,27 +2258,22 @@ fn rain_does_not_wash_a_smear_under_a_lean_to() {
         )]);
     }
     for step in 0..2 {
-        world.step(&[cmd(
-            &format!("west-{step}"),
-            near,
-            Attempt::Move(Dir::West),
-        )]);
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(Dir::West))]);
     }
     assert_eq!(world.actor_cell(near), Some((3, 0)));
     let gathered = world.step(&[cmd("ochre", near, Attempt::Gather(Material::Ochre))]);
     assert_eq!(gathered.results[0].message, "You gather a lump of ochre.");
     let smeared = world.step(&[cmd("smear-near", near, Attempt::SmearOchre)]);
-    assert_eq!(smeared.results[0].message, "You smear red ochre on your skin.");
+    assert_eq!(
+        smeared.results[0].message,
+        "You smear red ochre on your skin."
+    );
     assert_eq!(
         world.observe(near).unwrap().self_info.ochre,
         "red-ochre-smeared"
     );
     for step in 0..2 {
-        world.step(&[cmd(
-            &format!("east-{step}"),
-            near,
-            Attempt::Move(Dir::East),
-        )]);
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
     }
     for step in 0..2 {
         world.step(&[cmd(
@@ -9675,6 +9670,69 @@ fn wait_until_tiring(world: &mut World, actor: u32) {
         ticks += 1;
         assert!(ticks < 80, "tiredness should arrive");
     }
+}
+
+#[test]
+fn rest_under_a_lean_to_eases_tiredness_and_the_open_wind_still_refuses() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 0, 4).unwrap();
+    let refused = world.step(&[cmd("open", far, Attempt::Rest)]);
+    assert_eq!(
+        refused.results[0].message,
+        "The wind will not let you rest."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The wind will not let you rest."));
+    let built = world.step(&[cmd("build", near, Attempt::BuildLeanTo)]);
+    assert_eq!(
+        built.results[0].message,
+        "You build a lean-to of three branches."
+    );
+    wait_until_tiring(&mut world, near);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("You are in a little wind."));
+    let rested = world.step(&[cmd("rest", near, Attempt::Rest)]);
+    assert_eq!(
+        rested.results[0].message,
+        "You rest under the lean-to. You are rested."
+    );
+    let here = world.observe(near).unwrap();
+    assert_eq!(here.self_info.energy, "rested");
+    assert!(here
+        .events
+        .iter()
+        .any(|event| event.text == "You rest under the lean-to."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near rests under the lean-to."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("rest")));
+    let rock = {
+        let mut sheltered = World::valley(Tuning::evening(), 1);
+        let near = sheltered.spawn_at("Near", "n", 6, 1).unwrap();
+        wait_until_tiring(&mut sheltered, near);
+        sheltered.step(&[cmd("rock", near, Attempt::Rest)])
+    };
+    assert_eq!(
+        rock.results[0].message,
+        "You rest under the rock. You are rested."
+    );
 }
 
 #[test]

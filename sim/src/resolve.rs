@@ -2330,7 +2330,13 @@ impl World {
                 person.energy = after;
             }
             let under_rock = self.cell(actor.cell).rock;
-            let place = if under_rock { " under the rock" } else { "" };
+            let place = if under_rock {
+                " under the rock"
+            } else if self.lean_tos.contains(&actor.cell) {
+                " under the lean-to"
+            } else {
+                ""
+            };
             let name = self.name_of(intent.actor_id);
             self.emit(
                 format!("{name} rests{place}."),

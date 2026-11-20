@@ -5745,7 +5745,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} rests"))?;
-        if rest != "." && rest != " under the rock." {
+        if rest != "." && rest != " under the rock." && rest != " under the lean-to." {
             return None;
         }
         Some(format!("You rest{rest}"))
