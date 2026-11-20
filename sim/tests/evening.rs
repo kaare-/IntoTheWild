@@ -12191,7 +12191,7 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
     assert!(berry.results[1].success, "{}", berry.results[1].message);
     let holding = world.observe(near).unwrap().text;
     assert!(
-        holding.contains("a bark basket, holding a handful of berries"),
+        holding.contains("a bark basket holding a handful of berries"),
         "{holding}"
     );
     let full = world.examine(near, ExamineTarget::Basket);
@@ -12269,7 +12269,7 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     assert_eq!(cast.results[0].message, "You spear a fish from the brook.");
     let holding = world.observe(near).unwrap().text;
     assert!(
-        holding.contains("a bark basket, holding a raw fish"),
+        holding.contains("a bark basket holding a raw fish, "),
         "{holding}"
     );
     assert_eq!(holding.matches("raw fish").count(), 1, "{holding}");
@@ -12323,7 +12323,7 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     );
     let again = world.observe(near).unwrap().text;
     assert!(
-        again.contains("a bark basket, holding a raw fish"),
+        again.contains("a bark basket holding a raw fish"),
         "{again}"
     );
     assert!(world
@@ -12362,7 +12362,7 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     assert_eq!(tucked.results[0].message, "You gather a fish.");
     let tucked_look = world.observe(near).unwrap().text;
     assert!(
-        tucked_look.contains("a bark basket, holding a raw fish"),
+        tucked_look.contains("a bark basket holding a raw fish"),
         "{tucked_look}"
     );
     assert_eq!(tucked_look.matches("raw fish").count(), 1, "{tucked_look}");

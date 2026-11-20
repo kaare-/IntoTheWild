@@ -5984,8 +5984,8 @@ impl World {
 
     fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
         match self.basket_contents(actor_id) {
-            Some(Material::Berry) => "a bark basket, holding a handful of berries".into(),
-            Some(Material::Fish) => "a bark basket, holding a raw fish".into(),
+            Some(Material::Berry) => "a bark basket holding a handful of berries".into(),
+            Some(Material::Fish) => "a bark basket holding a raw fish".into(),
             _ => "a bark basket".into(),
         }
     }
