@@ -57,6 +57,7 @@ pub struct SelfInfo {
     pub wind: String,
     pub sunburn: String,
     pub mud: String,
+    pub ochre: String,
     pub gripping: bool,
     pub carrying: Vec<CarryView>,
     pub busy: bool,
@@ -148,6 +149,7 @@ impl World {
                 wind: self.wind_word(self.exposure_millis(actor.cell)).into(),
                 sunburn: self.sun_word(actor.sunburn).into(),
                 mud: self.mud_word(actor.mud).into(),
+                ochre: self.ochre_word(actor.ochre).into(),
                 gripping: self.gripping(actor.id).is_some(),
                 carrying: self.carry_views(actor.id),
                 busy: actor.busy.is_some(),
@@ -1067,6 +1069,9 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.mud_word(actor.mud)),
         ];
+        if actor.ochre > 0 {
+            parts.push(format!("Your skin is {}.", self.ochre_word(actor.ochre)));
+        }
         if self.wearing_hide(actor_id) {
             parts.push("The deer hide is on you.".into());
         }
@@ -1155,8 +1160,20 @@ impl World {
             self.wind_word(self.exposure_millis(actor.cell)),
             self.sun_word(actor.sunburn),
             self.mud_word(actor.mud)
-        ) + &self.spear_clause(actor_id)
+        ) + &self.ochre_skin_clause(actor_id)
+            + &self.spear_clause(actor_id)
             + &self.carcass_clause(actor_id)
+    }
+
+    fn ochre_skin_clause(&self, actor_id: ActorId) -> String {
+        let Some(actor) = self.actor(actor_id) else {
+            return String::new();
+        };
+        if actor.ochre == 0 {
+            String::new()
+        } else {
+            format!(" Their skin is {}.", self.ochre_word(actor.ochre))
+        }
     }
 
     fn carcass_clause(&self, actor_id: ActorId) -> String {
@@ -4337,10 +4354,13 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        if event.text != format!("{name} smears mud on their skin.") {
-            return None;
+        if event.text == format!("{name} smears mud on their skin.") {
+            return Some("You smear mud on your skin.".into());
         }
-        Some("You smear mud on your skin.".into())
+        if event.text == format!("{name} smears red ochre on their skin.") {
+            return Some("You smear red ochre on your skin.".into());
+        }
+        None
     }
 
     /// Rain taking the mud, filled for the person it washed.
@@ -4349,10 +4369,13 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        if event.text != format!("The rain washes the mud off {name}.") {
-            return None;
+        if event.text == format!("The rain washes the mud off {name}.") {
+            return Some("The rain washes the mud off you.".into());
         }
-        Some("The rain washes the mud off you.".into())
+        if event.text == format!("The rain washes the red ochre off {name}.") {
+            return Some("The rain washes the red ochre off you.".into());
+        }
+        None
     }
 
     /// Cooked meat eaten, filled for the person who ate it.
@@ -5163,6 +5186,9 @@ impl World {
         if !self.loose_ids(actor_id, Material::Mud).is_empty() {
             actions.push("drop mud".into());
             actions.push("smear mud".into());
+        }
+        if !self.loose_ids(actor_id, Material::Ochre).is_empty() {
+            actions.push("smear ochre".into());
         }
         if self.log_at(actor.cell) {
             actions.push("grab".into());

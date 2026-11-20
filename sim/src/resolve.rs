@@ -46,6 +46,7 @@ impl World {
         let mut cooks = Vec::new();
         let mut eats = Vec::new();
         let mut smears = Vec::new();
+        let mut ochre_smears = Vec::new();
         let mut sets = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
@@ -89,6 +90,7 @@ impl World {
                         Attempt::Cook => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
+                        Attempt::SmearOchre => ochre_smears.push(intent),
                         Attempt::SetClay => sets.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
@@ -188,6 +190,7 @@ impl World {
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
         self.apply_smears(smears, &mut results);
+        self.apply_ochre_smears(ochre_smears, &mut results);
         results
     }
 
@@ -473,6 +476,19 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Mud).is_empty() {
                     Err("You have no mud to smear.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SmearOchre => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Ochre).is_empty() {
+                    Err("You have no ochre to smear.".into())
                 } else {
                     Ok(true)
                 }
@@ -2668,6 +2684,50 @@ impl World {
                 intent.actor_id,
                 true,
                 "You smear mud on your skin.",
+                results,
+            );
+        }
+    }
+
+    fn apply_ochre_smears(&mut self, smears: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in smears {
+            let Some(item_id) = self
+                .loose_ids(intent.actor_id, Material::Ochre)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no ochre to smear.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&item_id);
+            if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                person.ochre = 1000;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                format!("{name} smears red ochre on their skin."),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![item_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                "You smear red ochre on your skin.",
                 results,
             );
         }

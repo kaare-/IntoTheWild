@@ -248,6 +248,7 @@ pub enum Attempt {
     Remove,
     Eat(Material),
     Smear,
+    SmearOchre,
 }
 
 impl Attempt {
@@ -275,6 +276,7 @@ impl Attempt {
                 | Attempt::Remove
                 | Attempt::Eat(_)
                 | Attempt::Smear
+                | Attempt::SmearOchre
         )
     }
 }
@@ -355,6 +357,9 @@ pub struct Actor {
     /// A smear of mud. It flakes off, and rain in the open washes it off.
     #[serde(default)]
     pub mud: u32,
+    /// A smear of red ochre. It flakes off, and rain in the open washes it off.
+    #[serde(default)]
+    pub ochre: u32,
     pub busy: Option<WorkId>,
 }
 
@@ -710,6 +715,7 @@ impl World {
                 warm_from_fire: false,
                 sunburn: 0,
                 mud: 0,
+                ochre: 0,
                 busy: None,
             },
         );
@@ -1248,6 +1254,16 @@ impl World {
             "thin mud"
         } else {
             "mud-smeared"
+        }
+    }
+
+    pub(crate) fn ochre_word(&self, ochre: u32) -> &'static str {
+        if ochre == 0 {
+            "bare"
+        } else if ochre < self.tuning.smear_at {
+            "thin red ochre"
+        } else {
+            "red-ochre-smeared"
         }
     }
 

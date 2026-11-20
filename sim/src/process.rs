@@ -525,6 +525,7 @@ impl World {
             let cold_before = actor.cold;
             let sun_before = actor.sunburn;
             let mud_before = actor.mud;
+            let ochre_before = actor.ochre;
             let on_fire = self.fire_at(cell).is_some();
             let carried = actor.warmth;
             let mut from_fire = actor.warm_from_fire;
@@ -545,11 +546,13 @@ impl World {
             } else {
                 ((u64::from(sun_base) * u64::from(exposure)) / 1000) as u32
             };
-            if mud_before >= smear_at && sun_gain > 0 {
+            if (mud_before >= smear_at || ochre_before >= smear_at) && sun_gain > 0 {
                 sun_gain = ((u64::from(sun_gain) * u64::from(mud_sun)) / 1000) as u32;
             }
             let washed = raining && exposure >= 1000 && mud_before > 0;
             let mud_loss = if washed { mud_before } else { mud_fade };
+            let ochre_washed = raining && exposure >= 1000 && ochre_before > 0;
+            let ochre_loss = if ochre_washed { ochre_before } else { mud_fade };
             let cold_after = if on_fire {
                 cold_before.saturating_sub(self.tuning.fire_warmth)
             } else if exposure == 0 {
@@ -578,6 +581,7 @@ impl World {
                 actor.warm_from_fire = from_fire;
                 actor.sunburn = sun_after;
                 actor.mud = mud_before.saturating_sub(mud_loss);
+                actor.ochre = ochre_before.saturating_sub(ochre_loss);
             }
             if !on_fire && carried == hold && hold > 0 {
                 self.emit(
@@ -641,6 +645,17 @@ impl World {
             if washed {
                 self.emit(
                     format!("The rain washes the mud off {name}."),
+                    Scope::Cell(cell),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+            if ochre_washed {
+                self.emit(
+                    format!("The rain washes the red ochre off {name}."),
                     Scope::Cell(cell),
                     vec![id],
                     vec![cell],

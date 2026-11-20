@@ -33,6 +33,7 @@ eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
 eat carcass                  a carcass must be cooked
 eat bark                     bark is tinder, not food
 smear mud                    mud on skin against the sun
+smear ochre                  red ochre on the skin, a mark unlike mud
 interrupt                    stop the work your body is in
 help"
 }
@@ -104,6 +105,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
         "smear" if rest.is_empty() || rest == "mud" => Ok(Attempt::Smear),
+        "smear" if rest == "ochre" => Ok(Attempt::SmearOchre),
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
