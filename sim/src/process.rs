@@ -516,6 +516,7 @@ impl World {
         let dir = step_dir(deer.cell, dest);
         let origin = deer.cell;
         self.tracks.insert(origin);
+        self.leave_fresh_tracks(origin);
         // The same hoofprints, written when the deer steps onto the floor
         // west of the wood, so they are there while the deer stands. A cell
         // that already has them, including the old trail, is not marked again.

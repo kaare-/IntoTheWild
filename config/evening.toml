@@ -38,6 +38,11 @@ clay_ticks = 4
 # The stone and the branch are already spent. Leaving the fire starts the
 # wait over. The deer is not hunted.
 spear_ticks = 4
+# After a deer leaves a cell, or a bolt or a kill leaves tracks there, look
+# names deer tracks for this many ticks. Then that sentence is gone. The
+# older hoofprints on the trail stay. Someone who cannot see the cell does
+# not get the line. The deer does not have to still be there.
+track_ticks = 4
 # From this tick, still water is frozen unless a fire burns on it.
 # The brook keeps running. A body in the open is already getting cold before this.
 chill_at = 12

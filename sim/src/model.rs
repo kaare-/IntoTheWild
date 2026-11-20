@@ -673,6 +673,10 @@ pub struct World {
     /// Banks that touch that cell fish the same stretch.
     #[serde(default)]
     pub(crate) brook_quiet: BTreeMap<CellId, u64>,
+    /// A cell a deer has just left, or where a bolt or a kill left tracks,
+    /// until this sim time. The permanent hoofprints are separate.
+    #[serde(default)]
+    pub(crate) fresh_tracks: BTreeMap<CellId, u64>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -740,6 +744,7 @@ impl World {
             ochre_marks: BTreeSet::new(),
             lean_tos: BTreeSet::new(),
             brook_quiet: BTreeMap::new(),
+            fresh_tracks: BTreeMap::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -1559,6 +1564,25 @@ impl World {
             .iter()
             .filter_map(|(dx, dy)| cell_id(x + dx, y + dy))
             .find(|next| self.cell(*next).region == Region::Brook)
+    }
+
+    /// The deer left this cell, or a bolt or a kill left tracks here.
+    /// Look names them through the next `track_ticks` steps.
+    pub(crate) fn leave_fresh_tracks(&mut self, cell: CellId) {
+        let until = self
+            .time
+            .saturating_add(1)
+            .saturating_add(self.tuning.track_ticks);
+        let entry = self.fresh_tracks.entry(cell).or_insert(0);
+        if *entry < until {
+            *entry = until;
+        }
+    }
+
+    pub(crate) fn deer_tracks_fresh(&self, cell: CellId) -> bool {
+        self.fresh_tracks
+            .get(&cell)
+            .is_some_and(|until| self.time < *until)
     }
 
     /// A successful cast empties that stretch until this time. The next

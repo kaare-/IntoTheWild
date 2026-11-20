@@ -3407,6 +3407,7 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
         self.tracks.insert(deer_cell);
+        self.leave_fresh_tracks(deer_cell);
         self.deer = None;
         let id = self.mint_item(Material::Carcass, 0, deer_cell, None, Role::Loose);
         let (heard, yours) = if flint {
@@ -3486,6 +3487,7 @@ impl World {
             .unwrap_or(deer.cell);
         }
         self.tracks.insert(deer.cell);
+        self.leave_fresh_tracks(deer.cell);
         if let Some(deer) = self.deer.as_mut() {
             deer.cell = dest;
             deer.route_at = dest_at;

@@ -8892,7 +8892,16 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert!(world.deer_cell().is_none());
     let after = world.observe(near).unwrap().text;
     assert!(after.contains("A deer carcass lies here."), "{after}");
+    assert!(
+        after.contains("Deer tracks mark the ground here."),
+        "{after}"
+    );
     assert!(!after.contains("A deer stands here."), "{after}");
+    assert!(!world
+        .observe(far)
+        .unwrap()
+        .text
+        .contains("Deer tracks mark the ground here."));
     assert_eq!(world.material_tally(Material::Carcass), 1);
 
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
@@ -9256,6 +9265,16 @@ fn a_fire_hardened_flint_spear_bolts_the_deer_on_the_next_cell() {
     assert_eq!(report.results[0].message, yours);
     assert_eq!(world.sim_time(), 65);
     assert_eq!(world.deer_cell(), Some((3, 3)));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Deer tracks mark the ground to the south."));
+    assert!(!world
+        .observe(west)
+        .unwrap()
+        .text
+        .contains("Deer tracks mark the ground to the south."));
     assert_eq!(world.material_tally(Material::Carcass), 0);
     assert_eq!(world.material_tally(Material::Spear), 1);
     let near_lines: Vec<_> = world
@@ -11516,4 +11535,49 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     assert_eq!(world.material_tally(Material::Knife), 1);
     assert_eq!(world.material_items(Material::Knife)[0].1, Some(near));
     assert_eq!(world.material_items(Material::Spear)[0].1, Some(near));
+}
+
+#[test]
+fn deer_tracks_show_for_who_can_see_the_cell_and_then_fade() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let here = world.spawn_at("Near", "n", 2, 3).unwrap();
+    let seen = world.spawn_at("West", "w", 4, 3).unwrap();
+    let quiet = world.spawn_at("Far", "f", 6, 3).unwrap();
+    assert!(!world.observe(here).unwrap().text.contains("Deer tracks"));
+    world.step(&[]);
+    assert_eq!(world.deer_cell(), Some((3, 3)));
+    assert_eq!(world.sim_time(), 1);
+    let on_the_cell = world.observe(here).unwrap().text;
+    assert!(
+        on_the_cell.contains("Deer tracks mark the ground here."),
+        "{on_the_cell}"
+    );
+    assert!(
+        !on_the_cell.contains("A deer stands here."),
+        "{on_the_cell}"
+    );
+    let in_sight = world.observe(seen).unwrap().text;
+    assert!(
+        in_sight.contains("Deer tracks mark the ground to the west."),
+        "{in_sight}"
+    );
+    let out = world.observe(quiet).unwrap().text;
+    assert!(!out.contains("Deer tracks"), "{out}");
+    for _ in 0..3 {
+        world.step(&[]);
+        assert!(world
+            .observe(here)
+            .unwrap()
+            .text
+            .contains("Deer tracks mark the ground here."));
+    }
+    assert_eq!(world.sim_time(), 4);
+    assert_ne!(world.deer_cell(), Some((2, 3)));
+    world.step(&[]);
+    assert_eq!(world.sim_time(), 5);
+    assert!(!world
+        .observe(here)
+        .unwrap()
+        .text
+        .contains("Deer tracks mark the ground here."));
 }

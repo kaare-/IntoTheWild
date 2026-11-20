@@ -28,6 +28,10 @@ pub struct Tuning {
     /// Ticks a carried spear must be held at a burning fire before the point hardens.
     #[serde(default = "default_spear_ticks")]
     pub spear_ticks: u64,
+    /// Ticks a look still names deer tracks after the deer has left that cell.
+    /// A bolt or a kill leaves the same tracks. The old hoofprints stay.
+    #[serde(default = "default_track_ticks")]
+    pub track_ticks: u64,
     pub body_rain: u32,
     pub brook_rain: u32,
     pub wade: u32,
@@ -130,6 +134,9 @@ fn default_clay_ticks() -> u64 {
 fn default_spear_ticks() -> u64 {
     4
 }
+fn default_track_ticks() -> u64 {
+    4
+}
 fn default_season_at() -> u64 {
     18
 }
@@ -216,6 +223,8 @@ struct RawTime {
     warmth_hold: u64,
     clay_ticks: u64,
     spear_ticks: u64,
+    #[serde(default = "default_track_ticks")]
+    track_ticks: u64,
     chill_at: u64,
 }
 
@@ -295,6 +304,7 @@ impl Tuning {
             || raw.time.warmth_hold == 0
             || raw.time.clay_ticks == 0
             || raw.time.spear_ticks == 0
+            || raw.time.track_ticks == 0
         {
             return Err("work durations must be at least 1 tick".into());
         }
@@ -344,6 +354,7 @@ impl Tuning {
             warmth_hold: raw.time.warmth_hold,
             clay_ticks: raw.time.clay_ticks,
             spear_ticks: raw.time.spear_ticks,
+            track_ticks: raw.time.track_ticks,
             chill_at: raw.time.chill_at,
             body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
             brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,
