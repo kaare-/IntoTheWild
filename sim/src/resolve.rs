@@ -1856,8 +1856,23 @@ impl World {
                 _ => {
                     self.flee_deer(actor.cell);
                     let name = self.name_of(actor.id);
+                    let flint = self
+                        .loose_ids(actor.id, Material::Spear)
+                        .iter()
+                        .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+                    let (heard, yours) = if flint {
+                        (
+                            format!("The deer bolts from {name}'s flint spear."),
+                            "The deer bolts. Your flint spear does not land.",
+                        )
+                    } else {
+                        (
+                            format!("The deer bolts from {name}'s spear."),
+                            "The deer bolts. Your spear does not land.",
+                        )
+                    };
                     self.emit(
-                        format!("The deer bolts from {name}'s spear."),
+                        heard,
                         Scope::Cell(deer.cell),
                         vec![actor.id],
                         vec![deer.cell],
@@ -1865,13 +1880,7 @@ impl World {
                         vec![],
                         draw,
                     );
-                    self.finish(
-                        intent.command_id,
-                        actor.id,
-                        false,
-                        "The deer bolts. Your spear does not land.",
-                        results,
-                    );
+                    self.finish(intent.command_id, actor.id, false, yours, results);
                 }
             }
         }
