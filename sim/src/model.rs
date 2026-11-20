@@ -72,6 +72,7 @@ pub enum Material {
     CopperOre,
     IronOre,
     Iron,
+    Knife,
     Copper,
     Awl,
 }
@@ -101,6 +102,7 @@ impl Material {
             Material::CopperOre => "copper ore",
             Material::IronOre => "iron ore",
             Material::Iron => "iron",
+            Material::Knife => "iron knife",
             Material::Copper => "copper",
             Material::Awl => "awl",
         }
@@ -130,6 +132,7 @@ impl Material {
             Material::CopperOre => "lump of copper ore",
             Material::IronOre => "lump of iron ore",
             Material::Iron => "bloom of iron",
+            Material::Knife => "iron knife",
             Material::Copper => "copper bead",
             Material::Awl => "copper awl",
         }
@@ -142,6 +145,13 @@ impl Material {
             Material::Berry => "a handful of berries",
             Material::Carcass => "the carcass",
             _ => "some food",
+        }
+    }
+
+    pub fn article(self) -> &'static str {
+        match self {
+            Material::Knife => "an",
+            _ => "a",
         }
     }
 }
@@ -222,6 +232,7 @@ pub enum ExamineTarget {
     CopperOre,
     IronOre,
     Iron,
+    Knife,
     Copper,
     Awl,
     Flake,
@@ -275,6 +286,7 @@ pub enum Attempt {
     SmeltIron,
     Feed,
     Hammer,
+    HammerIron,
     Pierce,
     Sew,
     Rest,
@@ -312,6 +324,7 @@ impl Attempt {
                 | Attempt::SmeltIron
                 | Attempt::Feed
                 | Attempt::Hammer
+                | Attempt::HammerIron
                 | Attempt::Pierce
                 | Attempt::Sew
                 | Attempt::Rest

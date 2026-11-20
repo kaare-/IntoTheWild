@@ -818,6 +818,18 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("examine bloom").unwrap(),
         Attempt::Examine(ExamineTarget::Iron)
     ));
+    assert!(matches!(
+        parse_attempt("hammer bloom").unwrap(),
+        Attempt::HammerIron
+    ));
+    assert!(matches!(
+        parse_attempt("gather iron knife").unwrap(),
+        Attempt::Gather(Material::Knife)
+    ));
+    assert!(matches!(
+        parse_attempt("examine knife").unwrap(),
+        Attempt::Examine(ExamineTarget::Knife)
+    ));
     assert!(matches!(parse_attempt("hammer").unwrap(), Attempt::Hammer));
     assert!(matches!(
         parse_attempt("forge bead").unwrap(),
@@ -9596,4 +9608,127 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         "A bloom of iron is carried by you, under the rock overhang. It is metal from a hotter fire."
     );
     assert_eq!(world.material_items(Material::Iron)[0].1, Some(near));
+    world.step(&[cmd("off-fire", near, Attempt::Move(Dir::South))]);
+    let refused = world.step(&[cmd("cold-hammer", near, Attempt::HammerIron)]);
+    assert_eq!(
+        refused.results[0].message,
+        "You need a hotter fire or a stone to hammer the bloom."
+    );
+    assert!(!refused.results[0].success);
+    for witness in [far, west] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hammer") && !event.text.contains("knife") }));
+    }
+    assert_eq!(world.material_items(Material::Iron)[0].1, Some(near));
+    world.step(&[cmd("back-fire", near, Attempt::Move(Dir::North))]);
+    let yours = "You hammer the bloom of iron into an iron knife at the fire.";
+    let seen_hit = "Near hammers the bloom of iron into an iron knife at the fire.";
+    let hit = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
+    assert_eq!(hit.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen_hit));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("knife")));
+    assert_eq!(world.material_tally(Material::Iron), 0);
+    assert_eq!(world.material_tally(Material::Knife), 1);
+    let arms = world.observe(near).unwrap().text;
+    assert!(!arms.contains("bloom of iron"), "{arms}");
+    assert_eq!(arms_sentence(&arms), "You have an iron knife.");
+    assert_eq!(
+        world.examine(near, ExamineTarget::Knife),
+        "An iron knife is carried by you, under the rock overhang. It can cut."
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Knife),
+        "An iron knife is carried by Near, under the rock overhang. It can cut."
+    );
+    assert_eq!(
+        world.examine(west, ExamineTarget::Knife),
+        "You see no iron knife from here."
+    );
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A fire burns hotter here."),
+        "the look still does not promise iron"
+    );
+}
+
+#[test]
+fn a_bloom_of_iron_hammers_into_a_knife_with_a_stone() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 5, 0).unwrap();
+    let far = world.spawn_at("Far", "f", 4, 1).unwrap();
+    let west = world.spawn_at("West", "w", 4, 4).unwrap();
+    world.step(&[cmd("ore", near, Attempt::Gather(Material::IronOre))]);
+    world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    world.step(&[cmd("feed", near, Attempt::Feed)]);
+    world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    world.step(&[cmd("bloom", near, Attempt::Gather(Material::Iron))]);
+    for (id, dir) in [
+        ("s", Dir::South),
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("n1", Dir::North),
+        ("n2", Dir::North),
+    ] {
+        let step = world.step(&[cmd(id, near, Attempt::Move(dir))]);
+        assert!(step.results[0].success, "{}", step.results[0].message);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 0)));
+    let stone = world.step(&[cmd("stone", near, Attempt::Gather(Material::Stone))]);
+    assert!(stone.results[0].success, "{}", stone.results[0].message);
+    let yours = "You hammer the bloom of iron into an iron knife with a stone.";
+    let seen = "Near hammers the bloom of iron into an iron knife with a stone.";
+    let hit = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
+    assert_eq!(hit.results[0].message, yours);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("knife")));
+    assert_eq!(world.material_tally(Material::Iron), 0);
+    assert_eq!(world.material_tally(Material::Knife), 1);
+    assert_eq!(world.material_items(Material::Stone)[0].1, Some(near));
+    let examined = world.examine(near, ExamineTarget::Knife);
+    assert!(
+        examined.contains("An iron knife is carried by you") && examined.contains("It can cut."),
+        "{examined}"
+    );
 }

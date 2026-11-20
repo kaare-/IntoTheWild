@@ -102,7 +102,7 @@ impl World {
                         Attempt::SetClay => sets.push(intent),
                         Attempt::Smelt | Attempt::SmeltIron => smelts.push(intent),
                         Attempt::Feed => feeds.push(intent),
-                        Attempt::Hammer => hammers.push(intent),
+                        Attempt::Hammer | Attempt::HammerIron => hammers.push(intent),
                         Attempt::Pierce => pierces.push(intent),
                         Attempt::Sew => sews.push(intent),
                         Attempt::BindSpear => binds.push(intent),
@@ -482,14 +482,29 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.loose_ids(actor.id, Material::Copper).is_empty() {
-                    Err("You are not carrying a copper bead.".into())
-                } else if self.fire_at(actor.cell).is_none()
-                    && self.loose_ids(actor.id, Material::Stone).is_empty()
-                {
-                    Err("You need a fire or a stone to hammer the bead.".into())
+                } else if !self.loose_ids(actor.id, Material::Copper).is_empty() {
+                    if self.fire_at(actor.cell).is_none()
+                        && self.loose_ids(actor.id, Material::Stone).is_empty()
+                    {
+                        Err("You need a fire or a stone to hammer the bead.".into())
+                    } else {
+                        Ok(true)
+                    }
+                } else if !self.loose_ids(actor.id, Material::Iron).is_empty() {
+                    self.iron_hammer_ready(actor)
                 } else {
-                    Ok(true)
+                    Err("You are not carrying a copper bead.".into())
+                }
+            }
+            Attempt::HammerIron => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else {
+                    self.iron_hammer_ready(actor)
                 }
             }
             Attempt::Pierce => {
@@ -610,6 +625,7 @@ impl World {
                         Material::CopperOre => Err("Copper ore is not food.".into()),
                         Material::IronOre => Err("Iron ore is not food.".into()),
                         Material::Iron => Err("Iron is not food.".into()),
+                        Material::Knife => Err("An iron knife is not food.".into()),
                         Material::Copper => Err("Copper is not food.".into()),
                         Material::Awl => Err("A copper awl is not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
@@ -732,6 +748,7 @@ impl World {
                             | Material::CopperOre
                             | Material::IronOre
                             | Material::Iron
+                            | Material::Knife
                             | Material::Copper
                             | Material::Awl
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -861,6 +878,7 @@ impl World {
                     | Material::CopperOre
                     | Material::IronOre
                     | Material::Iron
+                    | Material::Knife
                     | Material::Copper
                     | Material::Awl
             ) {
@@ -920,7 +938,7 @@ impl World {
                     } else {
                         String::new()
                     };
-                    let rest = format!("a {noun}{from}.{breaking}");
+                    let rest = format!("{} {noun}{from}.{breaking}", material.article());
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -986,7 +1004,10 @@ impl World {
             }
             let noun = material.gather_noun();
             self.emit(
-                format!("{name} drops a {noun}. It is in contact with the ground."),
+                format!(
+                    "{name} drops {} {noun}. It is in contact with the ground.",
+                    material.article()
+                ),
                 Scope::Cell(cell),
                 vec![intent.actor_id],
                 vec![cell],
@@ -998,7 +1019,10 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 true,
-                format!("You drop a {noun}. It is in contact with the ground."),
+                format!(
+                    "You drop {} {noun}. It is in contact with the ground.",
+                    material.article()
+                ),
                 results,
             );
         }
@@ -2469,6 +2493,17 @@ impl World {
         }
     }
 
+    fn iron_hammer_ready(&self, actor: &crate::model::Actor) -> Result<bool, String> {
+        let hot = self.fire_at(actor.cell).is_some_and(|fire| fire.hot);
+        if self.loose_ids(actor.id, Material::Iron).is_empty() {
+            Err("You are not carrying a bloom of iron.".into())
+        } else if !hot && self.loose_ids(actor.id, Material::Stone).is_empty() {
+            Err("You need a hotter fire or a stone to hammer the bloom.".into())
+        } else {
+            Ok(true)
+        }
+    }
+
     fn apply_feeds(&mut self, feeds: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in feeds {
             let cell = self
@@ -2665,6 +2700,14 @@ impl World {
 
     fn apply_hammers(&mut self, hammers: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in hammers {
+            let iron = matches!(intent.attempt, Attempt::HammerIron)
+                || (matches!(intent.attempt, Attempt::Hammer)
+                    && self.loose_ids(intent.actor_id, Material::Copper).is_empty()
+                    && !self.loose_ids(intent.actor_id, Material::Iron).is_empty());
+            if iron {
+                self.apply_iron_hammer(intent, results);
+                continue;
+            }
             let bead = self
                 .loose_ids(intent.actor_id, Material::Copper)
                 .first()
@@ -2719,6 +2762,62 @@ impl World {
                 results,
             );
         }
+    }
+
+    fn apply_iron_hammer(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(bloom) = self
+            .loose_ids(intent.actor_id, Material::Iron)
+            .first()
+            .copied()
+        else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You are not carrying a bloom of iron.",
+                results,
+            );
+            return;
+        };
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let at_fire = self.fire_at(cell).is_some_and(|fire| fire.hot);
+        if !at_fire && self.loose_ids(intent.actor_id, Material::Stone).is_empty() {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You need a hotter fire or a stone to hammer the bloom.",
+                results,
+            );
+            return;
+        }
+        let rest = if at_fire {
+            "the bloom of iron into an iron knife at the fire."
+        } else {
+            "the bloom of iron into an iron knife with a stone."
+        };
+        self.items.remove(&bloom);
+        let id = self.mint_item(Material::Knife, 0, cell, Some(intent.actor_id), Role::Loose);
+        let name = self.name_of(intent.actor_id);
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "hammer", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "hammer", rest),
+            results,
+        );
     }
 
     fn apply_pierces(&mut self, pierces: Vec<Intent>, results: &mut Vec<CommandResult>) {

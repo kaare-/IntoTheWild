@@ -19,7 +19,7 @@ k pot          u water
 s stone         c clay
 o ochre        C copper ore   e copper bead
 g iron ore     I bloom of iron
-i copper awl
+K iron knife   i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
 d deer         \" tracks
@@ -190,6 +190,7 @@ impl World {
             ExamineTarget::CopperOre => self.examine_copper_ore(actor_id),
             ExamineTarget::IronOre => self.examine_iron_ore(actor_id),
             ExamineTarget::Iron => self.examine_iron(actor_id),
+            ExamineTarget::Knife => self.examine_knife(actor_id),
             ExamineTarget::Copper => self.examine_copper(actor_id),
             ExamineTarget::Awl => self.examine_awl(actor_id),
             ExamineTarget::Flake => self.examine_flake(actor_id),
@@ -660,6 +661,9 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Iron).is_empty() {
             parts.push("A bloom of iron lies here. It is metal from a hotter fire.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Knife).is_empty() {
+            parts.push("An iron knife lies here. It can cut.".into());
         }
         if self.pile_count(actor.cell, Material::CopperOre) > 0
             || self.ground_ids(actor.cell, Material::CopperOre).len()
@@ -1181,6 +1185,8 @@ impl World {
             "a lump of iron ore".into()
         } else if item.material == "iron" && item.count == 1 {
             "a bloom of iron, metal from a hotter fire".into()
+        } else if item.material == "iron knife" && item.count == 1 {
+            "an iron knife".into()
         } else if item.material == "copper ore" && item.count == 1 {
             "a lump of copper ore".into()
         } else if item.material == "copper" && item.count == 1 {
@@ -1687,6 +1693,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Iron).is_empty() {
             bits.push("a bloom of iron, metal from a hotter fire".into());
+        }
+        if !self.ground_ids(dest, Material::Knife).is_empty() {
+            bits.push("an iron knife".into());
         }
         if self.pile_count(dest, Material::CopperOre) > 0
             || !self.ground_ids(dest, Material::CopperOre).is_empty()
@@ -3520,6 +3529,44 @@ impl World {
         }
     }
 
+    fn examine_knife(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.ground_ids(cell, Material::Knife).is_empty() {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("on the ground to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!("An iron knife lies {place}. It can cut."));
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Knife).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "An iron knife is carried by {who}, {}. It can cut.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no iron knife from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_copper_ore(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3947,6 +3994,7 @@ impl World {
                 Material::CopperOre => "copper ore",
                 Material::IronOre => "iron ore",
                 Material::Iron => "bloom of iron",
+                Material::Knife => "iron knife",
                 Material::Copper => "copper bead",
                 Material::Awl => "copper awl",
                 Material::Clay => "clay",
@@ -4617,6 +4665,11 @@ impl World {
         {
             marks.push('I');
         }
+        if self.pile_count(cell, Material::Knife) > 0
+            || self.worst_loose(cell, Material::Knife).is_some()
+        {
+            marks.push('K');
+        }
         if self.pile_count(cell, Material::CopperOre) > 0
             || self.worst_loose(cell, Material::CopperOre).is_some()
         {
@@ -5197,6 +5250,8 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} hammers "))?;
         if rest != "the copper bead into a copper awl at the fire."
             && rest != "the copper bead into a copper awl with a stone."
+            && rest != "the bloom of iron into an iron knife at the fire."
+            && rest != "the bloom of iron into an iron knife with a stone."
         {
             return None;
         }
@@ -5303,7 +5358,11 @@ impl World {
         } else {
             (rest.strip_suffix('.')?, ".")
         };
-        let noun = noun.strip_prefix("a ")?;
+        let noun = if let Some(noun) = noun.strip_prefix("an ") {
+            noun
+        } else {
+            noun.strip_prefix("a ")?
+        };
         const NOUNS: &[&str] = &[
             "branch",
             "sheet of bark",
@@ -5324,6 +5383,7 @@ impl World {
             "lump of copper ore",
             "lump of iron ore",
             "bloom of iron",
+            "iron knife",
             "copper bead",
             "copper awl",
         ];
@@ -5819,6 +5879,20 @@ impl World {
         {
             actions.push("gather bloom of iron".into());
         }
+        if (self.pile_count(actor.cell, Material::Knife) > 0
+            || !self.ground_ids(actor.cell, Material::Knife).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather iron knife".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && !self.loose_ids(actor_id, Material::Iron).is_empty()
+            && (self.fire_at(actor.cell).is_some_and(|fire| fire.hot)
+                || !self.loose_ids(actor_id, Material::Stone).is_empty())
+        {
+            actions.push("hammer bloom".into());
+        }
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()
             && self.fire_at(actor.cell).is_some_and(|fire| !fire.hot)
@@ -5929,6 +6003,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Iron).is_empty() {
             actions.push("drop bloom of iron".into());
+        }
+        if !self.loose_ids(actor_id, Material::Knife).is_empty() {
+            actions.push("drop iron knife".into());
         }
         if !self.loose_ids(actor_id, Material::CopperOre).is_empty() {
             actions.push("drop copper ore".into());
@@ -6214,6 +6291,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::IronOre, false) => "lumps of iron ore",
         (Material::Iron, true) => "bloom of iron",
         (Material::Iron, false) => "blooms of iron",
+        (Material::Knife, true) => "iron knife",
+        (Material::Knife, false) => "iron knives",
         (Material::CopperOre, true) => "lump of copper ore",
         (Material::CopperOre, false) => "lumps of copper ore",
         (Material::Copper, true) => "copper bead",
