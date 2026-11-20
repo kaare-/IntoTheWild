@@ -8003,6 +8003,18 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
         from_near.contains("A lump of ochre lies on the slope to the north and west."),
         "{from_near}"
     );
+    assert_eq!(
+        world.examine(near, ExamineTarget::Ochre),
+        "A lump of ochre lies on the slope to the north and west."
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Ochre),
+        "A lump of ochre lies on the slope to the north."
+    );
+    assert_eq!(
+        world.examine(west, ExamineTarget::Ochre),
+        "You see no ochre from here."
+    );
     let from_far = world.observe(far).unwrap().text;
     assert!(
         from_far.contains("North: slope, a lump of ochre."),
@@ -8014,6 +8026,14 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
     assert_eq!(world.actor_cell(near), Some((3, 0)));
     let here = world.observe(near).unwrap().text;
     assert!(here.contains("A lump of ochre lies here."), "{here}");
+    assert!(
+        !here.contains("A lump of ochre lies here, on the slope."),
+        "{here}"
+    );
+    assert_eq!(
+        world.examine(near, ExamineTarget::Ochre),
+        "A lump of ochre lies here, on the slope."
+    );
     let yours = "You gather a lump of ochre.";
     let witnessed = "Near gathers a lump of ochre.";
     let report = world.step(&[cmd("ochre", near, Attempt::Gather(Material::Ochre))]);

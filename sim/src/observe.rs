@@ -3060,10 +3060,13 @@ impl World {
             let on_ground = self.pile_count(cell, Material::Ochre)
                 + self.ground_ids(cell, Material::Ochre).len() as u32;
             if on_ground > 0 {
-                lines.push(format!(
-                    "A lump of ochre lies {}.",
-                    self.place_phrase(origin, cell)
-                ));
+                let region = self.cell(cell).region.word();
+                let place = if origin == cell {
+                    format!("here, on the {region}")
+                } else {
+                    format!("on the {region} to the {}", self.relative(origin, cell))
+                };
+                lines.push(format!("A lump of ochre lies {place}."));
             }
         }
         for actor in self.actors.values() {
