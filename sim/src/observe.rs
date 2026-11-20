@@ -695,7 +695,16 @@ impl World {
             parts.push(format!("A red ochre mark is on the {surface} here."));
         }
         let firing = self.clay_firing_count(actor.cell);
-        let loose_clay = self.ground_ids(actor.cell, Material::Clay).len() as u32;
+        let loose_clay = self
+            .ground_ids(actor.cell, Material::Clay)
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|clay| !clay.shaped))
+            .count() as u32;
+        let clay_pots = self
+            .ground_ids(actor.cell, Material::Clay)
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|clay| clay.shaped))
+            .count();
         let clay_pile = self.pile_count(actor.cell, Material::Clay);
         if firing == 1 {
             parts.push("A lump of clay is hardening in the fire.".into());
@@ -706,6 +715,11 @@ impl World {
             parts.push("Clay lies on the bank here.".into());
         } else if clay_pile == 1 || (loose_clay > firing as u32) {
             parts.push("A lump of clay lies here. It is unfired.".into());
+        }
+        if clay_pots == 1 {
+            parts.push("An unfired clay pot lies here. It is not hard yet.".into());
+        } else if clay_pots > 1 {
+            parts.push("Unfired clay pots lie here. They are not hard yet.".into());
         }
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty() {
             parts.push("A fired bowl sits here. It can boil water over a fire.".into());
@@ -902,7 +916,8 @@ impl World {
                 continue;
             }
             let count = self.unfired_clay_count(cell);
-            if count == 0 {
+            let pots = self.clay_pot_count(cell);
+            if count == 0 && pots == 0 {
                 continue;
             }
             let place = if self.beside_the_brook(cell) {
@@ -913,8 +928,17 @@ impl World {
             let dir = self.relative(origin, cell);
             if count == 1 {
                 lines.push(format!("A lump of clay lies on the {place} to the {dir}."));
-            } else {
+            } else if count > 1 {
                 lines.push(format!("Clay lies on the {place} to the {dir}."));
+            }
+            if pots == 1 {
+                lines.push(format!(
+                    "An unfired clay pot lies on the {place} to the {dir}."
+                ));
+            } else if pots > 1 {
+                lines.push(format!(
+                    "Unfired clay pots lie on the {place} to the {dir}."
+                ));
             }
         }
         if lines.is_empty() {
@@ -925,9 +949,34 @@ impl World {
     }
 
     fn unfired_clay_count(&self, cell: CellId) -> u32 {
-        let firing = self.clay_firing_count(cell) as u32;
-        let loose = self.ground_ids(cell, Material::Clay).len() as u32;
-        self.pile_count(cell, Material::Clay) + loose.saturating_sub(firing)
+        let loose = self
+            .ground_ids(cell, Material::Clay)
+            .iter()
+            .filter(|id| {
+                self.item(**id)
+                    .is_some_and(|clay| !clay.shaped && clay.firing_ready_at.is_none())
+            })
+            .count() as u32;
+        self.pile_count(cell, Material::Clay) + loose
+    }
+
+    fn clay_ready_to_shape(&self, actor_id: ActorId) -> bool {
+        let cell = self.actor(actor_id).map(|actor| actor.cell).unwrap_or(0);
+        self.loose_ids(actor_id, Material::Clay)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|clay| !clay.shaped))
+            || self.ground_ids(cell, Material::Clay).iter().any(|id| {
+                self.item(*id)
+                    .is_some_and(|clay| !clay.shaped && clay.firing_ready_at.is_none())
+            })
+            || self.pile_count(cell, Material::Clay) > 0
+    }
+
+    fn clay_pot_count(&self, cell: CellId) -> usize {
+        self.ground_ids(cell, Material::Clay)
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|clay| clay.shaped))
+            .count()
     }
 
     fn beside_the_brook(&self, cell: CellId) -> bool {
@@ -1206,8 +1255,8 @@ impl World {
             format!("a {} sheet of bark", item.condition)
         } else if item.material == "pot" && item.count == 1 {
             format!("a {} pot", item.condition)
-        } else if item.material == "clay" && item.count == 1 {
-            "a lump of clay".into()
+        } else if item.material == "clay" {
+            self.clay_carry_phrase(actor_id)
         } else if item.material == "bowl" && item.count == 1 {
             "a fired bowl".into()
         } else if item.material == "carcass" && item.count == 1 {
@@ -1304,6 +1353,31 @@ impl World {
                 "{} {} carried by you ({})",
                 item.count, item.material, item.condition
             )
+        }
+    }
+
+    fn clay_carry_phrase(&self, actor_id: ActorId) -> String {
+        let ids = self.loose_ids(actor_id, Material::Clay);
+        let pots = ids
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|clay| clay.shaped))
+            .count();
+        let lumps = ids.len() - pots;
+        let mut bits = Vec::new();
+        if lumps == 1 {
+            bits.push("a lump of clay".to_string());
+        } else if lumps > 1 {
+            bits.push(format!("{} lumps of clay", count_word(lumps as u32)));
+        }
+        if pots == 1 {
+            bits.push("an unfired clay pot".to_string());
+        } else if pots > 1 {
+            bits.push(format!("{} unfired clay pots", count_word(pots as u32)));
+        }
+        if bits.is_empty() {
+            "a lump of clay".into()
+        } else {
+            bits.join(", ")
         }
     }
 
@@ -3095,6 +3169,13 @@ impl World {
                 ));
             }
             for id in self.ground_ids(cell, Material::Clay) {
+                if self.item(id).is_some_and(|clay| clay.shaped) {
+                    lines.push(format!(
+                        "An unfired clay pot lies {}. It is not hard yet.",
+                        self.place_phrase(origin, cell)
+                    ));
+                    continue;
+                }
                 let firing = self
                     .item(id)
                     .and_then(|item| item.firing_ready_at)
@@ -3127,7 +3208,27 @@ impl World {
                 self.name_of(other)
             };
             let cell = self.actor(other).unwrap().cell;
-            if ids.len() == 1 {
+            let pots = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|clay| clay.shaped))
+                .count();
+            let lumps = ids.len() - pots;
+            if pots == 1 {
+                lines.push(format!(
+                    "An unfired clay pot is carried by {who}, {}. It is not hard yet.",
+                    self.cover_phrase(cell)
+                ));
+            } else if pots > 1 {
+                lines.push(format!(
+                    "{} unfired clay pots are carried by {who}, {}. They are not hard yet.",
+                    pots,
+                    self.cover_phrase(cell)
+                ));
+            }
+            if lumps == 0 {
+                continue;
+            }
+            if lumps == 1 {
                 lines.push(format!(
                     "A lump of clay is carried by {who}, {}. It is unfired. It cannot boil water.",
                     self.cover_phrase(cell)
@@ -3135,7 +3236,7 @@ impl World {
             } else {
                 lines.push(format!(
                     "{} lumps of clay are carried by {who}, {}. They are unfired. They cannot boil water.",
-                    ids.len(),
+                    lumps,
                     self.cover_phrase(cell)
                 ));
             }
@@ -5232,6 +5333,19 @@ impl World {
         Some(crate::model::spoken_act(None, "cut", rest))
     }
 
+    /// A lump shaped into a pot, filled for the person who shaped it.
+    fn shape_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} shapes "))?;
+        if rest != "the clay into an unfired pot." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "shape", rest))
+    }
+
     /// A flint spear bringing the deer down, filled for the person who struck.
     /// Anyone else keeps the stored sentence. A stone spear keeps its own line.
     fn bring_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -5444,8 +5558,9 @@ impl World {
         } else {
             (rest.strip_suffix('.')?, ".")
         };
-        let noun = if let Some(noun) = noun.strip_prefix("an ") {
-            noun
+        let an = noun.starts_with("an ");
+        let noun = if an {
+            noun.strip_prefix("an ").unwrap_or(noun)
         } else {
             noun.strip_prefix("a ")?
         };
@@ -5459,6 +5574,7 @@ impl World {
             "pot",
             "stone",
             "lump of clay",
+            "unfired clay pot",
             "bowl",
             "spear",
             "carcass",
@@ -5480,10 +5596,11 @@ impl World {
         if !known {
             return None;
         }
+        let article = if an { "an" } else { "a" };
         Some(crate::model::spoken_act(
             None,
             "gather",
-            &format!("a {noun}{tail}"),
+            &format!("{article} {noun}{tail}"),
         ))
     }
 
@@ -5576,6 +5693,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.cut_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.shape_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
@@ -6022,6 +6142,9 @@ impl World {
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
             actions.push("gather clay".into());
+        }
+        if self.clay_ready_to_shape(actor_id) {
+            actions.push("shape clay".into());
         }
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty()
             && self.carry_count(actor_id) < self.tuning.carry_slots

@@ -291,6 +291,7 @@ pub enum Attempt {
     Sew,
     Rest,
     Cut,
+    Shape,
 }
 
 impl Attempt {
@@ -330,6 +331,7 @@ impl Attempt {
                 | Attempt::Sew
                 | Attempt::Rest
                 | Attempt::Cut
+                | Attempt::Shape
         )
     }
 }
@@ -453,6 +455,9 @@ pub struct Item {
     /// A portion the iron knife has already split. A whole portion leaves this false.
     #[serde(default)]
     pub small: bool,
+    /// A lump of clay shaped into a pot. It has not been fired.
+    #[serde(default)]
+    pub shaped: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1028,6 +1033,7 @@ impl World {
                 pierced: false,
                 sewn: false,
                 small: false,
+                shaped: false,
             },
         );
         id

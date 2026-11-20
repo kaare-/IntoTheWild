@@ -3726,6 +3726,74 @@ fn clay_on_the_brook_bank_is_named_and_gathered() {
 }
 
 #[test]
+fn an_unfired_pot_is_shaped_from_clay() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 2).unwrap();
+    let west = world.spawn_at("West", "w", 6, 4).unwrap();
+    assert!(matches!(
+        parse_attempt("shape pot").unwrap(),
+        Attempt::Shape
+    ));
+    let denied = world.step(&[cmd("no-clay", west, parse_attempt("shape clay").unwrap())]);
+    assert_eq!(denied.results[0].message, "You have no clay to shape.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no clay")));
+    for (id, dir) in [("w1", Dir::West), ("w2", Dir::West), ("n", Dir::North)] {
+        let step = world.step(&[cmd(id, near, Attempt::Move(dir))]);
+        assert!(step.results[0].success, "{}", step.results[0].message);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let yours = "You shape the clay into an unfired pot.";
+    let seen = "Near shapes the clay into an unfired pot.";
+    let shaped = world.step(&[cmd("shape", near, Attempt::Shape)]);
+    assert_eq!(shaped.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("shapes the clay")));
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("An unfired clay pot lies here. It is not hard yet.")
+            && here.contains("A lump of clay lies here. It is unfired."),
+        "{here}"
+    );
+    let gathered = world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
+    assert_eq!(gathered.results[0].message, "You gather a lump of clay.");
+    let carried = world.step(&[cmd("shape-carried", near, Attempt::Shape)]);
+    assert_eq!(carried.results[0].message, yours);
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(arms.contains("an unfired clay pot"), "{arms}");
+    assert!(!arms.contains("lump of clay"), "{arms}");
+    let examined = world.examine(near, ExamineTarget::Clay);
+    assert!(
+        examined.contains("An unfired clay pot is carried by you")
+            && examined.contains("It is not hard yet."),
+        "{examined}"
+    );
+    let again = world.step(&[cmd("again", near, Attempt::Shape)]);
+    assert_eq!(again.results[0].message, "The clay is already a pot.");
+}
+
+#[test]
 fn clay_on_the_bank_hardens_by_the_fire_into_a_bowl() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 2, 2).unwrap();

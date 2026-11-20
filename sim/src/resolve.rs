@@ -60,6 +60,7 @@ impl World {
         let mut hunts = Vec::new();
         let mut butchers = Vec::new();
         let mut cuts = Vec::new();
+        let mut shapes = Vec::new();
         let mut wears = Vec::new();
         let mut removes = Vec::new();
         let mut rests = Vec::new();
@@ -112,6 +113,7 @@ impl World {
                         Attempt::Hunt => hunts.push(intent),
                         Attempt::Butcher => butchers.push(intent),
                         Attempt::Cut => cuts.push(intent),
+                        Attempt::Shape => shapes.push(intent),
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
@@ -206,6 +208,7 @@ impl World {
         self.apply_hunts(hunts, &mut results);
         self.apply_butchers(butchers, &mut results);
         self.apply_cuts(cuts, &mut results);
+        self.apply_shapes(shapes, &mut results);
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
@@ -362,6 +365,23 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::Shape => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.clay_to_shape(actor.id).is_none() {
+                    if self.shaped_pot_near(actor.id) {
+                        Err("The clay is already a pot.".into())
+                    } else {
+                        Err("You have no clay to shape.".into())
+                    }
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::Cut => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -435,7 +455,11 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.loose_ids(actor.id, Material::Clay).is_empty() {
+                } else if !self
+                    .loose_ids(actor.id, Material::Clay)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|clay| !clay.shaped))
+                {
                     Err("You are not carrying clay.".into())
                 } else if self.fire_at(actor.cell).is_none() {
                     Err("There is no fire burning here.".into())
@@ -957,7 +981,13 @@ impl World {
                     } else {
                         String::new()
                     };
-                    let rest = format!("{} {noun}{from}.{breaking}", material.article());
+                    let shaped = material == Material::Clay
+                        && self.item(item).is_some_and(|clay| clay.shaped);
+                    let rest = if shaped {
+                        "an unfired clay pot.".to_string()
+                    } else {
+                        format!("{} {noun}{from}.{breaking}", material.article())
+                    };
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -2390,6 +2420,97 @@ impl World {
         }
     }
 
+    fn unshaped_carried(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        self.loose_ids(actor, Material::Clay)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|clay| !clay.shaped))
+    }
+
+    fn unshaped_ground(&self, cell: crate::model::CellId) -> Option<crate::model::ItemId> {
+        self.ground_ids(cell, Material::Clay)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|clay| !clay.shaped && clay.firing_ready_at.is_none())
+            })
+    }
+
+    /// A lump in the arms, else a lump on this cell, else one from the pile.
+    fn clay_to_shape(&self, actor: crate::model::ActorId) -> Option<Option<crate::model::ItemId>> {
+        if self.unshaped_carried(actor).is_some() {
+            return Some(self.unshaped_carried(actor));
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        if let Some(id) = self.unshaped_ground(cell) {
+            return Some(Some(id));
+        }
+        if self.pile_count(cell, Material::Clay) > 0 {
+            return Some(None);
+        }
+        None
+    }
+
+    fn shaped_pot_near(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        self.loose_ids(actor, Material::Clay)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|clay| clay.shaped))
+            || self
+                .ground_ids(cell, Material::Clay)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|clay| clay.shaped))
+    }
+
+    fn apply_shapes(&mut self, shapes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in shapes {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(source) = self.clay_to_shape(actor.id) else {
+                let message = if self.shaped_pot_near(actor.id) {
+                    "The clay is already a pot."
+                } else {
+                    "You have no clay to shape."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            let id = if let Some(id) = source {
+                if let Some(clay) = self.items.get_mut(&id) {
+                    clay.shaped = true;
+                }
+                id
+            } else {
+                let moisture = self
+                    .take_from_pile(actor.cell, Material::Clay, 1)
+                    .unwrap_or(0);
+                let id = self.mint_item(Material::Clay, moisture, actor.cell, None, Role::Loose);
+                if let Some(clay) = self.items.get_mut(&id) {
+                    clay.shaped = true;
+                }
+                id
+            };
+            let name = self.name_of(actor.id);
+            let rest = "the clay into an unfired pot.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "shape", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "shape", rest),
+                results,
+            );
+        }
+    }
+
     fn apply_cuts(&mut self, cuts: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in cuts {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -2562,8 +2683,8 @@ impl World {
         for intent in sets {
             let Some(id) = self
                 .loose_ids(intent.actor_id, Material::Clay)
-                .first()
-                .copied()
+                .into_iter()
+                .find(|id| self.item(*id).is_some_and(|clay| !clay.shaped))
             else {
                 self.finish(
                     intent.command_id,
