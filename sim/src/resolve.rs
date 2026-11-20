@@ -80,6 +80,7 @@ impl World {
         let mut brands = Vec::new();
         let mut baskets = Vec::new();
         let mut puts = Vec::new();
+        let mut snares = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -142,6 +143,7 @@ impl World {
                         Attempt::TakeBrand => brands.push(intent),
                         Attempt::WeaveBasket => baskets.push(intent),
                         Attempt::PutFish => puts.push(intent),
+                        Attempt::SetSnare => snares.push(intent),
                     }
                 }
             }
@@ -246,6 +248,7 @@ impl World {
         self.apply_brands(brands, &mut results);
         self.apply_baskets(baskets, &mut results);
         self.apply_puts(puts, &mut results);
+        self.apply_snares(snares, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -467,6 +470,21 @@ impl World {
                     Err("A lean-to already stands here.".into())
                 } else if self.dry_branches_for_lean_to(actor.id) < 3 {
                     Err("You need three dry branches to build a lean-to.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SetSnare => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.snares.contains_key(&actor.cell) {
+                    Err("A snare is already set here.".into())
+                } else if !self.has_cord(actor.id) {
+                    Err("You have no hide strips to set a snare.".into())
                 } else {
                     Ok(true)
                 }
@@ -3219,6 +3237,73 @@ impl World {
                 results,
             );
         }
+    }
+
+    fn apply_snares(&mut self, snares: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in snares {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.snares.contains_key(&actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A snare is already set here.",
+                    results,
+                );
+                continue;
+            }
+            if !self.take_one_cord(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no hide strips to set a snare.",
+                    results,
+                );
+                continue;
+            }
+            let ready = self.time.saturating_add(self.tuning.snare_ticks);
+            self.snares.insert(actor.cell, ready);
+            self.schedule(ready, crate::model::Wake::Snare(actor.cell));
+            let name = self.name_of(actor.id);
+            let rest = "a snare of hide strips.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "set", rest),
+                results,
+            );
+        }
+    }
+
+    pub(crate) fn has_cord(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Cord).is_empty()
+            || !self.ground_ids(cell, Material::Cord).is_empty()
+    }
+
+    fn take_one_cord(&mut self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
+        if let Some(id) = self.loose_ids(actor, Material::Cord).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Cord).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        false
     }
 
     fn has_reeds(&self, actor: crate::model::ActorId) -> bool {

@@ -204,6 +204,7 @@ impl World {
             ExamineTarget::Basket => self.examine_basket(actor_id),
             ExamineTarget::Charcoal => self.examine_charcoal(actor_id),
             ExamineTarget::Reeds => self.examine_reeds(actor_id),
+            ExamineTarget::Snare => self.examine_snare(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -296,6 +297,9 @@ impl World {
             }
             if let Some(mark) = self.seen_charcoal_mark(actor_id) {
                 lines.push(mark);
+            }
+            if let Some(snare) = self.seen_snare(actor_id) {
+                lines.push(snare);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -901,6 +905,9 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Cord).is_empty() {
             parts.push("Hide strips lie here. They are cordage.".into());
         }
+        if self.snares.contains_key(&actor.cell) {
+            parts.push("A hide snare is set here.".into());
+        }
         if !self.ground_ids(actor.cell, Material::Hide).is_empty() {
             let sewn = self
                 .ground_ids(actor.cell, Material::Hide)
@@ -1381,6 +1388,48 @@ impl World {
             None
         } else {
             Some(lines.join(" "))
+        }
+    }
+
+    /// A hide snare in sight, other than the one under the looker's feet.
+    fn seen_snare(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.snares.contains_key(&cell) {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("under the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!("A hide snare is set {place}."));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_snare(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.snares.contains_key(&cell) {
+                continue;
+            }
+            lines.push(format!(
+                "A hide snare is set {}. It is made of hide strips.",
+                self.place_phrase(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no snare from here.".into()
+        } else {
+            lines.join(" ")
         }
     }
 
@@ -5926,6 +5975,7 @@ impl World {
                     && self.smear_for_these_eyes(viewer, event).is_none()
                     && self.mark_for_these_eyes(viewer, event).is_none()
                     && self.cut_for_these_eyes(viewer, event).is_none()
+                    && self.snare_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6177,6 +6227,21 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
+    }
+
+    /// A snare of hide strips. The person who set it already has this as the
+    /// reply, so the event list does not repeat it. A witness keeps the
+    /// stored sentence.
+    fn snare_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} sets "))?;
+        if rest != "a snare of hide strips." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "set", rest))
     }
 
     /// A portion split with the iron knife. The cutter already has this as
@@ -7459,6 +7524,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Knife).is_empty() && self.whole_hide_near(actor_id) {
             actions.push("cut hide".into());
+        }
+        if !self.snares.contains_key(&actor.cell) && self.has_cord(actor_id) {
+            actions.push("set snare".into());
         }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)

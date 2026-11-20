@@ -10562,6 +10562,31 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         parse_attempt("cut strips").unwrap(),
         Attempt::CutHide
     ));
+    assert!(matches!(
+        parse_attempt("set snare").unwrap(),
+        Attempt::SetSnare
+    ));
+    assert!(matches!(
+        parse_attempt("set trap").unwrap(),
+        Attempt::SetSnare
+    ));
+    let no_strips = world.step(&[cmd("no-strips", near, Attempt::SetSnare)]);
+    assert_eq!(
+        no_strips.results[0].message,
+        "You have no hide strips to set a snare."
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("snare")));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("snare")));
     let denied = world.step(&[cmd("no-knife", far, parse_attempt("cut hide").unwrap())]);
     assert_eq!(
         denied.results[0].message,
@@ -10679,6 +10704,82 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         carried.contains("Hide strips are carried by you") && carried.contains("They are cordage."),
         "{carried}"
     );
+    world.step(&[cmd("off-rock", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    let yours = "You set a snare of hide strips.";
+    let witnessed = "Near sets a snare of hide strips.";
+    let set = world.step(&[cmd("snare", near, parse_attempt("set trap").unwrap())]);
+    assert_eq!(set.results[0].message, yours);
+    assert_eq!(world.material_tally(Material::Cord), 0);
+    let here = world.observe(near).unwrap();
+    assert!(
+        here.text.contains("A hide snare is set here."),
+        "{}",
+        here.text
+    );
+    assert!(here
+        .events
+        .iter()
+        .all(|event| event.text != yours && !event.text.contains("Near sets")));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == witnessed));
+    let far_look = world.observe(far).unwrap().text;
+    assert!(
+        far_look.contains("A hide snare is set on the valley floor to the south and east."),
+        "{far_look}"
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("snare")));
+    assert!(!world.observe(west).unwrap().text.contains("snare"));
+    let examined = world.examine(near, ExamineTarget::Snare);
+    assert!(
+        examined.contains("A hide snare is set here") && examined.contains("hide strips"),
+        "{examined}"
+    );
+    let again = world.step(&[cmd("again", near, Attempt::SetSnare)]);
+    assert_eq!(again.results[0].message, "A snare is already set here.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("already set")));
+    let meat_before = world.material_tally(Material::Meat);
+    for _ in 0..world.tuning.snare_ticks {
+        world.step(&[]);
+    }
+    let caught = world.observe(near).unwrap();
+    assert!(caught
+        .events
+        .iter()
+        .any(|event| event.text == "The snare catches a hare."));
+    assert!(
+        caught.text.contains("A portion of raw meat lies here."),
+        "{}",
+        caught.text
+    );
+    assert!(!caught.text.contains("hide snare"), "{}", caught.text);
+    assert_eq!(world.material_tally(Material::Meat), meat_before + 1);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "The snare catches a hare."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("hare") && !event.text.contains("snare")));
 }
 
 #[test]

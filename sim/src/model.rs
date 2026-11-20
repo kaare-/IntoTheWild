@@ -293,6 +293,7 @@ pub enum ExamineTarget {
     Basket,
     Charcoal,
     Reeds,
+    Snare,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -345,6 +346,7 @@ pub enum Attempt {
     WeaveBasket,
     PutFish,
     Thatch,
+    SetSnare,
 }
 
 impl Attempt {
@@ -394,6 +396,7 @@ impl Attempt {
                 | Attempt::WeaveBasket
                 | Attempt::PutFish
                 | Attempt::Thatch
+                | Attempt::SetSnare
         )
     }
 }
@@ -596,6 +599,8 @@ pub enum Wake {
     Smelt(ItemId),
     DryBranch(ItemId),
     BrandOut(ItemId),
+    /// A hide snare set on this cell. It springs on that tick.
+    Snare(CellId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -716,6 +721,9 @@ pub struct World {
     /// A lean-to thatched with reeds. Rain and cold match the rock. A bare lean-to does not.
     #[serde(default)]
     pub(crate) thatched: BTreeSet<CellId>,
+    /// A hide snare set on a cell, springing at this sim time. The strips are spent.
+    #[serde(default)]
+    pub(crate) snares: BTreeMap<CellId, u64>,
     /// A brook cell stays quiet until this sim time after a fish is taken there.
     /// Banks that touch that cell fish the same stretch.
     #[serde(default)]
@@ -792,6 +800,7 @@ impl World {
             charcoal_marks: BTreeSet::new(),
             lean_tos: BTreeSet::new(),
             thatched: BTreeSet::new(),
+            snares: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
             grips: Vec::new(),

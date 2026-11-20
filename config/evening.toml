@@ -43,6 +43,9 @@ spear_ticks = 4
 # older hoofprints on the trail stay. Someone who cannot see the cell does
 # not get the line. The deer does not have to still be there.
 track_ticks = 4
+# A hide snare set with hide strips catches a hare after this many ticks.
+# The strips are spent. The snare is gone. One portion of raw meat lies there.
+snare_ticks = 3
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up
 # on the step that opens at that first dawn and holds off through the next

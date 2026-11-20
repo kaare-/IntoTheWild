@@ -35,8 +35,31 @@ impl World {
                 Wake::Smelt(id) => self.finish_smelt(id),
                 Wake::DryBranch(id) => self.dry_branch(id),
                 Wake::BrandOut(id) => self.brand_out(id),
+                Wake::Snare(cell) => self.spring_snare(cell),
             }
         }
+    }
+
+    /// The hide snare on this cell has waited out its ticks. It is gone.
+    /// A hare is caught, and one portion of raw meat lies where the snare was.
+    fn spring_snare(&mut self, cell: CellId) {
+        let Some(ready) = self.snares.get(&cell).copied() else {
+            return;
+        };
+        if ready > self.time {
+            return;
+        }
+        self.snares.remove(&cell);
+        let meat = self.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        self.emit(
+            "The snare catches a hare.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![meat],
+            vec![],
+            None,
+        );
     }
 
     /// One change of season. Open rain soaks wood twice as fast from now on.

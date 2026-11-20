@@ -31,6 +31,8 @@ spear fish                   the same cast
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
+set snare                    hide strips, from the arms or the ground, into a snare in this cell. After a short wait it catches a hare. The strips are spent.
+set trap                     the same snare
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
@@ -166,6 +168,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
+        "set"
+            if rest == "snare"
+                || rest == "a snare"
+                || rest == "the snare"
+                || rest == "trap"
+                || rest == "a trap"
+                || rest == "the trap" =>
+        {
+            Ok(Attempt::SetSnare)
+        }
         "bind" if rest == "spear" => Ok(Attempt::BindSpear),
         "knap"
             if rest.is_empty() || rest == "flint" || rest == "nodule" || rest == "flint nodule" =>
@@ -354,6 +366,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "basket" | "bark basket" => ExamineTarget::Basket,
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
+        "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
         "slope" | "the slope" => ExamineTarget::Slope,
         other => ExamineTarget::Person(other.to_string()),
     }
