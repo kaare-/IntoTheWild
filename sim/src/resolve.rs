@@ -1066,9 +1066,9 @@ impl World {
                 "out of the wind"
             };
             let exposure = if rain_too {
-                "into the wind and the rain"
+                "out from under the rock overhang, into the wind and the rain"
             } else {
-                "into the wind"
+                "out from under the rock overhang, into the wind"
             };
             let text = if brook {
                 format!("{name} wades {word}.", word = dir.word())
