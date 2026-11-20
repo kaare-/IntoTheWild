@@ -52,7 +52,7 @@ mark                         a carried lump of ochre leaves a red mark on this g
 mark rock                    the same mark on the rock, when you stand under it. Rain washes an open mark and leaves one under the rock
 smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead
 smelt iron                   a carried lump of iron ore; a small fire refuses it, and a fire fed an extra dry branch yields a bloom of iron
-feed                         an extra dry branch into a burning fire, from the arms or the pile at your feet; the fire burns hot enough for iron
+feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hot enough for iron. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew
@@ -203,7 +203,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Smelt)
         }
         "smelt" if rest == "iron" || rest == "iron ore" => Ok(Attempt::SmeltIron),
-        "feed" if rest.is_empty() || rest == "fire" || rest == "branch" || rest == "the fire" => {
+        "feed"
+            if rest.is_empty()
+                || rest == "fire"
+                || rest == "branch"
+                || rest == "the fire"
+                || rest == "charcoal"
+                || rest == "lump of charcoal" =>
+        {
             Ok(Attempt::Feed)
         }
         "hammer" | "forge"

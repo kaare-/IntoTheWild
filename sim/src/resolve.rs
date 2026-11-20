@@ -649,10 +649,12 @@ impl World {
                     Err("There is no fire burning here.".into())
                 } else if self.fire_at(actor.cell).is_some_and(|fire| fire.hot) {
                     Err("The fire is already hot enough for iron.".into())
-                } else if !self.has_dry(actor.id, Material::Branch) {
-                    Err("You have no dry branch to feed the fire.".into())
-                } else {
+                } else if !self.loose_ids(actor.id, Material::Charcoal).is_empty()
+                    || self.has_dry(actor.id, Material::Branch)
+                {
                     Ok(true)
+                } else {
+                    Err("You have nothing to feed the fire.".into())
                 }
             }
             Attempt::Hammer => {
@@ -3842,21 +3844,29 @@ impl World {
                 );
                 continue;
             }
-            if self.consume_dry(intent.actor_id, Material::Branch).is_err() {
+            let rest = if let Some(item_id) = self
+                .loose_ids(intent.actor_id, Material::Charcoal)
+                .first()
+                .copied()
+            {
+                self.items.remove(&item_id);
+                "a lump of charcoal into the fire. It burns hotter."
+            } else if self.consume_dry(intent.actor_id, Material::Branch).is_ok() {
+                "a dry branch into the fire. It burns hotter."
+            } else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "You have no dry branch to feed the fire.",
+                    "You have nothing to feed the fire.",
                     results,
                 );
                 continue;
-            }
+            };
             if let Some(fire) = self.fires.values_mut().find(|fire| fire.cell == cell) {
                 fire.hot = true;
             }
             let name = self.name_of(intent.actor_id);
-            let rest = "a dry branch into the fire. It burns hotter.";
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "feed", rest),
                 Scope::Cell(cell),

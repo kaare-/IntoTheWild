@@ -6583,7 +6583,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} feeds "))?;
-        if rest != "a dry branch into the fire. It burns hotter." {
+        if rest != "a dry branch into the fire. It burns hotter."
+            && rest != "a lump of charcoal into the fire. It burns hotter."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "feed", rest))
@@ -7245,7 +7247,8 @@ impl World {
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()
             && self.fire_at(actor.cell).is_some_and(|fire| !fire.hot)
-            && self.has_dry(actor_id, Material::Branch)
+            && (!self.loose_ids(actor_id, Material::Charcoal).is_empty()
+                || self.has_dry(actor_id, Material::Branch))
         {
             actions.push("feed".into());
         }

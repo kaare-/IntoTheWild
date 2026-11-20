@@ -12836,3 +12836,107 @@ fn a_lump_of_charcoal_marks_the_rock_and_rain_washes_an_open_one() {
     assert!(!rain.observe(near).unwrap().text.contains("charcoal mark"));
     assert!(!rain.observe(seen).unwrap().text.contains("charcoal mark"));
 }
+
+#[test]
+fn a_lump_of_charcoal_feeds_a_fire_hot_enough_for_iron() {
+    let mut world = world_at(1_000);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = world.spawn_at("Seen", "s", 4, 1).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+    let cold = world.step(&[cmd("none", near, Attempt::Feed)]);
+    assert_eq!(cold.results[0].message, "There is no fire burning here.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "There is no fire burning here."));
+    for id in [seen, quiet] {
+        assert!(world
+            .observe(id)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fire burning")));
+    }
+
+    let life = world.tuning.fire_ticks;
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    for _ in 1..life {
+        world.step(&[]);
+    }
+    world.step(&[]);
+    world.step(&[cmd("take", near, Attempt::Gather(Material::Charcoal))]);
+    assert_eq!(world.material_tally(Material::Charcoal), 1);
+    let unlit = world.step(&[cmd("unlit", near, Attempt::Feed)]);
+    assert_eq!(unlit.results[0].message, "There is no fire burning here.");
+    assert_eq!(world.material_tally(Material::Charcoal), 1);
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "There is no fire burning here."));
+
+    world.step(&[cmd("light-2", near, Attempt::Light)]);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+    let branches = world.material_tally(Material::Branch);
+    let fed = "You feed a lump of charcoal into the fire. It burns hotter.";
+    let seen_feed = "Near feeds a lump of charcoal into the fire. It burns hotter.";
+    let feed = world.step(&[cmd("feed", near, Attempt::Feed)]);
+    assert_eq!(feed.results[0].message, fed);
+    assert_eq!(world.material_tally(Material::Charcoal), 0);
+    assert_eq!(world.material_tally(Material::Branch), branches);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == fed));
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen_feed));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("feed") && !event.text.contains("hotter")));
+    let hotter = world.observe(near).unwrap().text;
+    assert!(
+        hotter.contains("A fire burns hotter here. It warms you."),
+        "{hotter}"
+    );
+    assert!(!hotter.contains("A small fire burns here"), "{hotter}");
+    let from_seen = world.observe(seen).unwrap().text;
+    assert!(
+        from_seen.contains("A fire burns hotter there."),
+        "{from_seen}"
+    );
+    assert!(!world.observe(quiet).unwrap().text.contains("burns hotter"));
+    assert!(
+        world
+            .examine(near, ExamineTarget::Fire)
+            .starts_with("A fire burns hotter here,"),
+        "{}",
+        world.examine(near, ExamineTarget::Fire)
+    );
+    let again = world.step(&[cmd("again", near, Attempt::Feed)]);
+    assert_eq!(
+        again.results[0].message,
+        "The fire is already hot enough for iron."
+    );
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("hot enough")));
+}
