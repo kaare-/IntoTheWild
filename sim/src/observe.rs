@@ -607,8 +607,8 @@ impl World {
         if !berries_here && self.spent_berries.contains(&actor.cell) {
             if self.deer_ate_berries.contains(&actor.cell) {
                 if deer_here {
-                    parts.push("The deer standing here ate the berries that were here.".into());
-                    parts.push("A deer stands here.".into());
+                    parts
+                        .push("A deer stands here after eating the berries that were here.".into());
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
@@ -620,12 +620,9 @@ impl World {
                             parts.push("The berries that were here are gone.".into());
                         } else if self.open_loose_branches(deer_cell) {
                             let place = self.cell_offset(actor.cell, deer_cell);
+                            let way = self.relative(actor.cell, deer_cell);
                             parts.push(format!(
-                                "The berries that were here are gone. The deer {place} ate them."
-                            ));
-                            parts.push(format!(
-                                "The deer stands to the {}.",
-                                self.relative(actor.cell, deer_cell)
+                                "The berries that were here are gone. The deer {place} ate them and stands to the {way}."
                             ));
                         } else if self.deer_stands_past_the_wood(actor.cell) {
                             parts.push(
