@@ -680,8 +680,6 @@ pub enum Wake {
     Stings,
     /// Wet clothes on this person dry at the fire they are standing by.
     DryClothes(ActorId),
-    /// A wolf howls once at the start of a night. There is no wolf to see.
-    Howl,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -956,7 +954,6 @@ impl World {
         world.schedule(0, Wake::Energy);
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
-        world.schedule(world.tuning.night_at, Wake::Howl);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
@@ -1175,6 +1172,7 @@ impl World {
         self.normalize();
         self.trim_events();
         self.time += 1;
+        self.howl_on_nightfall();
         StepReport { time, results }
     }
 
@@ -4781,22 +4779,20 @@ mod wolf {
         let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
         let night = world.tuning.night_at;
-        while world.time < night {
+        while world.time + 1 < night {
             world.step(&[]);
         }
+        assert_eq!(world.time, night - 1);
+        assert!(!world.night());
+        assert!(howl_times(&world).is_empty());
+        let day = world.observe(near).unwrap().text;
+        assert!(!day.contains("Night has fallen."), "{day}");
+        world.step(&[]);
         assert_eq!(world.time, night);
         assert!(world.night());
-        assert!(howl_times(&world).is_empty());
-        for id in [near, seen, quiet] {
-            assert!(
-                !world.observe(id).unwrap().text.contains("wolf"),
-                "{}",
-                world.observe(id).unwrap().text
-            );
-        }
-        world.step(&[]);
-        assert!(world.night());
         assert_eq!(howl_times(&world), vec![night]);
+        let fallen = world.observe(near).unwrap().text;
+        assert!(fallen.contains("Night has fallen."), "{fallen}");
         let near_line = world
             .observe(near)
             .unwrap()
@@ -4831,13 +4827,19 @@ mod wolf {
         }
         assert_eq!(howl_times(&world), vec![night]);
         let next = dawn + world.tuning.day_len;
-        while world.time < next {
+        while world.time + 1 < next {
             world.step(&[]);
         }
+        assert_eq!(world.time, next - 1);
+        assert!(!world.night());
+        assert_eq!(howl_times(&world), vec![night]);
+        let morning = world.observe(near).unwrap().text;
+        assert!(!morning.contains("Night has fallen."), "{morning}");
+        world.step(&[]);
         assert_eq!(world.time, next);
         assert!(world.night());
-        assert_eq!(howl_times(&world), vec![night]);
-        world.step(&[]);
         assert_eq!(howl_times(&world), vec![night, next]);
+        let again = world.observe(near).unwrap().text;
+        assert!(again.contains("Night has fallen."), "{again}");
     }
 }
