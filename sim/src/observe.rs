@@ -703,13 +703,22 @@ impl World {
         let clay_pots = self
             .ground_ids(actor.cell, Material::Clay)
             .iter()
-            .filter(|id| self.item(**id).is_some_and(|clay| clay.shaped))
+            .filter(|id| {
+                self.item(**id)
+                    .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_none())
+            })
             .count();
+        let pot_firing = self.pot_firing_count(actor.cell);
         let clay_pile = self.pile_count(actor.cell, Material::Clay);
         if firing == 1 {
             parts.push("A lump of clay is hardening in the fire.".into());
         } else if firing > 1 {
             parts.push("Lumps of clay are hardening in the fire.".into());
+        }
+        if pot_firing == 1 {
+            parts.push("An unfired clay pot is hardening in the fire.".into());
+        } else if pot_firing > 1 {
+            parts.push("Unfired clay pots are hardening in the fire.".into());
         }
         if clay_pile > 1 {
             parts.push("Clay lies on the bank here.".into());
@@ -958,6 +967,17 @@ impl World {
             })
             .count() as u32;
         self.pile_count(cell, Material::Clay) + loose
+    }
+
+    fn unfired_pot_ready(&self, actor_id: ActorId) -> bool {
+        let cell = self.actor(actor_id).map(|actor| actor.cell).unwrap_or(0);
+        self.loose_ids(actor_id, Material::Clay)
+            .iter()
+            .chain(self.ground_ids(cell, Material::Clay).iter())
+            .any(|id| {
+                self.item(*id)
+                    .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_none())
+            })
     }
 
     fn clay_ready_to_shape(&self, actor_id: ActorId) -> bool {
@@ -1588,8 +1608,17 @@ impl World {
             .into_iter()
             .filter(|id| {
                 self.item(*id)
-                    .and_then(|item| item.firing_ready_at)
-                    .is_some()
+                    .is_some_and(|item| !item.shaped && item.firing_ready_at.is_some())
+            })
+            .count()
+    }
+
+    fn pot_firing_count(&self, cell: CellId) -> usize {
+        self.ground_ids(cell, Material::Clay)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|item| item.shaped && item.firing_ready_at.is_some())
             })
             .count()
     }
@@ -1852,12 +1881,22 @@ impl World {
             bits.push("a red ochre mark".into());
         }
         let clay_firing = self.clay_firing_count(dest);
+        let unshaped_clay = self.ground_ids(dest, Material::Clay).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|clay| !clay.shaped && clay.firing_ready_at.is_none())
+        });
         if clay_firing > 0 && self.pile_count(dest, Material::Clay) == 0 {
             bits.push("clay hardening in the fire".into());
-        } else if self.pile_count(dest, Material::Clay) > 0
-            || !self.ground_ids(dest, Material::Clay).is_empty()
-        {
+        } else if self.pile_count(dest, Material::Clay) > 0 || unshaped_clay {
             bits.push("clay".into());
+        }
+        if self.pot_firing_count(dest) > 0 {
+            bits.push("a pot hardening in the fire".into());
+        } else if self.ground_ids(dest, Material::Clay).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_none())
+        }) {
+            bits.push("an unfired clay pot".into());
         }
         if !self.ground_ids(dest, Material::Bowl).is_empty() {
             bits.push("a bowl".into());
@@ -3170,10 +3209,25 @@ impl World {
             }
             for id in self.ground_ids(cell, Material::Clay) {
                 if self.item(id).is_some_and(|clay| clay.shaped) {
-                    lines.push(format!(
-                        "An unfired clay pot lies {}. It is not hard yet.",
-                        self.place_phrase(origin, cell)
-                    ));
+                    let firing = self
+                        .item(id)
+                        .and_then(|clay| clay.firing_ready_at)
+                        .is_some();
+                    if firing {
+                        if origin == cell {
+                            lines.push("An unfired clay pot is hardening in the fire.".into());
+                        } else {
+                            lines.push(format!(
+                                "An unfired clay pot is hardening in the fire {}.",
+                                self.place_phrase(origin, cell)
+                            ));
+                        }
+                    } else {
+                        lines.push(format!(
+                            "An unfired clay pot lies {}. It is not hard yet.",
+                            self.place_phrase(origin, cell)
+                        ));
+                    }
                     continue;
                 }
                 let firing = self
@@ -5346,6 +5400,27 @@ impl World {
         Some(crate::model::spoken_act(None, "shape", rest))
     }
 
+    /// An unfired pot set by a fire, filled for the person who set it.
+    fn fire_pot_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} sets "))?;
+        let yours = if rest == "the unfired pot by the fire. It leaves their arms." {
+            "You set the unfired pot by the fire. It leaves your arms."
+        } else if rest == "the unfired pot by the fire." {
+            "You set the unfired pot by the fire."
+        } else {
+            return None;
+        };
+        Some(yours.to_string())
+    }
+
     /// A flint spear bringing the deer down, filled for the person who struck.
     /// Anyone else keeps the stored sentence. A stone spear keeps its own line.
     fn bring_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -5696,6 +5771,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.shape_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.fire_pot_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.cook_meat_for_these_eyes(viewer, event) {
@@ -6145,6 +6223,9 @@ impl World {
         }
         if self.clay_ready_to_shape(actor_id) {
             actions.push("shape clay".into());
+        }
+        if self.fire_at(actor.cell).is_some() && self.unfired_pot_ready(actor_id) {
+            actions.push("fire pot".into());
         }
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty()
             && self.carry_count(actor_id) < self.tuning.carry_slots

@@ -61,6 +61,7 @@ impl World {
         let mut butchers = Vec::new();
         let mut cuts = Vec::new();
         let mut shapes = Vec::new();
+        let mut firings = Vec::new();
         let mut wears = Vec::new();
         let mut removes = Vec::new();
         let mut rests = Vec::new();
@@ -114,6 +115,7 @@ impl World {
                         Attempt::Butcher => butchers.push(intent),
                         Attempt::Cut => cuts.push(intent),
                         Attempt::Shape => shapes.push(intent),
+                        Attempt::FirePot => firings.push(intent),
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
@@ -209,6 +211,7 @@ impl World {
         self.apply_butchers(butchers, &mut results);
         self.apply_cuts(cuts, &mut results);
         self.apply_shapes(shapes, &mut results);
+        self.apply_pot_firings(firings, &mut results);
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
@@ -361,6 +364,25 @@ impl World {
                     .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
                 {
                     Err("You are not wearing a deer hide.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::FirePot => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.unfired_pot(actor.id).is_none() {
+                    if self.pot_already_firing(actor.id) {
+                        Err("The pot is already in the fire.".into())
+                    } else {
+                        Err("You have no unfired pot to fire.".into())
+                    }
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
                 } else {
                     Ok(true)
                 }
@@ -781,6 +803,7 @@ impl World {
                         Material::Stone
                             | Material::Clay
                             | Material::Bowl
+                            | Material::Pot
                             | Material::Spear
                             | Material::Carcass
                             | Material::Meat
@@ -912,6 +935,7 @@ impl World {
                 Material::Stone
                     | Material::Clay
                     | Material::Bowl
+                    | Material::Pot
                     | Material::Spear
                     | Material::Carcass
                     | Material::Meat
@@ -2448,6 +2472,91 @@ impl World {
             return Some(None);
         }
         None
+    }
+
+    fn unfired_pot(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let ready = |id: crate::model::ItemId| {
+            self.item(id)
+                .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_none())
+        };
+        if let Some(id) = self
+            .loose_ids(actor, Material::Clay)
+            .into_iter()
+            .find(|id| ready(*id))
+        {
+            return Some(id);
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        self.ground_ids(cell, Material::Clay)
+            .into_iter()
+            .find(|id| ready(*id))
+    }
+
+    fn pot_already_firing(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        self.loose_ids(actor, Material::Clay)
+            .iter()
+            .chain(self.ground_ids(cell, Material::Clay).iter())
+            .any(|id| {
+                self.item(*id)
+                    .is_some_and(|clay| clay.shaped && clay.firing_ready_at.is_some())
+            })
+    }
+
+    fn apply_pot_firings(&mut self, firings: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in firings {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.unfired_pot(actor.id) else {
+                let message = if self.pot_already_firing(actor.id) {
+                    "The pot is already in the fire."
+                } else {
+                    "You have no unfired pot to fire."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let carried = self.item(id).and_then(|pot| pot.carrier).is_some();
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            if let Some(pot) = self.items.get_mut(&id) {
+                pot.carrier = None;
+                pot.cell = actor.cell;
+                pot.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, Wake::Harden(id));
+            let name = self.name_of(actor.id);
+            let rest = if carried {
+                "the unfired pot by the fire. It leaves their arms."
+            } else {
+                "the unfired pot by the fire."
+            };
+            let yours = if carried {
+                "You set the unfired pot by the fire. It leaves your arms. It is not hard yet."
+            } else {
+                "You set the unfired pot by the fire. It is not hard yet."
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(intent.command_id, actor.id, true, yours, results);
+        }
     }
 
     fn shaped_pot_near(&self, actor: crate::model::ActorId) -> bool {

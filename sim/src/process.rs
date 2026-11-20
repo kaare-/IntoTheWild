@@ -48,6 +48,10 @@ impl World {
         if item.material != Material::Clay || item.firing_ready_at != Some(self.time) {
             return;
         }
+        if item.shaped {
+            self.harden_pot(id, &item);
+            return;
+        }
         if item.carrier.is_some() || self.fire_at(item.cell).is_none() {
             if let Some(lying) = self.items.get_mut(&id) {
                 lying.firing_ready_at = None;
@@ -71,6 +75,42 @@ impl World {
         }
         self.emit(
             "The clay hardens into a bowl.",
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// An unfired pot set by a fire becomes a pot if that fire is still burning.
+    /// It can hold water, the same as a pot found in the valley. The fire stays lit.
+    fn harden_pot(&mut self, id: ItemId, item: &crate::model::Item) {
+        if item.carrier.is_some() || self.fire_at(item.cell).is_none() {
+            if let Some(lying) = self.items.get_mut(&id) {
+                lying.firing_ready_at = None;
+            }
+            if item.carrier.is_none() {
+                self.emit(
+                    "The clay pot is still soft. The fire is out.",
+                    Scope::Cell(item.cell),
+                    vec![],
+                    vec![item.cell],
+                    vec![id],
+                    vec![],
+                    None,
+                );
+            }
+            return;
+        }
+        if let Some(lying) = self.items.get_mut(&id) {
+            lying.material = Material::Pot;
+            lying.shaped = false;
+            lying.firing_ready_at = None;
+        }
+        self.emit(
+            "The clay pot hardens. It can hold water.",
             Scope::Cell(item.cell),
             vec![],
             vec![item.cell],

@@ -27,6 +27,7 @@ hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
+fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
@@ -113,6 +114,10 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "shape" if rest.is_empty() || rest == "clay" || rest == "pot" || rest == "clay pot" => {
             Ok(Attempt::Shape)
         }
+        "bake" if rest.is_empty() || rest == "pot" || rest == "clay pot" || rest == "the pot" => {
+            Ok(Attempt::FirePot)
+        }
+        "fire" if rest == "pot" || rest == "clay pot" || rest == "the pot" => Ok(Attempt::FirePot),
         "wear" | "wrap" if rest.is_empty() || rest == "hide" || rest == "deer hide" => {
             Ok(Attempt::Wear)
         }

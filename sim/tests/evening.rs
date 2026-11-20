@@ -3794,6 +3794,146 @@ fn an_unfired_pot_is_shaped_from_clay() {
 }
 
 #[test]
+fn an_unfired_pot_hardens_in_the_fire_and_boils() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 5, 2).unwrap();
+    let west = world.spawn_at("West", "w", 6, 4).unwrap();
+    assert!(matches!(
+        parse_attempt("fire pot").unwrap(),
+        Attempt::FirePot
+    ));
+    assert!(matches!(
+        parse_attempt("bake pot").unwrap(),
+        Attempt::FirePot
+    ));
+    let denied = world.step(&[cmd("no-pot", west, parse_attempt("fire pot").unwrap())]);
+    assert_eq!(
+        denied.results[0].message,
+        "You have no unfired pot to fire."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("unfired pot")));
+    world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
+    world.step(&[cmd("shape", near, Attempt::Shape)]);
+    let cold = world.step(&[cmd("cold", near, Attempt::FirePot)]);
+    assert_eq!(cold.results[0].message, "There is no fire burning here.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no fire")));
+    let north = world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert!(north.results[0].success, "{}", north.results[0].message);
+    let water = world.step(&[cmd("water", near, Attempt::Gather(Material::Water))]);
+    assert!(water.results[0].success, "{}", water.results[0].message);
+    for step in 0..4 {
+        let moved = world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+        assert!(moved.results[0].success, "{}", moved.results[0].message);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("seed-pot", near, Attempt::Gather(Material::Pot))]);
+    world.step(&[cmd("aside", near, Attempt::Move(Dir::South))]);
+    world.step(&[cmd("drop-seed", near, Attempt::Drop(Material::Pot))]);
+    world.step(&[cmd("return", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let set = world.step(&[cmd("bake", near, parse_attempt("bake pot").unwrap())]);
+    assert_eq!(
+        set.results[0].message,
+        "You set the unfired pot by the fire. It leaves your arms. It is not hard yet."
+    );
+    let yours = "You set the unfired pot by the fire. It leaves your arms.";
+    let seen = "Near sets the unfired pot by the fire. It leaves their arms.";
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("sets the unfired pot")));
+    let waiting = world.observe(near).unwrap().text;
+    assert!(
+        waiting.contains("An unfired clay pot is hardening in the fire.")
+            && waiting.contains("A small fire burns here."),
+        "{waiting}"
+    );
+    assert_eq!(world.material_tally(Material::Bowl), 0);
+    let after_set = world.sim_time();
+    for _ in 0..3 {
+        world.step(&[]);
+        assert_eq!(world.material_tally(Material::Pot), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("An unfired clay pot is hardening in the fire."));
+    }
+    world.step(&[]);
+    assert_eq!(world.sim_time(), after_set + 4);
+    assert_eq!(world.material_tally(Material::Pot), 2);
+    assert_eq!(world.material_tally(Material::Bowl), 0);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "The clay pot hardens. It can hold water."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "The clay pot hardens. It can hold water."));
+    let hard = world.observe(near).unwrap().text;
+    assert!(
+        hard.contains("A pot sits here.") && hard.contains("A small fire burns here."),
+        "{hard}"
+    );
+    assert!(!hard.contains("hardening in the fire."), "{hard}");
+    let examined = world.examine(near, ExamineTarget::Pot);
+    assert!(
+        examined.contains("It can boil water over a fire."),
+        "{examined}"
+    );
+    world.step(&[cmd("take-pot", near, Attempt::Gather(Material::Pot))]);
+    let boiled = world.step(&[cmd("boil", near, Attempt::Boil)]);
+    assert!(
+        boiled.results[0]
+            .message
+            .contains("You boil the drink in the pot over the fire and drink it."),
+        "{}",
+        boiled.results[0].message
+    );
+    assert!(world.material_items(Material::Water).is_empty());
+    assert_eq!(world.material_tally(Material::Pot), 2);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A small fire burns here."));
+}
+
+#[test]
 fn clay_on_the_bank_hardens_by_the_fire_into_a_bowl() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 2, 2).unwrap();

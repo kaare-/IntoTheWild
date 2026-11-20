@@ -292,6 +292,7 @@ pub enum Attempt {
     Rest,
     Cut,
     Shape,
+    FirePot,
 }
 
 impl Attempt {
@@ -332,6 +333,7 @@ impl Attempt {
                 | Attempt::Rest
                 | Attempt::Cut
                 | Attempt::Shape
+                | Attempt::FirePot
         )
     }
 }
