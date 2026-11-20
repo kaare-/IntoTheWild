@@ -1862,8 +1862,8 @@ impl World {
                         .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
                     let (heard, yours) = if flint {
                         (
-                            format!("The deer bolts from {name}'s flint spear."),
-                            "The deer bolts from your flint spear.",
+                            format!("The deer bolts. {name}'s flint spear does not land."),
+                            "The deer bolts. Your flint spear does not land.",
                         )
                     } else {
                         (

@@ -7772,8 +7772,8 @@ fn a_fire_hardened_flint_spear_bolts_the_deer_on_the_next_cell() {
     assert_eq!(world.deer_cell(), Some((2, 3)));
     let hash = contest_hash(world.seed, world.sim_time(), "hunt", "2,3:deer", near);
     assert_eq!(hash % 3, 2);
-    let yours = "The deer bolts from your flint spear.";
-    let witnessed = "The deer bolts from Near's flint spear.";
+    let yours = "The deer bolts. Your flint spear does not land.";
+    let witnessed = "The deer bolts. Near's flint spear does not land.";
     let report = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
     assert!(!report.results[0].success);
     assert_eq!(report.results[0].message, yours);
