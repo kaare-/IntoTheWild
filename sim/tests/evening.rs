@@ -771,6 +771,14 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("eat").unwrap(),
         Attempt::Eat(Material::Berry)
     ));
+    assert!(matches!(
+        parse_attempt("gather flint").unwrap(),
+        Attempt::Gather(Material::Flint)
+    ));
+    assert!(matches!(
+        parse_attempt("gather ochre").unwrap(),
+        Attempt::Gather(Material::Ochre)
+    ));
     assert!(matches!(parse_attempt("wear hide").unwrap(), Attempt::Wear));
     assert!(matches!(parse_attempt("remove").unwrap(), Attempt::Remove));
     assert!(matches!(
@@ -7965,4 +7973,78 @@ fn removing_a_worn_hide_returns_it_to_the_arms() {
         .events
         .iter()
         .all(|event| !event.text.contains("wearing")));
+}
+
+#[test]
+fn a_lump_of_ochre_on_the_slope_can_be_carried() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    for id in [near, far, west] {
+        assert!(
+            !world.observe(id).unwrap().text.contains("ochre"),
+            "{}",
+            world.observe(id).unwrap().text
+        );
+    }
+    world.step(&[
+        cmd("n-near", near, Attempt::Move(Dir::North)),
+        cmd("n-far", far, Attempt::Move(Dir::North)),
+    ]);
+    world.step(&[
+        cmd("n2-near", near, Attempt::Move(Dir::North)),
+        cmd("n2-far", far, Attempt::Move(Dir::North)),
+    ]);
+    assert_eq!(world.actor_cell(near), Some((4, 1)));
+    assert_eq!(world.actor_cell(far), Some((3, 1)));
+    let from_near = world.observe(near).unwrap().text;
+    assert!(
+        from_near.contains("A lump of ochre lies to the north and west, in the open."),
+        "{from_near}"
+    );
+    let from_far = world.observe(far).unwrap().text;
+    assert!(
+        from_far.contains("North: slope, a lump of ochre."),
+        "{from_far}"
+    );
+    assert!(!world.observe(west).unwrap().text.contains("ochre"));
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    world.step(&[cmd("west", near, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(near), Some((3, 0)));
+    let here = world.observe(near).unwrap().text;
+    assert!(here.contains("A lump of ochre lies here."), "{here}");
+    let yours = "You gather a lump of ochre.";
+    let witnessed = "Near gathers a lump of ochre.";
+    let report = world.step(&[cmd("ochre", near, Attempt::Gather(Material::Ochre))]);
+    assert_eq!(report.results[0].message, yours);
+    let near_lines: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("ochre"))
+        .collect();
+    assert_eq!(near_lines, vec![yours.to_string()]);
+    let far_lines: Vec<_> = world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("ochre"))
+        .collect();
+    assert_eq!(far_lines, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("ochre")));
+    let after = world.observe(near).unwrap().text;
+    assert!(!after.contains("A lump of ochre lies here."), "{after}");
+    assert!(arms_sentence(&after).contains("a lump of ochre"), "{after}");
+    assert_eq!(world.material_tally(Material::Ochre), 1);
+    assert_eq!(world.material_items(Material::Ochre)[0].1, Some(near));
 }

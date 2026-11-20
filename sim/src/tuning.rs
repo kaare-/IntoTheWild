@@ -409,6 +409,7 @@ impl Tuning {
             Material::Flake => 0,
             Material::Meat => 0,
             Material::Hide => 0,
+            Material::Ochre => 0,
         }
     }
 }

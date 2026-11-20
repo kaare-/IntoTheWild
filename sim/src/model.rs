@@ -68,6 +68,7 @@ pub enum Material {
     Flake,
     Meat,
     Hide,
+    Ochre,
 }
 
 impl Material {
@@ -91,6 +92,7 @@ impl Material {
             Material::Flake => "flake",
             Material::Meat => "meat",
             Material::Hide => "hide",
+            Material::Ochre => "ochre",
         }
     }
 
@@ -114,6 +116,7 @@ impl Material {
             Material::Flake => "flint flake",
             Material::Meat => "raw meat",
             Material::Hide => "deer hide",
+            Material::Ochre => "lump of ochre",
         }
     }
 
@@ -200,6 +203,7 @@ pub enum ExamineTarget {
     Mud,
     Stone,
     Flint,
+    Ochre,
     Flake,
     Clay,
     Bowl,
@@ -642,6 +646,7 @@ impl World {
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(2, 0).unwrap(), Material::Stone, 1, 0);
         world.add_pile(cell_id(4, 0).unwrap(), Material::Flint, 1, 0);
+        world.add_pile(cell_id(3, 0).unwrap(), Material::Ochre, 1, 0);
         world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.normalize();

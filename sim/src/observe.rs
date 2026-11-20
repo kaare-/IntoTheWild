@@ -17,7 +17,7 @@ y berries      Y wet berries
 m mushrooms    q poison berries
 k pot          u water
 s stone         c clay
-v bowl         j spear
+o ochre        v bowl         j spear
 a carcass      + more than the letter shows
 d deer         \" tracks
 R rock roof    H bark roof
@@ -181,6 +181,7 @@ impl World {
             ExamineTarget::Mud => self.examine_material(actor_id, Material::Mud),
             ExamineTarget::Stone => self.examine_material(actor_id, Material::Stone),
             ExamineTarget::Flint => self.examine_flint(actor_id),
+            ExamineTarget::Ochre => self.examine_ochre(actor_id),
             ExamineTarget::Flake => self.examine_flake(actor_id),
             ExamineTarget::Clay => self.examine_clay(actor_id),
             ExamineTarget::Bowl => self.examine_bowl(actor_id),
@@ -242,6 +243,9 @@ impl World {
         }
         if let Some(flint) = self.seen_flint(actor_id) {
             lines.push(flint);
+        }
+        if let Some(ochre) = self.seen_ochre(actor_id) {
+            lines.push(ochre);
         }
         if let Some(ice) = self.seen_frozen_pool(actor_id) {
             lines.push(ice);
@@ -614,6 +618,11 @@ impl World {
         {
             parts.push("A flint nodule lies here.".into());
         }
+        if self.pile_count(actor.cell, Material::Ochre) > 0
+            || !self.ground_ids(actor.cell, Material::Ochre).is_empty()
+        {
+            parts.push("A lump of ochre lies here.".into());
+        }
         let firing = self.clay_firing_count(actor.cell);
         let loose_clay = self.ground_ids(actor.cell, Material::Clay).len() as u32;
         let clay_pile = self.pile_count(actor.cell, Material::Clay);
@@ -737,7 +746,29 @@ impl World {
         }
     }
 
-    /// A rock in sight that the compass lines do not already stand on.
+    /// A lump of ochre in sight that the place line and the compass do not already name.
+    fn seen_ochre(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || orthogonal_neighbor(origin, cell) {
+                continue;
+            }
+            let count = self.pile_count(cell, Material::Ochre)
+                + self.ground_ids(cell, Material::Ochre).len() as u32;
+            if count > 0 {
+                lines.push(format!(
+                    "A lump of ochre lies {}.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
     /// The pot is on that ground, or in the hands of the person standing there.
     fn seen_under_the_rock(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -956,6 +987,8 @@ impl World {
             } else {
                 "a deer hide".into()
             }
+        } else if item.material == "ochre" && item.count == 1 {
+            "a lump of ochre".into()
         } else if item.material == "spear" && item.count == 1 {
             let spear = self
                 .loose_ids(actor_id, Material::Spear)
@@ -1391,6 +1424,11 @@ impl World {
             || !self.ground_ids(dest, Material::Flint).is_empty()
         {
             bits.push("a flint nodule".into());
+        }
+        if self.pile_count(dest, Material::Ochre) > 0
+            || !self.ground_ids(dest, Material::Ochre).is_empty()
+        {
+            bits.push("a lump of ochre".into());
         }
         let clay_firing = self.clay_firing_count(dest);
         if clay_firing > 0 && self.pile_count(dest, Material::Clay) == 0 {
@@ -3013,6 +3051,43 @@ impl World {
         }
     }
 
+    fn examine_ochre(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let on_ground = self.pile_count(cell, Material::Ochre)
+                + self.ground_ids(cell, Material::Ochre).len() as u32;
+            if on_ground > 0 {
+                lines.push(format!(
+                    "A lump of ochre lies {}.",
+                    self.place_phrase(origin, cell)
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Ochre).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A lump of ochre is carried by {who}, {}.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no ochre from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn examine_flake(&self, viewer: ActorId) -> String {
         let lines = self.flake_lines(viewer);
         if lines.is_empty() {
@@ -3306,6 +3381,7 @@ impl World {
                 Material::Flake => "flint flake",
                 Material::Meat => "meat",
                 Material::Hide => "hide",
+                Material::Ochre => "ochre",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -3954,6 +4030,11 @@ impl World {
         {
             marks.push('n');
         }
+        if self.pile_count(cell, Material::Ochre) > 0
+            || self.worst_loose(cell, Material::Ochre).is_some()
+        {
+            marks.push('o');
+        }
         if self.pile_count(cell, Material::Clay) > 0
             || self.worst_loose(cell, Material::Clay).is_some()
         {
@@ -4518,6 +4599,7 @@ impl World {
             "deer hide",
             "drink of water",
             "flint nodule",
+            "lump of ochre",
         ];
         let known = NOUNS
             .iter()
@@ -4946,6 +5028,12 @@ impl World {
         {
             actions.push("gather flint".into());
         }
+        if (self.pile_count(actor.cell, Material::Ochre) > 0
+            || !self.ground_ids(actor.cell, Material::Ochre).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather ochre".into());
+        }
         if !self.loose_ids(actor_id, Material::Flint).is_empty() {
             actions.push("knap".into());
         }
@@ -5026,6 +5114,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Stone).is_empty() {
             actions.push("drop stone".into());
+        }
+        if !self.loose_ids(actor_id, Material::Ochre).is_empty() {
+            actions.push("drop ochre".into());
         }
         if !self.loose_ids(actor_id, Material::Clay).is_empty() {
             actions.push("drop clay".into());
@@ -5266,6 +5357,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Flake, _) => "flint flake",
         (Material::Clay, true) => "lump of clay",
         (Material::Clay, false) => "lumps of clay",
+        (Material::Ochre, true) => "lump of ochre",
+        (Material::Ochre, false) => "lumps of ochre",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

@@ -5,10 +5,10 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
+examine wood|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|flake|clay|bowl|spear|carcass|hide|fire|deer|tracks|log|frame|rock|slope|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass|hide
+gather branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|ochre|clay|bowl|spear|carcass|hide
 drop branch|bark|berries|poison berries|mushrooms|pot|mud|water|stone|flint|clay|bowl|spear|carcass|hide
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
@@ -132,13 +132,14 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "water" => Ok(Material::Water),
         "stone" | "stones" => Ok(Material::Stone),
         "flint" | "flint nodule" | "nodule" => Ok(Material::Flint),
+        "ochre" => Ok(Material::Ochre),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "hide" | "deer hide" => Ok(Material::Hide),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, clay, bowl, spear, carcass, hide, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, clay, bowl, spear, carcass, hide, or log."
                 .into(),
         ),
     }
@@ -173,6 +174,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "pot" => ExamineTarget::Pot,
         "stone" | "stones" => ExamineTarget::Stone,
         "flint" | "flint nodule" | "nodule" => ExamineTarget::Flint,
+        "ochre" => ExamineTarget::Ochre,
         "flake" | "flint flake" | "sharp flake" => ExamineTarget::Flake,
         "clay" => ExamineTarget::Clay,
         "bowl" => ExamineTarget::Bowl,
