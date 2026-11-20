@@ -12019,3 +12019,76 @@ fn a_fire_in_the_lean_to_holds_warm_through_the_night() {
         uncovered.text
     );
 }
+
+#[test]
+fn a_clear_night_names_the_stars_and_a_raining_night_does_not() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 2, 3).unwrap();
+    let stars = "Night has fallen. The stars are out over the valley.";
+    let wet = "Night has fallen. Rain is falling on the valley.";
+    let day = world.observe(near).unwrap().text;
+    assert!(day.contains("Evening is coming."), "{day}");
+    assert!(!day.contains("stars"), "{day}");
+    assert!(!world.observe(far).unwrap().text.contains("stars"));
+
+    while world.sim_time() < 20 {
+        world.step(&[]);
+    }
+    let raining_day = world.observe(near).unwrap().text;
+    assert!(
+        raining_day.contains("Rain is falling on the valley.") && !raining_day.contains("stars"),
+        "{raining_day}"
+    );
+    assert!(!world.observe(far).unwrap().text.contains("stars"));
+
+    while world.sim_time() < world.tuning.night_at {
+        world.step(&[]);
+    }
+    let raining_night = world.observe(near).unwrap().text;
+    assert!(raining_night.contains(wet), "{raining_night}");
+    assert!(!raining_night.contains("stars"), "{raining_night}");
+    assert!(world.observe(far).unwrap().text.contains(wet));
+    assert!(!world.observe(far).unwrap().text.contains("stars"));
+
+    let dawn = world.tuning.night_at + world.tuning.night_len;
+    while world.sim_time() < dawn + 1 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), dawn + 1);
+    assert!(!world.is_raining());
+    let morning = world.observe(near).unwrap();
+    assert!(
+        morning.text.contains("Morning is on the valley.")
+            && !morning.text.contains("stars")
+            && !morning.text.contains("Rain is falling"),
+        "{}",
+        morning.text
+    );
+    assert!(
+        morning
+            .events
+            .iter()
+            .any(|event| event.text == "The rain lets up."),
+        "{:?}",
+        morning.events
+    );
+    let far_morning = world.observe(far).unwrap();
+    assert!(!far_morning.text.contains("stars"));
+    assert!(far_morning
+        .events
+        .iter()
+        .any(|event| event.text == "The rain lets up."));
+
+    let clear_at = dawn + world.tuning.day_len;
+    while world.sim_time() < clear_at {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), clear_at);
+    let near_sky = world.observe(near).unwrap().text;
+    let far_sky = world.observe(far).unwrap().text;
+    assert!(near_sky.contains(stars), "{near_sky}");
+    assert!(far_sky.contains(stars), "{far_sky}");
+    assert!(!near_sky.contains("Rain is falling"), "{near_sky}");
+    assert!(!far_sky.contains("Rain is falling"), "{far_sky}");
+}

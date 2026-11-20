@@ -441,7 +441,7 @@ impl World {
         if self.night() && self.raining {
             "Night has fallen. Rain is falling on the valley."
         } else if self.night() {
-            "Night has fallen."
+            "Night has fallen. The stars are out over the valley."
         } else if self.morning() && self.raining {
             "Morning is on the valley. Rain is falling on the valley."
         } else if self.morning() {

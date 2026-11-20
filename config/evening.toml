@@ -44,7 +44,9 @@ spear_ticks = 4
 # not get the line. The deer does not have to still be there.
 track_ticks = 4
 # The first night falls on this tick, lasts night_len ticks, then morning.
-# day_len ticks of morning follow, and then night again. During a night, look
+# day_len ticks of morning follow, and then night again. The rain lets up
+# on the step that opens at that first dawn and holds off through the next
+# night, so that night is clear. During a night, look
 # keeps the cell underfoot and shortens everything farther off, unless a fire
 # burns here or on the next cell. Dawn restores the day look for everyone.
 night_at = 72

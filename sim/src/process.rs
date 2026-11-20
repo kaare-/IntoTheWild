@@ -914,6 +914,27 @@ impl World {
     }
 
     fn apply_rain(&mut self) {
+        let first_dawn = self.tuning.night_at.saturating_add(self.tuning.night_len);
+        // The evening rain holds through the first night. At the first dawn it
+        // lets up, and it stays up through the next night so that night is clear.
+        // It starts again at the dawn after that.
+        if self.raining && self.time == first_dawn {
+            self.raining = false;
+            let resume = first_dawn
+                .saturating_add(self.tuning.day_len)
+                .saturating_add(self.tuning.night_len);
+            self.schedule(resume, Wake::Rain);
+            self.emit(
+                "The rain lets up.",
+                Scope::Valley,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                None,
+            );
+            return;
+        }
         let first = !self.raining;
         self.raining = true;
         self.schedule(self.time + 1, Wake::Rain);
