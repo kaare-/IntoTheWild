@@ -48,7 +48,7 @@ wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat, or salted meat; raw meat is not food
-gather salt                  a salt crust from the slope
+gather salt                  a salt crust from the slope. The slope is bare, then the crust forms again.
 salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
 salt fish                    salt on a raw fish. The salt is spent. The fish can be eaten cold, and it does not spoil.
 eat fish                     a cooked fish, or salted fish; raw fish is not food

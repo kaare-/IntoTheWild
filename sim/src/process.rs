@@ -37,6 +37,7 @@ impl World {
                 Wake::BrandOut(id) => self.brand_out(id),
                 Wake::Snare(cell) => self.spring_snare(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
+                Wake::SaltReturn(cell) => self.return_salt(cell),
             }
         }
     }
@@ -74,6 +75,33 @@ impl World {
             vec![],
             vec![item.cell],
             vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// The salt lick has waited out its ticks. A crust lies on the slope again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_salt(&mut self, cell: CellId) {
+        let Some(at) = self.salt_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.salt_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Salt) > 0
+            || !self.ground_ids(cell, Material::Salt).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Salt, 1, 0);
+        self.emit(
+            "A salt crust forms on the slope.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
             vec![],
             None,
         );

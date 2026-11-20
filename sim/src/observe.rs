@@ -812,6 +812,8 @@ impl World {
             || !self.ground_ids(actor.cell, Material::Salt).is_empty()
         {
             parts.push("A salt crust lies here.".into());
+        } else if self.salt_lick_bare(actor.cell) {
+            parts.push("The slope is bare.".into());
         }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
@@ -1451,16 +1453,15 @@ impl World {
             if cell == origin {
                 continue;
             }
-            if self.pile_count(cell, Material::Salt) == 0
-                && self.ground_ids(cell, Material::Salt).is_empty()
-            {
-                continue;
-            }
             let region = self.cell(cell).region.word();
-            lines.push(format!(
-                "A salt crust lies on the {region} to the {}.",
-                self.relative(origin, cell)
-            ));
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::Salt) > 0
+                || !self.ground_ids(cell, Material::Salt).is_empty()
+            {
+                lines.push(format!("A salt crust lies on the {region} to the {way}."));
+            } else if self.salt_lick_bare(cell) {
+                lines.push(format!("The slope to the {way} is bare."));
+            }
         }
         if lines.is_empty() {
             None
@@ -1505,6 +1506,13 @@ impl World {
         } else {
             lines.join(" ")
         }
+    }
+
+    /// The salt lick on this cell was gathered and has not formed again.
+    fn salt_lick_bare(&self, cell: crate::model::CellId) -> bool {
+        self.salt_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Salt) == 0
+            && self.ground_ids(cell, Material::Salt).is_empty()
     }
 
     /// A bone, or a bone awl, on a cell this person can see but is not standing on.

@@ -51,6 +51,10 @@ snare_ticks = 3
 # before that, look and examine say it is going bad. Then it is not food.
 # Salted meat and salted fish are not on this timer. Cooked meat and cooked fish stay good.
 meat_ticks = 24
+# After the salt crust on the west slope is gathered, look says the slope is
+# bare for this many ticks. Then a crust forms there again. Someone who cannot
+# see that slope does not get the line.
+salt_ticks = 24
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up
 # on the step that opens at that first dawn and holds off through the next

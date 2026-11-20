@@ -1318,6 +1318,9 @@ impl World {
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
+                    if material == Material::Salt {
+                        self.arm_salt_lick(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -3498,10 +3501,12 @@ impl World {
         }
         if let Some(id) = self.ground_ids(cell, Material::Salt).first().copied() {
             self.items.remove(&id);
+            self.arm_salt_lick(cell);
             return true;
         }
         if self.pile_count(cell, Material::Salt) > 0 {
             self.take_from_pile(cell, Material::Salt, 1);
+            self.arm_salt_lick(cell);
             return true;
         }
         false

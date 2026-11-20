@@ -632,6 +632,8 @@ pub enum Wake {
     Snare(CellId),
     /// Raw unsalted meat spoils on this tick. Salted meat and cooked meat do not.
     Spoil(ItemId),
+    /// The salt lick on this cell forms another crust.
+    SaltReturn(CellId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -763,6 +765,12 @@ pub struct World {
     /// until this sim time. The permanent hoofprints are separate.
     #[serde(default)]
     pub(crate) fresh_tracks: BTreeMap<CellId, u64>,
+    /// Slope cells where a salt crust forms again after it is taken.
+    #[serde(default)]
+    pub(crate) salt_licks: BTreeSet<CellId>,
+    /// When the bare lick forms another crust. Look says the slope is bare until then.
+    #[serde(default)]
+    pub(crate) salt_returns_at: BTreeMap<CellId, u64>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -834,6 +842,8 @@ impl World {
             snares: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
+            salt_licks: BTreeSet::new(),
+            salt_returns_at: BTreeMap::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -866,6 +876,7 @@ impl World {
         world.add_pile(cell_id(0, 3).unwrap(), Material::Reed, 4, 0);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
+        world.salt_licks.insert(cell_id(0, 0).unwrap());
         world.normalize();
         world
     }
@@ -1201,6 +1212,22 @@ impl World {
             meat.spoils_at = Some(at);
         }
         self.schedule(at, Wake::Spoil(id));
+    }
+
+    /// The lick is empty. Another crust forms `salt_ticks` after this step.
+    /// A wake that finds salt already there does not add a second crust.
+    pub(crate) fn arm_salt_lick(&mut self, cell: CellId) {
+        if !self.salt_licks.contains(&cell) || self.salt_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Salt) > 0
+            || !self.ground_ids(cell, Material::Salt).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.salt_ticks);
+        self.salt_returns_at.insert(cell, at);
+        self.schedule(at, Wake::SaltReturn(cell));
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -2469,5 +2496,95 @@ mod salt_fish {
             .all(|event| event.text != "The fish has spoiled."));
         assert!(world.item(raw).unwrap().spoiled);
         assert!(!world.item(raw).unwrap().salted);
+    }
+}
+
+#[cfg(test)]
+mod salt_lick {
+    use super::{Attempt, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_slope_is_bare_until_the_salt_crust_forms_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 1, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A salt crust lies here."), "{here}");
+        assert!(!here.contains("The slope is bare."), "{here}");
+        let from_west = world.observe(seen).unwrap().text;
+        assert!(
+            from_west.contains("A salt crust lies on the slope to the west."),
+            "{from_west}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("salt crust"));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(gathered.results[0].message, "You gather a salt crust.");
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The slope is bare."), "{bare}");
+        assert!(!bare.contains("A salt crust lies here."), "{bare}");
+        let west_bare = world.observe(seen).unwrap().text;
+        assert!(
+            west_bare.contains("The slope to the west is bare."),
+            "{west_bare}"
+        );
+        assert!(
+            !west_bare.contains("A salt crust lies on the slope"),
+            "{west_bare}"
+        );
+        let missed = world.observe(quiet).unwrap().text;
+        assert!(!missed.contains("The slope is bare."), "{missed}");
+        assert!(!missed.contains("is bare."), "{missed}");
+        assert!(!missed.contains("salt crust"), "{missed}");
+        let ticks = world.tuning.salt_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The slope is bare."),);
+        world.step(&[]);
+        let formed = "A salt crust forms on the slope.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("A salt crust lies here."),
+            "{}",
+            back.text
+        );
+        assert!(!back.text.contains("The slope is bare."), "{}", back.text);
+        assert!(back.events.iter().any(|event| event.text == formed));
+        let west = world.observe(seen).unwrap();
+        assert!(
+            west.text
+                .contains("A salt crust lies on the slope to the west."),
+            "{}",
+            west.text
+        );
+        assert!(west.events.iter().any(|event| event.text == formed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != formed));
+        assert!(!world.observe(quiet).unwrap().text.contains("salt crust"));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(again.results[0].message, "You gather a salt crust.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The slope is bare."));
+        assert_eq!(world.material_tally(Material::Salt), 2);
     }
 }
