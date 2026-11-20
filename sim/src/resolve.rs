@@ -50,6 +50,7 @@ impl World {
         let mut marks = Vec::new();
         let mut sets = Vec::new();
         let mut smelts = Vec::new();
+        let mut feeds = Vec::new();
         let mut hammers = Vec::new();
         let mut pierces = Vec::new();
         let mut sews = Vec::new();
@@ -99,7 +100,8 @@ impl World {
                         Attempt::SmearOchre => ochre_smears.push(intent),
                         Attempt::Mark | Attempt::MarkRock => marks.push(intent),
                         Attempt::SetClay => sets.push(intent),
-                        Attempt::Smelt => smelts.push(intent),
+                        Attempt::Smelt | Attempt::SmeltIron => smelts.push(intent),
+                        Attempt::Feed => feeds.push(intent),
                         Attempt::Hammer => hammers.push(intent),
                         Attempt::Pierce => pierces.push(intent),
                         Attempt::Sew => sews.push(intent),
@@ -191,6 +193,7 @@ impl World {
         self.apply_drinks(drinks, &mut results);
         self.apply_boils(boils, &mut results);
         self.apply_sets(sets, &mut results);
+        self.apply_feeds(feeds, &mut results);
         self.apply_smelts(smelts, &mut results);
         self.apply_hammers(hammers, &mut results);
         self.apply_pierces(pierces, &mut results);
@@ -432,10 +435,42 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.loose_ids(actor.id, Material::CopperOre).is_empty() {
+                } else if !self.loose_ids(actor.id, Material::CopperOre).is_empty() {
+                    if self.fire_at(actor.cell).is_none() {
+                        Err("There is no fire burning here.".into())
+                    } else {
+                        Ok(true)
+                    }
+                } else if !self.loose_ids(actor.id, Material::IronOre).is_empty() {
+                    self.iron_smelt_ready(actor)
+                } else {
                     Err("You are not carrying copper ore.".into())
+                }
+            }
+            Attempt::SmeltIron => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else {
+                    self.iron_smelt_ready(actor)
+                }
+            }
+            Attempt::Feed => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
                 } else if self.fire_at(actor.cell).is_none() {
                     Err("There is no fire burning here.".into())
+                } else if self.fire_at(actor.cell).is_some_and(|fire| fire.hot) {
+                    Err("The fire is already hot enough for iron.".into())
+                } else if !self.has_dry(actor.id, Material::Branch) {
+                    Err("You have no dry branch to feed the fire.".into())
                 } else {
                     Ok(true)
                 }
@@ -574,6 +609,7 @@ impl World {
                         Material::Ochre => Err("Ochre is not food.".into()),
                         Material::CopperOre => Err("Copper ore is not food.".into()),
                         Material::IronOre => Err("Iron ore is not food.".into()),
+                        Material::Iron => Err("Iron is not food.".into()),
                         Material::Copper => Err("Copper is not food.".into()),
                         Material::Awl => Err("A copper awl is not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
@@ -695,6 +731,7 @@ impl World {
                             | Material::Hide
                             | Material::CopperOre
                             | Material::IronOre
+                            | Material::Iron
                             | Material::Copper
                             | Material::Awl
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -823,6 +860,7 @@ impl World {
                     | Material::Flint
                     | Material::CopperOre
                     | Material::IronOre
+                    | Material::Iron
                     | Material::Copper
                     | Material::Awl
             ) {
@@ -2419,8 +2457,92 @@ impl World {
         }
     }
 
+    fn iron_smelt_ready(&self, actor: &crate::model::Actor) -> Result<bool, String> {
+        if self.loose_ids(actor.id, Material::IronOre).is_empty() {
+            Err("You are not carrying iron ore.".into())
+        } else if self.fire_at(actor.cell).is_none() {
+            Err("There is no fire burning here.".into())
+        } else if self.fire_at(actor.cell).is_some_and(|fire| !fire.hot) {
+            Err("The fire is not hot enough for iron. Feed it more fuel.".into())
+        } else {
+            Ok(true)
+        }
+    }
+
+    fn apply_feeds(&mut self, feeds: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in feeds {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if self.fire_at(cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            if self.fire_at(cell).is_some_and(|fire| fire.hot) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The fire is already hot enough for iron.",
+                    results,
+                );
+                continue;
+            }
+            if self.consume_dry(intent.actor_id, Material::Branch).is_err() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no dry branch to feed the fire.",
+                    results,
+                );
+                continue;
+            }
+            if let Some(fire) = self.fires.values_mut().find(|fire| fire.cell == cell) {
+                fire.hot = true;
+            }
+            let name = self.name_of(intent.actor_id);
+            let rest = "a dry branch into the fire. It burns hotter.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "feed", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "feed", rest),
+                results,
+            );
+        }
+    }
+
     fn apply_smelts(&mut self, smelts: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in smelts {
+            let iron = matches!(intent.attempt, Attempt::SmeltIron)
+                || (matches!(intent.attempt, Attempt::Smelt)
+                    && self
+                        .loose_ids(intent.actor_id, Material::CopperOre)
+                        .is_empty()
+                    && !self
+                        .loose_ids(intent.actor_id, Material::IronOre)
+                        .is_empty());
+            if iron {
+                self.apply_iron_smelt(intent, results);
+                continue;
+            }
             let Some(id) = self
                 .loose_ids(intent.actor_id, Material::CopperOre)
                 .first()
@@ -2474,6 +2596,71 @@ impl World {
                 results,
             );
         }
+    }
+
+    fn apply_iron_smelt(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self
+            .loose_ids(intent.actor_id, Material::IronOre)
+            .first()
+            .copied()
+        else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You are not carrying iron ore.",
+                results,
+            );
+            return;
+        };
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        if self.fire_at(cell).is_none() {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is no fire burning here.",
+                results,
+            );
+            return;
+        }
+        if self.fire_at(cell).is_some_and(|fire| !fire.hot) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "The fire is not hot enough for iron. Feed it more fuel.",
+                results,
+            );
+            return;
+        }
+        let ready = self.time.saturating_add(self.tuning.clay_ticks);
+        if let Some(item) = self.items.get_mut(&id) {
+            item.carrier = None;
+            item.cell = cell;
+            item.firing_ready_at = Some(ready);
+        }
+        self.schedule(ready, Wake::Smelt(id));
+        let name = self.name_of(intent.actor_id);
+        self.emit(
+            format!("{name} sets a lump of iron ore by the fire. It leaves their arms."),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            "You set a lump of iron ore by the fire. It leaves your arms. It is not iron yet.",
+            results,
+        );
     }
 
     fn apply_hammers(&mut self, hammers: Vec<Intent>, results: &mut Vec<CommandResult>) {

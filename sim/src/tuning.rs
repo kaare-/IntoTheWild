@@ -412,6 +412,7 @@ impl Tuning {
             Material::Ochre => 0,
             Material::CopperOre => 0,
             Material::IronOre => 0,
+            Material::Iron => 0,
             Material::Copper => 0,
             Material::Awl => 0,
         }

@@ -71,6 +71,7 @@ pub enum Material {
     Ochre,
     CopperOre,
     IronOre,
+    Iron,
     Copper,
     Awl,
 }
@@ -99,6 +100,7 @@ impl Material {
             Material::Ochre => "ochre",
             Material::CopperOre => "copper ore",
             Material::IronOre => "iron ore",
+            Material::Iron => "iron",
             Material::Copper => "copper",
             Material::Awl => "awl",
         }
@@ -127,6 +129,7 @@ impl Material {
             Material::Ochre => "lump of ochre",
             Material::CopperOre => "lump of copper ore",
             Material::IronOre => "lump of iron ore",
+            Material::Iron => "bloom of iron",
             Material::Copper => "copper bead",
             Material::Awl => "copper awl",
         }
@@ -218,6 +221,7 @@ pub enum ExamineTarget {
     Ochre,
     CopperOre,
     IronOre,
+    Iron,
     Copper,
     Awl,
     Flake,
@@ -268,6 +272,8 @@ pub enum Attempt {
     Mark,
     MarkRock,
     Smelt,
+    SmeltIron,
+    Feed,
     Hammer,
     Pierce,
     Sew,
@@ -303,6 +309,8 @@ impl Attempt {
                 | Attempt::Mark
                 | Attempt::MarkRock
                 | Attempt::Smelt
+                | Attempt::SmeltIron
+                | Attempt::Feed
                 | Attempt::Hammer
                 | Attempt::Pierce
                 | Attempt::Sew
@@ -473,6 +481,10 @@ pub struct Fire {
     pub cell: CellId,
     pub lit_event: EventId,
     pub goes_out_at: u64,
+    /// Set when someone feeds the fire an extra dry branch. A small fire
+    /// smelts copper. Iron waits for this.
+    #[serde(default)]
+    pub hot: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1156,6 +1168,7 @@ impl World {
                 cell,
                 lit_event,
                 goes_out_at,
+                hot: false,
             },
         );
         self.schedule(goes_out_at, Wake::Fire(id));

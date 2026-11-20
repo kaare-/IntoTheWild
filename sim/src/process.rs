@@ -32,7 +32,7 @@ impl World {
                 Wake::Rot => self.apply_rot(),
                 Wake::Harden(id) => self.harden_clay(id),
                 Wake::HardenSpear(id) => self.harden_spear(id),
-                Wake::Smelt(id) => self.smelt_copper(id),
+                Wake::Smelt(id) => self.finish_smelt(id),
             }
         }
     }
@@ -80,22 +80,43 @@ impl World {
         );
     }
 
-    /// A lump of copper ore set by a fire becomes a bead if that fire is still burning.
-    /// The same wait as clay. It is not a tool.
-    fn smelt_copper(&mut self, id: ItemId) {
+    /// A lump set by a fire becomes metal if that fire is still burning.
+    /// Copper becomes a bead in a small fire. Iron becomes a bloom only when
+    /// the fire was fed an extra dry branch and is still hot. The same wait as clay.
+    fn finish_smelt(&mut self, id: ItemId) {
         let Some(item) = self.item(id).cloned() else {
             return;
         };
-        if item.material != Material::CopperOre || item.firing_ready_at != Some(self.time) {
+        if item.firing_ready_at != Some(self.time) {
             return;
         }
-        if item.carrier.is_some() || self.fire_at(item.cell).is_none() {
+        let (from, into, cold) = match item.material {
+            Material::CopperOre => (
+                Material::Copper,
+                "The copper ore smelts into a bead.",
+                "The copper ore is still ore. The fire is out.",
+            ),
+            Material::IronOre => (
+                Material::Iron,
+                "The iron ore smelts into a bloom.",
+                "The iron ore is still ore. The fire is out.",
+            ),
+            _ => return,
+        };
+        let hot_enough = item.material != Material::IronOre
+            || self.fire_at(item.cell).is_some_and(|fire| fire.hot);
+        if item.carrier.is_some() || self.fire_at(item.cell).is_none() || !hot_enough {
             if let Some(lying) = self.items.get_mut(&id) {
                 lying.firing_ready_at = None;
             }
             if item.carrier.is_none() {
+                let text = if self.fire_at(item.cell).is_some() {
+                    "The iron ore is still ore. The fire is not hot enough."
+                } else {
+                    cold
+                };
                 self.emit(
-                    "The copper ore is still ore. The fire is out.",
+                    text,
                     Scope::Cell(item.cell),
                     vec![],
                     vec![item.cell],
@@ -107,11 +128,11 @@ impl World {
             return;
         }
         if let Some(lying) = self.items.get_mut(&id) {
-            lying.material = Material::Copper;
+            lying.material = from;
             lying.firing_ready_at = None;
         }
         self.emit(
-            "The copper ore smelts into a bead.",
+            into,
             Scope::Cell(item.cell),
             vec![],
             vec![item.cell],
