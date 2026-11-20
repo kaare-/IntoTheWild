@@ -49,6 +49,7 @@ impl World {
         let mut ochre_smears = Vec::new();
         let mut marks = Vec::new();
         let mut sets = Vec::new();
+        let mut smelts = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
         let mut hafts = Vec::new();
@@ -94,6 +95,7 @@ impl World {
                         Attempt::SmearOchre => ochre_smears.push(intent),
                         Attempt::Mark | Attempt::MarkRock => marks.push(intent),
                         Attempt::SetClay => sets.push(intent),
+                        Attempt::Smelt => smelts.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
                         Attempt::Haft => hafts.push(intent),
@@ -181,6 +183,7 @@ impl World {
         self.apply_drinks(drinks, &mut results);
         self.apply_boils(boils, &mut results);
         self.apply_sets(sets, &mut results);
+        self.apply_smelts(smelts, &mut results);
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
         self.apply_hafts(hafts, &mut results);
@@ -410,6 +413,21 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::Smelt => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::CopperOre).is_empty() {
+                    Err("You are not carrying copper ore.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::Eat(material) => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -467,6 +485,7 @@ impl World {
                         Material::Bark => Err("Bark is tinder, not food.".into()),
                         Material::Ochre => Err("Ochre is not food.".into()),
                         Material::CopperOre => Err("Copper ore is not food.".into()),
+                        Material::Copper => Err("Copper is not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
@@ -584,6 +603,8 @@ impl World {
                             | Material::Spear
                             | Material::Carcass
                             | Material::Hide
+                            | Material::CopperOre
+                            | Material::Copper
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -708,6 +729,8 @@ impl World {
                     | Material::Carcass
                     | Material::Hide
                     | Material::Flint
+                    | Material::CopperOre
+                    | Material::Copper
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -2243,6 +2266,64 @@ impl World {
                 intent.actor_id,
                 true,
                 "You set a lump of clay by the fire. It is not hard yet.",
+                results,
+            );
+        }
+    }
+
+    fn apply_smelts(&mut self, smelts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in smelts {
+            let Some(id) = self
+                .loose_ids(intent.actor_id, Material::CopperOre)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not carrying copper ore.",
+                    results,
+                );
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if self.fire_at(cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            if let Some(item) = self.items.get_mut(&id) {
+                item.carrier = None;
+                item.cell = cell;
+                item.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, Wake::Smelt(id));
+            let name = self.name_of(intent.actor_id);
+            let rest = "a lump of copper ore by the fire.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                "You set a lump of copper ore by the fire. It is not metal yet.",
                 results,
             );
         }

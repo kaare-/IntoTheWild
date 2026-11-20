@@ -36,6 +36,7 @@ smear mud                    mud on skin against the sun
 smear ochre                  red ochre on the skin, a mark unlike mud
 mark                         a carried lump of ochre leaves a red mark on this ground
 mark rock                    the same red mark on the rock, when you stand under it
+smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead
 interrupt                    stop the work your body is in
 help"
 }
@@ -110,6 +111,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "smear" if rest == "ochre" => Ok(Attempt::SmearOchre),
         "mark" if rest.is_empty() || rest == "ground" => Ok(Attempt::Mark),
         "mark" if rest == "rock" => Ok(Attempt::MarkRock),
+        "smelt" if rest.is_empty() || rest == "ore" || rest == "copper" || rest == "copper ore" => {
+            Ok(Attempt::Smelt)
+        }
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
@@ -139,14 +143,15 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "stone" | "stones" => Ok(Material::Stone),
         "flint" | "flint nodule" | "nodule" => Ok(Material::Flint),
         "ochre" => Ok(Material::Ochre),
-        "copper" | "copper ore" | "ore" => Ok(Material::CopperOre),
+        "copper ore" | "ore" => Ok(Material::CopperOre),
+        "copper" | "copper bead" | "bead" => Ok(Material::Copper),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
         "carcass" | "deer carcass" => Ok(Material::Carcass),
         "hide" | "deer hide" => Ok(Material::Hide),
         _ => Err(
-            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, copper ore, clay, bowl, spear, carcass, hide, or log."
+            "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, copper ore, copper bead, clay, bowl, spear, carcass, hide, or log."
                 .into(),
         ),
     }
@@ -183,6 +188,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "flint" | "flint nodule" | "nodule" => ExamineTarget::Flint,
         "ochre" => ExamineTarget::Ochre,
         "copper" | "copper ore" | "ore" => ExamineTarget::CopperOre,
+        "copper bead" | "bead" => ExamineTarget::Copper,
         "flake" | "flint flake" | "sharp flake" => ExamineTarget::Flake,
         "clay" => ExamineTarget::Clay,
         "bowl" => ExamineTarget::Bowl,

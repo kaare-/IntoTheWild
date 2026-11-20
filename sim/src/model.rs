@@ -70,6 +70,7 @@ pub enum Material {
     Hide,
     Ochre,
     CopperOre,
+    Copper,
 }
 
 impl Material {
@@ -95,6 +96,7 @@ impl Material {
             Material::Hide => "hide",
             Material::Ochre => "ochre",
             Material::CopperOre => "copper ore",
+            Material::Copper => "copper",
         }
     }
 
@@ -120,6 +122,7 @@ impl Material {
             Material::Hide => "deer hide",
             Material::Ochre => "lump of ochre",
             Material::CopperOre => "lump of copper ore",
+            Material::Copper => "copper bead",
         }
     }
 
@@ -208,6 +211,7 @@ pub enum ExamineTarget {
     Flint,
     Ochre,
     CopperOre,
+    Copper,
     Flake,
     Clay,
     Bowl,
@@ -255,6 +259,7 @@ pub enum Attempt {
     SmearOchre,
     Mark,
     MarkRock,
+    Smelt,
 }
 
 impl Attempt {
@@ -285,6 +290,7 @@ impl Attempt {
                 | Attempt::SmearOchre
                 | Attempt::Mark
                 | Attempt::MarkRock
+                | Attempt::Smelt
         )
     }
 }
@@ -462,6 +468,7 @@ pub enum Wake {
     Weather,
     Harden(ItemId),
     HardenSpear(ItemId),
+    Smelt(ItemId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it

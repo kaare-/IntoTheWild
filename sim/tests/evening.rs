@@ -783,8 +783,12 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("gather copper ore").unwrap(),
         Attempt::Gather(Material::CopperOre)
     ));
-    assert!(parse_attempt("smelt").is_err());
-    assert!(parse_attempt("smelt copper").is_err());
+    assert!(matches!(parse_attempt("smelt").unwrap(), Attempt::Smelt));
+    assert!(matches!(
+        parse_attempt("smelt copper ore").unwrap(),
+        Attempt::Smelt
+    ));
+    assert!(parse_attempt("forge").is_err());
     assert!(matches!(
         parse_attempt("smear ochre").unwrap(),
         Attempt::SmearOchre
@@ -8444,4 +8448,99 @@ fn a_lump_of_copper_ore_on_the_brook_bank_can_be_carried() {
     );
     assert_eq!(world.material_tally(Material::CopperOre), 1);
     assert_eq!(world.material_items(Material::CopperOre)[0].1, Some(near));
+}
+
+#[test]
+fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 1, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 4, 1).unwrap();
+    let west = world.spawn_at("West", "w", 4, 4).unwrap();
+    world.step(&[cmd("ore", near, Attempt::Gather(Material::CopperOre))]);
+    let cold = world.step(&[cmd("early", near, Attempt::Smelt)]);
+    assert_eq!(cold.results[0].message, "There is no fire burning here.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("fire burning")));
+    for step in 0..5 {
+        world.step(&[cmd(&format!("east-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("light", near, Attempt::Light)]);
+    let yours = "You set a lump of copper ore by the fire.";
+    let witnessed = "Near sets a lump of copper ore by the fire.";
+    let set = world.step(&[cmd("smelt", near, Attempt::Smelt)]);
+    assert_eq!(
+        set.results[0].message,
+        "You set a lump of copper ore by the fire. It is not metal yet."
+    );
+    let after_set = world.sim_time();
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == witnessed));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("copper") && !event.text.contains("smelt")));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("A lump of copper ore is smelting in the fire."));
+    assert!(!arms_sentence(&world.observe(near).unwrap().text).contains("copper"));
+    for _ in 0..3 {
+        world.step(&[]);
+        assert_eq!(world.material_tally(Material::Copper), 0);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A lump of copper ore is smelting in the fire."));
+    }
+    world.step(&[]);
+    assert_eq!(world.sim_time(), after_set + 4);
+    assert_eq!(world.material_tally(Material::CopperOre), 0);
+    assert_eq!(world.material_tally(Material::Copper), 1);
+    assert_eq!(world.material_items(Material::Copper)[0].1, None);
+    let bead = "The copper ore smelts into a bead.";
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == bead));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == bead));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != bead));
+    let here = world.observe(near).unwrap().text;
+    assert!(here.contains("A copper bead lies here."), "{here}");
+    assert!(!here.contains("is smelting in the fire."), "{here}");
+    assert!(!arms_sentence(&here).contains("bead"), "{here}");
+    assert!(parse_attempt("forge").is_err());
 }

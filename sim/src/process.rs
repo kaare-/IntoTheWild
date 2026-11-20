@@ -32,6 +32,7 @@ impl World {
                 Wake::Rot => self.apply_rot(),
                 Wake::Harden(id) => self.harden_clay(id),
                 Wake::HardenSpear(id) => self.harden_spear(id),
+                Wake::Smelt(id) => self.smelt_copper(id),
             }
         }
     }
@@ -70,6 +71,47 @@ impl World {
         }
         self.emit(
             "The clay hardens into a bowl.",
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// A lump of copper ore set by a fire becomes a bead if that fire is still burning.
+    /// The same wait as clay. It is not a tool.
+    fn smelt_copper(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::CopperOre || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        if item.carrier.is_some() || self.fire_at(item.cell).is_none() {
+            if let Some(lying) = self.items.get_mut(&id) {
+                lying.firing_ready_at = None;
+            }
+            if item.carrier.is_none() {
+                self.emit(
+                    "The copper ore is still ore. The fire is out.",
+                    Scope::Cell(item.cell),
+                    vec![],
+                    vec![item.cell],
+                    vec![id],
+                    vec![],
+                    None,
+                );
+            }
+            return;
+        }
+        if let Some(lying) = self.items.get_mut(&id) {
+            lying.material = Material::Copper;
+            lying.firing_ready_at = None;
+        }
+        self.emit(
+            "The copper ore smelts into a bead.",
             Scope::Cell(item.cell),
             vec![],
             vec![item.cell],
