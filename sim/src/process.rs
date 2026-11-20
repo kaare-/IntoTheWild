@@ -43,6 +43,7 @@ impl World {
                 Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::BranchReturn(cell) => self.return_branches(cell),
+                Wake::BerryReturn(cell) => self.return_berries(cell),
                 Wake::DeerReturn => self.return_deer(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
@@ -214,6 +215,41 @@ impl World {
         self.add_pile(cell, Material::Branch, 4, 0);
         self.emit(
             "Branches lie under the rock again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The patch has waited out its ticks. The same pile lies there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_berries(&mut self, cell: CellId) {
+        let Some(at) = self.berry_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.berry_returns_at.remove(&cell);
+        let Some(patch) = self.berry_patches.get(&cell).copied() else {
+            return;
+        };
+        if self.pile_count(cell, patch.material) > 0 {
+            return;
+        }
+        self.add_pile(cell, patch.material, patch.count, 0);
+        self.spent_berries.remove(&cell);
+        self.deer_ate_berries.remove(&cell);
+        let text = if patch.material == Material::BitterBerry {
+            "Poison berries lie here again."
+        } else {
+            "Berries lie here again."
+        };
+        self.emit(
+            text,
             Scope::Cell(cell),
             vec![],
             vec![cell],

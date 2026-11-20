@@ -253,6 +253,8 @@ fn rain_with_nobody_present_soaks_open_wood_and_spares_the_overhang() {
 #[test]
 fn bark_on_a_supported_frame_keeps_the_wood_beneath_drier() {
     let mut world = world_at(100);
+    // A second meal under the rock would hold the deer and change this count.
+    world.tuning.berry_ticks = 200;
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
     for index in 0..3 {
         world.step(&[cmd(
@@ -470,7 +472,11 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .events
         .iter()
         .any(|event| event.text.contains("cooks a handful of berries")));
-    assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(
+        world.material_tally(Material::Berry),
+        4,
+        "the carried handful is cooked, and the patch grew back the same step"
+    );
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert!(world
         .observe(otto)
@@ -478,9 +484,6 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .events
         .iter()
         .all(|event| !event.text.contains("cooks a handful of berries")));
-
-    world.step(&[cmd("meal", sera, Attempt::Cook)]);
-    assert_eq!(world.material_tally(Material::Berry), 0);
 
     let mut rained = world_at(0);
     let linde = rained.spawn_at("Linde", "l", 4, 4).unwrap();
@@ -9280,6 +9283,8 @@ fn a_fire_hardened_flint_spear_misses_the_deer_on_the_next_cell() {
 #[test]
 fn a_fire_hardened_flint_spear_bolts_the_deer_on_the_next_cell() {
     let mut world = World::valley(Tuning::evening(), 1);
+    // The bolt is pinned to the deer at (2, 3). A second meal would stall it.
+    world.tuning.berry_ticks = 200;
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let west = world.spawn_at("West", "w", 5, 3).unwrap();

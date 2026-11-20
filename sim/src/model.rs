@@ -679,12 +679,21 @@ pub enum Wake {
     FlintReturn(CellId),
     /// Dry branches lie under this rock again.
     BranchReturn(CellId),
+    /// A berry patch on this cell has fruit again.
+    BerryReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
     /// Wet clothes on this person dry at the fire they are standing by.
     DryClothes(ActorId),
+}
+
+/// A seeded berry patch. Emptying it, by gathering or by the deer, arms the same wait.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct BerryPatch {
+    pub material: Material,
+    pub count: u32,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -786,7 +795,8 @@ pub struct World {
     /// Cells the deer has left. The marks stay; decay is not in this valley.
     #[serde(default)]
     pub(crate) tracks: BTreeSet<CellId>,
-    /// Cells where a berry pile reached zero. The pile is not put back.
+    /// Cells where a berry pile reached zero. The patch puts the pile back
+    /// after `berry_ticks`.
     #[serde(default)]
     pub(crate) spent_berries: BTreeSet<CellId>,
     /// Cells where the deer ate the last handful. A person taking the last
@@ -867,6 +877,12 @@ pub struct World {
     /// none under the rock until then.
     #[serde(default)]
     pub(crate) branch_returns_at: BTreeMap<CellId, u64>,
+    /// Seeded berry patches. The count is what grows back after the pile is gone.
+    #[serde(default)]
+    pub(crate) berry_patches: BTreeMap<CellId, BerryPatch>,
+    /// When an emptied patch has berries again. Look says they are gone until then.
+    #[serde(default)]
+    pub(crate) berry_returns_at: BTreeMap<CellId, u64>,
     /// When a deer stands on the trail again. Look names no standing deer until then.
     #[serde(default)]
     pub(crate) deer_returns_at: Option<u64>,
@@ -963,6 +979,8 @@ impl World {
             flint_beds: BTreeSet::new(),
             branch_beds: BTreeSet::new(),
             branch_returns_at: BTreeMap::new(),
+            berry_patches: BTreeMap::new(),
+            berry_returns_at: BTreeMap::new(),
             flint_returns_at: BTreeMap::new(),
             deer_returns_at: None,
             next_deer_id: default_next_deer_id(),
@@ -987,8 +1005,22 @@ impl World {
         world.branch_beds.insert(rock);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
+        world.berry_patches.insert(
+            cell_id(6, 1).unwrap(),
+            BerryPatch {
+                material: Material::Berry,
+                count: 4,
+            },
+        );
         world.add_pile(cell_id(6, 1).unwrap(), Material::Pot, 1, 0);
         world.add_pile(cell_id(4, 1).unwrap(), Material::BitterBerry, 2, 0);
+        world.berry_patches.insert(
+            cell_id(4, 1).unwrap(),
+            BerryPatch {
+                material: Material::BitterBerry,
+                count: 2,
+            },
+        );
         world.add_pile(cell_id(3, 1).unwrap(), Material::Mushroom, 2, 0);
         world.add_pile(cell_id(5, 2).unwrap(), Material::Branch, 4, 0);
         world.add_pile(cell_id(1, 0).unwrap(), Material::Bark, 2, 0);
@@ -1289,6 +1321,9 @@ impl World {
                 self.spent_berries.insert(emptied);
                 self.deer_ate_berries.remove(&emptied);
             }
+            if matches!(material, Material::Berry | Material::BitterBerry) {
+                self.arm_berry_patch(emptied);
+            }
         }
         Some(moisture)
     }
@@ -1420,6 +1455,33 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.moss_returns_at.insert(cell, at);
         self.schedule(at, Wake::MossReturn(cell));
+    }
+
+    /// An emptied berry patch grows the same pile back after `berry_ticks`.
+    /// A wake that finds berries already there does not add a second pile.
+    pub(crate) fn arm_berry_patch(&mut self, cell: CellId) {
+        if !self.berry_patches.contains_key(&cell) || self.berry_returns_at.contains_key(&cell) {
+            return;
+        }
+        let Some(patch) = self.berry_patches.get(&cell).copied() else {
+            return;
+        };
+        if self.pile_count(cell, patch.material) > 0 {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.berry_ticks);
+        self.berry_returns_at.insert(cell, at);
+        self.schedule(at, Wake::BerryReturn(cell));
+    }
+
+    /// The patch is waiting. Look says the berries are gone.
+    pub(crate) fn berry_patch_bare(&self, cell: CellId, material: Material) -> bool {
+        self.berry_returns_at.contains_key(&cell)
+            && self
+                .berry_patches
+                .get(&cell)
+                .is_some_and(|patch| patch.material == material)
+            && self.pile_count(cell, material) == 0
     }
 
     /// The slope has no flint nodule. Another lies there `flint_ticks` after
@@ -6210,5 +6272,166 @@ mod wolf {
             .events
             .iter()
             .all(|event| { event.text != heard }));
+    }
+}
+
+#[cfg(test)]
+mod berry_return {
+    use super::{Attempt, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn empty_patch(world: &mut World, actor: u32, material: Material) {
+        let cell = world.actor(actor).unwrap().cell;
+        let mut n = 0;
+        while world.pile_count(cell, material) > 0 {
+            n += 1;
+            let took = world.step(&[intent(
+                &format!("gather-{n}"),
+                actor,
+                Attempt::Gather(material),
+            )]);
+            assert!(took.results[0].success, "{}", took.results[0].message);
+        }
+    }
+
+    #[test]
+    fn poison_berries_return_after_they_are_gathered() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Poison berries lie here"), "{here}");
+        assert!(world.observe(seen).unwrap().text.contains("poison berries"));
+        empty_patch(&mut world, near, Material::BitterBerry);
+        let gone = world.observe(near).unwrap().text;
+        assert!(
+            gone.contains("The poison berries that were here are gone."),
+            "{gone}"
+        );
+        assert!(!gone.contains("Poison berries lie here"), "{gone}");
+        let south = world.observe(seen).unwrap().text;
+        assert!(
+            south.contains("The poison berries to the north are gone."),
+            "{south}"
+        );
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("poison berries"));
+        let ticks = world.tuning.berry_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The poison berries that were here are gone."));
+        world.step(&[]);
+        let back = "Poison berries lie here again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("Poison berries lie here"),
+            "{}",
+            again.text
+        );
+        assert!(!again.text.contains("are gone"), "{}", again.text);
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back.text.contains("poison berries"),
+            "{}",
+            seen_back.text
+        );
+        assert!(!seen_back.text.contains("are gone"), "{}", seen_back.text);
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("poison berries"));
+        let second = world.step(&[intent(
+            "second",
+            near,
+            Attempt::Gather(Material::BitterBerry),
+        )]);
+        assert_eq!(
+            second.results[0].message,
+            "You gather a handful of poison berries."
+        );
+        assert_eq!(
+            world.pile_count(world.actor(near).unwrap().cell, Material::BitterBerry),
+            1
+        );
+    }
+
+    #[test]
+    fn berries_the_deer_ate_grow_back_under_the_rock() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        let stocked = world.observe(near).unwrap().text;
+        assert!(stocked.contains("Berries lie here"), "{stocked}");
+        let deer = world.deer.as_mut().unwrap();
+        deer.cell = rock;
+        deer.route_at = 6;
+        deer.held = false;
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        assert_eq!(world.pile_count(rock, Material::Berry), 0);
+        assert!(world.deer_ate_berries.contains(&rock));
+        assert!(world.berry_returns_at.contains_key(&rock));
+        let gone = world.observe(near).unwrap().text;
+        assert!(
+            gone.contains("A deer stands here after eating the berries that were here."),
+            "{gone}"
+        );
+        assert!(!gone.contains("Berries lie here"), "{gone}");
+        world.deer = None;
+        let ticks = world.tuning.berry_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let back = "Berries lie here again.";
+        let again = world.observe(near).unwrap();
+        assert!(again.text.contains("Berries lie here"), "{}", again.text);
+        assert!(!again.text.contains("are gone"), "{}", again.text);
+        assert!(again.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            second.results[0].message,
+            "You gather a handful of berries."
+        );
+        assert_eq!(world.pile_count(rock, Material::Berry), 3);
     }
 }

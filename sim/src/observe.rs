@@ -308,6 +308,9 @@ impl World {
             if let Some(flint) = self.seen_flint(actor_id) {
                 lines.push(flint);
             }
+            if let Some(berries) = self.seen_berry_patches(actor_id) {
+                lines.push(berries);
+            }
             if let Some(branches) = self.seen_rock_branches(actor_id) {
                 lines.push(branches);
             }
@@ -717,6 +720,8 @@ impl World {
                 "Poison berries lie here, {}. They are poisonous.",
                 self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry))
             ));
+        } else if self.berry_patch_bare(actor.cell, Material::BitterBerry) {
+            parts.push("The poison berries that were here are gone.".into());
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0 {
             parts.push(format!(
@@ -1186,6 +1191,31 @@ impl World {
                 "The fire is keeping the still water to the {} from freezing.",
                 self.relative(origin, cell)
             ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A berry patch in sight that has not grown back. The compass drops the
+    /// fruit while it is gone. Someone on the patch already has the place line.
+    fn seen_berry_patches(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.berry_patch_bare(cell, Material::BitterBerry) {
+                lines.push(format!("The poison berries to the {way} are gone."));
+            } else if self.berry_patch_bare(cell, Material::Berry)
+                && !self.deer_ate_berries.contains(&cell)
+            {
+                lines.push(format!("The berries to the {way} are gone."));
+            }
         }
         if lines.is_empty() {
             None
@@ -5702,7 +5732,18 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             let count = self.pile_count(cell, material);
-            if count > 0 {
+            if count == 0 && self.berry_patch_bare(cell, material) {
+                let way = if cell == origin {
+                    "here".to_string()
+                } else {
+                    format!("to the {}", self.relative(origin, cell))
+                };
+                if material == Material::BitterBerry {
+                    lines.push(format!("The poison berries that were {way} are gone."));
+                } else if !self.deer_ate_berries.contains(&cell) {
+                    lines.push(format!("The berries that were {way} are gone."));
+                }
+            } else if count > 0 {
                 if material == Material::Stone && count == 1 {
                     lines.push(format!(
                         "A stone lies in contact with the ground {}. The stone is {}. {}{}",
