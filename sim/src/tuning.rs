@@ -51,6 +51,10 @@ pub struct Tuning {
     /// Look says the nest is empty until then.
     #[serde(default = "default_honey_ticks")]
     pub honey_ticks: u64,
+    /// Ticks after the eggs are gathered before the bird's nest holds eggs again.
+    /// Look says the nest is empty until then.
+    #[serde(default = "default_egg_ticks")]
+    pub egg_ticks: u64,
     /// Sim time when the first night falls. Night lasts `night_len` ticks,
     /// then morning. The day between nights is `day_len` ticks, and that repeats.
     #[serde(default = "default_night_at")]
@@ -181,6 +185,9 @@ fn default_sting_ticks() -> u64 {
 fn default_honey_ticks() -> u64 {
     24
 }
+fn default_egg_ticks() -> u64 {
+    24
+}
 fn default_night_at() -> u64 {
     72
 }
@@ -288,6 +295,8 @@ struct RawTime {
     sting_ticks: u64,
     #[serde(default = "default_honey_ticks")]
     honey_ticks: u64,
+    #[serde(default = "default_egg_ticks")]
+    egg_ticks: u64,
     #[serde(default = "default_night_at")]
     night_at: u64,
     #[serde(default = "default_night_len")]
@@ -379,6 +388,7 @@ impl Tuning {
             || raw.time.salt_ticks == 0
             || raw.time.sting_ticks == 0
             || raw.time.honey_ticks == 0
+            || raw.time.egg_ticks == 0
             || raw.time.night_len == 0
             || raw.time.day_len == 0
         {
@@ -436,6 +446,7 @@ impl Tuning {
             salt_ticks: raw.time.salt_ticks,
             sting_ticks: raw.time.sting_ticks,
             honey_ticks: raw.time.honey_ticks,
+            egg_ticks: raw.time.egg_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
             day_len: raw.time.day_len,

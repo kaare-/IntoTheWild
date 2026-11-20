@@ -39,6 +39,7 @@ impl World {
                 Wake::Spoil(id) => self.spoil_food(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
+                Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::Stings => self.apply_stings(),
             }
         }
@@ -127,6 +128,33 @@ impl World {
         self.add_pile(cell, Material::Honey, 1, 0);
         self.emit(
             "The bees' nest fills again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The bird's nest has waited out its ticks. Eggs sit in the tree again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_eggs(&mut self, cell: CellId) {
+        let Some(at) = self.egg_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.egg_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Egg) > 0
+            || !self.ground_ids(cell, Material::Egg).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Egg, 1, 0);
+        self.emit(
+            "The bird's nest fills again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

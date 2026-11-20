@@ -650,6 +650,8 @@ pub enum Wake {
     SaltReturn(CellId),
     /// The bees' nest on this cell has honey again.
     HoneyReturn(CellId),
+    /// The bird's nest on this cell holds eggs again.
+    EggReturn(CellId),
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
 }
@@ -801,6 +803,9 @@ pub struct World {
     /// A tree on the west slope that holds a bird's nest. Empty once the eggs are taken.
     #[serde(default)]
     pub(crate) bird_nests: BTreeSet<CellId>,
+    /// When an emptied bird's nest holds eggs again. Look says the nest is empty until then.
+    #[serde(default)]
+    pub(crate) egg_returns_at: BTreeMap<CellId, u64>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -878,6 +883,7 @@ impl World {
             honey_returns_at: BTreeMap::new(),
             smoked_nests: BTreeSet::new(),
             bird_nests: BTreeSet::new(),
+            egg_returns_at: BTreeMap::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -1286,6 +1292,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.honey_ticks);
         self.honey_returns_at.insert(cell, at);
         self.schedule(at, Wake::HoneyReturn(cell));
+    }
+
+    /// The nest is empty. Eggs return `egg_ticks` after this step.
+    /// A wake that finds eggs already there does not add a second clutch.
+    pub(crate) fn arm_bird_nest(&mut self, cell: CellId) {
+        if !self.bird_nests.contains(&cell) || self.egg_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Egg) > 0
+            || !self.ground_ids(cell, Material::Egg).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.egg_ticks);
+        self.egg_returns_at.insert(cell, at);
+        self.schedule(at, Wake::EggReturn(cell));
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -3339,6 +3361,95 @@ mod eggs {
             .iter()
             .all(|event| !event.text.contains("eats the cooked eggs")
                 && event.text != "The hunger eases."));
+    }
+
+    #[test]
+    fn the_birds_nest_is_empty_until_it_holds_eggs_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Egg))]);
+        assert_eq!(gathered.results[0].message, "You gather the eggs.");
+        let empty = world.observe(near).unwrap().text;
+        assert!(
+            empty.contains("The bird's nest in the tree here is empty."),
+            "{empty}"
+        );
+        assert!(!empty.contains("It holds eggs."), "{empty}");
+        let west_empty = world.observe(seen).unwrap().text;
+        assert!(
+            west_empty.contains("The bird's nest in the tree on the slope to the west is empty."),
+            "{west_empty}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("bird"));
+        let ticks = world.tuning.egg_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The bird's nest in the tree here is empty."));
+        world.step(&[]);
+        let filled = "The bird's nest fills again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text
+                .contains("A bird's nest sits in the tree here. It holds eggs."),
+            "{}",
+            back.text
+        );
+        assert!(
+            !back
+                .text
+                .contains("The bird's nest in the tree here is empty."),
+            "{}",
+            back.text
+        );
+        assert!(back.events.iter().any(|event| event.text == filled));
+        let west = world.observe(seen).unwrap();
+        assert!(
+            west.text
+                .contains("A bird's nest sits in a tree on the slope to the west."),
+            "{}",
+            west.text
+        );
+        assert!(west.events.iter().any(|event| event.text == filled));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != filled));
+        assert!(!world.observe(quiet).unwrap().text.contains("bird"));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Egg))]);
+        assert_eq!(again.results[0].message, "You gather the eggs.");
+        let taken = world.observe(near).unwrap();
+        assert!(
+            taken
+                .text
+                .contains("The bird's nest in the tree here is empty."),
+            "{}",
+            taken.text
+        );
+        assert!(taken
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers the eggs")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers the eggs."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("eggs")));
     }
 }
 
