@@ -315,6 +315,7 @@ pub enum Attempt {
     Fish,
     TakeBrand,
     WeaveBasket,
+    PutFish,
 }
 
 impl Attempt {
@@ -362,6 +363,7 @@ impl Attempt {
                 | Attempt::Fish
                 | Attempt::TakeBrand
                 | Attempt::WeaveBasket
+                | Attempt::PutFish
         )
     }
 }

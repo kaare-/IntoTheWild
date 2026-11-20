@@ -12208,3 +12208,168 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
         .iter()
         .all(|event| !event.text.contains("arms are full")));
 }
+
+#[test]
+fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
+    assert_eq!(parse_attempt("put fish").unwrap(), Attempt::PutFish);
+    assert_eq!(
+        parse_attempt("put the fish in the basket").unwrap(),
+        Attempt::PutFish
+    );
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+
+    let refused = world.step(&[cmd("no-basket", quiet, Attempt::PutFish)]);
+    assert_eq!(
+        refused.results[0].message,
+        "You are not carrying a bark basket."
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("bark basket")));
+
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    assert!(haft.results[0].success, "{}", haft.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    world.step(&[cmd("bark2", near, Attempt::Gather(Material::Bark))]);
+    let woven = world.step(&[cmd("weave", near, Attempt::WeaveBasket)]);
+    assert!(woven.results[0].success, "{}", woven.results[0].message);
+    let branch = world.step(&[cmd("br", near, Attempt::Gather(Material::Branch))]);
+    assert!(branch.results[0].success, "{}", branch.results[0].message);
+    let pot = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    assert!(pot.results[0].success, "{}", pot.results[0].message);
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("bank", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let cast = world.step(&[cmd("fish", near, Attempt::Fish)]);
+    assert_eq!(cast.results[0].message, "You spear a fish from the brook.");
+    let holding = world.observe(near).unwrap().text;
+    assert!(
+        holding.contains("a bark basket, holding a raw fish"),
+        "{holding}"
+    );
+    assert_eq!(holding.matches("raw fish").count(), 1, "{holding}");
+    let exam = world.examine(near, ExamineTarget::Basket);
+    assert!(exam.contains("It holds a raw fish."), "{exam}");
+    let seen = world.examine(far, ExamineTarget::Basket);
+    assert!(
+        seen.contains("Near carries a bark basket") && seen.contains("It holds a raw fish."),
+        "{seen}"
+    );
+    let fish_exam = world.examine(far, ExamineTarget::Fish);
+    assert!(
+        fish_exam.contains("A raw fish is in the bark basket carried by Near"),
+        "{fish_exam}"
+    );
+    assert_eq!(
+        world.examine(quiet, ExamineTarget::Basket),
+        "You see no bark basket from here."
+    );
+    let quiet_events = world.observe(quiet).unwrap();
+    assert!(
+        quiet_events.events.iter().all(|event| {
+            event.text == "You are not carrying a bark basket."
+                || (!event.text.contains("fish") && !event.text.contains("basket"))
+        }),
+        "{:?}",
+        quiet_events
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect::<Vec<_>>()
+    );
+
+    let dropped = world.step(&[cmd("drop-branch", near, Attempt::Drop(Material::Branch))]);
+    assert!(dropped.results[0].success, "{}", dropped.results[0].message);
+    let out = world.step(&[cmd("drop-fish", near, Attempt::Drop(Material::Fish))]);
+    assert!(out.results[0].success, "{}", out.results[0].message);
+    let empty = world.examine(near, ExamineTarget::Basket);
+    assert!(empty.contains("It is empty."), "{empty}");
+    let gathered = world.step(&[cmd("gather-fish", near, Attempt::Gather(Material::Fish))]);
+    assert_eq!(gathered.results[0].message, "You gather a fish.");
+    let in_arms = world.observe(near).unwrap().text;
+    assert!(
+        in_arms.contains("a raw fish") && !in_arms.contains("holding a raw fish"),
+        "{in_arms}"
+    );
+    let put = world.step(&[cmd("put", near, Attempt::PutFish)]);
+    assert_eq!(
+        put.results[0].message,
+        "You put the raw fish in the bark basket."
+    );
+    let again = world.observe(near).unwrap().text;
+    assert!(
+        again.contains("a bark basket, holding a raw fish"),
+        "{again}"
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You put the raw fish in the bark basket."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near puts the raw fish in the bark basket."));
+    let after_put = world.observe(quiet).unwrap();
+    assert!(
+        after_put.events.iter().all(|event| {
+            event.text == "You are not carrying a bark basket."
+                || (!event.text.contains("puts") && !event.text.contains("basket"))
+        }),
+        "{:?}",
+        after_put
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect::<Vec<_>>()
+    );
+
+    let clay = world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
+    assert!(clay.results[0].success, "{}", clay.results[0].message);
+    let blocked = world.step(&[cmd("clay-2", near, Attempt::Gather(Material::Clay))]);
+    assert_eq!(blocked.results[0].message, "Your arms are full.");
+    let spilled = world.step(&[cmd("spill", near, Attempt::Drop(Material::Fish))]);
+    assert!(spilled.results[0].success, "{}", spilled.results[0].message);
+    let tucked = world.step(&[cmd("tuck", near, Attempt::Gather(Material::Fish))]);
+    assert_eq!(tucked.results[0].message, "You gather a fish.");
+    let tucked_look = world.observe(near).unwrap().text;
+    assert!(
+        tucked_look.contains("a bark basket, holding a raw fish"),
+        "{tucked_look}"
+    );
+    assert_eq!(tucked_look.matches("raw fish").count(), 1, "{tucked_look}");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("arms are full")));
+}

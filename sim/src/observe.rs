@@ -3845,7 +3845,13 @@ impl World {
             let cell = self.actor(other).unwrap().cell;
             for id in self.loose_ids(other, Material::Fish) {
                 let cooked = self.item(id).is_some_and(|fish| fish.cooked);
-                if cooked {
+                let in_basket = self.item(id).is_some_and(|fish| fish.in_basket);
+                if in_basket && !cooked {
+                    lines.push(format!(
+                        "A raw fish is in the bark basket carried by {who}, {}. It must be cooked before it feeds you.",
+                        self.cover_phrase(cell)
+                    ));
+                } else if cooked {
                     lines.push(format!(
                         "A cooked fish is carried by {who}, {}. It is good to eat.",
                         self.cover_phrase(cell)
@@ -5977,12 +5983,24 @@ impl World {
     }
 
     fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
-        if self.items.values().any(|item| {
-            item.carrier == Some(actor_id) && item.material == Material::Berry && item.in_basket
-        }) {
-            "a bark basket, holding a handful of berries".into()
-        } else {
-            "a bark basket".into()
+        match self.basket_contents(actor_id) {
+            Some(Material::Berry) => "a bark basket, holding a handful of berries".into(),
+            Some(Material::Fish) => "a bark basket, holding a raw fish".into(),
+            _ => "a bark basket".into(),
+        }
+    }
+
+    fn basket_contents(&self, actor_id: ActorId) -> Option<Material> {
+        self.items.values().find_map(|item| {
+            (item.carrier == Some(actor_id) && item.in_basket).then_some(item.material)
+        })
+    }
+
+    fn basket_held_sentence(&self, actor_id: ActorId) -> &'static str {
+        match self.basket_contents(actor_id) {
+            Some(Material::Berry) => "It holds a handful of berries.",
+            Some(Material::Fish) => "It holds a raw fish.",
+            _ => "It is empty.",
         }
     }
 
@@ -6007,13 +6025,7 @@ impl World {
             } else {
                 format!("{} carries", self.name_of(other))
             };
-            let held = if self.items.values().any(|item| {
-                item.carrier == Some(other) && item.material == Material::Berry && item.in_basket
-            }) {
-                "It holds a handful of berries."
-            } else {
-                "It is empty."
-            };
+            let held = self.basket_held_sentence(other);
             let cell = self.actor(other).unwrap().cell;
             lines.push(format!(
                 "{who} a bark basket, {}. It is woven from a sheet of bark. {held}",
@@ -6025,6 +6037,23 @@ impl World {
         } else {
             lines.join("\n")
         }
+    }
+
+    /// A raw fish set into the bark basket, filled for the person who put it there.
+    fn put_fish_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} puts "))?;
+        if rest != "the raw fish in the bark basket." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "put", rest))
     }
 
     /// A bark basket woven from a sheet of bark, filled for the weaver.
@@ -6584,6 +6613,9 @@ impl World {
         if let Some(line) = self.weave_for_these_eyes(viewer, event) {
             return line;
         }
+        if let Some(line) = self.put_fish_for_these_eyes(viewer, event) {
+            return line;
+        }
         if let Some(line) = self.fire_pot_for_these_eyes(viewer, event) {
             return line;
         }
@@ -6897,6 +6929,19 @@ impl World {
                 || self.basket_can_hold_berries(actor_id))
         {
             actions.push("gather berries".into());
+        }
+        if self
+            .ground_ids(actor.cell, Material::Fish)
+            .first()
+            .and_then(|id| self.item(*id))
+            .is_some_and(|fish| !fish.cooked)
+            && (self.carry_count(actor_id) < self.tuning.carry_slots
+                || self.basket_has_room(actor_id))
+        {
+            actions.push("gather fish".into());
+        }
+        if self.raw_fish_in_arms(actor_id).is_some() && self.basket_has_room(actor_id) {
+            actions.push("put fish".into());
         }
         if self.loose_ids(actor_id, Material::Basket).is_empty()
             && (self.pile_count(actor.cell, Material::Bark) > 0

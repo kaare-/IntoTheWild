@@ -34,8 +34,9 @@ cut hide                     a whole deer hide into hide strips, with an iron kn
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
-weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries that would not fit in the arms.
+weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 make basket                  the same weave
+put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
@@ -125,6 +126,28 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "weave" | "make" if rest == "basket" || rest == "a basket" || rest == "bark basket" => {
             Ok(Attempt::WeaveBasket)
+        }
+        "put"
+            if matches!(
+                rest,
+                "fish"
+                    | "a fish"
+                    | "the fish"
+                    | "raw fish"
+                    | "a raw fish"
+                    | "the raw fish"
+                    | "fish in basket"
+                    | "fish in the basket"
+                    | "the fish in the basket"
+                    | "raw fish in basket"
+                    | "raw fish in the basket"
+                    | "the raw fish in the basket"
+                    | "fish into basket"
+                    | "fish into the basket"
+                    | "the fish into the basket"
+            ) =>
+        {
+            Ok(Attempt::PutFish)
         }
         "lay" if rest == "bark" => Ok(Attempt::LayBark),
         "roof" => Ok(Attempt::LayBark),

@@ -78,6 +78,7 @@ impl World {
         let mut fishes = Vec::new();
         let mut brands = Vec::new();
         let mut baskets = Vec::new();
+        let mut puts = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -138,6 +139,7 @@ impl World {
                         Attempt::Fish => fishes.push(intent),
                         Attempt::TakeBrand => brands.push(intent),
                         Attempt::WeaveBasket => baskets.push(intent),
+                        Attempt::PutFish => puts.push(intent),
                     }
                 }
             }
@@ -240,6 +242,7 @@ impl World {
         self.apply_fishes(fishes, &mut results);
         self.apply_brands(brands, &mut results);
         self.apply_baskets(baskets, &mut results);
+        self.apply_puts(puts, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -948,7 +951,7 @@ impl World {
                     return Err(format!("There is no {} here to gather.", material.word()));
                 }
                 if self.carry_count(actor.id) >= self.tuning.carry_slots
-                    && !(*material == Material::Berry && self.basket_can_hold_berries(actor.id))
+                    && !self.gather_overflows_into_basket(actor.id, *material)
                 {
                     return Err("Your arms are full.".into());
                 }
@@ -1043,6 +1046,24 @@ impl World {
                 }
                 Ok(true)
             }
+            Attempt::PutFish => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if self.loose_ids(actor.id, Material::Basket).is_empty() {
+                    return Err("You are not carrying a bark basket.".into());
+                }
+                if self.basket_holds_berries(actor.id) {
+                    return Err("The bark basket already holds a handful of berries.".into());
+                }
+                if self.basket_holds_fish(actor.id) {
+                    return Err("The bark basket already holds a raw fish.".into());
+                }
+                if self.raw_fish_in_arms(actor.id).is_none() {
+                    return Err("You are not carrying a raw fish.".into());
+                }
+                Ok(true)
+            }
         }
     }
 
@@ -1096,6 +1117,7 @@ impl World {
                     | Material::Copper
                     | Material::Awl
                     | Material::Cord
+                    | Material::Fish
                     | Material::Brand
             ) {
                 self.ground_ids(cell, material)
@@ -1144,9 +1166,7 @@ impl World {
                         );
                         continue;
                     };
-                    if material == Material::Berry {
-                        self.tuck_berry_into_basket(intent.actor_id, item);
-                    }
+                    self.tuck_overflow_into_basket(intent.actor_id, item);
                     let from = if material == Material::Pot {
                         format!(" from the ground {}", self.cover_phrase(cell))
                     } else {
@@ -1226,21 +1246,17 @@ impl World {
                 item.in_basket = false;
             }
             if material == Material::Basket {
-                let berries: Vec<_> = self
+                let held: Vec<_> = self
                     .items
                     .values()
-                    .filter(|item| {
-                        item.carrier == Some(intent.actor_id)
-                            && item.material == Material::Berry
-                            && item.in_basket
-                    })
+                    .filter(|item| item.carrier == Some(intent.actor_id) && item.in_basket)
                     .map(|item| item.id)
                     .collect();
-                for id in berries {
-                    if let Some(berry) = self.items.get_mut(&id) {
-                        berry.carrier = None;
-                        berry.cell = cell;
-                        berry.in_basket = false;
+                for id in held {
+                    if let Some(held) = self.items.get_mut(&id) {
+                        held.carrier = None;
+                        held.cell = cell;
+                        held.in_basket = false;
                     }
                 }
             }
@@ -2385,12 +2401,20 @@ impl World {
                 let until = self.time.saturating_add(self.tuning.clay_ticks);
                 self.brook_quiet.insert(stretch, until);
             }
-            let carrier = if self.carry_count(intent.actor_id) < self.tuning.carry_slots {
-                Some(intent.actor_id)
-            } else {
-                None
-            };
+            let into_basket = self.carry_count(intent.actor_id) >= self.tuning.carry_slots
+                && self.basket_has_room(intent.actor_id);
+            let carrier =
+                if self.carry_count(intent.actor_id) < self.tuning.carry_slots || into_basket {
+                    Some(intent.actor_id)
+                } else {
+                    None
+                };
             let id = self.mint_item(Material::Fish, 0, cell, carrier, Role::Loose);
+            if into_basket {
+                if let Some(fish) = self.items.get_mut(&id) {
+                    fish.in_basket = true;
+                }
+            }
             let name = self.name_of(intent.actor_id);
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "spear", rest),
@@ -3225,26 +3249,125 @@ impl World {
         }
     }
 
-    pub(crate) fn basket_can_hold_berries(&self, actor: crate::model::ActorId) -> bool {
+    pub(crate) fn basket_has_room(&self, actor: crate::model::ActorId) -> bool {
         !self.loose_ids(actor, Material::Basket).is_empty()
-            && !self.items.values().any(|item| {
-                item.carrier == Some(actor) && item.material == Material::Berry && item.in_basket
+            && !self
+                .items
+                .values()
+                .any(|item| item.carrier == Some(actor) && item.in_basket)
+    }
+
+    pub(crate) fn basket_can_hold_berries(&self, actor: crate::model::ActorId) -> bool {
+        self.basket_has_room(actor)
+    }
+
+    fn basket_holds_berries(&self, actor: crate::model::ActorId) -> bool {
+        self.items.values().any(|item| {
+            item.carrier == Some(actor) && item.material == Material::Berry && item.in_basket
+        })
+    }
+
+    fn basket_holds_fish(&self, actor: crate::model::ActorId) -> bool {
+        self.items.values().any(|item| {
+            item.carrier == Some(actor) && item.material == Material::Fish && item.in_basket
+        })
+    }
+
+    /// A raw fish in the arms, not the one already sitting in the basket.
+    pub(crate) fn raw_fish_in_arms(
+        &self,
+        actor: crate::model::ActorId,
+    ) -> Option<crate::model::ItemId> {
+        self.loose_ids(actor, Material::Fish)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|fish| !fish.cooked && !fish.in_basket)
             })
     }
 
-    fn tuck_berry_into_basket(
+    fn gather_overflows_into_basket(
+        &self,
+        actor: crate::model::ActorId,
+        material: Material,
+    ) -> bool {
+        if !self.basket_has_room(actor) {
+            return false;
+        }
+        match material {
+            Material::Berry => true,
+            Material::Fish => self
+                .actor(actor)
+                .map(|person| person.cell)
+                .is_some_and(|cell| {
+                    self.ground_ids(cell, Material::Fish)
+                        .first()
+                        .and_then(|id| self.item(*id))
+                        .is_some_and(|fish| !fish.cooked)
+                }),
+            _ => false,
+        }
+    }
+
+    fn tuck_overflow_into_basket(
         &mut self,
         actor: crate::model::ActorId,
-        berry: crate::model::ItemId,
+        item_id: crate::model::ItemId,
     ) {
         if self.carry_count(actor) <= self.tuning.carry_slots {
             return;
         }
-        if !self.basket_can_hold_berries(actor) {
+        if !self.basket_has_room(actor) {
             return;
         }
-        if let Some(item) = self.items.get_mut(&berry) {
+        let fits = self.item(item_id).is_some_and(|item| {
+            item.material == Material::Berry || (item.material == Material::Fish && !item.cooked)
+        });
+        if !fits {
+            return;
+        }
+        if let Some(item) = self.items.get_mut(&item_id) {
             item.in_basket = true;
+        }
+    }
+
+    fn apply_puts(&mut self, puts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the raw fish in the bark basket.";
+        for intent in puts {
+            let Some(id) = self.raw_fish_in_arms(intent.actor_id) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not carrying a raw fish.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(fish) = self.items.get_mut(&id) {
+                fish.in_basket = true;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "put", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "put", rest),
+                results,
+            );
         }
     }
 
