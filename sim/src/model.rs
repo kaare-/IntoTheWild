@@ -693,7 +693,7 @@ pub struct World {
     /// A lean-to of branches. It stands in that cell and breaks the wind.
     #[serde(default)]
     pub(crate) lean_tos: BTreeSet<CellId>,
-    /// A lean-to thatched with reeds. The body is out of the wind, and the rain stays off.
+    /// A lean-to thatched with reeds. Rain and cold match the rock. A bare lean-to does not.
     #[serde(default)]
     pub(crate) thatched: BTreeSet<CellId>,
     /// A brook cell stays quiet until this sim time after a fish is taken there.

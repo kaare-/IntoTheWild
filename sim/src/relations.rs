@@ -21,6 +21,9 @@ impl World {
                 return self.tuning.dry_bark_roof;
             }
         }
+        if self.thatched.contains(&cell) {
+            return self.tuning.rock_roof;
+        }
         if self.lean_tos.contains(&cell) {
             return self.tuning.lean_to;
         }

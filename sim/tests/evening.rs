@@ -13334,3 +13334,175 @@ fn a_thatched_lean_to_keeps_the_rain_off_and_a_bare_one_does_not() {
     }));
     assert_eq!(world.actor_cell(seen), Some((3, 2)));
 }
+
+#[test]
+fn a_thatched_lean_to_keeps_the_cold_off_like_the_rock() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let thatch = world.spawn_at("Thatch", "t", 5, 2).unwrap();
+    let bare = world.spawn_at("Bare", "b", 6, 1).unwrap();
+    let open = world.spawn_at("Open", "o", 4, 4).unwrap();
+    let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+    let seen = world.spawn_at("Seen", "s", 3, 4).unwrap();
+
+    let go = |world: &mut World, id: &str, actor: u32, attempt: Attempt| {
+        let step = world.step(&[cmd(id, actor, attempt)]);
+        assert!(
+            step.results[0].success,
+            "{}: {}",
+            step.results[0].command_id, step.results[0].message
+        );
+    };
+    go(&mut world, "build-t", thatch, Attempt::BuildLeanTo);
+    for n in 1..=3 {
+        go(
+            &mut world,
+            &format!("wood-{n}"),
+            bare,
+            Attempt::Gather(Material::Branch),
+        );
+    }
+    go(&mut world, "bw1", bare, Attempt::Move(Dir::West));
+    go(&mut world, "bw2", bare, Attempt::Move(Dir::West));
+    go(&mut world, "bs", bare, Attempt::Move(Dir::South));
+    assert_eq!(world.actor_cell(bare), Some((4, 2)));
+    go(&mut world, "build-b", bare, Attempt::BuildLeanTo);
+    go(&mut world, "south", thatch, Attempt::Move(Dir::South));
+    for n in 1..=5 {
+        go(
+            &mut world,
+            &format!("west-{n}"),
+            thatch,
+            Attempt::Move(Dir::West),
+        );
+    }
+    assert_eq!(world.actor_cell(thatch), Some((0, 3)));
+    go(&mut world, "reeds", thatch, Attempt::Gather(Material::Reed));
+    for n in 1..=5 {
+        go(
+            &mut world,
+            &format!("east-{n}"),
+            thatch,
+            Attempt::Move(Dir::East),
+        );
+    }
+    go(&mut world, "north", thatch, Attempt::Move(Dir::North));
+    assert_eq!(world.actor_cell(thatch), Some((5, 2)));
+    go(&mut world, "thatch", thatch, Attempt::Thatch);
+    assert!(world.sim_time() < world.tuning.night_at);
+
+    while world.observe(bare).unwrap().self_info.cold != "chilly" {
+        world.step(&[]);
+        assert!(
+            world.sim_time() < world.tuning.night_at,
+            "bare lean-to should chill before night"
+        );
+    }
+
+    let day_thatch = world.observe(thatch).unwrap();
+    let day_bare = world.observe(bare).unwrap();
+    let day_open = world.observe(open).unwrap();
+    let day_rock = world.observe(rock).unwrap();
+    assert!(
+        day_thatch.text.contains("You are warm.")
+            && day_thatch.text.contains("You are out of the wind."),
+        "{}",
+        day_thatch.text
+    );
+    assert_eq!(day_thatch.self_info.cold, "warm");
+    assert_eq!(day_thatch.self_info.wind, "out of the wind");
+    assert!(
+        day_rock.text.contains("You are warm.")
+            && day_rock.text.contains("You are out of the wind."),
+        "{}",
+        day_rock.text
+    );
+    assert_eq!(day_thatch.self_info.cold, day_rock.self_info.cold);
+    assert_eq!(day_thatch.self_info.wind, day_rock.self_info.wind);
+    assert!(
+        day_bare.text.contains("You are chilly.")
+            && day_bare.text.contains("You are in a little wind.")
+            && !day_bare.text.contains("You are cold."),
+        "{}",
+        day_bare.text
+    );
+    assert!(
+        day_open.text.contains("You are cold.") && day_open.text.contains("You are in the wind."),
+        "{}",
+        day_open.text
+    );
+    assert!(day_thatch
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Bare is chilly")));
+    assert!(day_bare
+        .events
+        .iter()
+        .any(|event| event.text == "Bare is chilly."));
+    let saw_thatch = world.examine(seen, ExamineTarget::Person("Thatch".into()));
+    let saw_bare = world.examine(seen, ExamineTarget::Person("Bare".into()));
+    assert!(
+        saw_thatch.contains("They are warm.") && saw_thatch.contains("They are out of the wind."),
+        "{saw_thatch}"
+    );
+    assert!(
+        saw_bare.contains("They are chilly.") && saw_bare.contains("They are in a little wind."),
+        "{saw_bare}"
+    );
+    assert!(!world.observe(seen).unwrap().text.contains("You are warm."));
+
+    let night_end = world.tuning.night_at + world.tuning.night_len - 1;
+    while world.sim_time() < night_end {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), night_end);
+    let night_thatch = world.observe(thatch).unwrap();
+    let night_bare = world.observe(bare).unwrap();
+    let night_open = world.observe(open).unwrap();
+    let night_rock = world.observe(rock).unwrap();
+    assert!(
+        night_thatch.text.contains("Night has fallen.")
+            && night_thatch.text.contains("You are warm.")
+            && night_thatch.text.contains("You are out of the wind."),
+        "{}",
+        night_thatch.text
+    );
+    assert!(
+        night_rock.text.contains("Night has fallen.")
+            && night_rock.text.contains("You are warm.")
+            && night_rock.text.contains("You are out of the wind."),
+        "{}",
+        night_rock.text
+    );
+    assert_eq!(night_thatch.self_info.cold, night_rock.self_info.cold);
+    assert_eq!(night_thatch.self_info.wind, night_rock.self_info.wind);
+    assert!(
+        night_bare.text.contains("Night has fallen.")
+            && night_bare.text.contains("You are cold.")
+            && night_bare.text.contains("You are in a little wind.")
+            && !night_bare.text.contains("You are warm."),
+        "{}",
+        night_bare.text
+    );
+    assert!(
+        night_open.text.contains("Night has fallen.")
+            && night_open.text.contains("You are cold.")
+            && night_open.text.contains("You are in the wind."),
+        "{}",
+        night_open.text
+    );
+    assert!(night_thatch
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Bare is cold") && !event.text.contains("Open is cold")));
+    let night_saw = world.examine(seen, ExamineTarget::Person("Thatch".into()));
+    let night_bare_saw = world.examine(seen, ExamineTarget::Person("Bare".into()));
+    assert!(
+        night_saw.contains("They are warm.") && night_saw.contains("They are out of the wind."),
+        "{night_saw}"
+    );
+    assert!(
+        night_bare_saw.contains("They are cold.")
+            && night_bare_saw.contains("They are in a little wind."),
+        "{night_bare_saw}"
+    );
+}
