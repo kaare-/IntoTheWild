@@ -611,8 +611,43 @@ impl World {
         let deer_on_this_wood = deer_here && self.open_loose_branches(actor.cell);
         if !deer_on_this_wood && branches_here > 1 {
             parts.push("A pile of branches lies here.".into());
+            let worst = self.branch_moisture_here(actor.cell);
+            if !self.is_dry(worst) {
+                parts.push(format!("The branches are {}.", self.condition_word(worst)));
+            }
         } else if !deer_on_this_wood && branches_here == 1 {
-            parts.push("A branch lies here.".into());
+            let drying = self
+                .ground_ids(actor.cell, Material::Branch)
+                .iter()
+                .any(|id| {
+                    self.item(*id)
+                        .is_some_and(|item| item.firing_ready_at.is_some())
+                });
+            let word = self.condition_word(self.branch_moisture_here(actor.cell));
+            if drying {
+                parts.push(format!(
+                    "A {word} branch lies here, drying by the fire. It is not dry yet."
+                ));
+            } else {
+                parts.push(format!("A {word} branch lies here."));
+            }
+        }
+        if self.loose_ids(actor_id, Material::Branch).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|item| item.firing_ready_at.is_some())
+        }) {
+            let moisture = self
+                .loose_ids(actor_id, Material::Branch)
+                .iter()
+                .filter_map(|id| self.item(*id))
+                .filter(|item| item.firing_ready_at.is_some())
+                .map(|item| item.moisture)
+                .max()
+                .unwrap_or(0);
+            parts.push(format!(
+                "The {} branch in your arms is drying by the fire. It is not dry yet.",
+                self.condition_word(moisture)
+            ));
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -4256,8 +4291,17 @@ impl World {
                         self.rain_reaches_phrase(cell)
                     ));
                 } else if material == Material::Branch {
+                    let drying = self.ground_ids(cell, Material::Branch).iter().any(|id| {
+                        self.item(*id)
+                            .is_some_and(|item| item.firing_ready_at.is_some())
+                    });
+                    let wait = if drying {
+                        " It is drying by the fire. It is not dry yet."
+                    } else {
+                        ""
+                    };
                     lines.push(format!(
-                        "{} loose {} {} in contact with the ground {}{}. {}{}{}{}{}",
+                        "{} loose {} {} in contact with the ground {}{}. {}{}{}{}{}{wait}",
                         loose.len(),
                         pile_noun(material, loose.len() as u32),
                         if loose.len() == 1 { "is" } else { "are" },
@@ -4349,6 +4393,29 @@ impl World {
                         if ids.len() == 1 { "is" } else { "are" },
                         self.cover_phrase(cell),
                         food_clause(material)
+                    ));
+                }
+            } else if material == Material::Branch {
+                let word = self.condition_word(moisture);
+                let drying = ids.iter().any(|id| {
+                    self.item(*id)
+                        .is_some_and(|item| item.firing_ready_at.is_some())
+                });
+                let wait = if drying {
+                    " It is drying by the fire. It is not dry yet."
+                } else {
+                    ""
+                };
+                if ids.len() == 1 {
+                    lines.push(format!(
+                        "A {word} branch is carried by {who}, {}.{wait}",
+                        self.cover_phrase(cell)
+                    ));
+                } else {
+                    lines.push(format!(
+                        "{} {word} branches are carried by {who}, {}.{wait}",
+                        count_word(ids.len() as u32),
+                        self.cover_phrase(cell)
                     ));
                 }
             } else if matches!(material, Material::Berry | Material::BitterBerry) {
@@ -4850,6 +4917,21 @@ impl World {
         } else {
             ""
         }
+    }
+
+    fn branch_moisture_here(&self, cell: CellId) -> u32 {
+        let pile = if self.pile_count(cell, Material::Branch) > 0 {
+            self.pile_moisture(cell, Material::Branch)
+        } else {
+            0
+        };
+        let loose = self
+            .ground_ids(cell, Material::Branch)
+            .iter()
+            .filter_map(|id| self.item(*id).map(|item| item.moisture))
+            .max()
+            .unwrap_or(0);
+        pile.max(loose)
     }
 
     fn condition_sentence(&self, moisture: u32, cell: CellId) -> String {
@@ -5699,6 +5781,32 @@ impl World {
         Some(crate::model::spoken_act(None, "harden", rest))
     }
 
+    /// A branch held or set to dry, and the moment it is dry, for the person who did it.
+    fn dry_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} holds ")) {
+            if rest.starts_with("the soaked branch by the fire.")
+                || rest.starts_with("the damp branch by the fire.")
+            {
+                return Some(crate::model::spoken_act(None, "hold", rest));
+            }
+        }
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} sets ")) {
+            if rest.starts_with("a soaked branch by the fire.")
+                || rest.starts_with("a damp branch by the fire.")
+            {
+                return Some(crate::model::spoken_act(None, "set", rest));
+            }
+        }
+        if event.text == format!("{name} dries the branch at the fire.") {
+            return Some("You dry the branch at the fire.".into());
+        }
+        None
+    }
+
     /// A successful haft, filled for the person who bound it.
     /// Anyone else keeps the stored sentence.
     fn haft_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -6004,6 +6112,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.haft_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.dry_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.harden_for_these_eyes(viewer, event) {

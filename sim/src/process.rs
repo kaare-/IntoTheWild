@@ -33,6 +33,7 @@ impl World {
                 Wake::Harden(id) => self.harden_clay(id),
                 Wake::HardenSpear(id) => self.harden_spear(id),
                 Wake::Smelt(id) => self.finish_smelt(id),
+                Wake::DryBranch(id) => self.dry_branch(id),
             }
         }
     }
@@ -176,6 +177,78 @@ impl World {
             Scope::Cell(item.cell),
             vec![],
             vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// A branch set to dry stays wet until the fire has had its wait.
+    /// Walking off the fire, or the fire going out, clears that wait.
+    pub(crate) fn tend_drying(&mut self) {
+        let ids: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|item| item.material == Material::Branch && item.firing_ready_at.is_some())
+            .map(|item| item.id)
+            .collect();
+        for id in ids {
+            let Some(item) = self.item(id).cloned() else {
+                continue;
+            };
+            let cell = if let Some(carrier) = item.carrier {
+                self.actor(carrier)
+                    .map(|person| person.cell)
+                    .unwrap_or(item.cell)
+            } else {
+                item.cell
+            };
+            if self.fire_at(cell).is_none() {
+                if let Some(branch) = self.items.get_mut(&id) {
+                    branch.firing_ready_at = None;
+                }
+            }
+        }
+    }
+
+    fn dry_branch(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Branch || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        let cell = if let Some(carrier) = item.carrier {
+            self.actor(carrier)
+                .map(|person| person.cell)
+                .unwrap_or(item.cell)
+        } else {
+            item.cell
+        };
+        if self.fire_at(cell).is_none() {
+            if let Some(branch) = self.items.get_mut(&id) {
+                branch.firing_ready_at = None;
+            }
+            return;
+        }
+        if let Some(branch) = self.items.get_mut(&id) {
+            branch.moisture = 0;
+            branch.firing_ready_at = None;
+        }
+        let (text, affected) = if let Some(carrier) = item.carrier {
+            let name = self.name_of(carrier);
+            (
+                format!("{name} dries the branch at the fire."),
+                vec![carrier],
+            )
+        } else {
+            ("The branch dries at the fire.".into(), vec![])
+        };
+        self.emit(
+            text,
+            Scope::Cell(cell),
+            affected,
+            vec![cell],
             vec![id],
             vec![],
             None,

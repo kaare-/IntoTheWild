@@ -7808,6 +7808,143 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
 }
 
 #[test]
+fn a_soaked_branch_dries_by_the_fire_and_then_hafts() {
+    let mut world = world_at(4);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let west = world.spawn_at("West", "w", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let already = world.step(&[cmd("early", near, Attempt::DryBranch)]);
+    assert_eq!(already.results[0].message, "The branch is already dry.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branch by the fire")));
+    world.step(&[cmd("out", near, Attempt::Move(Dir::South))]);
+    let no_fire = world.step(&[cmd("no-fire", near, Attempt::DryBranch)]);
+    assert_eq!(no_fire.results[0].message, "There is no fire burning here.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no fire")));
+    let mut waited = 0;
+    while !world.observe(near).unwrap().text.contains("soaked branch") && waited < 16 {
+        world.step(&[]);
+        waited += 1;
+    }
+    let soaked = world.observe(near).unwrap().text;
+    assert!(soaked.contains("a soaked branch"), "{soaked}");
+    let wet_haft = world.step(&[cmd("wet-haft", near, Attempt::Haft)]);
+    assert_eq!(
+        wet_haft.results[0].message,
+        "The branch is too damp to haft."
+    );
+    world.step(&[cmd("back", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let mut cooled = 0;
+    while world.observe(near).unwrap().text.contains("fire burns") && cooled < 20 {
+        world.step(&[]);
+        cooled += 1;
+    }
+    world.step(&[cmd("bark-2", near, Attempt::Gather(Material::Bark))]);
+    let relight = world.step(&[cmd("relight", near, Attempt::Light)]);
+    assert!(relight.results[0].success, "{}", relight.results[0].message);
+    let drying = world.step(&[cmd("dry", near, Attempt::DryBranch)]);
+    let yours = "You hold the soaked branch by the fire. It is not dry yet.";
+    let seen = "Near holds the soaked branch by the fire. It is not dry yet.";
+    assert_eq!(drying.results[0].message, yours);
+    let looked = world.observe(near).unwrap().text;
+    assert!(
+        looked.contains("The soaked branch in your arms is drying by the fire. It is not dry yet."),
+        "{looked}"
+    );
+    let examined = world.examine(near, ExamineTarget::Wood);
+    assert!(
+        examined.contains(
+            "A soaked branch is carried by you, under the rock overhang. It is drying by the fire. It is not dry yet."
+        ),
+        "{examined}"
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("branch by the fire")));
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    let done = "You dry the branch at the fire.";
+    let done_seen = "Near dries the branch at the fire.";
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == done),
+        "{:?}",
+        world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == done_seen));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("dries the branch")));
+    let after = world.examine(near, ExamineTarget::Wood);
+    assert!(
+        after.contains("A dry branch is carried by you, under the rock overhang."),
+        "{after}"
+    );
+    assert!(!after.contains("soaked"), "{after}");
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(arms.contains("a dry branch"), "{arms}");
+    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    assert_eq!(
+        haft.results[0].message,
+        "You haft the flint flake and a dry branch into a spear."
+    );
+}
+
+#[test]
 fn hide_strips_bind_the_flint_tip_when_the_spear_is_hafted() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 5, 2).unwrap();
@@ -7885,11 +8022,7 @@ fn hide_strips_bind_the_flint_tip_when_the_spear_is_hafted() {
     let hunt = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
     assert!(hunt.results[0].success, "{}", hunt.results[0].message);
     let butcher = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
-    assert!(
-        butcher.results[0].success,
-        "{}",
-        butcher.results[0].message
-    );
+    assert!(butcher.results[0].success, "{}", butcher.results[0].message);
     world.step(&[cmd("hide", near, Attempt::Gather(Material::Hide))]);
     let cut = world.step(&[cmd("cut", near, Attempt::CutHide)]);
     assert_eq!(

@@ -14,6 +14,7 @@ set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
 haft                         a carried flint flake and a dry branch into a spear; hide strips, if carried, bind the tip. Hold it at a fire
+dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
 grab                         take hold of the heavy log
 drag n|s|e|w                 pull; one person cannot move it
 release                      let go of the log
@@ -117,6 +118,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "haft" if rest.is_empty() || rest == "spear" || rest == "flake" || rest == "flint" => {
             Ok(Attempt::Haft)
+        }
+        "dry" if rest.is_empty() || rest == "branch" || rest == "wood" || rest == "the branch" => {
+            Ok(Attempt::DryBranch)
         }
         "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
         "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" => Ok(Attempt::Butcher),

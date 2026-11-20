@@ -8,6 +8,13 @@ use crate::model::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+enum WetBranch {
+    Ready,
+    Already,
+    Dry,
+    None,
+}
+
 impl World {
     pub(crate) fn resolve(&mut self, intents: &[Intent]) -> Vec<CommandResult> {
         let mut results = Vec::new();
@@ -67,6 +74,7 @@ impl World {
         let mut wears = Vec::new();
         let mut removes = Vec::new();
         let mut rests = Vec::new();
+        let mut dries = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -123,6 +131,7 @@ impl World {
                         Attempt::Wear => wears.push(intent),
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
+                        Attempt::DryBranch => dries.push(intent),
                     }
                 }
             }
@@ -221,6 +230,7 @@ impl World {
         self.apply_wears(wears, &mut results);
         self.apply_removes(removes, &mut results);
         self.apply_rests(rests, &mut results);
+        self.apply_dries(dries, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -304,6 +314,26 @@ impl World {
                     Err("You are not carrying a flint nodule.".into())
                 } else {
                     Ok(true)
+                }
+            }
+            Attempt::DryBranch => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else {
+                    match self.wet_branch_choice(actor.id) {
+                        WetBranch::Ready => Ok(true),
+                        WetBranch::Already => {
+                            Err("The branch is already drying by the fire.".into())
+                        }
+                        WetBranch::Dry => Err("The branch is already dry.".into()),
+                        WetBranch::None => Err("You have no branch to dry.".into()),
+                    }
                 }
             }
             Attempt::Haft => {
@@ -2031,6 +2061,130 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, "knap", rest),
+                results,
+            );
+        }
+    }
+
+    fn wet_branch_choice(&self, actor: crate::model::ActorId) -> WetBranch {
+        let Some(person) = self.actor(actor) else {
+            return WetBranch::None;
+        };
+        let mut ids = self.loose_ids(actor, Material::Branch);
+        ids.extend(self.ground_ids(person.cell, Material::Branch));
+        let wet = ids.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|item| !self.is_dry(item.moisture) && item.firing_ready_at.is_none())
+        });
+        if wet {
+            return WetBranch::Ready;
+        }
+        if self.pile_count(person.cell, Material::Branch) > 0
+            && !self.is_dry(self.pile_moisture(person.cell, Material::Branch))
+        {
+            return WetBranch::Ready;
+        }
+        let drying = ids.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|item| item.firing_ready_at.is_some())
+        });
+        if drying {
+            WetBranch::Already
+        } else if !ids.is_empty() || self.pile_count(person.cell, Material::Branch) > 0 {
+            WetBranch::Dry
+        } else {
+            WetBranch::None
+        }
+    }
+
+    /// A carried wet branch, else one lying here, else one taken from a wet pile.
+    fn take_wet_branch(&mut self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let cell = self.actor(actor)?.cell;
+        let mut ids = self.loose_ids(actor, Material::Branch);
+        ids.extend(self.ground_ids(cell, Material::Branch));
+        let ready = ids
+            .into_iter()
+            .filter(|id| {
+                self.item(*id).is_some_and(|item| {
+                    !self.is_dry(item.moisture) && item.firing_ready_at.is_none()
+                })
+            })
+            .max_by_key(|id| self.item(*id).map(|item| item.moisture).unwrap_or(0));
+        if ready.is_some() {
+            return ready;
+        }
+        if self.pile_count(cell, Material::Branch) == 0
+            || self.is_dry(self.pile_moisture(cell, Material::Branch))
+        {
+            return None;
+        }
+        let moisture = self.take_from_pile(cell, Material::Branch, 1)?;
+        Some(self.mint_item(Material::Branch, moisture, cell, None, Role::Loose))
+    }
+
+    fn apply_dries(&mut self, dries: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in dries {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if self.fire_at(cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(id) = self.take_wet_branch(intent.actor_id) else {
+                let message = match self.wet_branch_choice(intent.actor_id) {
+                    WetBranch::Already => "The branch is already drying by the fire.",
+                    WetBranch::Dry => "The branch is already dry.",
+                    _ => "You have no branch to dry.",
+                };
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
+                continue;
+            };
+            let word = self
+                .item(id)
+                .map(|item| self.condition_word(item.moisture))
+                .unwrap_or("damp");
+            let carried = self
+                .item(id)
+                .is_some_and(|item| item.carrier == Some(intent.actor_id));
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            if let Some(branch) = self.items.get_mut(&id) {
+                branch.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, Wake::DryBranch(id));
+            let (verb, rest) = if carried {
+                (
+                    "hold",
+                    format!("the {word} branch by the fire. It is not dry yet."),
+                )
+            } else {
+                (
+                    "set",
+                    format!("a {word} branch by the fire. It is not dry yet."),
+                )
+            };
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), verb, &rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, verb, &rest),
                 results,
             );
         }

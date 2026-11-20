@@ -299,6 +299,7 @@ pub enum Attempt {
     FirePot,
     BuildLeanTo,
     CutHide,
+    DryBranch,
 }
 
 impl Attempt {
@@ -342,6 +343,7 @@ impl Attempt {
                 | Attempt::FirePot
                 | Attempt::BuildLeanTo
                 | Attempt::CutHide
+                | Attempt::DryBranch
         )
     }
 }
@@ -539,6 +541,7 @@ pub enum Wake {
     Harden(ItemId),
     HardenSpear(ItemId),
     Smelt(ItemId),
+    DryBranch(ItemId),
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -929,6 +932,7 @@ impl World {
         let time = self.time;
         let results = self.resolve(intents);
         self.arm_spears();
+        self.tend_drying();
         self.fire_due();
         self.normalize();
         self.trim_events();
