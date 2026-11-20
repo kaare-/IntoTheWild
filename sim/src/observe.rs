@@ -460,7 +460,7 @@ impl World {
             parts.push(self.rock_overhead(actor_id));
         }
         if self.lean_tos.contains(&actor.cell) {
-            parts.push("A lean-to of branches stands here. It breaks the wind.".into());
+            parts.push(self.lean_to_here_line());
         }
         if cell.region == crate::model::Region::Brook {
             parts.push("The water here is raw.".into());
@@ -922,6 +922,15 @@ impl World {
         }
     }
 
+    /// Standing under the branches. In the rain, the line says the smear stays.
+    fn lean_to_here_line(&self) -> String {
+        if self.raining {
+            "A lean-to of branches stands here. It breaks the wind. Only a little rain reaches you under it, and it does not wash you.".into()
+        } else {
+            "A lean-to of branches stands here. It breaks the wind.".into()
+        }
+    }
+
     /// A lean-to in sight, other than the one under the looker's feet.
     fn seen_lean_to(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -938,8 +947,13 @@ impl World {
                 self.cell(cell).region.word()
             };
             let dir = self.relative(origin, cell);
+            let rain = if self.raining {
+                " The rain does not wash anyone under it."
+            } else {
+                ""
+            };
             lines.push(format!(
-                "A lean-to of branches stands on the {place} to the {dir}."
+                "A lean-to of branches stands on the {place} to the {dir}.{rain}"
             ));
         }
         if lines.is_empty() {

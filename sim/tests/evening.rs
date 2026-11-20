@@ -2237,6 +2237,92 @@ fn a_lean_to_of_three_branches_breaks_the_wind() {
 }
 
 #[test]
+fn rain_does_not_wash_a_smear_under_a_lean_to() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let far = world.spawn_at("Far", "f", 1, 2).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let built = world.step(&[cmd("build", near, Attempt::BuildLeanTo)]);
+    assert_eq!(
+        built.results[0].message,
+        "You build a lean-to of three branches."
+    );
+    world.step(&[cmd("mud-far", far, Attempt::Gather(Material::Mud))]);
+    world.step(&[cmd("smear-far", far, Attempt::Smear)]);
+    assert_eq!(world.observe(far).unwrap().self_info.mud, "mud-smeared");
+    for step in 0..2 {
+        world.step(&[cmd(
+            &format!("north-{step}"),
+            near,
+            Attempt::Move(Dir::North),
+        )]);
+    }
+    for step in 0..2 {
+        world.step(&[cmd(
+            &format!("west-{step}"),
+            near,
+            Attempt::Move(Dir::West),
+        )]);
+    }
+    assert_eq!(world.actor_cell(near), Some((3, 0)));
+    let gathered = world.step(&[cmd("ochre", near, Attempt::Gather(Material::Ochre))]);
+    assert_eq!(gathered.results[0].message, "You gather a lump of ochre.");
+    let smeared = world.step(&[cmd("smear-near", near, Attempt::SmearOchre)]);
+    assert_eq!(smeared.results[0].message, "You smear red ochre on your skin.");
+    assert_eq!(
+        world.observe(near).unwrap().self_info.ochre,
+        "red-ochre-smeared"
+    );
+    for step in 0..2 {
+        world.step(&[cmd(
+            &format!("east-{step}"),
+            near,
+            Attempt::Move(Dir::East),
+        )]);
+    }
+    for step in 0..2 {
+        world.step(&[cmd(
+            &format!("south-{step}"),
+            near,
+            Attempt::Move(Dir::South),
+        )]);
+    }
+    assert_eq!(world.actor_cell(near), Some((5, 2)));
+    let dry = world.observe(near).unwrap().text;
+    assert!(
+        dry.contains("A lean-to of branches stands here. It breaks the wind.")
+            && !dry.contains("does not wash you"),
+        "{dry}"
+    );
+    world.raining = true;
+    world.step(&[]);
+    let sheltered = world.observe(near).unwrap();
+    assert_eq!(sheltered.self_info.ochre, "red-ochre-smeared");
+    assert!(sheltered.events.iter().all(|event| {
+        !event.text.contains("washes the red ochre") && !event.text.contains("washes the mud")
+    }));
+    assert!(
+        sheltered
+            .text
+            .contains("Only a little rain reaches you under it, and it does not wash you."),
+        "{sheltered:?}"
+    );
+    let open = world.observe(far).unwrap();
+    assert_eq!(open.self_info.mud, "bare skin");
+    assert!(open
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the mud off you."));
+    let from_beside = world.observe(west).unwrap().text;
+    assert!(
+        from_beside.contains(
+            "A lean-to of branches stands on the valley floor to the north. The rain does not wash anyone under it."
+        ),
+        "{from_beside}"
+    );
+}
+
+#[test]
 fn still_water_sickens_more_often_than_the_brook() {
     let mut pool = World::valley(Tuning::evening(), 1);
     pool.tuning.still_chance = 1000;
