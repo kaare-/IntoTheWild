@@ -4603,18 +4603,29 @@ mod branch_return {
         let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
         let rock = world.actor(near).unwrap().cell;
         let open = super::cell_id(5, 2).unwrap();
-        let here = world.observe(near).unwrap().text;
-        assert!(here.contains("A pile of branches lies here."), "{here}");
-        while world.pile_count(rock, Material::Branch) > 0 {
-            world.take_from_pile(rock, Material::Branch, 1);
-        }
+        let outside = super::cell_id(5, 1).unwrap();
+        world.tracks.insert(open);
+        world.tracks.insert(outside);
         while world.pile_count(open, Material::Branch) > 0 {
             world.take_from_pile(open, Material::Branch, 1);
+        }
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A pile of branches lies here."), "{here}");
+        assert!(
+            here.contains("The branches here stay out of the weather."),
+            "{here}"
+        );
+        while world.pile_count(rock, Material::Branch) > 0 {
+            world.take_from_pile(rock, Material::Branch, 1);
         }
         world.step(&[]);
         let empty = world.observe(near).unwrap().text;
         assert!(
             empty.contains("There are no branches under the rock."),
+            "{empty}"
+        );
+        assert!(
+            !empty.contains("The branches here stay out of the weather."),
             "{empty}"
         );
         assert!(!empty.contains("A pile of branches lies here."), "{empty}");
@@ -4649,6 +4660,13 @@ mod branch_return {
         let again = world.observe(near).unwrap();
         assert!(
             again.text.contains("A pile of branches lies here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            again
+                .text
+                .contains("The branches here stay out of the weather."),
             "{}",
             again.text
         );

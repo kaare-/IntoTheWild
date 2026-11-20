@@ -2277,11 +2277,17 @@ impl World {
             line.push(' ');
             line.push_str(&company);
         }
-        line.push_str(if self.open_wood_off_the_rock_is_gone() {
-            " The branches here stay out of the weather."
+        if self.open_wood_off_the_rock_is_gone() {
+            let stocked = self.actor(actor_id).is_some_and(|actor| {
+                self.pile_count(actor.cell, Material::Branch) > 0
+                    || !self.ground_ids(actor.cell, Material::Branch).is_empty()
+            });
+            if stocked {
+                line.push_str(" The branches here stay out of the weather.");
+            }
         } else {
-            " Wood left here stays out of the weather."
-        });
+            line.push_str(" Wood left here stays out of the weather.");
+        }
         line
     }
 
