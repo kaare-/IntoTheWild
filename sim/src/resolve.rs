@@ -703,14 +703,22 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if !self
-                    .loose_ids(actor.id, Material::Spear)
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
-                {
-                    if self.loose_ids(actor.id, Material::Spear).is_empty() {
-                        Err("You are not carrying a spear.".into())
+                } else if self.spear_can_hunt(actor.id) {
+                    if self.deer.as_ref().is_none() {
+                        Err("There is no deer to hunt.".into())
                     } else if self
+                        .deer
+                        .as_ref()
+                        .is_some_and(|deer| crate::model::chebyshev(actor.cell, deer.cell) <= 1)
+                    {
+                        Ok(true)
+                    } else if self.bow_can_reach(actor.id) {
+                        Ok(true)
+                    } else {
+                        Err("The deer is not close enough to hunt.".into())
+                    }
+                } else if !self.loose_ids(actor.id, Material::Spear).is_empty() {
+                    if self
                         .loose_ids(actor.id, Material::Spear)
                         .iter()
                         .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
@@ -719,14 +727,16 @@ impl World {
                     } else {
                         Err("The spear's point is not hardened.".into())
                     }
+                } else if self.loose_ids(actor.id, Material::Bow).is_empty() {
+                    Err("You are not carrying a spear.".into())
+                } else if self.loose_ids(actor.id, Material::Flake).is_empty() {
+                    Err("You need a sharp flint flake.".into())
                 } else if self.deer.as_ref().is_none() {
                     Err("There is no deer to hunt.".into())
-                } else if self
-                    .deer
-                    .as_ref()
-                    .is_some_and(|deer| crate::model::chebyshev(actor.cell, deer.cell) > 1)
-                {
-                    Err("The deer is not close enough to hunt.".into())
+                } else if self.deer.as_ref().is_some_and(|deer| {
+                    crate::model::chebyshev(actor.cell, deer.cell) > self.tuning.sight
+                }) {
+                    Err("The deer is not close enough for the bow.".into())
                 } else {
                     Ok(true)
                 }
@@ -3023,17 +3033,42 @@ impl World {
         }
     }
 
+    fn spear_can_hunt(&self, actor: crate::model::ActorId) -> bool {
+        self.loose_ids(actor, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
+    }
+
+    /// A bow and a sharp flint flake, and the deer is still inside sight.
+    /// The flake is not spent. A hardened spear on the deer or the next cell
+    /// does not ask this.
+    fn bow_can_reach(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        if self.loose_ids(actor, Material::Bow).is_empty()
+            || self.loose_ids(actor, Material::Flake).is_empty()
+        {
+            return false;
+        }
+        self.deer.as_ref().is_some_and(|deer| {
+            crate::model::chebyshev(person.cell, deer.cell) <= self.tuning.sight
+        })
+    }
+
     fn apply_hunts(&mut self, mut hunts: Vec<Intent>, results: &mut Vec<CommandResult>) {
         hunts.sort_by_key(|intent| intent.actor_id);
         for intent in hunts {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            if !self
-                .loose_ids(actor.id, Material::Spear)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
-            {
+            if !self.spear_can_hunt(actor.id) {
+                if self.loose_ids(actor.id, Material::Spear).is_empty()
+                    && !self.loose_ids(actor.id, Material::Bow).is_empty()
+                {
+                    self.loose_the_bow(&intent, &actor, results);
+                    continue;
+                }
                 let message = if self.loose_ids(actor.id, Material::Spear).is_empty() {
                     "You are not carrying a spear."
                 } else if self
@@ -3060,13 +3095,17 @@ impl World {
             };
             let dist = crate::model::chebyshev(actor.cell, deer.cell);
             if dist > 1 {
-                self.finish(
-                    intent.command_id,
-                    actor.id,
-                    false,
-                    "The deer is not close enough to hunt.",
-                    results,
-                );
+                if self.bow_can_reach(actor.id) {
+                    self.loose_the_bow(&intent, &actor, results);
+                } else {
+                    self.finish(
+                        intent.command_id,
+                        actor.id,
+                        false,
+                        "The deer is not close enough to hunt.",
+                        results,
+                    );
+                }
                 continue;
             }
             if dist == 0 {
@@ -4435,6 +4474,68 @@ impl World {
                 results,
             );
         }
+    }
+
+    /// A carried bow and a sharp flint flake. The deer can stand as far as
+    /// sight. The flake stays in the arms. The spear's sentences are not used.
+    fn loose_the_bow(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if self.loose_ids(actor.id, Material::Flake).is_empty() {
+            self.finish(
+                intent.command_id.clone(),
+                actor.id,
+                false,
+                "You need a sharp flint flake.",
+                results,
+            );
+            return;
+        }
+        let Some(deer) = self.deer.clone() else {
+            self.finish(
+                intent.command_id.clone(),
+                actor.id,
+                false,
+                "There is no deer to hunt.",
+                results,
+            );
+            return;
+        };
+        if crate::model::chebyshev(actor.cell, deer.cell) > self.tuning.sight {
+            self.finish(
+                intent.command_id.clone(),
+                actor.id,
+                false,
+                "The deer is not close enough for the bow.",
+                results,
+            );
+            return;
+        }
+        let name = self.name_of(actor.id);
+        self.tracks.insert(deer.cell);
+        self.leave_fresh_tracks(deer.cell);
+        self.deer = None;
+        let id = self.mint_item(Material::Carcass, 0, deer.cell, None, Role::Loose);
+        let rest = "the deer down with the bow.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+            Scope::Cell(deer.cell),
+            vec![actor.id],
+            vec![deer.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            actor.id,
+            true,
+            crate::model::spoken_act(None, "bring", rest),
+            results,
+        );
     }
 
     /// A hardened spear on the deer's own cell. No draw: the point is already there.

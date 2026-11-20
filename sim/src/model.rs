@@ -4009,3 +4009,173 @@ mod bow {
         );
     }
 }
+
+#[cfg(test)]
+mod bow_hunt {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn place_deer(world: &mut World, x: i32, y: i32) {
+        let cell = super::cell_id(x, y).unwrap();
+        let deer = world.deer.as_mut().unwrap();
+        deer.cell = cell;
+    }
+
+    fn arm(world: &mut World, actor: u32, material: Material) -> super::ItemId {
+        let cell = world.actor(actor).unwrap().cell;
+        world.mint_item(material, 0, cell, Some(actor), Role::Loose)
+    }
+
+    #[test]
+    fn a_bow_and_a_flint_flake_bring_the_deer_down_at_sight() {
+        assert!(matches!(
+            crate::parse::parse_attempt("hunt").unwrap(),
+            Attempt::Hunt
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Hunt)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a spear." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a spear." }));
+        arm(&mut world, near, Material::Bow);
+        let flake_less = world.step(&[intent("flake", near, Attempt::Hunt)]);
+        assert_eq!(
+            flake_less.results[0].message,
+            "You need a sharp flint flake."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You need a sharp flint flake." }));
+        arm(&mut world, near, Material::Flake);
+        place_deer(&mut world, 0, 0);
+        let far = world.step(&[intent("far", near, Attempt::Hunt)]);
+        assert_eq!(
+            far.results[0].message,
+            "The deer is not close enough for the bow."
+        );
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The deer is not close enough for the bow." }));
+        place_deer(&mut world, 6, 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .allowed_actions
+            .iter()
+            .any(|action| action == "hunt"));
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the deer down with the bow."
+        );
+        assert!(world.deer_cell().is_none());
+        let deer_cell = super::cell_id(6, 1).unwrap();
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Carcass && item.cell == deer_cell && item.carrier.is_none()
+        }));
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        let near_view = world.observe(near).unwrap();
+        assert!(near_view
+            .events
+            .iter()
+            .all(|event| !event.text.contains("with the bow")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near brings the deer down with the bow." }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("with the bow") && !event.text.contains("brings the deer")
+        }));
+    }
+
+    #[test]
+    fn a_hardened_spear_still_hunts_when_a_bow_is_also_carried() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        place_deer(&mut world, 6, 1);
+        let spear = arm(&mut world, near, Material::Spear);
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        let short = world.step(&[intent("short", near, Attempt::Hunt)]);
+        assert_eq!(
+            short.results[0].message,
+            "The deer is not close enough to hunt."
+        );
+        arm(&mut world, near, Material::Bow);
+        arm(&mut world, near, Material::Flake);
+        place_deer(&mut world, 6, 1);
+        let past = world.step(&[intent("past", near, Attempt::Hunt)]);
+        assert_eq!(
+            past.results[0].message,
+            "You bring the deer down with the bow."
+        );
+        assert_eq!(world.loose_ids(near, Material::Spear).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("with the bow")));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        place_deer(&mut world, 4, 1);
+        let spear = arm(&mut world, near, Material::Spear);
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        arm(&mut world, near, Material::Bow);
+        arm(&mut world, near, Material::Flake);
+        let close = world.step(&[intent("close", near, Attempt::Hunt)]);
+        assert_eq!(
+            close.results[0].message,
+            "You bring the deer down with the flint spear."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You bring the deer down with the flint spear." }));
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(world.deer_cell().is_none());
+    }
+}

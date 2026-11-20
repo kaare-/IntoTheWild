@@ -6685,6 +6685,7 @@ impl World {
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
                     && self.craft_for_these_eyes(viewer, event).is_none()
+                    && self.bow_hunt_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -7198,6 +7199,25 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "craft", rest))
+    }
+
+    /// A deer brought down with a carried bow. The hunter already has this
+    /// as the reply, so the event list does not repeat it. A witness who
+    /// can see the deer's cell keeps the stored line.
+    fn bow_hunt_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} brings "))?;
+        if rest != "the deer down with the bow." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "bring", rest))
     }
 
     /// A bark basket woven from a sheet of bark, filled for the weaver.
@@ -7899,6 +7919,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.craft_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.bow_hunt_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.put_fish_for_these_eyes(viewer, event) {
@@ -8609,15 +8632,22 @@ impl World {
         if !self.loose_ids(actor_id, Material::Hide).is_empty() {
             actions.push("drop hide".into());
         }
-        if self
+        let deer_dist = self
+            .deer
+            .as_ref()
+            .map(|deer| chebyshev(actor.cell, deer.cell));
+        let hardened_spear = self
             .loose_ids(actor_id, Material::Spear)
             .iter()
-            .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
-            && self
-                .deer
-                .as_ref()
-                .is_some_and(|deer| chebyshev(actor.cell, deer.cell) <= 1)
-        {
+            .any(|id| self.item(*id).is_some_and(|spear| spear.hardened));
+        let any_spear = !self.loose_ids(actor_id, Material::Spear).is_empty();
+        let bow_ready = !self.loose_ids(actor_id, Material::Bow).is_empty()
+            && !self.loose_ids(actor_id, Material::Flake).is_empty()
+            && deer_dist.is_some_and(|dist| dist <= self.tuning.sight);
+        let close_spear = hardened_spear && deer_dist.is_some_and(|dist| dist <= 1);
+        let bow_past_the_spear =
+            hardened_spear && bow_ready && deer_dist.is_some_and(|dist| dist > 1);
+        if close_spear || (!any_spear && bow_ready) || bow_past_the_spear {
             actions.push("hunt".into());
         }
         if !self.loose_ids(actor_id, Material::Stone).is_empty()
