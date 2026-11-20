@@ -3341,3 +3341,50 @@ mod eggs {
                 && event.text != "The hunger eases."));
     }
 }
+
+#[cfg(test)]
+mod brook_clothes {
+    use super::{Attempt, Dir, ExamineTarget, Intent, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_dry_sky_wade_names_the_brook() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let wade = world.step(&[intent("west", near, Attempt::Move(Dir::West))]);
+        assert_eq!(wade.results[0].message, "You wade west.");
+        assert!(!world.raining);
+        let look = world.observe(near).unwrap().text;
+        assert!(look.contains("The brook wets your clothes."), "{look}");
+        assert!(!look.contains("The rain wets your clothes."), "{look}");
+        let seen_body = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(
+            seen_body.contains("Their clothes are wet from the brook."),
+            "{seen_body}"
+        );
+        assert!(!seen_body.contains("rain"), "{seen_body}");
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Person("Near".into())),
+            "You cannot see Near from here."
+        );
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(quiet_look.contains("Your clothes are dry."), "{quiet_look}");
+        assert!(!quiet_look.contains("brook"), "{quiet_look}");
+        world.raining = true;
+        let raining = world.observe(near).unwrap().text;
+        assert!(raining.contains("The rain wets your clothes."), "{raining}");
+        assert!(
+            !raining.contains("The brook wets your clothes."),
+            "{raining}"
+        );
+    }
+}

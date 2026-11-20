@@ -2057,6 +2057,15 @@ impl World {
         }
     }
 
+    fn clothes_for_them(&self, moisture: u32) -> String {
+        let word = self.clothes_word(moisture);
+        if word == "wet" && !self.raining {
+            "wet from the brook".into()
+        } else {
+            word.into()
+        }
+    }
+
     fn clothes_line(&self, actor_id: ActorId, moisture: u32) -> String {
         let word = self.clothes_word(moisture);
         let under_lean_to = self.actor(actor_id).is_some_and(|actor| {
@@ -2066,8 +2075,10 @@ impl World {
         if under_lean_to && self.raining && word == "damp" {
             return "A little rain dampens your clothes.".into();
         }
-        if word == "wet" {
+        if word == "wet" && self.raining {
             "The rain wets your clothes.".into()
+        } else if word == "wet" {
+            "The brook wets your clothes.".into()
         } else if word == "dry"
             && self.raining
             && self
@@ -2403,7 +2414,7 @@ impl World {
             actor.name,
             self.cell(actor.cell).region.word(),
             self.cover_phrase(actor.cell),
-            self.clothes_word(actor.wetness),
+            self.clothes_for_them(actor.wetness),
             self.thirst_sentence(actor.thirst),
             self.hunger_word(actor.hunger),
             self.body_word(actor.stings_until, actor.illness),
