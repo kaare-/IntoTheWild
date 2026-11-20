@@ -9183,3 +9183,69 @@ fn rest_under_the_rock_eases_tiredness_and_the_open_wind_refuses() {
         "You rest under the rock. You are rested."
     );
 }
+
+#[test]
+fn leaving_the_rock_names_the_wind_and_the_way_back_keeps_the_shelter() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let out = world.step(&[cmd("out", near, Attempt::Move(Dir::South))]);
+    assert_eq!(out.results[0].message, "You walk south, into the wind.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks south, into the wind."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("walks")));
+    let back = world.step(&[cmd("in", near, Attempt::Move(Dir::North))]);
+    assert_eq!(
+        back.results[0].message,
+        "You walk north, under the rock overhang, out of the wind."
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks north, under the rock overhang, out of the wind."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("walks")));
+    while world.sim_time() < 16 {
+        world.step(&[]);
+    }
+    let wet = world.step(&[cmd("out-wet", near, Attempt::Move(Dir::South))]);
+    assert_eq!(
+        wet.results[0].message,
+        "You walk south, into the wind and the rain."
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks south, into the wind and the rain."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("into the wind")));
+    let home = world.step(&[cmd("in-wet", near, Attempt::Move(Dir::North))]);
+    assert_eq!(
+        home.results[0].message,
+        "You walk north, under the rock overhang, out of the wind and the rain."
+    );
+    let plain = world.step(&[cmd("plain", far, Attempt::Move(Dir::East))]);
+    assert_eq!(plain.results[0].message, "You walk east.");
+}

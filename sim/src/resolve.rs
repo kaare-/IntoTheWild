@@ -1056,11 +1056,19 @@ impl World {
                 }
             }
             let entered_overhang = self.cell(dest).rock && !self.cell(origin).rock;
+            let left_overhang = self.cell(origin).rock
+                && !self.cell(dest).rock
+                && self.exposure_millis(dest) >= 1000;
             let rain_too = self.raining || self.time >= self.tuning.rain_starts_at;
             let shelter = if rain_too {
                 "out of the wind and the rain"
             } else {
                 "out of the wind"
+            };
+            let exposure = if rain_too {
+                "into the wind and the rain"
+            } else {
+                "into the wind"
             };
             let text = if brook {
                 format!("{name} wades {word}.", word = dir.word())
@@ -1069,6 +1077,8 @@ impl World {
                     "{name} walks {word}, under the rock overhang, {shelter}.",
                     word = dir.word()
                 )
+            } else if left_overhang {
+                format!("{name} walks {word}, {exposure}.", word = dir.word())
             } else {
                 format!("{name} walks {word}.", word = dir.word())
             };
@@ -1088,6 +1098,8 @@ impl World {
                     "You walk {}, under the rock overhang, {shelter}.",
                     dir.word()
                 )
+            } else if left_overhang {
+                format!("You walk {}, {exposure}.", dir.word())
             } else {
                 format!("You walk {}.", dir.word())
             };
