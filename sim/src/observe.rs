@@ -205,6 +205,7 @@ impl World {
             ExamineTarget::Charcoal => self.examine_charcoal(actor_id),
             ExamineTarget::Reeds => self.examine_reeds(actor_id),
             ExamineTarget::Snare => self.examine_snare(actor_id),
+            ExamineTarget::Bone => self.examine_bone(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -303,6 +304,9 @@ impl World {
             }
             if let Some(meat) = self.seen_meat(actor_id) {
                 lines.push(meat);
+            }
+            if let Some(bone) = self.seen_bone(actor_id) {
+                lines.push(bone);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -840,8 +844,22 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Copper).is_empty() {
             parts.push("A copper bead lies here. It is metal from the fire.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Awl).is_empty() {
+        if self
+            .ground_ids(actor.cell, Material::Awl)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|awl| !awl.bone))
+        {
             parts.push("A copper awl lies here.".into());
+        }
+        if self
+            .ground_ids(actor.cell, Material::Awl)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|awl| awl.bone))
+        {
+            parts.push("A bone awl lies here. It can pierce hide.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Bone).is_empty() {
+            parts.push("A bone lies here.".into());
         }
         if self.ochre_marks.contains(&actor.cell) {
             let surface = if self.cell(actor.cell).rock {
@@ -1423,6 +1441,74 @@ impl World {
         }
     }
 
+    /// A bone, or a bone awl, on a cell this person can see but is not standing on.
+    fn seen_bone(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("under the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            if !self.ground_ids(cell, Material::Bone).is_empty() {
+                lines.push(format!("A bone lies {place}."));
+            }
+            if self
+                .ground_ids(cell, Material::Awl)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|awl| awl.bone))
+            {
+                lines.push(format!("A bone awl lies {place}. It can pierce hide."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_bone(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.ground_ids(cell, Material::Bone).is_empty() {
+                continue;
+            }
+            lines.push(format!(
+                "A bone lies {}. It can be carved into an awl.",
+                self.place_phrase(origin, cell)
+            ));
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Bone).is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            lines.push(format!(
+                "A bone is carried by {who}, {}. It can be carved into an awl.",
+                self.cover_phrase(actor.cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no bone from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// A hide snare in sight, other than the one under the looker's feet.
     fn seen_snare(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -1759,7 +1845,18 @@ impl World {
         } else if item.material == "copper" && item.count == 1 {
             "a copper bead, metal from the fire".into()
         } else if item.material == "awl" && item.count == 1 {
-            "a copper awl".into()
+            let bone = self
+                .loose_ids(actor_id, Material::Awl)
+                .first()
+                .and_then(|id| self.item(*id))
+                .is_some_and(|awl| awl.bone);
+            if bone {
+                "a bone awl".into()
+            } else {
+                "a copper awl".into()
+            }
+        } else if item.material == "bone" && item.count == 1 {
+            "a bone".into()
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" && item.count == 1 {
@@ -2367,8 +2464,22 @@ impl World {
         if !self.ground_ids(dest, Material::Copper).is_empty() {
             bits.push("a copper bead, metal from the fire".into());
         }
-        if !self.ground_ids(dest, Material::Awl).is_empty() {
+        if self
+            .ground_ids(dest, Material::Awl)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|awl| !awl.bone))
+        {
             bits.push("a copper awl".into());
+        }
+        if self
+            .ground_ids(dest, Material::Awl)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|awl| awl.bone))
+        {
+            bits.push("a bone awl".into());
+        }
+        if !self.ground_ids(dest, Material::Bone).is_empty() {
+            bits.push("a bone".into());
         }
         if self.ochre_marks.contains(&dest) {
             bits.push("a red ochre mark".into());
@@ -4678,24 +4789,35 @@ impl World {
             } else {
                 format!("on the ground to the {}", self.relative(origin, cell))
             };
-            lines.push(format!("A copper awl lies {place}. It can pierce hide."));
+            for id in self.ground_ids(cell, Material::Awl) {
+                let kind = if self.item(id).is_some_and(|awl| awl.bone) {
+                    "bone"
+                } else {
+                    "copper"
+                };
+                lines.push(format!("A {kind} awl lies {place}. It can pierce hide."));
+            }
         }
         for actor in self.actors.values() {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::Awl).is_empty() {
-                continue;
+            for id in self.loose_ids(actor.id, Material::Awl) {
+                let kind = if self.item(id).is_some_and(|awl| awl.bone) {
+                    "bone"
+                } else {
+                    "copper"
+                };
+                let who = if actor.id == viewer {
+                    "you"
+                } else {
+                    actor.name.as_str()
+                };
+                lines.push(format!(
+                    "A {kind} awl is carried by {who}, {}. It can pierce hide.",
+                    self.cover_phrase(actor.cell)
+                ));
             }
-            let who = if actor.id == viewer {
-                "you"
-            } else {
-                actor.name.as_str()
-            };
-            lines.push(format!(
-                "A copper awl is carried by {who}, {}. It can pierce hide.",
-                self.cover_phrase(actor.cell)
-            ));
         }
         if lines.is_empty() {
             "You see no copper awl from here.".into()
@@ -5038,7 +5160,8 @@ impl World {
                 Material::Iron => "bloom of iron",
                 Material::Knife => "iron knife",
                 Material::Copper => "copper bead",
-                Material::Awl => "copper awl",
+                Material::Awl => "awl",
+                Material::Bone => "bone",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -6008,6 +6131,8 @@ impl World {
                     && self.mark_for_these_eyes(viewer, event).is_none()
                     && self.cut_for_these_eyes(viewer, event).is_none()
                     && self.snare_for_these_eyes(viewer, event).is_none()
+                    && self.carve_for_these_eyes(viewer, event).is_none()
+                    && self.bone_pierce_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -6253,8 +6378,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} butchers "))?;
-        if rest != "the carcass into three portions of raw meat and a hide."
-            && rest != "the carcass with the iron knife into three portions of raw meat and a hide."
+        if rest != "the carcass into three portions of raw meat, a hide, and a bone."
+            && rest
+                != "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
         {
             return None;
         }
@@ -6727,10 +6853,37 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} pierces "))?;
-        if rest != "the deer hide with the copper awl. It is ready to sew." {
+        if rest != "the deer hide with the copper awl. It is ready to sew."
+            && rest != "the deer hide with the bone awl. It is ready to sew."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "pierce", rest))
+    }
+
+    /// A bone carved into an awl. The carver already has this as the reply.
+    fn carve_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} carves "))?;
+        if rest != "a bone into a bone awl with the iron knife."
+            && rest != "a bone into a bone awl with the flint flake."
+        {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "carve", rest))
+    }
+
+    /// A hide pierced with a bone awl. The copper awl still reaches the piercer.
+    fn bone_pierce_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        let line = self.pierce_for_these_eyes(viewer, event)?;
+        line.contains("bone awl").then_some(line)
     }
 
     /// A pierced hide sewn into a cloak, filled for the person who sewed it.
@@ -7557,6 +7710,14 @@ impl World {
         if !self.loose_ids(actor_id, Material::Knife).is_empty() && self.whole_hide_near(actor_id) {
             actions.push("cut hide".into());
         }
+        if self.has_bone(actor_id) && self.has_carve_tool(actor_id) {
+            actions.push("carve awl".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Bone).is_empty()
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather bone".into());
+        }
         if !self.snares.contains_key(&actor.cell) && self.has_cord(actor_id) {
             actions.push("set snare".into());
         }
@@ -7941,6 +8102,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Copper, false) => "copper beads",
         (Material::Awl, true) => "copper awl",
         (Material::Awl, false) => "copper awls",
+        (Material::Bone, true) => "bone",
+        (Material::Bone, false) => "bones",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

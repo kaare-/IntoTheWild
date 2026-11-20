@@ -101,6 +101,7 @@ pub enum Material {
     Basket,
     Charcoal,
     Reed,
+    Bone,
 }
 
 impl Material {
@@ -137,6 +138,7 @@ impl Material {
             Material::Basket => "basket",
             Material::Charcoal => "charcoal",
             Material::Reed => "reed",
+            Material::Bone => "bone",
         }
     }
 
@@ -173,6 +175,7 @@ impl Material {
             Material::Basket => "bark basket",
             Material::Charcoal => "lump of charcoal",
             Material::Reed => "bundle of reeds",
+            Material::Bone => "bone",
         }
     }
 
@@ -294,6 +297,7 @@ pub enum ExamineTarget {
     Charcoal,
     Reeds,
     Snare,
+    Bone,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -347,6 +351,7 @@ pub enum Attempt {
     PutFish,
     Thatch,
     SetSnare,
+    CarveAwl,
 }
 
 impl Attempt {
@@ -397,6 +402,7 @@ impl Attempt {
                 | Attempt::PutFish
                 | Attempt::Thatch
                 | Attempt::SetSnare
+                | Attempt::CarveAwl
         )
     }
 }
@@ -529,6 +535,9 @@ pub struct Item {
     /// A handful of berries sitting in a bark basket. It does not take an arm slot.
     #[serde(default)]
     pub in_basket: bool,
+    /// An awl carved from a bone. A copper awl leaves this false.
+    #[serde(default)]
+    pub bone: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1139,6 +1148,7 @@ impl World {
                 small: false,
                 shaped: false,
                 in_basket: false,
+                bone: false,
             },
         );
         id

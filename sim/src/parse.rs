@@ -31,6 +31,8 @@ spear fish                   the same cast
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
+carve awl                    a bone, with a flint flake or an iron knife, into a bone awl. The tool is not used up. The awl can pierce hide.
+make awl                     the same bone awl
 set snare                    hide strips, from the arms or the ground, into a snare in this cell. After a short wait it catches a hare. The strips are spent.
 set trap                     the same snare
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
@@ -140,6 +142,11 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "weave" | "make" if rest == "basket" || rest == "a basket" || rest == "bark basket" => {
             Ok(Attempt::WeaveBasket)
+        }
+        "carve" | "make"
+            if rest == "awl" || rest == "an awl" || rest == "bone awl" || rest == "a bone awl" =>
+        {
+            Ok(Attempt::CarveAwl)
         }
         "put"
             if matches!(
@@ -289,7 +296,8 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "knife" | "iron knife" => Ok(Material::Knife),
         "copper ore" | "ore" => Ok(Material::CopperOre),
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
-        "awl" | "copper awl" => Ok(Material::Awl),
+        "awl" | "copper awl" | "bone awl" => Ok(Material::Awl),
+        "bone" => Ok(Material::Bone),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
@@ -366,6 +374,8 @@ fn parse_target(text: &str) -> ExamineTarget {
         "basket" | "bark basket" => ExamineTarget::Basket,
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
+        "bone" => ExamineTarget::Bone,
+        "bone awl" => ExamineTarget::Awl,
         "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
         "slope" | "the slope" => ExamineTarget::Slope,
         other => ExamineTarget::Person(other.to_string()),

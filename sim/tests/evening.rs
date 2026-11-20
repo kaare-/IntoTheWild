@@ -8926,8 +8926,9 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert_eq!(world.material_tally(Material::Carcass), 1);
 
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
-    let sentence = "You butcher the carcass into three portions of raw meat and a hide.";
-    let witnessed = "Near butchers the carcass into three portions of raw meat and a hide.";
+    let sentence = "You butcher the carcass into three portions of raw meat, a hide, and a bone.";
+    let witnessed =
+        "Near butchers the carcass into three portions of raw meat, a hide, and a bone.";
     assert_eq!(cut.results[0].message, sentence);
     let yours: Vec<_> = world
         .observe(near)
@@ -8964,6 +8965,8 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         "{ground}"
     );
     assert!(ground.contains("A deer hide lies here."), "{ground}");
+    assert!(ground.contains("A bone lies here."), "{ground}");
+    assert_eq!(world.material_tally(Material::Bone), 1);
     assert_eq!(world.material_tally(Material::Hide), 1);
     assert!(!ground.contains("A deer carcass lies here."), "{ground}");
     assert!(
@@ -11553,10 +11556,18 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
         bare.results[0].message,
         "You need a flint spear or an iron knife."
     );
+    let no_bone = world.step(&[cmd("early", near, Attempt::CarveAwl)]);
+    assert_eq!(no_bone.results[0].message, "You have no bone to carve.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no bone")));
     let yours =
-        "You butcher the carcass with the iron knife into three portions of raw meat and a hide.";
+        "You butcher the carcass with the iron knife into three portions of raw meat, a hide, and a bone.";
     let seen =
-        "Near butchers the carcass with the iron knife into three portions of raw meat and a hide.";
+        "Near butchers the carcass with the iron knife into three portions of raw meat, a hide, and a bone.";
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
     assert_eq!(cut.results[0].message, yours);
     assert!(world
@@ -11580,10 +11591,103 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     assert_eq!(world.material_tally(Material::Carcass), 0);
     assert_eq!(world.material_tally(Material::Meat), 3);
     assert_eq!(world.material_tally(Material::Hide), 1);
+    assert_eq!(world.material_tally(Material::Bone), 1);
     assert_eq!(world.material_tally(Material::Knife), 1);
     assert_eq!(world.material_tally(Material::Spear), 1);
     assert_eq!(world.material_items(Material::Knife)[0].1, Some(near));
     assert_eq!(world.material_items(Material::Spear)[0].1, Some(near));
+    assert!(
+        world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A bone lies here."),
+        "{}",
+        world.observe(near).unwrap().text
+    );
+    assert!(matches!(
+        parse_attempt("carve awl").unwrap(),
+        Attempt::CarveAwl
+    ));
+    assert!(matches!(
+        parse_attempt("make awl").unwrap(),
+        Attempt::CarveAwl
+    ));
+    world.step(&[cmd("drop-knife", near, Attempt::Drop(Material::Knife))]);
+    let no_tool = world.step(&[cmd("tool", near, Attempt::CarveAwl)]);
+    assert_eq!(
+        no_tool.results[0].message,
+        "You need a flint flake or an iron knife to carve the bone."
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("to carve the bone")));
+    world.step(&[cmd("knife", near, Attempt::Gather(Material::Knife))]);
+    let carved_yours = "You carve a bone into a bone awl with the iron knife.";
+    let carved_seen = "Near carves a bone into a bone awl with the iron knife.";
+    let carved = world.step(&[cmd("carve", near, parse_attempt("make awl").unwrap())]);
+    assert_eq!(carved.results[0].message, carved_yours);
+    assert_eq!(world.material_tally(Material::Bone), 0);
+    assert_eq!(world.material_tally(Material::Awl), 1);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != carved_yours && !event.text.contains("Near carves")));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == carved_seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("carve")));
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(arms.contains("a bone awl"), "{arms}");
+    let awl = world.examine(near, ExamineTarget::Awl);
+    assert!(
+        awl.contains("A bone awl is carried by you") && awl.contains("It can pierce hide."),
+        "{awl}"
+    );
+    world.step(&[cmd("drop-spear", near, Attempt::Drop(Material::Spear))]);
+    let lifted = world.step(&[cmd("hide", near, Attempt::Gather(Material::Hide))]);
+    assert!(lifted.results[0].success, "{}", lifted.results[0].message);
+    let pierce_yours = "You pierce the deer hide with the bone awl. It is ready to sew.";
+    let pierce_seen = "Near pierces the deer hide with the bone awl. It is ready to sew.";
+    let pierced = world.step(&[cmd("pierce", near, Attempt::Pierce)]);
+    assert_eq!(pierced.results[0].message, pierce_yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != pierce_yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == pierce_seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("bone awl")));
+    assert!(world
+        .examine(near, ExamineTarget::Hide)
+        .contains("ready to sew"));
+    world.step(&[cmd("drop-hide", near, Attempt::Drop(Material::Hide))]);
+    world.step(&[cmd("drop-awl", near, Attempt::Drop(Material::Awl))]);
+    world.step(&[cmd("spear", near, Attempt::Gather(Material::Spear))]);
     let examined = world.examine(near, ExamineTarget::Knife);
     assert!(examined.contains("It can cut."), "{examined}");
     if !world.observe(near).unwrap().text.contains("fire burns") {

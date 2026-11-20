@@ -81,6 +81,7 @@ impl World {
         let mut baskets = Vec::new();
         let mut puts = Vec::new();
         let mut snares = Vec::new();
+        let mut carves = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -144,6 +145,7 @@ impl World {
                         Attempt::WeaveBasket => baskets.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
+                        Attempt::CarveAwl => carves.push(intent),
                     }
                 }
             }
@@ -249,6 +251,7 @@ impl World {
         self.apply_baskets(baskets, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
+        self.apply_carves(carves, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -470,6 +473,21 @@ impl World {
                     Err("A lean-to already stands here.".into())
                 } else if self.dry_branches_for_lean_to(actor.id) < 3 {
                     Err("You need three dry branches to build a lean-to.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarveAwl => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.has_bone(actor.id) {
+                    Err("You have no bone to carve.".into())
+                } else if !self.has_carve_tool(actor.id) {
+                    Err("You need a flint flake or an iron knife to carve the bone.".into())
                 } else {
                     Ok(true)
                 }
@@ -857,6 +875,7 @@ impl World {
                         Material::Knife => Err("An iron knife is not food.".into()),
                         Material::Copper => Err("Copper is not food.".into()),
                         Material::Awl => Err("A copper awl is not food.".into()),
+                        Material::Bone => Err("A bone is not food.".into()),
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
@@ -1165,6 +1184,7 @@ impl World {
                     | Material::Fish
                     | Material::Brand
                     | Material::Charcoal
+                    | Material::Bone
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1220,10 +1240,15 @@ impl World {
                     };
                     let shaped = material == Material::Clay
                         && self.item(item).is_some_and(|clay| clay.shaped);
+                    let awl_kind =
+                        material == Material::Awl && self.item(item).is_some_and(|awl| awl.bone);
                     let rest = if shaped {
                         "an unfired clay pot.".to_string()
                     } else if material == Material::Cord {
                         "hide strips.".to_string()
+                    } else if material == Material::Awl {
+                        let kind = if awl_kind { "bone awl" } else { "copper awl" };
+                        format!("a {kind}{from}.")
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -1306,7 +1331,13 @@ impl World {
                     }
                 }
             }
-            let noun = material.gather_noun();
+            let bone_awl =
+                material == Material::Awl && self.item(item_id).is_some_and(|awl| awl.bone);
+            let noun = if bone_awl {
+                "bone awl"
+            } else {
+                material.gather_noun()
+            };
             let dropped = if material == Material::Cord {
                 format!("{name} drops hide strips. They are in contact with the ground.")
             } else {
@@ -2988,11 +3019,12 @@ impl World {
                 ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
             }
             ids.push(self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose));
+            ids.push(self.mint_item(Material::Bone, 0, actor.cell, None, Role::Loose));
             let name = self.name_of(actor.id);
             let rest = if with_knife {
-                "the carcass with the iron knife into three portions of raw meat and a hide."
+                "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
             } else {
-                "the carcass into three portions of raw meat and a hide."
+                "the carcass into three portions of raw meat, a hide, and a bone."
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
@@ -3237,6 +3269,94 @@ impl World {
                 results,
             );
         }
+    }
+
+    fn apply_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self.has_bone(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no bone to carve.",
+                    results,
+                );
+                continue;
+            }
+            let with_knife = !self.loose_ids(actor.id, Material::Knife).is_empty();
+            if !with_knife && self.loose_ids(actor.id, Material::Flake).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve the bone.",
+                    results,
+                );
+                continue;
+            }
+            if !self.take_one_bone(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no bone to carve.",
+                    results,
+                );
+                continue;
+            }
+            let id = self.mint_item(Material::Awl, 0, actor.cell, Some(actor.id), Role::Loose);
+            if let Some(awl) = self.items.get_mut(&id) {
+                awl.bone = true;
+            }
+            let name = self.name_of(actor.id);
+            let rest = if with_knife {
+                "a bone into a bone awl with the iron knife."
+            } else {
+                "a bone into a bone awl with the flint flake."
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
+    pub(crate) fn has_bone(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Bone).is_empty()
+            || !self.ground_ids(cell, Material::Bone).is_empty()
+    }
+
+    pub(crate) fn has_carve_tool(&self, actor: crate::model::ActorId) -> bool {
+        !self.loose_ids(actor, Material::Knife).is_empty()
+            || !self.loose_ids(actor, Material::Flake).is_empty()
+    }
+
+    fn take_one_bone(&mut self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
+        if let Some(id) = self.loose_ids(actor, Material::Bone).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Bone).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        false
     }
 
     fn apply_snares(&mut self, snares: Vec<Intent>, results: &mut Vec<CommandResult>) {
@@ -4329,12 +4449,17 @@ impl World {
     }
 
     fn apply_pierces(&mut self, pierces: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "the deer hide with the copper awl. It is ready to sew.";
         for intent in pierces {
             let awl = self
                 .loose_ids(intent.actor_id, Material::Awl)
                 .first()
                 .copied();
+            let bone_awl = awl.is_some_and(|id| self.item(id).is_some_and(|awl| awl.bone));
+            let rest = if bone_awl {
+                "the deer hide with the bone awl. It is ready to sew."
+            } else {
+                "the deer hide with the copper awl. It is ready to sew."
+            };
             let hide = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
