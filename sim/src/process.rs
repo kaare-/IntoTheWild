@@ -681,8 +681,9 @@ impl World {
             .collect();
         for cell in open {
             self.ochre_marks.remove(&cell);
+            let region = self.cell(cell).region.word();
             self.emit(
-                "The rain washes the red ochre mark off the ground.",
+                format!("The rain washes the red ochre mark off the ground on the {region}."),
                 Scope::Cell(cell),
                 vec![],
                 vec![cell],

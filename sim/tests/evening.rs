@@ -8274,7 +8274,7 @@ fn rain_washes_an_open_ochre_mark_and_leaves_one_under_the_rock() {
     world.step(&[]);
     assert_eq!(world.sim_time(), 17);
     assert!(world.is_raining());
-    let washed = "The rain washes the red ochre mark off the ground.";
+    let washed = "The rain washes the red ochre mark off the ground on the slope.";
     assert!(world
         .observe(near)
         .unwrap()
