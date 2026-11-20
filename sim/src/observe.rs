@@ -910,6 +910,8 @@ impl World {
             - iron_smelting as u32;
         if iron_lying > 0 {
             parts.push("A lump of iron ore lies here.".into());
+        } else if self.iron_bare(actor.cell) {
+            parts.push("The slope has no iron ore.".into());
         }
         if iron_smelting == 1 {
             parts.push("A lump of iron ore is smelting in the fire.".into());
@@ -1589,6 +1591,11 @@ impl World {
                     "A lump of iron ore lies on the {region} to the {}.",
                     self.relative(origin, cell)
                 ));
+            } else if self.iron_bare(cell) {
+                lines.push(format!(
+                    "The slope to the {} has no iron ore.",
+                    self.relative(origin, cell)
+                ));
             }
         }
         if lines.is_empty() {
@@ -2094,6 +2101,11 @@ impl World {
         }
     }
 
+    /// The slope's iron ore was gathered and a lump has not lain there again.
+    fn iron_bare(&self, cell: crate::model::CellId) -> bool {
+        self.iron_returns_at.contains_key(&cell) && !self.iron_bed_holding(cell)
+    }
+
     /// The brook's copper ore was gathered and a lump has not lain there again.
     fn copper_bare(&self, cell: crate::model::CellId) -> bool {
         self.copper_returns_at.contains_key(&cell) && !self.copper_bed_holding(cell)
@@ -2593,6 +2605,8 @@ impl World {
             }
         } else if item.material == "iron ore" && item.count == 1 {
             "a lump of iron ore".into()
+        } else if item.material == "iron ore" {
+            format!("{} lumps of iron ore", count_word(item.count))
         } else if item.material == "iron" && item.count == 1 {
             "a bloom of iron, metal from a hotter fire".into()
         } else if item.material == "iron knife" && item.count == 1 {
@@ -5568,6 +5582,15 @@ impl World {
                     format!("on the {region} to the {}", self.relative(origin, cell))
                 };
                 lines.push(format!("A lump of iron ore lies {place}."));
+            } else if self.iron_bare(cell) {
+                if origin == cell {
+                    lines.push("The slope here has no iron ore.".into());
+                } else {
+                    lines.push(format!(
+                        "The slope to the {} has no iron ore.",
+                        self.relative(origin, cell)
+                    ));
+                }
             }
             if smelting > 0 {
                 if origin == cell {
@@ -5584,7 +5607,8 @@ impl World {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::IronOre).is_empty() {
+            let count = self.loose_ids(actor.id, Material::IronOre).len() as u32;
+            if count == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -5592,10 +5616,15 @@ impl World {
             } else {
                 actor.name.as_str()
             };
-            lines.push(format!(
-                "A lump of iron ore is carried by {who}, {}.",
-                self.cover_phrase(actor.cell)
-            ));
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!("A lump of iron ore is carried by {who}, {cover}."));
+            } else {
+                lines.push(format!(
+                    "{} lumps of iron ore are carried by {who}, {cover}.",
+                    capitalize(&count_word(count))
+                ));
+            }
         }
         if lines.is_empty() {
             "You see no iron ore from here.".into()

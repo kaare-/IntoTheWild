@@ -103,6 +103,11 @@ clay_bank_ticks = 24
 # Smelting the one that was carried does not change the wait. Someone who
 # cannot see that brook does not get the line.
 copper_ore_ticks = 24
+# After the lump of iron ore on the slope is gathered, look says the slope
+# has no iron ore for this many ticks. Then a lump lies there again.
+# Smelting the one that was carried does not change the wait. Someone who
+# cannot see that slope does not get the line.
+iron_ore_ticks = 24
 # After a berry patch is emptied, by gathering or by the deer, the same
 # pile lies there again. Look says the berries are gone until then.
 berry_ticks = 24
