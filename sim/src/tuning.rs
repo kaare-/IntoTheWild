@@ -32,6 +32,10 @@ pub struct Tuning {
     /// A bolt or a kill leaves the same tracks. The old hoofprints stay.
     #[serde(default = "default_track_ticks")]
     pub track_ticks: u64,
+    /// Sim time when night falls. It stays night after that. A fire in the
+    /// cell, or on the next cell, gives that person the daytime detail again.
+    #[serde(default = "default_night_at")]
+    pub night_at: u64,
     pub body_rain: u32,
     pub brook_rain: u32,
     pub wade: u32,
@@ -137,6 +141,9 @@ fn default_spear_ticks() -> u64 {
 fn default_track_ticks() -> u64 {
     4
 }
+fn default_night_at() -> u64 {
+    72
+}
 fn default_season_at() -> u64 {
     18
 }
@@ -225,6 +232,8 @@ struct RawTime {
     spear_ticks: u64,
     #[serde(default = "default_track_ticks")]
     track_ticks: u64,
+    #[serde(default = "default_night_at")]
+    night_at: u64,
     chill_at: u64,
 }
 
@@ -355,6 +364,7 @@ impl Tuning {
             clay_ticks: raw.time.clay_ticks,
             spear_ticks: raw.time.spear_ticks,
             track_ticks: raw.time.track_ticks,
+            night_at: raw.time.night_at,
             chill_at: raw.time.chill_at,
             body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
             brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,

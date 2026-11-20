@@ -243,53 +243,63 @@ impl World {
         if let Some(work) = self.work_view(actor_id) {
             lines.push(work.detail);
         }
-        if let Some(deer) = self.deer_look_line(actor_id) {
-            lines.push(deer);
-        }
-        if let Some(tracks) = self.seen_deer_tracks(actor_id) {
-            lines.push(tracks);
-        }
-        if let Some(person) = self.person_on_the_trail_west_of_the_south_floor(actor_id) {
-            lines.push(person);
-        }
-        if let Some(person) = self.person_on_the_berries_north_of_the_west_floor(actor_id) {
-            lines.push(person);
-        }
-        if let Some(seen) = self.seen_under_the_rock(actor_id) {
-            lines.push(seen);
-        }
-        if let Some(flint) = self.seen_flint(actor_id) {
-            lines.push(flint);
-        }
-        if let Some(ochre) = self.seen_ochre(actor_id) {
-            lines.push(ochre);
-        }
-        if let Some(ore) = self.seen_copper_ore(actor_id) {
-            lines.push(ore);
-        }
-        if let Some(iron) = self.seen_iron_ore(actor_id) {
-            lines.push(iron);
-        }
-        if let Some(clay) = self.seen_clay(actor_id) {
-            lines.push(clay);
-        }
-        if let Some(lean_to) = self.seen_lean_to(actor_id) {
-            lines.push(lean_to);
-        }
-        if let Some(quiet) = self.seen_quiet_brook(actor_id) {
-            lines.push(quiet);
-        }
-        if let Some(mark) = self.seen_ochre_mark(actor_id) {
-            lines.push(mark);
-        }
-        if let Some(ice) = self.seen_frozen_pool(actor_id) {
-            lines.push(ice);
-        }
-        if let Some(open) = self.seen_open_pool(actor_id) {
-            lines.push(open);
-        }
-        if let Some(smoke) = self.seen_smoke(actor_id) {
-            lines.push(smoke);
+        if self.dark_for(actor_id) {
+            if self
+                .seen_deer_tracks(actor_id)
+                .is_some_and(|tracks| tracks.contains("Deer tracks mark the ground here."))
+            {
+                lines.push("Deer tracks mark the ground here.".into());
+            }
+            lines.push("The dark hides what lies farther off.".into());
+        } else {
+            if let Some(deer) = self.deer_look_line(actor_id) {
+                lines.push(deer);
+            }
+            if let Some(tracks) = self.seen_deer_tracks(actor_id) {
+                lines.push(tracks);
+            }
+            if let Some(person) = self.person_on_the_trail_west_of_the_south_floor(actor_id) {
+                lines.push(person);
+            }
+            if let Some(person) = self.person_on_the_berries_north_of_the_west_floor(actor_id) {
+                lines.push(person);
+            }
+            if let Some(seen) = self.seen_under_the_rock(actor_id) {
+                lines.push(seen);
+            }
+            if let Some(flint) = self.seen_flint(actor_id) {
+                lines.push(flint);
+            }
+            if let Some(ochre) = self.seen_ochre(actor_id) {
+                lines.push(ochre);
+            }
+            if let Some(ore) = self.seen_copper_ore(actor_id) {
+                lines.push(ore);
+            }
+            if let Some(iron) = self.seen_iron_ore(actor_id) {
+                lines.push(iron);
+            }
+            if let Some(clay) = self.seen_clay(actor_id) {
+                lines.push(clay);
+            }
+            if let Some(lean_to) = self.seen_lean_to(actor_id) {
+                lines.push(lean_to);
+            }
+            if let Some(quiet) = self.seen_quiet_brook(actor_id) {
+                lines.push(quiet);
+            }
+            if let Some(mark) = self.seen_ochre_mark(actor_id) {
+                lines.push(mark);
+            }
+            if let Some(ice) = self.seen_frozen_pool(actor_id) {
+                lines.push(ice);
+            }
+            if let Some(open) = self.seen_open_pool(actor_id) {
+                lines.push(open);
+            }
+            if let Some(smoke) = self.seen_smoke(actor_id) {
+                lines.push(smoke);
+            }
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
@@ -428,13 +438,37 @@ impl World {
     }
 
     fn sky_line(&self) -> &'static str {
-        if self.raining {
+        if self.night() && self.raining {
+            "Night has fallen. Rain is falling on the valley."
+        } else if self.night() {
+            "Night has fallen."
+        } else if self.raining {
             "Rain is falling on the valley."
         } else if self.time + 2 >= self.tuning.rain_starts_at {
             "The light is going. The air smells like rain."
         } else {
             "The valley is still dry. Evening is coming."
         }
+    }
+
+    fn night(&self) -> bool {
+        self.time >= self.tuning.night_at
+    }
+
+    /// A fire underfoot or on the next cell. Farther light does not help.
+    fn fire_nearby(&self, cell: CellId) -> bool {
+        self.fires
+            .values()
+            .any(|fire| chebyshev(cell, fire.cell) <= 1)
+    }
+
+    fn dark_from(&self, cell: CellId) -> bool {
+        self.night() && !self.fire_nearby(cell)
+    }
+
+    fn dark_for(&self, viewer: ActorId) -> bool {
+        self.actor(viewer)
+            .is_some_and(|actor| self.dark_from(actor.cell))
     }
 
     fn here_text(&self, actor_id: ActorId) -> String {
@@ -1994,6 +2028,17 @@ impl World {
     }
 
     fn adjacent_line(&self, origin: CellId, dir: Dir) -> String {
+        let line = self.adjacent_detail(origin, dir);
+        if !self.dark_from(origin) || line.ends_with("the valley ends.") {
+            return line;
+        }
+        format!(
+            "{}: you cannot make out the ground.",
+            capitalize(dir.word())
+        )
+    }
+
+    fn adjacent_detail(&self, origin: CellId, dir: Dir) -> String {
         let (x, y) = cell_xy(origin);
         let (dx, dy) = dir.delta();
         let Some(dest) = cell_id(x + dx, y + dy) else {

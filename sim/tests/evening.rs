@@ -11721,3 +11721,70 @@ fn a_splash_is_heard_one_cell_past_sight() {
         .iter()
         .all(|event| { !event.text.contains("gone from this stretch") }));
 }
+
+#[test]
+fn night_shortens_the_look_until_a_fire_is_nearby() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let west = world.spawn_at("West", "w", 6, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 6, 2).unwrap();
+    let day = world.observe(near).unwrap().text;
+    assert!(
+        day.contains("A deer stands")
+            && day.contains("Evening is coming.")
+            && !day.contains("Night has fallen")
+            && !day.contains("you cannot make out the ground"),
+        "{day}"
+    );
+    let bark = world.step(&[cmd("bark", west, Attempt::Gather(Material::Bark))]);
+    assert!(bark.results[0].success, "{}", bark.results[0].message);
+    let branch = world.step(&[cmd("branch", west, Attempt::Gather(Material::Branch))]);
+    assert!(branch.results[0].success, "{}", branch.results[0].message);
+    while world.sim_time() < world.tuning.night_at {
+        world.step(&[]);
+    }
+    assert!(world.sim_time() >= world.tuning.night_at);
+    let dark = world.observe(near).unwrap().text;
+    assert!(
+        dark.contains("Night has fallen.")
+            && dark.contains("The dark hides what lies farther off.")
+            && dark.contains("North: you cannot make out the ground.")
+            && dark.contains("You are on the")
+            && !dark.contains("A deer stands"),
+        "{dark}"
+    );
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .text
+        .contains("you cannot make out the ground"));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .text
+        .contains("The dark hides what lies farther off."));
+    let lit = world.step(&[cmd("light", west, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let by_fire = world.observe(west).unwrap().text;
+    assert!(
+        by_fire.contains("Night has fallen.")
+            && by_fire.contains("A small fire burns here.")
+            && !by_fire.contains("you cannot make out the ground")
+            && !by_fire.contains("The dark hides what lies farther off."),
+        "{by_fire}"
+    );
+    let beside = world.observe(far).unwrap().text;
+    assert!(
+        beside.contains("Night has fallen.")
+            && !beside.contains("you cannot make out the ground")
+            && !beside.contains("The dark hides what lies farther off."),
+        "{beside}"
+    );
+    let still = world.observe(near).unwrap().text;
+    assert!(
+        still.contains("The dark hides what lies farther off.")
+            && still.contains("you cannot make out the ground")
+            && still.contains("You are on the"),
+        "{still}"
+    );
+}
