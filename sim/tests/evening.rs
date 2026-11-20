@@ -2139,7 +2139,7 @@ fn a_branch_snap_is_heard_one_cell_past_sight() {
     assert!(heard
         .events
         .iter()
-        .any(|event| event.text == "You hear branches breaking."));
+        .any(|event| event.text == "You hear branches breaking to the north and east."));
     assert!(heard
         .events
         .iter()

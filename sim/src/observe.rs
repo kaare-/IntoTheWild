@@ -5800,7 +5800,8 @@ impl World {
         if chebyshev(origin, cell) > self.tuning.hearing {
             return None;
         }
-        Some("You hear branches breaking.".into())
+        let way = self.relative(origin, cell);
+        Some(format!("You hear branches breaking to the {way}."))
     }
 
     fn hears_a_branch_break(&self, origin: CellId, event: &crate::model::Event) -> bool {
