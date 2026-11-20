@@ -719,6 +719,7 @@ impl Tuning {
             Material::Moss => 0,
             Material::Bow => 0,
             Material::Net => 0,
+            Material::Mat => 0,
         }
     }
 }

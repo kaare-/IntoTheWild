@@ -80,9 +80,11 @@ impl World {
         let mut brands = Vec::new();
         let mut baskets = Vec::new();
         let mut nets = Vec::new();
+        let mut mats = Vec::new();
         let mut puts = Vec::new();
         let mut snares = Vec::new();
         let mut set_nets = Vec::new();
+        let mut set_mats = Vec::new();
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
@@ -152,6 +154,8 @@ impl World {
                         Attempt::TakeBrand => brands.push(intent),
                         Attempt::WeaveBasket => baskets.push(intent),
                         Attempt::WeaveNet => nets.push(intent),
+                        Attempt::WeaveMat => mats.push(intent),
+                        Attempt::SetMat => set_mats.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
@@ -266,6 +270,8 @@ impl World {
         self.apply_brands(brands, &mut results);
         self.apply_baskets(baskets, &mut results);
         self.apply_nets(nets, &mut results);
+        self.apply_mats(mats, &mut results);
+        self.apply_set_mats(set_mats, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
@@ -927,7 +933,9 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.exposure_millis(actor.cell) >= 1000 {
+                } else if self.exposure_millis(actor.cell) >= 1000
+                    && !self.reed_mat_here(actor.cell)
+                {
                     Err("The wind will not let you rest.".into())
                 } else {
                     Ok(true)
@@ -1255,6 +1263,7 @@ impl World {
                             | Material::Moss
                             | Material::Bow
                             | Material::Net
+                            | Material::Mat
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1373,6 +1382,42 @@ impl World {
                 }
                 Ok(true)
             }
+            Attempt::WeaveMat => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if !self.loose_ids(actor.id, Material::Mat).is_empty() {
+                    return Err("You are already carrying a reed mat.".into());
+                }
+                let carried = self.loose_ids(actor.id, Material::Reed).len() as u32;
+                let piled = self.pile_count(actor.cell, Material::Reed);
+                if carried + piled < 2 {
+                    return Err("You need two bundles of reeds to weave a mat.".into());
+                }
+                let spent = carried.min(2);
+                if self.carry_count(actor.id) - spent + 1 > self.tuning.carry_slots {
+                    return Err("Your arms are full.".into());
+                }
+                Ok(true)
+            }
+            Attempt::SetMat => {
+                if busy {
+                    return Err("You are in the middle of something.".into());
+                }
+                if body_taken {
+                    return Err("You already committed to something else this window.".into());
+                }
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if self.loose_ids(actor.id, Material::Mat).is_empty() {
+                    return Err("You are not carrying a reed mat.".into());
+                }
+                if self.reed_mat_here(actor.cell) {
+                    return Err("A reed mat is already set here.".into());
+                }
+                Ok(true)
+            }
             Attempt::PutFish => {
                 if gripping {
                     return Err("Your hands are on the log.".into());
@@ -1452,6 +1497,7 @@ impl World {
                     | Material::Honey
                     | Material::Egg
                     | Material::Net
+                    | Material::Mat
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -3667,6 +3713,8 @@ impl World {
                 " under the rock"
             } else if self.lean_tos.contains(&actor.cell) {
                 " under the lean-to"
+            } else if self.reed_mat_here(actor.cell) {
+                " on the reed mat"
             } else {
                 ""
             };
@@ -4752,6 +4800,114 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "weave", rest),
+                results,
+            );
+        }
+    }
+
+    /// Two bundles of reeds, from the arms first and then the pile at the
+    /// feet, become one reed mat. The mat stays in the arms until it is set
+    /// or dropped.
+    fn apply_mats(&mut self, weaves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in weaves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let mut spent = Vec::new();
+            let mut left = 2u32;
+            for id in self.loose_ids(actor.id, Material::Reed) {
+                if left == 0 {
+                    break;
+                }
+                self.items.remove(&id);
+                spent.push(id);
+                left -= 1;
+            }
+            if left > 0 {
+                if self
+                    .take_from_pile(actor.cell, Material::Reed, left)
+                    .is_none()
+                {
+                    self.finish(
+                        intent.command_id,
+                        actor.id,
+                        false,
+                        "You need two bundles of reeds to weave a mat.",
+                        results,
+                    );
+                    continue;
+                }
+                self.arm_reed_bed(actor.cell);
+            }
+            let id = self.mint_item(Material::Mat, 0, actor.cell, Some(actor.id), Role::Loose);
+            spent.push(id);
+            let name = self.name_of(actor.id);
+            let rest = "a reed mat.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "weave", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                spent,
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "weave", rest),
+                results,
+            );
+        }
+    }
+
+    /// A carried reed mat leaves the arms and lies on this ground.
+    fn apply_set_mats(&mut self, sets: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in sets {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.reed_mat_here(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A reed mat is already set here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(id) = self.loose_ids(actor.id, Material::Mat).first().copied() else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a reed mat.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(mat) = self.items.get_mut(&id) {
+                mat.carrier = None;
+                mat.cell = actor.cell;
+            }
+            let name = self.name_of(actor.id);
+            let rest = "a reed mat.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "set", rest),
                 results,
             );
         }

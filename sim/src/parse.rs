@@ -47,6 +47,8 @@ thatch lean-to               a carried bundle of reeds on a lean-to already stan
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
+weave mat                    two bundles of reeds, from the arms or the pile at your feet, into a reed mat. Set it or drop it, then rest on it. The open wind becomes a little wind.
+set mat                      a carried reed mat, on this ground. It leaves the arms. rest works on it, as under a lean-to.
 make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
 make basket                  the same weave
@@ -82,7 +84,7 @@ hammer|forge                 a carried copper bead at a fire, or with a stone, i
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl
 sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak
-rest|sleep                   under the rock or a lean-to, tiredness eases; the open wind refuses
+rest|sleep                   under the rock, a lean-to, or on a reed mat, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
 }
@@ -197,6 +199,11 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::WeaveBasket)
         }
         "weave" | "make"
+            if rest == "mat" || rest == "a mat" || rest == "reed mat" || rest == "a reed mat" =>
+        {
+            Ok(Attempt::WeaveMat)
+        }
+        "weave" | "make"
             if rest == "net"
                 || rest == "a net"
                 || rest == "fishing net"
@@ -248,6 +255,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
+        "set" if rest == "mat" || rest == "a mat" || rest == "the mat" || rest == "reed mat" => {
+            Ok(Attempt::SetMat)
+        }
         "set"
             if rest == "net"
                 || rest == "a net"
@@ -432,6 +442,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
         "net" | "fishing net" | "a fishing net" => Ok(Material::Net),
+        "mat" | "reed mat" | "a reed mat" => Ok(Material::Mat),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
@@ -500,6 +511,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
         "net" | "fishing net" | "a fishing net" => ExamineTarget::Net,
+        "mat" | "reed mat" | "a reed mat" => ExamineTarget::Mat,
         "bone" => ExamineTarget::Bone,
         "salt" | "salt crust" => ExamineTarget::Salt,
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
