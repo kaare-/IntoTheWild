@@ -265,6 +265,7 @@ pub enum Attempt {
     MarkRock,
     Smelt,
     Hammer,
+    Pierce,
 }
 
 impl Attempt {
@@ -297,6 +298,7 @@ impl Attempt {
                 | Attempt::MarkRock
                 | Attempt::Smelt
                 | Attempt::Hammer
+                | Attempt::Pierce
         )
     }
 }
@@ -411,6 +413,9 @@ pub struct Item {
     /// A hide worn against the cold. Other materials leave this false.
     #[serde(default)]
     pub worn: bool,
+    /// A hide the copper awl has pierced. It is ready to sew. Other materials leave this false.
+    #[serde(default)]
+    pub pierced: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -978,6 +983,7 @@ impl World {
                 flint_tip: false,
                 cooked: false,
                 worn: false,
+                pierced: false,
             },
         );
         id

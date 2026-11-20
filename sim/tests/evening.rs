@@ -801,6 +801,10 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("forge bead").unwrap(),
         Attempt::Hammer
     ));
+    assert!(matches!(
+        parse_attempt("pierce hide").unwrap(),
+        Attempt::Pierce
+    ));
     assert!(parse_attempt("sew").is_err());
     assert!(matches!(
         parse_attempt("smear ochre").unwrap(),
@@ -8729,4 +8733,156 @@ fn a_carried_stone_hammers_the_bead_away_from_the_fire() {
     assert_eq!(world.material_tally(Material::Copper), 0);
     assert_eq!(world.material_tally(Material::Stone), 1);
     assert_eq!(world.material_items(Material::Awl)[0].1, Some(near));
+}
+
+fn valley_with_an_awl_and_a_hide() -> (World, u32, u32, u32) {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 5, 3).unwrap();
+    let west = world.spawn_at("West", "w", 4, 4).unwrap();
+    for (id, dir) in [("n1", Dir::North), ("n2", Dir::North), ("n3", Dir::North)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s1", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("haft", near, Attempt::Haft)]);
+    for (step, dir) in (0..5).map(|step| (step, Dir::West)) {
+        world.step(&[cmd(&format!("west-{step}"), near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("to-ore", near, Attempt::Move(Dir::South))]);
+    world.step(&[cmd("ore", near, Attempt::Gather(Material::CopperOre))]);
+    world.step(&[cmd("from-ore", near, Attempt::Move(Dir::North))]);
+    for step in 0..5 {
+        world.step(&[cmd(&format!("back-{step}"), near, Attempt::Move(Dir::East))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    let smelt = world.step(&[cmd("smelt", near, Attempt::Smelt)]);
+    assert!(smelt.results[0].success, "{}", smelt.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    world.step(&[cmd("bead", near, parse_attempt("gather bead").unwrap())]);
+    let hammer = world.step(&[cmd("hammer", near, Attempt::Hammer)]);
+    assert!(hammer.results[0].success, "{}", hammer.results[0].message);
+    let mut waited = 0;
+    while world.deer_cell() != Some((6, 1)) && waited < 40 {
+        world.step(&[]);
+        waited += 1;
+    }
+    assert_eq!(
+        world.deer_cell(),
+        Some((6, 1)),
+        "the deer returns under the rock"
+    );
+    let hunt = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
+    assert!(hunt.results[0].success, "{}", hunt.results[0].message);
+    let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
+    assert!(cut.results[0].success, "{}", cut.results[0].message);
+    let hide = world.step(&[cmd("hide", near, Attempt::Gather(Material::Hide))]);
+    assert!(hide.results[0].success, "{}", hide.results[0].message);
+    (world, near, far, west)
+}
+
+#[test]
+fn a_copper_awl_pierces_a_carried_deer_hide() {
+    let (mut world, near, far, west) = valley_with_an_awl_and_a_hide();
+    world.step(&[cmd("drop-awl", near, Attempt::Drop(Material::Awl))]);
+    let bare = world.step(&[cmd("no-awl", near, parse_attempt("pierce hide").unwrap())]);
+    assert_eq!(
+        bare.results[0].message,
+        "You are not carrying a copper awl."
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("pierce")));
+    world.step(&[cmd("awl", near, parse_attempt("gather awl").unwrap())]);
+    let yours = "You pierce the deer hide with the copper awl. It is ready to sew.";
+    let seen = "Near pierces the deer hide with the copper awl. It is ready to sew.";
+    let hit = world.step(&[cmd("pierce", near, Attempt::Pierce)]);
+    assert_eq!(hit.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == yours));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("pierce")));
+    let arms = arms_sentence(&world.observe(near).unwrap().text);
+    assert!(arms.contains("a pierced deer hide, ready to sew"), "{arms}");
+    assert!(arms.contains("a copper awl"), "{arms}");
+    assert_eq!(
+        world.examine(near, ExamineTarget::Hide),
+        "A pierced deer hide is carried by you, under the rock overhang. It is ready to sew."
+    );
+    assert_eq!(
+        world.examine(far, ExamineTarget::Hide),
+        "A pierced deer hide is carried by Near, under the rock overhang. It is ready to sew."
+    );
+    assert_eq!(
+        world.examine(west, ExamineTarget::Hide),
+        "You see no hide from here."
+    );
+    let again = world.step(&[cmd("again", near, Attempt::Pierce)]);
+    assert_eq!(
+        again.results[0].message,
+        "The deer hide is already pierced."
+    );
+    assert_eq!(world.material_items(Material::Awl)[0].1, Some(near));
+    assert_eq!(world.material_items(Material::Hide)[0].1, Some(near));
+    assert!(parse_attempt("sew").is_err());
+}
+
+#[test]
+fn a_copper_awl_pierces_a_worn_deer_hide() {
+    let (mut world, near, far, _west) = valley_with_an_awl_and_a_hide();
+    let wore = world.step(&[cmd("wear", near, Attempt::Wear)]);
+    assert_eq!(wore.results[0].message, "You wear the deer hide.");
+    let yours = "You pierce the deer hide with the copper awl. It is ready to sew.";
+    let seen = "Near pierces the deer hide with the copper awl. It is ready to sew.";
+    let hit = world.step(&[cmd("pierce", near, Attempt::Pierce)]);
+    assert_eq!(hit.results[0].message, yours);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == seen));
+    let text = world.observe(near).unwrap().text;
+    assert!(
+        text.contains("The pierced deer hide is on you. It is ready to sew."),
+        "{text}"
+    );
+    let arms = arms_sentence(&text);
+    assert!(
+        arms.contains("a pierced deer hide on you, ready to sew"),
+        "{arms}"
+    );
+    assert!(arms.contains("a copper awl"), "{arms}");
+    assert_eq!(
+        world.examine(near, ExamineTarget::Hide),
+        "A pierced deer hide is on you, under the rock overhang. It is ready to sew."
+    );
+    assert_eq!(world.material_items(Material::Awl)[0].1, Some(near));
+    assert_eq!(world.material_items(Material::Hide)[0].1, Some(near));
 }

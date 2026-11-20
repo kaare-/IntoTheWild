@@ -51,6 +51,7 @@ impl World {
         let mut sets = Vec::new();
         let mut smelts = Vec::new();
         let mut hammers = Vec::new();
+        let mut pierces = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
         let mut hafts = Vec::new();
@@ -98,6 +99,7 @@ impl World {
                         Attempt::SetClay => sets.push(intent),
                         Attempt::Smelt => smelts.push(intent),
                         Attempt::Hammer => hammers.push(intent),
+                        Attempt::Pierce => pierces.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
                         Attempt::Haft => hafts.push(intent),
@@ -187,6 +189,7 @@ impl World {
         self.apply_sets(sets, &mut results);
         self.apply_smelts(smelts, &mut results);
         self.apply_hammers(hammers, &mut results);
+        self.apply_pierces(pierces, &mut results);
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
         self.apply_hafts(hafts, &mut results);
@@ -444,6 +447,27 @@ impl World {
                     && self.loose_ids(actor.id, Material::Stone).is_empty()
                 {
                     Err("You need a fire or a stone to hammer the bead.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Pierce => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Awl).is_empty() {
+                    Err("You are not carrying a copper awl.".into())
+                } else if self.loose_ids(actor.id, Material::Hide).is_empty() {
+                    Err("You are not carrying a deer hide.".into())
+                } else if self
+                    .loose_ids(actor.id, Material::Hide)
+                    .iter()
+                    .all(|id| self.item(*id).is_some_and(|hide| hide.pierced))
+                {
+                    Err("The deer hide is already pierced.".into())
                 } else {
                     Ok(true)
                 }
@@ -2404,6 +2428,54 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, "hammer", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_pierces(&mut self, pierces: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the deer hide with the copper awl. It is ready to sew.";
+        for intent in pierces {
+            let awl = self
+                .loose_ids(intent.actor_id, Material::Awl)
+                .first()
+                .copied();
+            let hide = self
+                .loose_ids(intent.actor_id, Material::Hide)
+                .into_iter()
+                .find(|id| self.item(*id).is_some_and(|hide| !hide.pierced));
+            let (Some(_awl), Some(hide)) = (awl, hide) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need a copper awl and a deer hide.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(hide) = self.items.get_mut(&hide) {
+                hide.pierced = true;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "pierce", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![hide],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "pierce", rest),
                 results,
             );
         }

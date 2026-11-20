@@ -685,7 +685,15 @@ impl World {
             parts.push(line);
         }
         if !self.ground_ids(actor.cell, Material::Hide).is_empty() {
-            parts.push("A deer hide lies here.".into());
+            let pierced = self
+                .ground_ids(actor.cell, Material::Hide)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+            if pierced {
+                parts.push("A pierced deer hide lies here. It is ready to sew.".into());
+            } else {
+                parts.push("A deer hide lies here.".into());
+            }
         }
         for id in self.ground_ids(actor.cell, Material::Spear) {
             let spear = self.item(id);
@@ -1085,10 +1093,18 @@ impl World {
         } else if item.material == "carcass" && item.count == 1 {
             "a deer carcass".into()
         } else if item.material == "hide" && item.count == 1 {
-            if self.wearing_hide(actor_id) {
-                "a deer hide on you".into()
-            } else {
-                "a deer hide".into()
+            let hide = self
+                .loose_ids(actor_id, Material::Hide)
+                .first()
+                .and_then(|id| self.item(*id));
+            match (
+                hide.is_some_and(|hide| hide.worn),
+                hide.is_some_and(|hide| hide.pierced),
+            ) {
+                (true, true) => "a pierced deer hide on you, ready to sew".into(),
+                (true, false) => "a deer hide on you".into(),
+                (false, true) => "a pierced deer hide, ready to sew".into(),
+                (false, false) => "a deer hide".into(),
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
@@ -1175,7 +1191,15 @@ impl World {
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
         if self.wearing_hide(actor_id) {
-            parts.push("The deer hide is on you.".into());
+            let pierced = self
+                .loose_ids(actor_id, Material::Hide)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.worn && hide.pierced));
+            if pierced {
+                parts.push("The pierced deer hide is on you. It is ready to sew.".into());
+            } else {
+                parts.push("The deer hide is on you.".into());
+            }
         }
         if actor.warm_from_fire && self.fire_at(actor.cell).is_none() {
             parts.push("The warmth of the fire is still on you.".into());
@@ -1595,7 +1619,15 @@ impl World {
             bits.push(bit);
         }
         if !self.ground_ids(dest, Material::Hide).is_empty() {
-            bits.push("a deer hide".into());
+            let pierced = self
+                .ground_ids(dest, Material::Hide)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+            if pierced {
+                bits.push("a pierced deer hide, ready to sew".into());
+            } else {
+                bits.push("a deer hide".into());
+            }
         }
         if self
             .actors
@@ -3043,13 +3075,22 @@ impl World {
             if self.ground_ids(cell, Material::Hide).is_empty() {
                 continue;
             }
-            lines.push(format!(
-                "A deer hide lies {}.",
-                self.place_phrase(origin, cell)
-            ));
+            let place = self.place_phrase(origin, cell);
+            let pierced = self
+                .ground_ids(cell, Material::Hide)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+            if pierced {
+                lines.push(format!(
+                    "A pierced deer hide lies {place}. It is ready to sew."
+                ));
+            } else {
+                lines.push(format!("A deer hide lies {place}."));
+            }
         }
         for other in self.visible_actor_ids(viewer) {
-            if self.loose_ids(other, Material::Hide).is_empty() {
+            let hides: Vec<_> = self.loose_ids(other, Material::Hide);
+            if hides.is_empty() {
                 continue;
             }
             let who = if other == viewer {
@@ -3058,10 +3099,24 @@ impl World {
                 self.name_of(other)
             };
             let cell = self.actor(other).unwrap().cell;
-            lines.push(format!(
-                "A deer hide is carried by {who}, {}.",
-                self.cover_phrase(cell)
-            ));
+            let cover = self.cover_phrase(cell);
+            let pierced = hides
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+            let worn = hides
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.worn));
+            if pierced && worn {
+                lines.push(format!(
+                    "A pierced deer hide is on {who}, {cover}. It is ready to sew."
+                ));
+            } else if pierced {
+                lines.push(format!(
+                    "A pierced deer hide is carried by {who}, {cover}. It is ready to sew."
+                ));
+            } else {
+                lines.push(format!("A deer hide is carried by {who}, {cover}."));
+            }
         }
         if lines.is_empty() {
             "You see no hide from here.".into()
@@ -4904,6 +4959,24 @@ impl World {
         Some(crate::model::spoken_act(None, "hammer", rest))
     }
 
+    /// A hide pierced with the awl, filled for the person who pierced it.
+    /// Anyone else keeps the stored sentence.
+    fn pierce_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} pierces "))?;
+        if rest != "the deer hide with the copper awl. It is ready to sew." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "pierce", rest))
+    }
+
     /// A lump of copper ore set by the fire, filled for the person who set it.
     /// Anyone else keeps the stored sentence. The bead, when it comes, is the same words for both.
     fn smelt_set_for_these_eyes(
@@ -5031,6 +5104,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.hammer_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.pierce_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.haft_for_these_eyes(viewer, event) {
@@ -5546,6 +5622,14 @@ impl World {
         }
         if self.wearing_hide(actor_id) {
             actions.push("remove hide".into());
+        }
+        if !self.loose_ids(actor_id, Material::Awl).is_empty()
+            && self
+                .loose_ids(actor_id, Material::Hide)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| !hide.pierced))
+        {
+            actions.push("pierce hide".into());
         }
         if !self.loose_ids(actor_id, Material::Hide).is_empty() {
             actions.push("drop hide".into());
