@@ -332,6 +332,9 @@ impl World {
             if let Some(clay) = self.seen_clay(actor_id) {
                 lines.push(clay);
             }
+            if let Some(reeds) = self.seen_reeds(actor_id) {
+                lines.push(reeds);
+            }
             if let Some(lean_to) = self.seen_lean_to(actor_id) {
                 lines.push(lean_to);
             }
@@ -823,6 +826,8 @@ impl World {
             parts.push("A bundle of reeds lies here.".into());
         } else if reeds_here > 1 {
             parts.push("Bundles of reeds lie here.".into());
+        } else if self.reed_bare(actor.cell) {
+            parts.push("The brook's edge has no reeds.".into());
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
@@ -1445,6 +1450,35 @@ impl World {
             let line = format!("The brook to the {} is quiet.", self.relative(origin, cell));
             if !lines.contains(&line) {
                 lines.push(line);
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// Reeds at a brook edge in sight, other than the ones under the looker's feet.
+    fn seen_reeds(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let count = self.pile_count(cell, Material::Reed)
+                + self.ground_ids(cell, Material::Reed).len() as u32;
+            if count > 0 && self.beside_the_brook(cell) {
+                lines.push(format!(
+                    "Reeds grow at the brook's edge to the {}.",
+                    self.relative(origin, cell)
+                ));
+            } else if self.reed_bare(cell) {
+                lines.push(format!(
+                    "The brook's edge to the {} has no reeds.",
+                    self.relative(origin, cell)
+                ));
             }
         }
         if lines.is_empty() {
@@ -2099,6 +2133,11 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// The brook edge's reeds were gathered and have not grown there again.
+    fn reed_bare(&self, cell: crate::model::CellId) -> bool {
+        self.reed_returns_at.contains_key(&cell) && !self.reed_bed_holding(cell)
     }
 
     /// The slope's iron ore was gathered and a lump has not lain there again.
@@ -5024,6 +5063,16 @@ impl World {
             let count = self.pile_count(cell, Material::Reed)
                 + self.ground_ids(cell, Material::Reed).len() as u32;
             if count == 0 {
+                if self.reed_bare(cell) {
+                    if origin == cell {
+                        lines.push("The brook's edge here has no reeds.".into());
+                    } else {
+                        lines.push(format!(
+                            "The brook's edge to the {} has no reeds.",
+                            self.relative(origin, cell)
+                        ));
+                    }
+                }
                 continue;
             }
             let place = if origin == cell {
@@ -5038,7 +5087,7 @@ impl World {
             lines.push(format!("Reeds grow {place}."));
         }
         for other in self.visible_actor_ids(viewer) {
-            let count = self.loose_ids(other, Material::Reed).len();
+            let count = self.loose_ids(other, Material::Reed).len() as u32;
             if count == 0 {
                 continue;
             }
@@ -5050,7 +5099,7 @@ impl World {
             let bundle = if count == 1 {
                 "A bundle of reeds is".to_string()
             } else {
-                format!("{count} bundles of reeds are")
+                format!("{} bundles of reeds are", capitalize(&count_word(count)))
             };
             lines.push(format!(
                 "{bundle} carried by {who}, {}.",

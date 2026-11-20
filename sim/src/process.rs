@@ -46,6 +46,7 @@ impl World {
                 Wake::ClayReturn(cell) => self.return_clay(cell),
                 Wake::CopperReturn(cell) => self.return_copper(cell),
                 Wake::IronReturn(cell) => self.return_iron(cell),
+                Wake::ReedReturn(cell) => self.return_reeds(cell),
                 Wake::BranchReturn(cell) => self.return_branches(cell),
                 Wake::BarkReturn(cell) => self.return_bark(cell),
                 Wake::BerryReturn(cell) => self.return_berries(cell),
@@ -446,6 +447,34 @@ impl World {
         self.add_pile(cell, Material::IronOre, 1, 0);
         self.emit(
             "A lump of iron ore lies on the slope again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The brook's edge has waited out its ticks. Reeds grow there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_reeds(&mut self, cell: CellId) {
+        let Some(at) = self.reed_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.reed_returns_at.remove(&cell);
+        let Some(count) = self.reed_beds.get(&cell).copied() else {
+            return;
+        };
+        if self.reed_bed_holding(cell) {
+            return;
+        }
+        self.add_pile(cell, Material::Reed, count, 0);
+        self.emit(
+            "Reeds grow at the brook's edge again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

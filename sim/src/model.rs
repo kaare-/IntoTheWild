@@ -685,6 +685,8 @@ pub enum Wake {
     CopperReturn(CellId),
     /// A lump of iron ore lies on this slope cell again.
     IronReturn(CellId),
+    /// Reeds grow at this brook edge again.
+    ReedReturn(CellId),
     /// Dry branches lie under this rock again.
     BranchReturn(CellId),
     /// Bark lies under this rock again.
@@ -907,6 +909,13 @@ pub struct World {
     /// When that slope has iron ore again. Look says the slope has none until then.
     #[serde(default)]
     pub(crate) iron_returns_at: BTreeMap<CellId, u64>,
+    /// Brook-edge cells where reeds grow again after they are gathered.
+    /// The count is the pile that grows there again.
+    #[serde(default)]
+    pub(crate) reed_beds: BTreeMap<CellId, u32>,
+    /// When that edge has reeds again. Look says the edge has none until then.
+    #[serde(default)]
+    pub(crate) reed_returns_at: BTreeMap<CellId, u64>,
     /// The rock cells whose seeded dry branches return after they are taken.
     #[serde(default)]
     pub(crate) branch_beds: BTreeSet<CellId>,
@@ -1036,6 +1045,8 @@ impl World {
             copper_returns_at: BTreeMap::new(),
             iron_beds: BTreeSet::new(),
             iron_returns_at: BTreeMap::new(),
+            reed_beds: BTreeMap::new(),
+            reed_returns_at: BTreeMap::new(),
             branch_beds: BTreeSet::new(),
             branch_returns_at: BTreeMap::new(),
             bark_beds: BTreeMap::new(),
@@ -1105,7 +1116,9 @@ impl World {
         let clay = cell_id(2, 2).unwrap();
         world.add_pile(clay, Material::Clay, 2, 0);
         world.clay_beds.insert(clay, 2);
-        world.add_pile(cell_id(0, 3).unwrap(), Material::Reed, 4, 0);
+        let reeds = cell_id(0, 3).unwrap();
+        world.add_pile(reeds, Material::Reed, 4, 0);
+        world.reed_beds.insert(reeds, 4);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
         world.salt_licks.insert(cell_id(0, 0).unwrap());
@@ -1701,6 +1714,28 @@ impl World {
         let at = self.time.saturating_add(self.tuning.iron_ore_ticks);
         self.iron_returns_at.insert(cell, at);
         self.schedule(at, Wake::IronReturn(cell));
+    }
+
+    /// A bundle of reeds is still on this edge, in the pile or lying loose.
+    pub(crate) fn reed_bed_holding(&self, cell: CellId) -> bool {
+        self.pile_count(cell, Material::Reed) > 0
+            || !self.ground_ids(cell, Material::Reed).is_empty()
+    }
+
+    /// The brook's edge has no reeds. The same pile grows there `reed_ticks`
+    /// after this step. Gathering the last bundle leaves that wait. Thatching
+    /// the last bundle off the edge leaves the same wait. A wake that finds
+    /// reeds already there does not add a second pile.
+    pub(crate) fn arm_reed_bed(&mut self, cell: CellId) {
+        if !self.reed_beds.contains_key(&cell) || self.reed_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.reed_bed_holding(cell) {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.reed_ticks);
+        self.reed_returns_at.insert(cell, at);
+        self.schedule(at, Wake::ReedReturn(cell));
     }
 
     /// The seeded branches under a rock are gone, gathered or snapped away.
@@ -5124,6 +5159,156 @@ mod ochre_arms {
             world.examine(quiet, ExamineTarget::Ochre),
             "You see no ochre from here."
         );
+    }
+}
+
+#[cfg(test)]
+mod reed_return {
+    use super::{Attempt, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_brooks_edge_has_no_reeds_until_they_grow_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("Reeds grow here, at the brook's edge."),
+            "{here}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Reeds grow at the brook's edge to the west."));
+        assert!(!world.observe(quiet).unwrap().text.contains("reed"));
+        let one = world.step(&[intent("one", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(one.results[0].message, "You gather a bundle of reeds.");
+        let still = world.observe(near).unwrap().text;
+        assert!(
+            still.contains("Reeds grow here, at the brook's edge."),
+            "{still}"
+        );
+        assert!(!still.contains("The brook's edge has no reeds."), "{still}");
+        assert!(still.contains("You have a bundle of reeds."), "{still}");
+        let two = world.step(&[intent("two", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(two.results[0].message, "You gather a bundle of reeds.");
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("You have two bundles of reeds."), "{arms}");
+        assert!(!arms.contains("2 reed"), "{arms}");
+        assert!(!arms.contains("2 reeds"), "{arms}");
+        let near_exam = world.examine(near, ExamineTarget::Reeds);
+        assert!(
+            near_exam.contains("Two bundles of reeds are carried by you"),
+            "{near_exam}"
+        );
+        assert!(!near_exam.contains("2 bundles"), "{near_exam}");
+        assert!(!near_exam.contains("2 reeds"), "{near_exam}");
+        let seen_exam = world.examine(seen, ExamineTarget::Reeds);
+        assert!(
+            seen_exam.contains("Two bundles of reeds are carried by Near"),
+            "{seen_exam}"
+        );
+        world.step(&[intent("three", near, Attempt::Gather(Material::Reed))]);
+        let last = world.step(&[intent("four", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(last.results[0].message, "You gather a bundle of reeds.");
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The brook's edge has no reeds."), "{empty}");
+        assert!(
+            !empty.contains("Reeds grow here, at the brook's edge."),
+            "{empty}"
+        );
+        assert!(empty.contains("You have four bundles of reeds."), "{empty}");
+        let near_empty = world.examine(near, ExamineTarget::Reeds);
+        assert!(
+            near_empty.contains("The brook's edge here has no reeds."),
+            "{near_empty}"
+        );
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("The brook's edge to the west has no reeds."),
+            "{west}"
+        );
+        assert!(!west.contains("Reeds grow"), "{west}");
+        let seen_empty = world.examine(seen, ExamineTarget::Reeds);
+        assert!(
+            seen_empty.contains("The brook's edge to the west has no reeds."),
+            "{seen_empty}"
+        );
+        assert!(
+            seen_empty.contains("Four bundles of reeds are carried by Near"),
+            "{seen_empty}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("reed"));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Reeds),
+            "You see no reeds from here."
+        );
+        let ticks = world.tuning.reed_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The brook's edge has no reeds."));
+        world.step(&[]);
+        let back = "Reeds grow at the brook's edge again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("Reeds grow here, at the brook's edge."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("The brook's edge has no reeds."),
+            "{}",
+            again.text
+        );
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("Reeds grow at the brook's edge to the west."),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("reed"));
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Reed))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop a bundle of reeds. It is in contact with the ground."
+        );
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(second.results[0].message, "You gather a bundle of reeds.");
+        let taken = world.observe(near).unwrap().text;
+        assert!(
+            taken.contains("Reeds grow here, at the brook's edge."),
+            "{taken}"
+        );
+        assert!(!taken.contains("The brook's edge has no reeds."), "{taken}");
+        assert!(taken.contains("You have four bundles of reeds."), "{taken}");
+        assert!(!taken.contains("2 reed"), "{taken}");
+        assert!(!taken.contains("4 reed"), "{taken}");
+        assert!(!taken.contains("carried by you (dry)"), "{taken}");
     }
 }
 

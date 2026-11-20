@@ -1526,6 +1526,9 @@ impl World {
                     if material == Material::IronOre {
                         self.arm_iron_bed(cell);
                     }
+                    if material == Material::Reed {
+                        self.arm_reed_bed(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -4278,10 +4281,12 @@ impl World {
         if self.pile_count(cell, Material::Reed) > 0
             && self.take_from_pile(cell, Material::Reed, 1).is_some()
         {
+            self.arm_reed_bed(cell);
             return true;
         }
         if let Some(id) = self.ground_ids(cell, Material::Reed).first().copied() {
             self.items.remove(&id);
+            self.arm_reed_bed(cell);
             return true;
         }
         false

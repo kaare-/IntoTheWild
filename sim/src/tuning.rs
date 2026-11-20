@@ -93,6 +93,11 @@ pub struct Tuning {
     /// leaves the same wait.
     #[serde(default = "default_iron_ore_ticks")]
     pub iron_ore_ticks: u64,
+    /// Ticks after the last reeds on the brook edge are gathered before they grow again.
+    /// Look says the edge has no reeds until then. Thatching the last bundle off
+    /// the edge leaves the same wait.
+    #[serde(default = "default_reed_ticks")]
+    pub reed_ticks: u64,
     /// Ticks after the rock's dry branches are gone before that pile lies there again.
     #[serde(default = "default_branch_ticks")]
     pub branch_ticks: u64,
@@ -271,6 +276,9 @@ fn default_copper_ore_ticks() -> u64 {
 fn default_iron_ore_ticks() -> u64 {
     24
 }
+fn default_reed_ticks() -> u64 {
+    24
+}
 fn default_branch_ticks() -> u64 {
     24
 }
@@ -411,6 +419,8 @@ struct RawTime {
     copper_ore_ticks: u64,
     #[serde(default = "default_iron_ore_ticks")]
     iron_ore_ticks: u64,
+    #[serde(default = "default_reed_ticks")]
+    reed_ticks: u64,
     #[serde(default = "default_branch_ticks")]
     branch_ticks: u64,
     #[serde(default = "default_bark_pile_ticks")]
@@ -521,6 +531,7 @@ impl Tuning {
             || raw.time.clay_bank_ticks == 0
             || raw.time.copper_ore_ticks == 0
             || raw.time.iron_ore_ticks == 0
+            || raw.time.reed_ticks == 0
             || raw.time.branch_ticks == 0
             || raw.time.deer_ticks == 0
             || raw.time.night_len == 0
@@ -589,6 +600,7 @@ impl Tuning {
             clay_bank_ticks: raw.time.clay_bank_ticks,
             copper_ore_ticks: raw.time.copper_ore_ticks,
             iron_ore_ticks: raw.time.iron_ore_ticks,
+            reed_ticks: raw.time.reed_ticks,
             branch_ticks: raw.time.branch_ticks,
             bark_pile_ticks: raw.time.bark_pile_ticks,
             berry_ticks: raw.time.berry_ticks,
