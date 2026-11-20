@@ -3186,7 +3186,7 @@ fn mud_on_the_skin_keeps_the_same_sun_from_burning() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "You smear mud on your skin."));
+        .all(|event| event.text != "You smear mud on your skin."));
     assert!(world
         .observe(far)
         .unwrap()
@@ -9572,15 +9572,12 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
     let witnessed = "Near smears red ochre on their skin.";
     let smeared = world.step(&[cmd("smear", near, Attempt::SmearOchre)]);
     assert_eq!(smeared.results[0].message, yours);
-    let near_smear: Vec<_> = world
+    assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .map(|event| event.text.clone())
-        .filter(|text| text.contains("smear"))
-        .collect();
-    assert_eq!(near_smear, vec![yours.to_string()]);
+        .all(|event| !event.text.contains("smear")));
     let far_smear: Vec<_> = world
         .observe(far)
         .unwrap()

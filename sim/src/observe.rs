@@ -5923,6 +5923,7 @@ impl World {
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
                     && self.walk_for_these_eyes(viewer, event).is_none()
+                    && self.smear_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -5984,7 +5985,9 @@ impl World {
         Some(line)
     }
 
-    /// Mud put on the skin, filled for the person who smeared it.
+    /// Mud or ochre put on the skin. The smearer already has this as the
+    /// reply, so the event list does not repeat it. Anyone else keeps the
+    /// stored sentence.
     fn smear_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
