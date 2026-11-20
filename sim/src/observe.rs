@@ -1471,6 +1471,13 @@ impl World {
 
     fn clothes_line(&self, actor_id: ActorId, moisture: u32) -> String {
         let word = self.clothes_word(moisture);
+        let under_lean_to = self.actor(actor_id).is_some_and(|actor| {
+            self.lean_tos.contains(&actor.cell)
+                && self.exposure_millis(actor.cell) == self.tuning.lean_to
+        });
+        if under_lean_to && self.raining && word == "damp" {
+            return "A little rain dampens your clothes.".into();
+        }
         if word == "wet" {
             "The rain wets your clothes.".into()
         } else if word == "dry"

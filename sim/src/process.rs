@@ -954,10 +954,16 @@ impl World {
             .map(|id| {
                 let cell = self.actor(*id).unwrap().cell;
                 let exposure = self.exposure_millis(cell);
+                let wetness = self.actor(*id).unwrap().wetness;
                 let mut gain = self.wet_add(
                     self.season_gain(self.tuning.body_rain, exposure >= 1000),
                     exposure,
                 );
+                // A lean-to is one step short of the rock. A little rain
+                // dampens the clothes, and it stops there. Open sky still soaks.
+                if self.lean_tos.contains(&cell) && exposure == self.tuning.lean_to {
+                    gain = self.tuning.damp_at.saturating_sub(wetness);
+                }
                 if self.cell(cell).region == Region::Brook {
                     gain += self.tuning.brook_rain;
                 }

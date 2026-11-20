@@ -2257,6 +2257,55 @@ fn a_lean_to_of_three_branches_breaks_the_wind() {
 }
 
 #[test]
+fn a_lean_to_leaves_clothes_damp_while_open_rain_soaks() {
+    let mut world = world_at(2);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let open = world.spawn_at("Open", "o", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+    let built = world.step(&[cmd("build", near, Attempt::BuildLeanTo)]);
+    assert!(built.results[0].success, "{}", built.results[0].message);
+    world.step(&[]);
+    world.step(&[]);
+    assert!(world.is_raining());
+    let sheltered = world.observe(near).unwrap();
+    assert_eq!(sheltered.self_info.wetness, "damp");
+    assert!(
+        sheltered
+            .text
+            .contains("A little rain dampens your clothes.")
+            && sheltered
+                .text
+                .contains("Only a little rain reaches you under it"),
+        "{}",
+        sheltered.text
+    );
+    assert!(!sheltered.text.contains("The rain wets your clothes."));
+    assert!(!sheltered.text.contains("Your clothes are soaked."));
+    let beside = world.observe(open).unwrap();
+    assert_eq!(beside.self_info.wetness, "wet");
+    assert!(beside.text.contains("The rain wets your clothes."));
+    assert!(!beside.text.contains("A little rain dampens your clothes."));
+    assert!(beside
+        .text
+        .contains("The rain does not wash anyone under it."));
+    let distant = world.observe(far).unwrap().text;
+    assert!(
+        !distant.contains("A little rain dampens") && !distant.contains("lean-to"),
+        "{distant}"
+    );
+    for _ in 0..12 {
+        world.step(&[]);
+    }
+    let still = world.observe(near).unwrap();
+    assert_eq!(still.self_info.wetness, "damp");
+    assert!(still.text.contains("A little rain dampens your clothes."));
+    assert!(!still.text.contains("Your clothes are soaked."));
+    let soaked = world.observe(open).unwrap();
+    assert_eq!(soaked.self_info.wetness, "soaked");
+    assert!(soaked.text.contains("Your clothes are soaked."));
+}
+
+#[test]
 fn rain_does_not_wash_a_smear_under_a_lean_to() {
     let mut world = world_at(10_000);
     let near = world.spawn_at("Near", "n", 5, 2).unwrap();
