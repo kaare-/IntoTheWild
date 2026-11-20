@@ -53,6 +53,7 @@ impl World {
         let mut hunts = Vec::new();
         let mut butchers = Vec::new();
         let mut wears = Vec::new();
+        let mut removes = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -95,6 +96,7 @@ impl World {
                         Attempt::Hunt => hunts.push(intent),
                         Attempt::Butcher => butchers.push(intent),
                         Attempt::Wear => wears.push(intent),
+                        Attempt::Remove => removes.push(intent),
                     }
                 }
             }
@@ -181,6 +183,7 @@ impl World {
         self.apply_hunts(hunts, &mut results);
         self.apply_butchers(butchers, &mut results);
         self.apply_wears(wears, &mut results);
+        self.apply_removes(removes, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -311,6 +314,23 @@ impl World {
                     Err("The hide is already on you.".into())
                 } else if self.loose_ids(actor.id, Material::Hide).is_empty() {
                     Err("You are not carrying a deer hide.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Remove => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self
+                    .loose_ids(actor.id, Material::Hide)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
+                {
+                    Err("You are not wearing a deer hide.".into())
                 } else {
                     Ok(true)
                 }
@@ -1925,6 +1945,50 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, "wear", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_removes(&mut self, removes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the deer hide.";
+        for intent in removes {
+            let Some(id) = self
+                .loose_ids(intent.actor_id, Material::Hide)
+                .into_iter()
+                .find(|id| self.item(*id).is_some_and(|hide| hide.worn))
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not wearing a deer hide.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(hide) = self.items.get_mut(&id) {
+                hide.worn = false;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "remove", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "remove", rest),
                 results,
             );
         }

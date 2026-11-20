@@ -4219,6 +4219,24 @@ impl World {
         Some(crate::model::spoken_act(None, "wear", rest))
     }
 
+    /// A deer hide taken off, filled for the person who wore it.
+    /// Anyone else keeps the stored sentence.
+    fn remove_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} removes "))?;
+        if rest != "the deer hide." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "remove", rest))
+    }
+
     /// Mud put on the skin, filled for the person who smeared it.
     fn smear_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -4590,6 +4608,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.wear_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.remove_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.smear_for_these_eyes(viewer, event) {
@@ -5012,6 +5033,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Hide).is_empty() && !self.wearing_hide(actor_id) {
             actions.push("wear hide".into());
+        }
+        if self.wearing_hide(actor_id) {
+            actions.push("remove hide".into());
         }
         if !self.loose_ids(actor_id, Material::Hide).is_empty() {
             actions.push("drop hide".into());

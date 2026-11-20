@@ -772,6 +772,11 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Eat(Material::Berry)
     ));
     assert!(matches!(parse_attempt("wear hide").unwrap(), Attempt::Wear));
+    assert!(matches!(parse_attempt("remove").unwrap(), Attempt::Remove));
+    assert!(matches!(
+        parse_attempt("remove hide").unwrap(),
+        Attempt::Remove
+    ));
     assert!(matches!(
         parse_attempt("eat mushrooms").unwrap(),
         Attempt::Eat(Material::Mushroom)
@@ -7805,4 +7810,154 @@ fn a_fire_hardened_flint_spear_bolts_the_deer_on_the_next_cell() {
         .events
         .iter()
         .all(|event| !event.text.contains("bolt")));
+}
+
+#[test]
+fn removing_a_worn_hide_returns_it_to_the_arms() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    for (id, dir) in [("n1", Dir::North), ("n2", Dir::North), ("n3", Dir::North)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s1", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("haft", near, Attempt::Haft)]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 15);
+    while world.sim_time() < 22 {
+        world.step(&[]);
+    }
+    assert_eq!(world.deer_cell(), Some((6, 1)));
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let brought = world.step(&[cmd("down", near, Attempt::Hunt)]);
+    assert!(brought.results[0].success, "{}", brought.results[0].message);
+    world.step(&[cmd("butcher", near, Attempt::Butcher)]);
+    world.step(&[cmd("hide", near, Attempt::Gather(Material::Hide))]);
+    let mut bare = world.clone();
+    let refused = bare.step(&[cmd("bare", near, Attempt::Remove)]);
+    assert!(!refused.results[0].success);
+    assert_eq!(
+        refused.results[0].message,
+        "You are not wearing a deer hide."
+    );
+    let private: Vec<_> = bare
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("wearing"))
+        .collect();
+    assert_eq!(
+        private,
+        vec!["You are not wearing a deer hide.".to_string()]
+    );
+    for id in [far, west] {
+        assert!(bare
+            .observe(id)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("wearing")));
+    }
+    let wore = world.step(&[cmd("wear", near, Attempt::Wear)]);
+    assert_eq!(wore.results[0].message, "You wear the deer hide.");
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    let mut kept = world.clone();
+    let before = world.observe(near).unwrap();
+    assert_eq!(before.self_info.cold, "warm");
+    assert!(
+        before.text.contains("The deer hide is on you."),
+        "{}",
+        before.text
+    );
+    assert!(
+        arms_sentence(&before.text).contains("a deer hide on you"),
+        "{}",
+        before.text
+    );
+    let yours = "You remove the deer hide.";
+    let witnessed = "Near removes the deer hide.";
+    let report = world.step(&[cmd("remove", near, Attempt::Remove)]);
+    assert!(report.results[0].success);
+    assert_eq!(report.results[0].message, yours);
+    let after = world.observe(near).unwrap();
+    assert!(
+        !after.text.contains("The deer hide is on you."),
+        "{}",
+        after.text
+    );
+    assert!(
+        arms_sentence(&after.text).contains("a deer hide"),
+        "{}",
+        after.text
+    );
+    assert!(
+        !arms_sentence(&after.text).contains("on you"),
+        "{}",
+        after.text
+    );
+    assert_eq!(world.material_tally(Material::Hide), 1);
+    assert!(world.material_items(Material::Hide)[0].1 == Some(near));
+    let near_lines: Vec<_> = after
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("remove"))
+        .collect();
+    assert_eq!(near_lines, vec![yours.to_string()]);
+    let west_lines: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("remove"))
+        .collect();
+    assert_eq!(west_lines, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("remove")));
+    let mut ticks = 0;
+    let mut removed_cold = after.self_info.cold.clone();
+    let mut kept_cold = kept.observe(near).unwrap().self_info.cold.clone();
+    while ticks < 40 && !(removed_cold == "cold" && kept_cold != "cold") {
+        world.step(&[]);
+        kept.step(&[]);
+        ticks += 1;
+        removed_cold = world.observe(near).unwrap().self_info.cold.clone();
+        kept_cold = kept.observe(near).unwrap().self_info.cold.clone();
+    }
+    assert_eq!(ticks, 7);
+    assert_eq!(removed_cold, "cold");
+    assert_eq!(kept_cold, "chilly");
+    let again = world.step(&[cmd("again", near, Attempt::Remove)]);
+    assert!(!again.results[0].success);
+    assert_eq!(again.results[0].message, "You are not wearing a deer hide.");
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("wearing")));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("wearing")));
 }

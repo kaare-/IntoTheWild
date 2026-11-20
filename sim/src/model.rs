@@ -241,6 +241,7 @@ pub enum Attempt {
     Hunt,
     Butcher,
     Wear,
+    Remove,
     Eat(Material),
     Smear,
 }
@@ -267,6 +268,7 @@ impl Attempt {
                 | Attempt::Hunt
                 | Attempt::Butcher
                 | Attempt::Wear
+                | Attempt::Remove
                 | Attempt::Eat(_)
                 | Attempt::Smear
         )

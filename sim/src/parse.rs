@@ -26,6 +26,7 @@ cook                         heat a mushroom, or cook berries, a carcass, or raw
 hunt                         a hardened spear; the deer on your cell or the next
 butcher                      a carcass at your feet into three portions; a flint spear in your arms
 wear hide                    a carried deer hide, against the cold
+remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat; raw meat is not food
 eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
@@ -98,6 +99,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "wear" | "wrap" if rest.is_empty() || rest == "hide" || rest == "deer hide" => {
             Ok(Attempt::Wear)
         }
+        "remove" if rest.is_empty() || rest == "hide" || rest == "deer hide" => Ok(Attempt::Remove),
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
