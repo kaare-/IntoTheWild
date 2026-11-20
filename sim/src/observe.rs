@@ -4382,6 +4382,20 @@ impl World {
         Some(crate::model::spoken_act(None, "bring", rest))
     }
 
+    /// A miss from the next cell, filled for the person who threw.
+    /// Anyone else who can see the deer's cell keeps the stored sentence.
+    fn miss_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} misses "))?;
+        if rest != "the deer. It moves off." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "miss", rest))
+    }
+
     /// A flint tip finishing in the fire, filled for the person who held it.
     /// Anyone else keeps the stored sentence. A stone point keeps its own line.
     fn harden_for_these_eyes(
@@ -4536,6 +4550,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.bring_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.miss_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.butcher_for_these_eyes(viewer, event) {

@@ -7653,3 +7653,83 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .text
         .contains(&format!("You are {after_word}.")));
 }
+
+#[test]
+fn a_fire_hardened_flint_spear_misses_the_deer_on_the_next_cell() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    for (id, dir) in [("n1", Dir::North), ("n2", Dir::North), ("n3", Dir::North)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s1", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    world.step(&[cmd("haft", near, Attempt::Haft)]);
+    let lit = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert_eq!(
+        arms_sentence(&world.observe(near).unwrap().text),
+        "You have a spear with a fire-hardened flint tip."
+    );
+    assert_eq!(world.sim_time(), 15);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("s2", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.sim_time(), 20);
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    for _ in 0..8 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 28);
+    assert_eq!(world.deer_cell(), Some((2, 3)));
+    let hash = contest_hash(world.seed, world.sim_time(), "hunt", "2,3:deer", near);
+    assert_eq!(hash % 3, 1);
+    let yours = "You miss the deer. It moves off.";
+    let witnessed = "Near misses the deer. It moves off.";
+    let report = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
+    assert!(!report.results[0].success);
+    assert_eq!(report.results[0].message, yours);
+    assert_eq!(world.sim_time(), 29);
+    assert_eq!(world.deer_cell(), Some((3, 3)));
+    assert_eq!(world.material_tally(Material::Carcass), 0);
+    assert_eq!(world.material_tally(Material::Spear), 1);
+    let near_lines: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("miss"))
+        .collect();
+    assert_eq!(near_lines, vec![yours.to_string()]);
+    let far_lines: Vec<_> = world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("miss"))
+        .collect();
+    assert_eq!(far_lines, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("miss")));
+}
