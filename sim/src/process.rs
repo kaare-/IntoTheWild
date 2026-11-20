@@ -42,6 +42,7 @@ impl World {
                 Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
+                Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::BranchReturn(cell) => self.return_branches(cell),
                 Wake::BarkReturn(cell) => self.return_bark(cell),
                 Wake::BerryReturn(cell) => self.return_berries(cell),
@@ -337,6 +338,33 @@ impl World {
         self.add_pile(cell, Material::Flint, 1, 0);
         self.emit(
             "A flint nodule lies on the slope again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The slope has waited out its ticks. A lump of ochre lies there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_ochre(&mut self, cell: CellId) {
+        let Some(at) = self.ochre_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.ochre_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Ochre) > 0
+            || !self.ground_ids(cell, Material::Ochre).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Ochre, 1, 0);
+        self.emit(
+            "A lump of ochre lies on the slope again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

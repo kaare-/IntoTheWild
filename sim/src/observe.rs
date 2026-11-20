@@ -870,6 +870,8 @@ impl World {
             || !self.ground_ids(actor.cell, Material::Ochre).is_empty()
         {
             parts.push("A lump of ochre lies here.".into());
+        } else if self.ochre_bare(actor.cell) {
+            parts.push("The slope has no ochre.".into());
         }
         if self.pile_count(actor.cell, Material::Salt) > 0
             || !self.ground_ids(actor.cell, Material::Salt).is_empty()
@@ -1293,15 +1295,23 @@ impl World {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || orthogonal_neighbor(origin, cell) {
+            if cell == origin {
                 continue;
             }
             let count = self.pile_count(cell, Material::Ochre)
                 + self.ground_ids(cell, Material::Ochre).len() as u32;
             if count > 0 {
+                if orthogonal_neighbor(origin, cell) {
+                    continue;
+                }
                 let region = self.cell(cell).region.word();
                 lines.push(format!(
                     "A lump of ochre lies on the {region} to the {}.",
+                    self.relative(origin, cell)
+                ));
+            } else if self.ochre_bare(cell) {
+                lines.push(format!(
+                    "The slope to the {} has no ochre.",
                     self.relative(origin, cell)
                 ));
             }
@@ -2070,6 +2080,13 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// The slope's ochre was gathered and a lump has not lain there again.
+    fn ochre_bare(&self, cell: crate::model::CellId) -> bool {
+        self.ochre_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Ochre) == 0
+            && self.ground_ids(cell, Material::Ochre).is_empty()
     }
 
     /// The slope's flint was gathered and a nodule has not lain there again.
@@ -5459,6 +5476,15 @@ impl World {
                     format!("on the {region} to the {}", self.relative(origin, cell))
                 };
                 lines.push(format!("A lump of ochre lies {place}."));
+            } else if self.ochre_bare(cell) {
+                if origin == cell {
+                    lines.push("The slope here has no ochre.".into());
+                } else {
+                    lines.push(format!(
+                        "The slope to the {} has no ochre.",
+                        self.relative(origin, cell)
+                    ));
+                }
             }
         }
         for actor in self.actors.values() {

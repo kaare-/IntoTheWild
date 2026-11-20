@@ -1514,6 +1514,9 @@ impl World {
                     if material == Material::Flint {
                         self.arm_flint_bed(cell);
                     }
+                    if material == Material::Ochre {
+                        self.arm_ochre_bed(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,

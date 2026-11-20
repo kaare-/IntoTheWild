@@ -677,6 +677,8 @@ pub enum Wake {
     MossReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
+    /// A lump of ochre lies on this slope cell again.
+    OchreReturn(CellId),
     /// Dry branches lie under this rock again.
     BranchReturn(CellId),
     /// Bark lies under this rock again.
@@ -874,6 +876,12 @@ pub struct World {
     /// When a bare slope has a flint nodule again. Look says the slope has no flint until then.
     #[serde(default)]
     pub(crate) flint_returns_at: BTreeMap<CellId, u64>,
+    /// Slope cells where a lump of ochre lies again after it is gathered.
+    #[serde(default)]
+    pub(crate) ochre_beds: BTreeSet<CellId>,
+    /// When a bare slope has a lump of ochre again. Look says the slope has no ochre until then.
+    #[serde(default)]
+    pub(crate) ochre_returns_at: BTreeMap<CellId, u64>,
     /// The rock cells whose seeded dry branches return after they are taken.
     #[serde(default)]
     pub(crate) branch_beds: BTreeSet<CellId>,
@@ -994,6 +1002,9 @@ impl World {
             moss_banks: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
+            flint_returns_at: BTreeMap::new(),
+            ochre_beds: BTreeSet::new(),
+            ochre_returns_at: BTreeMap::new(),
             branch_beds: BTreeSet::new(),
             branch_returns_at: BTreeMap::new(),
             bark_beds: BTreeMap::new(),
@@ -1002,7 +1013,6 @@ impl World {
             berry_returns_at: BTreeMap::new(),
             mushroom_patches: BTreeMap::new(),
             mushroom_returns_at: BTreeMap::new(),
-            flint_returns_at: BTreeMap::new(),
             deer_returns_at: None,
             next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
@@ -1052,7 +1062,9 @@ impl World {
         let flint = cell_id(4, 0).unwrap();
         world.add_pile(flint, Material::Flint, 1, 0);
         world.flint_beds.insert(flint);
-        world.add_pile(cell_id(3, 0).unwrap(), Material::Ochre, 1, 0);
+        let ochre = cell_id(3, 0).unwrap();
+        world.add_pile(ochre, Material::Ochre, 1, 0);
+        world.ochre_beds.insert(ochre);
         world.add_pile(cell_id(5, 0).unwrap(), Material::IronOre, 1, 0);
         world.add_pile(cell_id(1, 2).unwrap(), Material::CopperOre, 1, 0);
         world.add_pile(cell_id(2, 2).unwrap(), Material::Clay, 2, 0);
@@ -1552,6 +1564,24 @@ impl World {
         let at = self.time.saturating_add(self.tuning.flint_ticks);
         self.flint_returns_at.insert(cell, at);
         self.schedule(at, Wake::FlintReturn(cell));
+    }
+
+    /// The slope has no lump of ochre. Another lies there `ochre_ticks` after
+    /// this step. Gathering it leaves that wait. Smearing or marking with the
+    /// lump that was carried does not start another. A wake that finds a lump
+    /// already there does not add a second one.
+    pub(crate) fn arm_ochre_bed(&mut self, cell: CellId) {
+        if !self.ochre_beds.contains(&cell) || self.ochre_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Ochre) > 0
+            || !self.ground_ids(cell, Material::Ochre).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.ochre_ticks);
+        self.ochre_returns_at.insert(cell, at);
+        self.schedule(at, Wake::OchreReturn(cell));
     }
 
     /// The seeded branches under a rock are gone, gathered or snapped away.
@@ -4822,6 +4852,111 @@ mod flint_return {
         assert!(world
             .flint_returns_at
             .contains_key(&world.actor(near).unwrap().cell));
+    }
+}
+
+#[cfg(test)]
+mod ochre_return {
+    use super::{Attempt, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_slope_has_no_ochre_until_a_lump_lies_there_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A lump of ochre lies here."), "{here}");
+        let south = world.observe(seen).unwrap().text;
+        assert!(south.contains("North: slope, a lump of ochre"), "{south}");
+        assert!(
+            !south.contains("The slope to the north has no ochre."),
+            "{south}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("ochre"));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Ochre))]);
+        assert_eq!(gathered.results[0].message, "You gather a lump of ochre.");
+        let slope = world.actor(near).unwrap().cell;
+        let due = world.ochre_returns_at.get(&slope).copied();
+        let smeared = world.step(&[intent("smear", near, Attempt::SmearOchre)]);
+        assert_eq!(
+            smeared.results[0].message,
+            "You smear red ochre on your skin."
+        );
+        assert_eq!(world.ochre_returns_at.get(&slope).copied(), due);
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The slope has no ochre."), "{empty}");
+        assert!(!empty.contains("A lump of ochre lies here."), "{empty}");
+        assert_eq!(
+            world.examine(near, ExamineTarget::Ochre),
+            "The slope here has no ochre."
+        );
+        let south = world.observe(seen).unwrap().text;
+        assert!(
+            south.contains("The slope to the north has no ochre."),
+            "{south}"
+        );
+        assert!(!south.contains("a lump of ochre"), "{south}");
+        assert_eq!(
+            world.examine(seen, ExamineTarget::Ochre),
+            "The slope to the north has no ochre."
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("ochre"));
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Ochre),
+            "You see no ochre from here."
+        );
+        let ticks = world.tuning.ochre_ticks;
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The slope has no ochre."));
+        world.step(&[]);
+        let back = "A lump of ochre lies on the slope again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("A lump of ochre lies here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("The slope has no ochre."),
+            "{}",
+            again.text
+        );
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back.text.contains("North: slope, a lump of ochre"),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("ochre"));
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Ochre))]);
+        assert_eq!(second.results[0].message, "You gather a lump of ochre.");
+        let taken = world.observe(near).unwrap().text;
+        assert!(taken.contains("The slope has no ochre."), "{taken}");
+        assert!(!taken.contains("A lump of ochre lies here."), "{taken}");
+        assert!(world.ochre_returns_at.contains_key(&slope));
     }
 }
 

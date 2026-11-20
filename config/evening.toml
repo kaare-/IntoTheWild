@@ -88,6 +88,11 @@ moss_ticks = 24
 # one that was carried does not change the wait. Someone who cannot see that
 # slope does not get the line.
 flint_ticks = 24
+# After the lump of ochre on the slope is gathered, look says the slope has
+# no ochre for this many ticks. Then a lump lies there again. Smearing or
+# marking with the one that was carried does not change the wait. Someone
+# who cannot see that slope does not get the line.
+ochre_ticks = 24
 # After a berry patch is emptied, by gathering or by the deer, the same
 # pile lies there again. Look says the berries are gone until then.
 berry_ticks = 24
