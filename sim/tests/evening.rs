@@ -783,6 +783,15 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("smear ochre").unwrap(),
         Attempt::SmearOchre
     ));
+    assert!(matches!(parse_attempt("mark").unwrap(), Attempt::Mark));
+    assert!(matches!(
+        parse_attempt("mark ground").unwrap(),
+        Attempt::Mark
+    ));
+    assert!(matches!(
+        parse_attempt("mark rock").unwrap(),
+        Attempt::MarkRock
+    ));
     assert!(matches!(parse_attempt("wear hide").unwrap(), Attempt::Wear));
     assert!(matches!(parse_attempt("remove").unwrap(), Attempt::Remove));
     assert!(matches!(
@@ -8154,4 +8163,76 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
         "{washed:?}"
     );
     assert_eq!(washed.self_info.ochre, "bare");
+}
+
+#[test]
+fn a_carried_lump_of_ochre_marks_the_ground() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    world.step(&[
+        cmd("n-near", near, Attempt::Move(Dir::North)),
+        cmd("n-far", far, Attempt::Move(Dir::North)),
+    ]);
+    world.step(&[
+        cmd("n2-near", near, Attempt::Move(Dir::North)),
+        cmd("n2-far", far, Attempt::Move(Dir::North)),
+    ]);
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    world.step(&[cmd("west", near, Attempt::Move(Dir::West))]);
+    assert_eq!(world.actor_cell(near), Some((3, 0)));
+    world.step(&[cmd("gather", near, Attempt::Gather(Material::Ochre))]);
+    let off = world.step(&[cmd("rock", near, Attempt::MarkRock)]);
+    assert!(!off.results[0].success);
+    assert_eq!(off.results[0].message, "There is no rock here to mark.");
+    assert_eq!(world.material_tally(Material::Ochre), 1);
+    let yours = "You mark the ground with red ochre.";
+    let witnessed = "Near marks the ground with red ochre.";
+    let marked = world.step(&[cmd("mark", near, Attempt::Mark)]);
+    assert_eq!(marked.results[0].message, yours);
+    let near_text = world.observe(near).unwrap();
+    assert!(near_text.events.iter().any(|event| event.text == yours));
+    assert!(near_text
+        .events
+        .iter()
+        .any(|event| event.text == "There is no rock here to mark."));
+    let far_lines: Vec<_> = world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.text.clone())
+        .filter(|text| text.contains("mark"))
+        .collect();
+    assert_eq!(far_lines, vec![witnessed.to_string()]);
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("mark")));
+    let here = world.observe(near).unwrap().text;
+    assert!(
+        here.contains("A red ochre mark is on the ground here."),
+        "{here}"
+    );
+    let beside = world.observe(far).unwrap().text;
+    assert!(
+        beside.contains("North: slope, a red ochre mark, 1 person."),
+        "{beside}"
+    );
+    assert!(!world.observe(west).unwrap().text.contains("ochre mark"));
+    assert_eq!(world.material_tally(Material::Ochre), 0);
+    let again = world.step(&[cmd("again", near, Attempt::Mark)]);
+    assert!(!again.results[0].success);
+    assert_eq!(again.results[0].message, "A red mark is already here.");
+    world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((4, 1)));
+    let afar = world.observe(near).unwrap().text;
+    assert!(
+        afar.contains("A red ochre mark is on the slope to the north and west."),
+        "{afar}"
+    );
 }

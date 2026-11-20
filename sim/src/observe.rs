@@ -249,6 +249,9 @@ impl World {
         if let Some(ochre) = self.seen_ochre(actor_id) {
             lines.push(ochre);
         }
+        if let Some(mark) = self.seen_ochre_mark(actor_id) {
+            lines.push(mark);
+        }
         if let Some(ice) = self.seen_frozen_pool(actor_id) {
             lines.push(ice);
         }
@@ -625,6 +628,14 @@ impl World {
         {
             parts.push("A lump of ochre lies here.".into());
         }
+        if self.ochre_marks.contains(&actor.cell) {
+            let surface = if self.cell(actor.cell).rock {
+                "rock"
+            } else {
+                "ground"
+            };
+            parts.push(format!("A red ochre mark is on the {surface} here."));
+        }
         let firing = self.clay_firing_count(actor.cell);
         let loose_clay = self.ground_ids(actor.cell, Material::Clay).len() as u32;
         let clay_pile = self.pile_count(actor.cell, Material::Clay);
@@ -772,6 +783,33 @@ impl World {
             Some(lines.join(" "))
         }
     }
+
+    /// A red ochre mark in sight that the place line and the compass do not already name.
+    fn seen_ochre_mark(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || orthogonal_neighbor(origin, cell) {
+                continue;
+            }
+            if !self.ochre_marks.contains(&cell) {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("on the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!("A red ochre mark is {place}."));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
     /// A rock in sight that the compass lines do not already stand on.
     /// The pot is on that ground, or in the hands of the person standing there.
     fn seen_under_the_rock(&self, viewer: ActorId) -> Option<String> {
@@ -1446,6 +1484,9 @@ impl World {
             || !self.ground_ids(dest, Material::Ochre).is_empty()
         {
             bits.push("a lump of ochre".into());
+        }
+        if self.ochre_marks.contains(&dest) {
+            bits.push("a red ochre mark".into());
         }
         let clay_firing = self.clay_firing_count(dest);
         if clay_firing > 0 && self.pile_count(dest, Material::Clay) == 0 {
@@ -4361,6 +4402,21 @@ impl World {
         None
     }
 
+    /// A red ochre mark left on this cell, filled for the person who made it.
+    fn mark_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} marks the ground with red ochre.") {
+            return Some("You mark the ground with red ochre.".into());
+        }
+        if event.text == format!("{name} marks the rock with red ochre.") {
+            return Some("You mark the rock with red ochre.".into());
+        }
+        None
+    }
+
     /// Rain taking the mud, filled for the person it washed.
     fn wash_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -4730,6 +4786,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.smear_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.mark_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.wash_for_these_eyes(viewer, event) {
@@ -5187,6 +5246,12 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::Ochre).is_empty() {
             actions.push("smear ochre".into());
+            if !self.ochre_marks.contains(&actor.cell) {
+                actions.push("mark".into());
+                if self.cell(actor.cell).rock {
+                    actions.push("mark rock".into());
+                }
+            }
         }
         if self.log_at(actor.cell) {
             actions.push("grab".into());

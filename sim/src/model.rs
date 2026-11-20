@@ -249,6 +249,8 @@ pub enum Attempt {
     Eat(Material),
     Smear,
     SmearOchre,
+    Mark,
+    MarkRock,
 }
 
 impl Attempt {
@@ -277,6 +279,8 @@ impl Attempt {
                 | Attempt::Eat(_)
                 | Attempt::Smear
                 | Attempt::SmearOchre
+                | Attempt::Mark
+                | Attempt::MarkRock
         )
     }
 }
@@ -562,6 +566,9 @@ pub struct World {
     /// handful leaves this unset.
     #[serde(default)]
     pub(crate) deer_ate_berries: BTreeSet<CellId>,
+    /// A red ochre mark left on a cell. It stays. Rain does not wash it.
+    #[serde(default)]
+    pub(crate) ochre_marks: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -626,6 +633,7 @@ impl World {
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
             deer_ate_berries: BTreeSet::new(),
+            ochre_marks: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),

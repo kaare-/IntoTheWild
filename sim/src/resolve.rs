@@ -47,6 +47,7 @@ impl World {
         let mut eats = Vec::new();
         let mut smears = Vec::new();
         let mut ochre_smears = Vec::new();
+        let mut marks = Vec::new();
         let mut sets = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
@@ -91,6 +92,7 @@ impl World {
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
                         Attempt::SmearOchre => ochre_smears.push(intent),
+                        Attempt::Mark | Attempt::MarkRock => marks.push(intent),
                         Attempt::SetClay => sets.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
@@ -191,6 +193,7 @@ impl World {
         self.apply_eats(eats, &mut results);
         self.apply_smears(smears, &mut results);
         self.apply_ochre_smears(ochre_smears, &mut results);
+        self.apply_marks(marks, &mut results);
         results
     }
 
@@ -489,6 +492,23 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Ochre).is_empty() {
                     Err("You have no ochre to smear.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Mark | Attempt::MarkRock => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if matches!(attempt, Attempt::MarkRock) && !self.cell(actor.cell).rock {
+                    Err("There is no rock here to mark.".into())
+                } else if self.ochre_marks.contains(&actor.cell) {
+                    Err("A red mark is already here.".into())
+                } else if self.loose_ids(actor.id, Material::Ochre).is_empty() {
+                    Err("You have no ochre to mark with.".into())
                 } else {
                     Ok(true)
                 }
@@ -2728,6 +2748,71 @@ impl World {
                 intent.actor_id,
                 true,
                 "You smear red ochre on your skin.",
+                results,
+            );
+        }
+    }
+
+    fn apply_marks(&mut self, marks: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in marks {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            if matches!(intent.attempt, Attempt::MarkRock) && !self.cell(cell).rock {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "There is no rock here to mark.",
+                    results,
+                );
+                continue;
+            }
+            if self.ochre_marks.contains(&cell) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "A red mark is already here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(item_id) = self
+                .loose_ids(intent.actor_id, Material::Ochre)
+                .first()
+                .copied()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no ochre to mark with.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&item_id);
+            self.ochre_marks.insert(cell);
+            let rock = self.cell(cell).rock;
+            let surface = if rock { "rock" } else { "ground" };
+            let name = self.name_of(intent.actor_id);
+            let rest = format!("the {surface} with red ochre.");
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "mark", &rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![item_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "mark", &rest),
                 results,
             );
         }
