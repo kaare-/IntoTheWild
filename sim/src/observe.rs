@@ -208,6 +208,7 @@ impl World {
             ExamineTarget::Bone => self.examine_bone(actor_id),
             ExamineTarget::Salt => self.examine_salt(actor_id),
             ExamineTarget::Honey => self.examine_honey(actor_id),
+            ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -322,6 +323,9 @@ impl World {
             }
             if let Some(honey) = self.seen_honey(actor_id) {
                 lines.push(honey);
+            }
+            if let Some(eggs) = self.seen_eggs(actor_id) {
+                lines.push(eggs);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -835,6 +839,13 @@ impl World {
             }
         } else if self.honey_nests.contains(&actor.cell) {
             parts.push("The bees' nest is empty.".into());
+        }
+        if self.pile_count(actor.cell, Material::Egg) > 0
+            || !self.ground_ids(actor.cell, Material::Egg).is_empty()
+        {
+            parts.push("A bird's nest sits in the tree here. It holds eggs.".into());
+        } else if self.bird_nests.contains(&actor.cell) {
+            parts.push("The bird's nest in the tree here is empty.".into());
         }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
@@ -1621,6 +1632,98 @@ impl World {
         }
     }
 
+    /// A bird's nest in a tree this person can see but is not standing under.
+    fn seen_eggs(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let region = self.cell(cell).region.word();
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::Egg) > 0
+                || !self.ground_ids(cell, Material::Egg).is_empty()
+            {
+                lines.push(format!(
+                    "A bird's nest sits in a tree on the {region} to the {way}."
+                ));
+            } else if self.bird_nests.contains(&cell) {
+                lines.push(format!(
+                    "The bird's nest in the tree on the {region} to the {way} is empty."
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_eggs(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let cover = self.cover_phrase(cell);
+            let holds = self.pile_count(cell, Material::Egg) > 0
+                || !self.ground_ids(cell, Material::Egg).is_empty();
+            if !holds && !self.bird_nests.contains(&cell) {
+                continue;
+            }
+            if cell == origin {
+                if holds {
+                    lines.push(format!(
+                        "A bird's nest sits in a tree here, {cover}. It holds eggs."
+                    ));
+                } else {
+                    lines.push(format!("The bird's nest {cover} here is empty."));
+                }
+            } else {
+                let way = self.relative(origin, cell);
+                if holds {
+                    lines.push(format!(
+                        "A bird's nest sits in a tree to the {way}, {cover}. It holds eggs."
+                    ));
+                } else {
+                    lines.push(format!("The bird's nest {cover} to the {way} is empty."));
+                }
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let ids = self.loose_ids(actor.id, Material::Egg);
+            if ids.is_empty() {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            let cooked = ids
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|eggs| eggs.cooked));
+            if cooked {
+                lines.push(format!(
+                    "Cooked eggs are carried by {who} {cover}. They are good to eat."
+                ));
+            } else {
+                lines.push(format!(
+                    "Eggs are carried by {who} {cover}. They must be cooked before they feed you."
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no eggs from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// The salt lick on this cell was gathered and has not formed again.
     fn salt_lick_bare(&self, cell: crate::model::CellId) -> bool {
         self.salt_returns_at.contains_key(&cell)
@@ -2027,6 +2130,16 @@ impl World {
             "a honeycomb".into()
         } else if item.material == "honey" {
             format!("{} honeycombs", count_word(item.count))
+        } else if item.material == "egg" {
+            if self
+                .loose_ids(actor_id, Material::Egg)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|eggs| eggs.cooked))
+            {
+                "cooked eggs".into()
+            } else {
+                "eggs".into()
+            }
         } else if item.material == "iron ore" && item.count == 1 {
             "a lump of iron ore".into()
         } else if item.material == "iron" && item.count == 1 {
@@ -2659,6 +2772,13 @@ impl World {
             bits.push("a bees' nest".into());
         } else if self.honey_nests.contains(&dest) {
             bits.push("an empty bees' nest".into());
+        }
+        if self.pile_count(dest, Material::Egg) > 0
+            || !self.ground_ids(dest, Material::Egg).is_empty()
+        {
+            bits.push("a bird's nest".into());
+        } else if self.bird_nests.contains(&dest) {
+            bits.push("an empty bird's nest".into());
         }
         if self.pile_count(dest, Material::IronOre) > 0
             || self.ground_ids(dest, Material::IronOre).len() > self.iron_smelting_count(dest)
@@ -5404,6 +5524,7 @@ impl World {
                 Material::Bone => "bone",
                 Material::Salt => "salt",
                 Material::Honey => "honey",
+                Material::Egg => "eggs",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
                 Material::Spear => "spear",
@@ -6554,7 +6675,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} eats "))?;
-        if rest != "the cooked mushroom." {
+        if rest != "the cooked mushroom." && rest != "the cooked eggs." {
             return None;
         }
         Some(crate::model::spoken_act(None, "eat", rest))
@@ -6588,7 +6709,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
-        if rest != "the mushroom over the fire." {
+        if rest != "the mushroom over the fire." && rest != "the eggs over the fire." {
             return None;
         }
         Some(crate::model::spoken_act(None, "cook", rest))
@@ -7391,6 +7512,7 @@ impl World {
             "handful of mud",
             "hide strips",
             "honeycomb",
+            "the eggs",
         ];
         let known = NOUNS
             .iter()
@@ -8130,6 +8252,15 @@ impl World {
         if !self.loose_ids(actor_id, Material::Honey).is_empty() {
             actions.push("eat honey".into());
         }
+        if (self.pile_count(actor.cell, Material::Egg) > 0
+            || !self.ground_ids(actor.cell, Material::Egg).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather eggs".into());
+        }
+        if self.cooked_egg_id(actor_id).is_some() {
+            actions.push("eat eggs".into());
+        }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty()
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
@@ -8532,6 +8663,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Bone, false) => "bones",
         (Material::Salt, _) => "salt crust",
         (Material::Honey, _) => "honeycomb",
+        (Material::Egg, _) => "eggs",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

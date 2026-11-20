@@ -972,6 +972,15 @@ impl World {
                                 Ok(true)
                             }
                         }
+                        Material::Egg => {
+                            if self.cooked_egg_id(actor.id).is_some() {
+                                Ok(true)
+                            } else if self.raw_egg_near(actor.id) {
+                                Err("The eggs are raw.".into())
+                            } else {
+                                Err("There are no cooked eggs here to eat.".into())
+                            }
+                        }
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
@@ -1084,6 +1093,11 @@ impl World {
                     if !self.water_here(actor.cell) {
                         return Err("There is no mud here to gather.".into());
                     }
+                } else if *material == Material::Egg
+                    && self.pile_count(actor.cell, Material::Egg) == 0
+                    && self.ground_ids(actor.cell, Material::Egg).is_empty()
+                {
+                    return Err("There are no eggs here to gather.".into());
                 } else if self.pile_count(actor.cell, *material) == 0
                     && (!matches!(
                         *material,
@@ -1107,6 +1121,7 @@ impl World {
                             | Material::Brand
                             | Material::Charcoal
                             | Material::Honey
+                            | Material::Egg
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(format!("There is no {} here to gather.", material.word()));
@@ -1284,6 +1299,7 @@ impl World {
                     | Material::Bone
                     | Material::Salt
                     | Material::Honey
+                    | Material::Egg
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1348,6 +1364,8 @@ impl World {
                     } else if material == Material::Awl {
                         let kind = if awl_kind { "bone awl" } else { "copper awl" };
                         format!("a {kind}{from}.")
+                    } else if material == Material::Egg {
+                        "the eggs.".to_string()
                     } else if material == Material::Honey && self.smoked_nests.contains(&cell) {
                         "a honeycomb.".to_string()
                     } else if material == Material::Honey {
@@ -1457,6 +1475,8 @@ impl World {
             };
             let dropped = if material == Material::Cord {
                 format!("{name} drops hide strips. They are in contact with the ground.")
+            } else if material == Material::Egg {
+                format!("{name} drops the eggs. They are in contact with the ground.")
             } else {
                 format!(
                     "{name} drops {} {noun}. It is in contact with the ground.",
@@ -1478,6 +1498,8 @@ impl World {
                 true,
                 if material == Material::Cord {
                     "You drop hide strips. They are in contact with the ground.".to_string()
+                } else if material == Material::Egg {
+                    "You drop the eggs. They are in contact with the ground.".to_string()
                 } else {
                     format!(
                         "You drop {} {noun}. It is in contact with the ground.",
@@ -2036,6 +2058,12 @@ impl World {
                 self.cook_fish(intent, results);
                 continue;
             }
+            if self.raw_egg_id(intent.actor_id).is_some()
+                || self.pile_count(cell, Material::Egg) > 0
+            {
+                self.cook_eggs(intent, results);
+                continue;
+            }
             if self.raw_mushroom_id(intent.actor_id).is_some()
                 || self.pile_count(cell, Material::Mushroom) > 0
             {
@@ -2099,6 +2127,63 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Heat leaves the eggs in the arms, or on the ground if they were still in the nest.
+    fn cook_eggs(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if let Some(message) = self.cook_refusal(intent.actor_id) {
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let id = if let Some(id) = self.raw_egg_id(intent.actor_id) {
+            if let Some(eggs) = self.items.get_mut(&id) {
+                eggs.cooked = true;
+            }
+            id
+        } else if self.pile_count(cell, Material::Egg) > 0 {
+            let moisture = self.take_from_pile(cell, Material::Egg, 1).unwrap_or(0);
+            let id = self.mint_item(Material::Egg, moisture, cell, None, Role::Loose);
+            if let Some(eggs) = self.items.get_mut(&id) {
+                eggs.cooked = true;
+            }
+            id
+        } else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        let rest = "the eggs over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
     }
 
     /// Heat leaves the mushroom in the arms, or on the ground if it was a pile.
@@ -5111,6 +5196,10 @@ impl World {
                 self.eat_honey(intent, results);
                 continue;
             }
+            if material == Material::Egg {
+                self.eat_eggs(intent, results);
+                continue;
+            }
             if material == Material::BitterBerry {
                 self.eat_poison(intent, results);
                 continue;
@@ -5205,6 +5294,60 @@ impl World {
             vec![intent.actor_id],
             vec![cell],
             vec![],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+            self.emit(
+                "The hunger eases.",
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    fn eat_eggs(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_egg_id(intent.actor_id) else {
+            let message = if self.raw_egg_near(intent.actor_id) {
+                "The eggs are raw."
+            } else {
+                "There are no cooked eggs here to eat."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cooked eggs.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
             vec![],
             None,
         );

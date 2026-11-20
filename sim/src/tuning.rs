@@ -534,6 +534,7 @@ impl Tuning {
             Material::Bone => 0,
             Material::Salt => 0,
             Material::Honey => 0,
+            Material::Egg => 0,
         }
     }
 }

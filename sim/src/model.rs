@@ -104,6 +104,7 @@ pub enum Material {
     Bone,
     Salt,
     Honey,
+    Egg,
 }
 
 impl Material {
@@ -143,6 +144,7 @@ impl Material {
             Material::Bone => "bone",
             Material::Salt => "salt",
             Material::Honey => "honey",
+            Material::Egg => "egg",
         }
     }
 
@@ -182,6 +184,7 @@ impl Material {
             Material::Bone => "bone",
             Material::Salt => "salt crust",
             Material::Honey => "honeycomb",
+            Material::Egg => "eggs",
         }
     }
 
@@ -306,6 +309,7 @@ pub enum ExamineTarget {
     Bone,
     Salt,
     Honey,
+    Eggs,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -794,6 +798,9 @@ pub struct World {
     /// A nest the bees have been smoked out of. The next gather there does not sting.
     #[serde(default)]
     pub(crate) smoked_nests: BTreeSet<CellId>,
+    /// A tree on the west slope that holds a bird's nest. Empty once the eggs are taken.
+    #[serde(default)]
+    pub(crate) bird_nests: BTreeSet<CellId>,
     pub(crate) grips: Vec<Grip>,
     pub(crate) schedule: Vec<Scheduled>,
     pub(crate) events: Vec<Event>,
@@ -870,6 +877,7 @@ impl World {
             honey_nests: BTreeSet::new(),
             honey_returns_at: BTreeMap::new(),
             smoked_nests: BTreeSet::new(),
+            bird_nests: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
             events: Vec::new(),
@@ -907,6 +915,9 @@ impl World {
         let tree = cell_id(6, 0).unwrap();
         world.add_pile(tree, Material::Honey, 1, 0);
         world.honey_nests.insert(tree);
+        let bird = cell_id(1, 0).unwrap();
+        world.add_pile(bird, Material::Egg, 1, 0);
+        world.bird_nests.insert(bird);
         world.normalize();
         world
     }
@@ -1635,7 +1646,44 @@ impl World {
     pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
         !self.loose_ids(actor, Material::Carcass).is_empty()
             || self.raw_mushroom_id(actor).is_some()
+            || self.raw_egg_id(actor).is_some()
             || !self.loose_ids(actor, Material::Berry).is_empty()
+    }
+
+    /// Raw eggs in the arms. Cooked eggs are already food.
+    pub(crate) fn raw_egg_id(&self, actor: ActorId) -> Option<ItemId> {
+        self.loose_ids(actor, Material::Egg)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|eggs| !eggs.cooked))
+    }
+
+    /// Cooked eggs, from the arms before the ground.
+    pub(crate) fn cooked_egg_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Egg)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|eggs| eggs.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Egg)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|eggs| eggs.cooked))
+    }
+
+    pub(crate) fn raw_egg_near(&self, actor: ActorId) -> bool {
+        if self.raw_egg_id(actor).is_some() {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.pile_count(cell, Material::Egg) > 0
+            || self
+                .ground_ids(cell, Material::Egg)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|eggs| !eggs.cooked))
     }
 
     /// A raw mushroom in the arms. A cooked one is already food.
@@ -1675,7 +1723,7 @@ impl World {
     }
 
     pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {
-        let piles: u32 = [Material::Mushroom, Material::Berry]
+        let piles: u32 = [Material::Mushroom, Material::Berry, Material::Egg]
             .into_iter()
             .map(|material| self.pile_count(cell, material))
             .sum();
@@ -3131,5 +3179,165 @@ mod names {
         assert!(!self_look.contains("cannot see"), "{self_look}");
         assert!(self_look.contains("You are"), "{self_look}");
         assert!(!self_look.contains('('), "{self_look}");
+    }
+}
+
+#[cfg(test)]
+mod eggs {
+    use super::{Attempt, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_birds_nest_on_the_west_slope_feeds_once_cooked() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 2, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A bird's nest sits in the tree here. It holds eggs."),
+            "{here}"
+        );
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("A bird's nest sits in a tree on the slope to the west."),
+            "{west}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("bird"));
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Egg))]);
+        assert_eq!(none.results[0].message, "There are no eggs here to gather.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There are no eggs here to gather."));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Egg))]);
+        assert_eq!(gathered.results[0].message, "You gather the eggs.");
+        let after = world.observe(near).unwrap();
+        assert!(
+            after
+                .text
+                .contains("The bird's nest in the tree here is empty."),
+            "{}",
+            after.text
+        );
+        assert!(after.text.contains("You have eggs."), "{}", after.text);
+        assert!(after
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers the eggs")));
+        let seen_after = world.observe(seen).unwrap();
+        assert!(seen_after
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers the eggs."));
+        assert!(
+            seen_after
+                .text
+                .contains("The bird's nest in the tree on the slope to the west is empty."),
+            "{}",
+            seen_after.text
+        );
+        let quiet_events: Vec<_> = world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect();
+        assert!(quiet_events
+            .iter()
+            .any(|event| event == "There are no eggs here to gather."));
+        assert!(quiet_events
+            .iter()
+            .all(|event| !event.contains("gathers the eggs")));
+        let raw = world.step(&[intent("raw", near, Attempt::Eat(Material::Egg))]);
+        assert_eq!(raw.results[0].message, "The eggs are raw.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The eggs are raw."));
+        let nofire = world.step(&[intent("cold", near, Attempt::Cook)]);
+        assert_eq!(nofire.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no fire burning here."));
+        world.mint_fire(world.actor(near).unwrap().cell, 0);
+        let cooked = world.step(&[intent("cook", near, Attempt::Cook)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the eggs over the fire."
+        );
+        let cooked_look = world.observe(near).unwrap();
+        assert!(cooked_look
+            .events
+            .iter()
+            .any(|event| event.text == "You cook the eggs over the fire."));
+        assert!(cooked_look
+            .events
+            .iter()
+            .all(|event| !event.text.starts_with("Near cooks")));
+        assert!(
+            cooked_look.text.contains("cooked eggs"),
+            "{}",
+            cooked_look.text
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near cooks the eggs over the fire."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cooks the eggs")));
+        if let Some(person) = world.actors.get_mut(&near) {
+            person.hunger = world.tuning.hungry_at;
+        }
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Egg))]);
+        assert_eq!(
+            eaten.results[0].message,
+            "You eat the cooked eggs. The hunger eases."
+        );
+        let fed = world.observe(near).unwrap();
+        assert!(fed
+            .events
+            .iter()
+            .any(|event| event.text == "You eat the cooked eggs."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near eats the cooked eggs."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The hunger eases."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("eats the cooked eggs")
+                && event.text != "The hunger eases."));
     }
 }
