@@ -2995,9 +2995,25 @@ mod honey {
         assert!(one.contains("You have a honeycomb."), "{one}");
         assert!(!one.contains("2 honey"), "{one}");
         let exam = world.examine(near, super::ExamineTarget::Honey);
-        assert!(exam.contains("A honeycomb is carried by you"), "{exam}");
+        assert!(
+            exam.contains("The bees' nest in the open here is empty."),
+            "{exam}"
+        );
+        assert!(
+            exam.contains("A honeycomb is carried by you in the open."),
+            "{exam}"
+        );
+        assert!(!exam.contains("here, in the open is empty"), "{exam}");
+        assert!(!exam.contains("carried by you,"), "{exam}");
         let west = world.examine(seen, super::ExamineTarget::Honey);
-        assert!(west.contains("A honeycomb is carried by Near"), "{west}");
+        assert!(
+            west.contains("The bees' nest in the open to the east is empty."),
+            "{west}"
+        );
+        assert!(
+            west.contains("A honeycomb is carried by Near in the open."),
+            "{west}"
+        );
         assert_eq!(
             world.examine(quiet, super::ExamineTarget::Honey),
             "You see no honey from here."
@@ -3009,13 +3025,37 @@ mod honey {
         assert!(!two.contains("2 honey"), "{two}");
         assert!(!two.contains("carried by you (dry)"), "{two}");
         let exam = world.examine(near, super::ExamineTarget::Honey);
-        assert!(exam.contains("Two honeycombs are carried by you"), "{exam}");
+        assert!(
+            exam.contains("Two honeycombs are carried by you in the open."),
+            "{exam}"
+        );
+        assert!(!exam.contains("carried by you,"), "{exam}");
         let west = world.examine(seen, super::ExamineTarget::Honey);
         assert!(
-            west.contains("Two honeycombs are carried by Near"),
+            west.contains("Two honeycombs are carried by Near in the open."),
             "{west}"
         );
         assert!(!west.contains("2 honey"), "{west}");
+        world.raining = true;
+        let rain = world.examine(near, super::ExamineTarget::Honey);
+        assert!(
+            rain.contains("The bees' nest in the rain here is empty."),
+            "{rain}"
+        );
+        assert!(
+            rain.contains("Two honeycombs are carried by you in the rain."),
+            "{rain}"
+        );
+        assert!(!rain.contains(", in the rain"), "{rain}");
+        let west_rain = world.examine(seen, super::ExamineTarget::Honey);
+        assert!(
+            west_rain.contains("The bees' nest in the rain to the east is empty."),
+            "{west_rain}"
+        );
+        assert!(
+            west_rain.contains("Two honeycombs are carried by Near in the rain."),
+            "{west_rain}"
+        );
         assert_eq!(
             world.examine(quiet, super::ExamineTarget::Honey),
             "You see no honey from here."

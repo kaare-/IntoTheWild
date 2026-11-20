@@ -1575,7 +1575,13 @@ impl World {
                     ));
                 }
             } else if self.honey_nests.contains(&cell) {
-                lines.push(format!("The bees' nest {place} is empty."));
+                let cover = self.cover_phrase(cell);
+                if cell == origin {
+                    lines.push(format!("The bees' nest {cover} here is empty."));
+                } else {
+                    let way = self.relative(origin, cell);
+                    lines.push(format!("The bees' nest {cover} to the {way} is empty."));
+                }
             }
         }
         for actor in self.actors.values() {
@@ -1593,10 +1599,10 @@ impl World {
             };
             let cover = self.cover_phrase(actor.cell);
             if count == 1 {
-                lines.push(format!("A honeycomb is carried by {who}, {cover}."));
+                lines.push(format!("A honeycomb is carried by {who} {cover}."));
             } else {
                 lines.push(format!(
-                    "{} honeycombs are carried by {who}, {cover}.",
+                    "{} honeycombs are carried by {who} {cover}.",
                     capitalize(&count_word(count))
                 ));
             }
