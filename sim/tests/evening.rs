@@ -11821,3 +11821,104 @@ fn night_shortens_the_look_until_a_fire_is_nearby() {
         .text
         .contains("Night has fallen."));
 }
+
+#[test]
+fn night_cold_in_the_open_is_faster_and_shelter_holds() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let open = world.spawn_at("Open", "o", 6, 1).unwrap();
+    let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+    let lean = world.spawn_at("Lean", "l", 5, 2).unwrap();
+    let built = world.step(&[cmd("build", lean, Attempt::BuildLeanTo)]);
+    assert!(built.results[0].success, "{}", built.results[0].message);
+    world.step(&[cmd("to-rock-e", lean, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("to-rock-n", lean, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(lean), Some((6, 1)));
+    let bark = world.step(&[cmd("bark", rock, Attempt::Gather(Material::Bark))]);
+    assert!(bark.results[0].success, "{}", bark.results[0].message);
+    let branch = world.step(&[cmd("branch", rock, Attempt::Gather(Material::Branch))]);
+    assert!(branch.results[0].success, "{}", branch.results[0].message);
+
+    world.step(&[cmd("day-out", open, Attempt::Move(Dir::South))]);
+    for i in 0..3 {
+        world.step(&[cmd(&format!("day-wait-{i}"), open, Attempt::Look)]);
+    }
+    let day = world.observe(open).unwrap();
+    assert_eq!(day.self_info.cold, "chilly");
+    assert!(day.text.contains("You are chilly."), "{}", day.text);
+    assert!(!day.text.contains("You are cold."));
+    world.step(&[cmd("day-back", open, Attempt::Move(Dir::North))]);
+    assert_eq!(world.observe(open).unwrap().self_info.cold, "warm");
+    assert_eq!(world.actor_cell(open), Some((6, 1)));
+
+    while world.sim_time() < world.tuning.night_at {
+        world.step(&[]);
+    }
+    assert!(world.sim_time() >= world.tuning.night_at);
+    assert!(world
+        .observe(open)
+        .unwrap()
+        .text
+        .contains("Night has fallen."));
+    world.step(&[
+        cmd("night-open", open, Attempt::Move(Dir::South)),
+        cmd("night-lean", lean, Attempt::Move(Dir::South)),
+    ]);
+    world.step(&[
+        cmd("night-open-2", open, Attempt::Look),
+        cmd("night-lean-2", lean, Attempt::Move(Dir::West)),
+    ]);
+    assert_eq!(world.actor_cell(lean), Some((5, 2)));
+    for i in 0..2 {
+        world.step(&[cmd(&format!("night-open-wait-{i}"), open, Attempt::Look)]);
+    }
+    let night_open = world.observe(open).unwrap();
+    assert_eq!(night_open.self_info.cold, "cold");
+    assert!(
+        night_open.text.contains("You are cold.")
+            && night_open.text.contains("You are in the wind."),
+        "{}",
+        night_open.text
+    );
+    let under_lean = world.observe(lean).unwrap();
+    assert_eq!(under_lean.self_info.cold, "warm");
+    assert!(
+        under_lean.text.contains("You are warm.")
+            && under_lean.text.contains("You are in a little wind."),
+        "{}",
+        under_lean.text
+    );
+    let under_rock = world.observe(rock).unwrap();
+    assert_eq!(under_rock.self_info.cold, "warm");
+    assert!(
+        under_rock.text.contains("You are warm.")
+            && under_rock.text.contains("You are out of the wind."),
+        "{}",
+        under_rock.text
+    );
+    assert!(under_rock
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Open is cold")));
+    assert!(world.sim_time() < world.tuning.night_at + world.tuning.night_len);
+    let lit = world.step(&[
+        cmd("light", rock, Attempt::Light),
+        cmd("to-fire", open, Attempt::Move(Dir::North)),
+    ]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+    assert_eq!(world.actor_cell(open), Some((6, 1)));
+    world.step(&[]);
+    world.step(&[]);
+    let warmed = world.observe(open).unwrap();
+    assert_eq!(warmed.self_info.cold, "warm");
+    assert!(
+        warmed.text.contains("You are warm.")
+            && warmed
+                .text
+                .contains("A small fire burns here. It warms you."),
+        "{}",
+        warmed.text
+    );
+    assert!(world.sim_time() < world.tuning.night_at + world.tuning.night_len);
+    assert!(warmed.text.contains("Night has fallen."));
+    assert!(!world.observe(lean).unwrap().text.contains("You are cold."));
+}

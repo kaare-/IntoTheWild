@@ -712,6 +712,11 @@ impl World {
             if exposure >= 1000 {
                 sky_cold = sky_cold.saturating_mul(2);
             }
+            // Night doubles that open-sky cold again. A rock, a lean-to, and
+            // a fire in the cell keep the daytime shelter.
+            if self.night() && exposure >= 1000 && !on_fire {
+                sky_cold = sky_cold.saturating_mul(2);
+            }
             let mut cold_gain = sky_cold;
             if !on_fire && carried > 0 {
                 cold_gain /= 2;

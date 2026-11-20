@@ -457,7 +457,7 @@ impl World {
 
     /// The first night starts at `night_at` and lasts `night_len` ticks.
     /// Then `day_len` ticks of morning, and the pair repeats.
-    fn night(&self) -> bool {
+    pub(crate) fn night(&self) -> bool {
         if self.time < self.tuning.night_at {
             return false;
         }
