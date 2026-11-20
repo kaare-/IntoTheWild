@@ -47,6 +47,10 @@ pub struct Tuning {
     /// Ticks a bee sting stays on the body. Look says stung until the tick it fades.
     #[serde(default = "default_sting_ticks")]
     pub sting_ticks: u64,
+    /// Ticks after the honeycomb is taken before the nest fills again.
+    /// Look says the nest is empty until then.
+    #[serde(default = "default_honey_ticks")]
+    pub honey_ticks: u64,
     /// Sim time when the first night falls. Night lasts `night_len` ticks,
     /// then morning. The day between nights is `day_len` ticks, and that repeats.
     #[serde(default = "default_night_at")]
@@ -174,6 +178,9 @@ fn default_salt_ticks() -> u64 {
 fn default_sting_ticks() -> u64 {
     4
 }
+fn default_honey_ticks() -> u64 {
+    24
+}
 fn default_night_at() -> u64 {
     72
 }
@@ -279,6 +286,8 @@ struct RawTime {
     salt_ticks: u64,
     #[serde(default = "default_sting_ticks")]
     sting_ticks: u64,
+    #[serde(default = "default_honey_ticks")]
+    honey_ticks: u64,
     #[serde(default = "default_night_at")]
     night_at: u64,
     #[serde(default = "default_night_len")]
@@ -369,6 +378,7 @@ impl Tuning {
             || raw.time.meat_ticks == 0
             || raw.time.salt_ticks == 0
             || raw.time.sting_ticks == 0
+            || raw.time.honey_ticks == 0
             || raw.time.night_len == 0
             || raw.time.day_len == 0
         {
@@ -425,6 +435,7 @@ impl Tuning {
             meat_ticks: raw.time.meat_ticks,
             salt_ticks: raw.time.salt_ticks,
             sting_ticks: raw.time.sting_ticks,
+            honey_ticks: raw.time.honey_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
             day_len: raw.time.day_len,

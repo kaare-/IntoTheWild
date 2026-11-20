@@ -644,6 +644,8 @@ pub enum Wake {
     Spoil(ItemId),
     /// The salt lick on this cell forms another crust.
     SaltReturn(CellId),
+    /// The bees' nest on this cell has honey again.
+    HoneyReturn(CellId),
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
 }
@@ -786,6 +788,9 @@ pub struct World {
     /// A tree that holds a bees' nest. Empty once the honeycomb is taken.
     #[serde(default)]
     pub(crate) honey_nests: BTreeSet<CellId>,
+    /// When an emptied nest fills again. Look says the nest is empty until then.
+    #[serde(default)]
+    pub(crate) honey_returns_at: BTreeMap<CellId, u64>,
     /// A nest the bees have been smoked out of. The next gather there does not sting.
     #[serde(default)]
     pub(crate) smoked_nests: BTreeSet<CellId>,
@@ -863,6 +868,7 @@ impl World {
             salt_licks: BTreeSet::new(),
             salt_returns_at: BTreeMap::new(),
             honey_nests: BTreeSet::new(),
+            honey_returns_at: BTreeMap::new(),
             smoked_nests: BTreeSet::new(),
             grips: Vec::new(),
             schedule: Vec::new(),
@@ -1253,6 +1259,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.salt_ticks);
         self.salt_returns_at.insert(cell, at);
         self.schedule(at, Wake::SaltReturn(cell));
+    }
+
+    /// The nest is empty. Honey returns `honey_ticks` after this step.
+    /// A wake that finds honey already there does not add a second comb.
+    pub(crate) fn arm_honey_nest(&mut self, cell: CellId) {
+        if !self.honey_nests.contains(&cell) || self.honey_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Honey) > 0
+            || !self.ground_ids(cell, Material::Honey).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.honey_ticks);
+        self.honey_returns_at.insert(cell, at);
+        self.schedule(at, Wake::HoneyReturn(cell));
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -2890,5 +2912,75 @@ mod honey {
         assert_eq!(gathered.results[0].message, "You gather a honeycomb.");
         assert!(world.actor(near).unwrap().stings_until.is_none());
         assert!(!world.observe(near).unwrap().text.contains("You are stung."));
+    }
+
+    #[test]
+    fn the_bees_nest_is_empty_until_it_fills_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 5, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a honeycomb. The bees sting."
+        );
+        let empty = world.observe(near).unwrap().text;
+        assert!(empty.contains("The bees' nest is empty."), "{empty}");
+        assert!(!empty.contains("A bees' nest hangs"), "{empty}");
+        let west_empty = world.observe(seen).unwrap().text;
+        assert!(
+            west_empty.contains("The bees' nest in the tree on the slope to the east is empty."),
+            "{west_empty}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("bees"));
+        let ticks = world.tuning.honey_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The bees' nest is empty."));
+        world.step(&[]);
+        let filled = "The bees' nest fills again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("A bees' nest hangs in the tree here."),
+            "{}",
+            back.text
+        );
+        assert!(
+            !back.text.contains("The bees' nest is empty."),
+            "{}",
+            back.text
+        );
+        assert!(back.events.iter().any(|event| event.text == filled));
+        let west = world.observe(seen).unwrap();
+        assert!(
+            west.text
+                .contains("A bees' nest hangs in a tree on the slope to the east."),
+            "{}",
+            west.text
+        );
+        assert!(west.events.iter().any(|event| event.text == filled));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != filled));
+        assert!(!world.observe(quiet).unwrap().text.contains("bees"));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Honey))]);
+        assert_eq!(
+            again.results[0].message,
+            "You gather a honeycomb. The bees sting."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The bees' nest is empty."));
     }
 }

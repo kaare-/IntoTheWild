@@ -1366,6 +1366,9 @@ impl World {
                             person.stings_until = Some(until);
                         }
                     }
+                    if material == Material::Honey {
+                        self.arm_honey_nest(cell);
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,

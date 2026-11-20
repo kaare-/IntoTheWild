@@ -38,6 +38,7 @@ impl World {
                 Wake::Snare(cell) => self.spring_snare(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
+                Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::Stings => self.apply_stings(),
             }
         }
@@ -99,6 +100,33 @@ impl World {
         self.add_pile(cell, Material::Salt, 1, 0);
         self.emit(
             "A salt crust forms on the slope.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The bees' nest has waited out its ticks. Honey hangs in the tree again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_honey(&mut self, cell: CellId) {
+        let Some(at) = self.honey_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.honey_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Honey) > 0
+            || !self.ground_ids(cell, Material::Honey).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Honey, 1, 0);
+        self.emit(
+            "The bees' nest fills again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
