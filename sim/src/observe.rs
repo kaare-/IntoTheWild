@@ -6334,11 +6334,11 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        if event.text == format!("{name} thatches the lean-to with reeds.") {
-            Some("You thatch the lean-to with reeds.".into())
-        } else {
-            None
+        let rest = event.text.strip_prefix(&format!("{name} thatches "))?;
+        if rest != "the lean-to with reeds." {
+            return None;
         }
+        Some(crate::model::spoken_act(None, "thatch", rest))
     }
 
     /// A flint spear bringing the deer down, filled for the person who struck.

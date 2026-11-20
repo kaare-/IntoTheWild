@@ -15,7 +15,21 @@ const EVENT_CAP: usize = 20_000;
 pub(crate) fn spoken_act(name: Option<&str>, stem: &str, rest: &str) -> String {
     match name {
         None => format!("You {stem} {rest}"),
-        Some(name) => format!("{name} {stem}s {rest}"),
+        Some(name) => format!("{name} {} {rest}", third_person(stem)),
+    }
+}
+
+/// Third person of a present stem. `thatch` becomes `thatches`.
+fn third_person(stem: &str) -> String {
+    if stem.ends_with("ch")
+        || stem.ends_with("sh")
+        || stem.ends_with('s')
+        || stem.ends_with('x')
+        || stem.ends_with('z')
+    {
+        format!("{stem}es")
+    } else {
+        format!("{stem}s")
     }
 }
 

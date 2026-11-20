@@ -3282,8 +3282,9 @@ impl World {
             }
             self.thatched.insert(actor.cell);
             let name = self.name_of(actor.id);
+            let rest = "the lean-to with reeds.";
             self.emit(
-                format!("{name} thatches the lean-to with reeds."),
+                crate::model::spoken_act(Some(name.as_str()), "thatch", rest),
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
@@ -3295,7 +3296,7 @@ impl World {
                 intent.command_id,
                 actor.id,
                 true,
-                "You thatch the lean-to with reeds.",
+                crate::model::spoken_act(None, "thatch", rest),
                 results,
             );
         }
