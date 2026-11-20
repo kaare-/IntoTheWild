@@ -6055,6 +6055,35 @@ impl World {
         Some(crate::model::spoken_act(None, "spear", rest))
     }
 
+    /// A fish taken out of sight. The spear sentence stays with someone who
+    /// can see it. Past hearing, the event is not delivered at all.
+    fn splash_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
+        let cell = self.splash_cell(event)?;
+        if chebyshev(origin, cell) <= self.tuning.sight {
+            return None;
+        }
+        if chebyshev(origin, cell) > self.tuning.hearing {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear a splash to the {way}."))
+    }
+
+    fn hears_a_splash(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.splash_cell(event) else {
+            return false;
+        };
+        chebyshev(origin, cell) > self.tuning.sight
+            && chebyshev(origin, cell) <= self.tuning.hearing
+    }
+
+    fn splash_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !event.text.contains(" spears a fish from the brook.") {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     /// A branch held or set to dry, and the moment it is dry, for the person who did it.
     fn dry_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -6394,6 +6423,9 @@ impl World {
         if let Some(line) = self.fish_for_these_eyes(viewer, event) {
             return line;
         }
+        if let Some(line) = self.splash_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.brand_for_these_eyes(viewer, event) {
             return line;
         }
@@ -6604,6 +6636,7 @@ impl World {
                 chebyshev(origin, cell) <= self.tuning.sight
                     || event.affected_actors.contains(&viewer)
                     || self.hears_a_branch_break(origin, event)
+                    || self.hears_a_splash(origin, event)
             }
         }
     }

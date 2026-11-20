@@ -11630,3 +11630,94 @@ fn deer_tracks_show_for_who_can_see_the_cell_and_then_fade() {
         .text
         .contains("Deer tracks mark the ground here."));
 }
+
+#[test]
+fn a_splash_is_heard_one_cell_past_sight() {
+    let mut world = world_at(10_000);
+    let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+    let seen = world.spawn_at("West", "w", 4, 2).unwrap();
+    let heard = world.spawn_at("Far", "f", 5, 2).unwrap();
+    let quiet = world.spawn_at("Otto", "o", 6, 2).unwrap();
+    let missed = world.step(&[cmd("away", near, Attempt::Fish)]);
+    assert_eq!(missed.results[0].message, "The brook is not here.");
+    assert!(world
+        .observe(heard)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("brook") && !event.text.contains("splash") }));
+    world.step(&[cmd("flint", near, Attempt::Gather(Material::Flint))]);
+    world.step(&[cmd("knap", near, Attempt::Knap)]);
+    for (id, dir) in [("e1", Dir::East), ("e2", Dir::East), ("s", Dir::South)] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    let light = world.step(&[cmd("light", near, Attempt::Light)]);
+    assert!(light.results[0].success, "{}", light.results[0].message);
+    world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
+    let haft = world.step(&[cmd("haft", near, Attempt::Haft)]);
+    assert!(haft.results[0].success, "{}", haft.results[0].message);
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    for (id, dir) in [
+        ("w1", Dir::West),
+        ("w2", Dir::West),
+        ("w3", Dir::West),
+        ("w4", Dir::West),
+        ("bank", Dir::South),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((2, 2)));
+    let yours = "You spear a fish from the brook.";
+    let seen_line = "Near spears a fish from the brook.";
+    let splash = "You hear a splash to the west.";
+    let cast = world.step(&[cmd("fish", near, Attempt::Fish)]);
+    assert_eq!(cast.results[0].message, yours);
+    let actor = world.observe(near).unwrap();
+    assert!(actor.events.iter().any(|event| event.text == yours));
+    assert!(actor
+        .events
+        .iter()
+        .all(|event| !event.text.contains("splash")));
+    let eyes = world.observe(seen).unwrap();
+    assert!(eyes.events.iter().any(|event| event.text == seen_line));
+    assert!(eyes
+        .events
+        .iter()
+        .all(|event| !event.text.contains("splash")));
+    let ears = world.observe(heard).unwrap();
+    assert!(ears.events.iter().any(|event| event.text == splash));
+    assert!(ears
+        .events
+        .iter()
+        .all(|event| !event.text.contains("spears")));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("splash") && !event.text.contains("fish") }));
+    let again = world.step(&[cmd("again", near, Attempt::Fish)]);
+    assert_eq!(
+        again.results[0].message,
+        "The fish are gone from this stretch of the brook."
+    );
+    assert_eq!(
+        world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == splash)
+            .count(),
+        1
+    );
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("gone from this stretch") }));
+}
