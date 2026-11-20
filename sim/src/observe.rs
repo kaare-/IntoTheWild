@@ -5985,13 +5985,12 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        if event.text == format!("{name} smears mud on their skin.") {
-            return Some("You smear mud on your skin.".into());
+        let rest = event.text.strip_prefix(&format!("{name} smears "))?;
+        let stuff = rest.strip_suffix(" on their skin.")?;
+        if stuff != "mud" && stuff != "red ochre" {
+            return None;
         }
-        if event.text == format!("{name} smears red ochre on their skin.") {
-            return Some("You smear red ochre on your skin.".into());
-        }
-        None
+        Some(crate::model::spoken_smear(None, stuff))
     }
 
     /// A red ochre mark left on this cell, filled for the person who made it.

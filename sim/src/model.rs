@@ -19,6 +19,12 @@ pub(crate) fn spoken_act(name: Option<&str>, stem: &str, rest: &str) -> String {
     }
 }
 
+/// A smear on the skin. One pattern: `your` for the actor, `their` for a witness.
+pub(crate) fn spoken_smear(name: Option<&str>, stuff: &str) -> String {
+    let skin = if name.is_none() { "your" } else { "their" };
+    spoken_act(name, "smear", &format!("{stuff} on {skin} skin."))
+}
+
 /// Third person of a present stem. `thatch` becomes `thatches`.
 fn third_person(stem: &str) -> String {
     if stem.ends_with("ch")

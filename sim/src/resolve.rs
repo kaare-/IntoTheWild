@@ -4789,7 +4789,7 @@ impl World {
                 .unwrap_or(0);
             let name = self.name_of(intent.actor_id);
             self.emit(
-                format!("{name} smears mud on their skin."),
+                crate::model::spoken_smear(Some(name.as_str()), "mud"),
                 Scope::Cell(cell),
                 vec![intent.actor_id],
                 vec![cell],
@@ -4801,7 +4801,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 true,
-                "You smear mud on your skin.",
+                crate::model::spoken_smear(None, "mud"),
                 results,
             );
         }
@@ -4833,7 +4833,7 @@ impl World {
                 .unwrap_or(0);
             let name = self.name_of(intent.actor_id);
             self.emit(
-                format!("{name} smears red ochre on their skin."),
+                crate::model::spoken_smear(Some(name.as_str()), "red ochre"),
                 Scope::Cell(cell),
                 vec![intent.actor_id],
                 vec![cell],
@@ -4845,7 +4845,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 true,
-                "You smear red ochre on your skin.",
+                crate::model::spoken_smear(None, "red ochre"),
                 results,
             );
         }
