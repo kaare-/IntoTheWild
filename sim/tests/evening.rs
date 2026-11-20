@@ -8000,7 +8000,7 @@ fn a_lump_of_ochre_on_the_slope_can_be_carried() {
     assert_eq!(world.actor_cell(far), Some((3, 1)));
     let from_near = world.observe(near).unwrap().text;
     assert!(
-        from_near.contains("A lump of ochre lies to the north and west, in the open."),
+        from_near.contains("A lump of ochre lies on the slope to the north and west."),
         "{from_near}"
     );
     let from_far = world.observe(far).unwrap().text;

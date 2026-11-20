@@ -757,9 +757,10 @@ impl World {
             let count = self.pile_count(cell, Material::Ochre)
                 + self.ground_ids(cell, Material::Ochre).len() as u32;
             if count > 0 {
+                let region = self.cell(cell).region.word();
                 lines.push(format!(
-                    "A lump of ochre lies {}.",
-                    self.place_phrase(origin, cell)
+                    "A lump of ochre lies on the {region} to the {}.",
+                    self.relative(origin, cell)
                 ));
             }
         }
@@ -769,6 +770,7 @@ impl World {
             Some(lines.join(" "))
         }
     }
+    /// A rock in sight that the compass lines do not already stand on.
     /// The pot is on that ground, or in the hands of the person standing there.
     fn seen_under_the_rock(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
