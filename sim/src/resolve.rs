@@ -52,6 +52,7 @@ impl World {
         let mut smelts = Vec::new();
         let mut hammers = Vec::new();
         let mut pierces = Vec::new();
+        let mut sews = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
         let mut hafts = Vec::new();
@@ -100,6 +101,7 @@ impl World {
                         Attempt::Smelt => smelts.push(intent),
                         Attempt::Hammer => hammers.push(intent),
                         Attempt::Pierce => pierces.push(intent),
+                        Attempt::Sew => sews.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
                         Attempt::Haft => hafts.push(intent),
@@ -190,6 +192,7 @@ impl World {
         self.apply_smelts(smelts, &mut results);
         self.apply_hammers(hammers, &mut results);
         self.apply_pierces(pierces, &mut results);
+        self.apply_sews(sews, &mut results);
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
         self.apply_hafts(hafts, &mut results);
@@ -470,6 +473,31 @@ impl World {
                     Err("The deer hide is already pierced.".into())
                 } else {
                     Ok(true)
+                }
+            }
+            Attempt::Sew => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Hide).is_empty() {
+                    Err("You are not carrying a deer hide.".into())
+                } else if self
+                    .loose_ids(actor.id, Material::Hide)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.pierced))
+                {
+                    Ok(true)
+                } else if self
+                    .loose_ids(actor.id, Material::Hide)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.sewn))
+                {
+                    Err("The deer hide is already a cloak.".into())
+                } else {
+                    Err("The deer hide is not pierced.".into())
                 }
             }
             Attempt::Eat(material) => {
@@ -2015,7 +2043,6 @@ impl World {
     }
 
     fn apply_wears(&mut self, wears: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "the deer hide.";
         for intent in wears {
             let Some(id) = self
                 .loose_ids(intent.actor_id, Material::Hide)
@@ -2030,6 +2057,12 @@ impl World {
                     results,
                 );
                 continue;
+            };
+            let sewn = self.item(id).is_some_and(|hide| hide.sewn);
+            let rest = if sewn {
+                "the sewn deer-hide cloak."
+            } else {
+                "the deer hide."
             };
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = true;
@@ -2059,7 +2092,6 @@ impl World {
     }
 
     fn apply_removes(&mut self, removes: Vec<Intent>, results: &mut Vec<CommandResult>) {
-        let rest = "the deer hide.";
         for intent in removes {
             let Some(id) = self
                 .loose_ids(intent.actor_id, Material::Hide)
@@ -2074,6 +2106,12 @@ impl World {
                     results,
                 );
                 continue;
+            };
+            let sewn = self.item(id).is_some_and(|hide| hide.sewn);
+            let rest = if sewn {
+                "the sewn deer-hide cloak."
+            } else {
+                "the deer hide."
             };
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = false;
@@ -2476,6 +2514,51 @@ impl World {
                 intent.actor_id,
                 true,
                 crate::model::spoken_act(None, "pierce", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_sews(&mut self, sews: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        let rest = "the pierced deer hide into a cloak.";
+        for intent in sews {
+            let hide = self
+                .loose_ids(intent.actor_id, Material::Hide)
+                .into_iter()
+                .find(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+            let Some(hide) = hide else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The deer hide is not pierced.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(item) = self.items.get_mut(&hide) {
+                item.pierced = false;
+                item.sewn = true;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "sew", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![hide],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "sew", rest),
                 results,
             );
         }

@@ -39,6 +39,7 @@ mark rock                    the same red mark on the rock, when you stand under
 smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew
+sew hide                     a pierced deer hide into a cloak, worn against the cold
 interrupt                    stop the work your body is in
 help"
 }
@@ -122,6 +123,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Hammer)
         }
         "pierce" if rest.is_empty() || rest == "hide" || rest == "deer hide" => Ok(Attempt::Pierce),
+        "sew" if rest.is_empty() || rest == "hide" || rest == "deer hide" || rest == "cloak" => {
+            Ok(Attempt::Sew)
+        }
         _ => Err("Unknown attempt. Type help.".into()),
     }
 }
