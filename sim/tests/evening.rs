@@ -8130,6 +8130,26 @@ fn smoke_shows_past_the_fire_and_stops_one_cell_farther() {
         !silent.contains("Smoke") && !silent.contains("small fire"),
         "{silent}"
     );
+    let near_key = world.observe(near).unwrap();
+    assert!(near_key.legend.contains("* fire"), "{}", near_key.legend);
+    assert!(near_key.map.contains('@') && near_key.map.contains('*'));
+    let west_key = world.observe(west).unwrap();
+    assert!(west_key.legend.contains("* fire"), "{}", west_key.legend);
+    assert!(west_key.map.contains('*'), "{}", west_key.map);
+    let far_key = world.observe(far).unwrap();
+    assert!(
+        far_key.legend.contains("* fire") && !far_key.map.contains('*'),
+        "legend:\n{}\nmap:\n{}",
+        far_key.legend,
+        far_key.map
+    );
+    let past_key = world.observe(past).unwrap();
+    assert!(
+        !past_key.legend.contains("* fire") && !past_key.map.contains('*'),
+        "legend:\n{}\nmap:\n{}",
+        past_key.legend,
+        past_key.map
+    );
 }
 
 #[test]

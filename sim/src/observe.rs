@@ -135,7 +135,7 @@ impl World {
             raining: self.raining,
             text: self.prose(actor_id),
             map: self.map_string(actor_id),
-            legend: LEGEND.to_string(),
+            legend: self.legend_for(actor_id),
             self_info: SelfInfo {
                 id: actor.id,
                 name: actor.name.clone(),
@@ -5158,6 +5158,31 @@ impl World {
                 self.cover_phrase(to)
             )
         }
+    }
+
+    /// `* fire` stays in the key only when this person can see a fire or its smoke.
+    fn legend_for(&self, viewer: ActorId) -> String {
+        if self.perceives_a_fire(viewer) {
+            return LEGEND.to_string();
+        }
+        LEGEND
+            .lines()
+            .map(|line| match line.trim_end().strip_suffix("* fire") {
+                Some(kept) => kept.trim_end().to_string(),
+                None => line.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// A fire on this cell, or smoke from it: inside sight, or one cell past it.
+    fn perceives_a_fire(&self, viewer: ActorId) -> bool {
+        let Some(origin) = self.actor(viewer).map(|actor| actor.cell) else {
+            return false;
+        };
+        self.fires
+            .values()
+            .any(|fire| chebyshev(origin, fire.cell) <= self.tuning.smoke_range())
     }
 
     fn map_string(&self, viewer: ActorId) -> String {
