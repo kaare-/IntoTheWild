@@ -608,6 +608,7 @@ impl World {
             if self.deer_ate_berries.contains(&actor.cell) {
                 if deer_here {
                     parts.push("The deer standing here ate the berries that were here.".into());
+                    parts.push("A deer stands here.".into());
                 } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
                     (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
                 }) {
@@ -2258,7 +2259,10 @@ impl World {
         if origin != deer.cell {
             if let Some(last) = self.deer_meal_this_tick(deer.cell) {
                 if last {
-                    return Some("The last handful is gone.".into());
+                    return Some(format!(
+                        "A deer stands {}. The last handful is gone.",
+                        self.mark_place(origin, deer.cell)
+                    ));
                 }
                 return Some(self.eating_handful_line(deer.cell, false));
             }
