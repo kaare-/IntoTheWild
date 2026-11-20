@@ -5140,7 +5140,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} butchers "))?;
-        if rest != "the carcass into three portions of raw meat and a hide." {
+        if rest != "the carcass into three portions of raw meat and a hide."
+            && rest != "the carcass with the iron knife into three portions of raw meat and a hide."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
@@ -5954,10 +5956,11 @@ impl World {
         {
             actions.push("gather hide".into());
         }
-        if self
+        if (self
             .loose_ids(actor_id, Material::Spear)
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+            || !self.loose_ids(actor_id, Material::Knife).is_empty())
             && !self.ground_ids(actor.cell, Material::Carcass).is_empty()
         {
             actions.push("butcher".into());

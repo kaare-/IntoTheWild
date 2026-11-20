@@ -366,12 +366,8 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if !self
-                    .loose_ids(actor.id, Material::Spear)
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
-                {
-                    Err("You are not carrying a flint spear.".into())
+                } else if !self.has_butcher_tool(actor.id) {
+                    Err("You need a flint spear or an iron knife.".into())
                 } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
                     Err("There is no carcass here to butcher.".into())
                 } else {
@@ -2263,21 +2259,29 @@ impl World {
         }
     }
 
+    fn has_flint_spear(&self, actor: crate::model::ActorId) -> bool {
+        self.loose_ids(actor, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+    }
+
+    fn has_butcher_tool(&self, actor: crate::model::ActorId) -> bool {
+        self.has_flint_spear(actor) || !self.loose_ids(actor, Material::Knife).is_empty()
+    }
+
     fn apply_butchers(&mut self, butchers: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in butchers {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            if !self
-                .loose_ids(actor.id, Material::Spear)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
-            {
+            let with_knife = !self.has_flint_spear(actor.id)
+                && !self.loose_ids(actor.id, Material::Knife).is_empty();
+            if !self.has_butcher_tool(actor.id) {
                 self.finish(
                     intent.command_id,
                     actor.id,
                     false,
-                    "You are not carrying a flint spear.",
+                    "You need a flint spear or an iron knife.",
                     results,
                 );
                 continue;
@@ -2303,7 +2307,11 @@ impl World {
             }
             ids.push(self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose));
             let name = self.name_of(actor.id);
-            let rest = "the carcass into three portions of raw meat and a hide.";
+            let rest = if with_knife {
+                "the carcass with the iron knife into three portions of raw meat and a hide."
+            } else {
+                "the carcass into three portions of raw meat and a hide."
+            };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
                 Scope::Cell(actor.cell),
