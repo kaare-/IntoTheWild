@@ -6850,6 +6850,7 @@ impl World {
                     && self.craft_for_these_eyes(viewer, event).is_none()
                     && self.clothes_for_these_eyes(viewer, event).is_none()
                     && self.bow_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.scare_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -8043,6 +8044,19 @@ impl World {
             ))
         } else {
             Some(public.to_string())
+        }
+    }
+
+    /// The fire sent the wolf off, filled for the person whose command did it.
+    /// That person already read the sentence as the command result.
+    fn scare_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.text != "The wolf flees the fire." {
+            return None;
+        }
+        if event.affected_actors.len() == 1 && event.affected_actors[0] == viewer {
+            Some("The wolf flees the fire.".into())
+        } else {
+            None
         }
     }
 

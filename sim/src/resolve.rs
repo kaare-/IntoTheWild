@@ -1673,7 +1673,10 @@ impl World {
             };
             let name = self.name_of(intent.actor_id);
             self.move_actor(intent.actor_id, dest);
-            self.frighten_wolf(origin, dest);
+            let fled = self.scare_wolf(Some(intent.actor_id));
+            if !fled {
+                self.frighten_wolf(origin, dest);
+            }
             let brook = self.cell(dest).region == Region::Brook;
             if brook {
                 if let Some(actor) = self.actors.get_mut(&intent.actor_id) {
@@ -1716,7 +1719,7 @@ impl World {
                 vec![],
                 None,
             );
-            let message = if brook {
+            let mut message = if brook {
                 format!("You wade {}.", dir.word())
             } else if entered_overhang {
                 format!(
@@ -1728,6 +1731,9 @@ impl World {
             } else {
                 format!("You walk {}.", dir.word())
             };
+            if fled {
+                message.push_str(" The wolf flees the fire.");
+            }
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
     }
@@ -2109,11 +2115,14 @@ impl World {
                 );
                 self.mint_fire(cell, event);
                 lit = true;
-                let yours = if brand.is_some() {
+                let mut yours = if brand.is_some() {
                     brand_light_line(None, bark_arms, branch_arms)
                 } else {
                     light_line(None, bark_arms, branch_arms)
                 };
+                if self.scare_wolf(Some(intent.actor_id)) {
+                    yours.push_str(" The wolf flees the fire.");
+                }
                 self.finish(intent.command_id, intent.actor_id, true, yours, results);
             }
         }
@@ -2754,13 +2763,11 @@ impl World {
                 vec![],
                 None,
             );
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                true,
-                crate::model::spoken_act(None, "take", rest),
-                results,
-            );
+            let mut yours = crate::model::spoken_act(None, "take", rest);
+            if self.scare_wolf(Some(intent.actor_id)) {
+                yours.push_str(" The wolf flees the fire.");
+            }
+            self.finish(intent.command_id, intent.actor_id, true, yours, results);
         }
     }
 

@@ -577,6 +577,7 @@ impl World {
         self.mark_wolf_tracks(cell);
         self.wolf_cell = Some(cell);
         self.wolf_until = self.time.saturating_add(self.tuning.wolf_ticks);
+        self.scare_wolf(None);
         self.emit(
             "A wolf howls.",
             Scope::Valley,

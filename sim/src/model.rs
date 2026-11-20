@@ -1192,6 +1192,7 @@ impl World {
     pub fn step(&mut self, intents: &[Intent]) -> StepReport {
         let time = self.time;
         let results = self.resolve(intents);
+        self.scare_wolf(None);
         self.arm_spears();
         self.tend_drying();
         self.tend_clothes();
@@ -2117,6 +2118,49 @@ impl World {
         } else {
             Some(cell)
         }
+    }
+
+    /// A fire on or next to the wolf, a brand on its ground, or that smoke.
+    pub(crate) fn wolf_threatened(&self) -> bool {
+        let Some(cell) = self.wolf_standing() else {
+            return false;
+        };
+        let smoke = self
+            .fires
+            .values()
+            .any(|fire| chebyshev(fire.cell, cell) <= 1);
+        let brand = self.items.values().any(|item| {
+            item.material == Material::Brand
+                && item.role == Role::Loose
+                && match item.carrier {
+                    Some(id) => self.actor(id).is_some_and(|person| person.cell == cell),
+                    None => item.cell == cell,
+                }
+        });
+        smoke || brand
+    }
+
+    /// Fire, a brand, or smoke sends the wolf off. The tracks stay.
+    /// `actor` is set when a command caused it, so that person does not
+    /// also read the sentence in the event list.
+    pub(crate) fn scare_wolf(&mut self, actor: Option<ActorId>) -> bool {
+        let Some(cell) = self.wolf_standing() else {
+            return false;
+        };
+        if !self.wolf_threatened() {
+            return false;
+        }
+        self.wolf_cell = None;
+        self.emit(
+            "The wolf flees the fire.",
+            Scope::Cell(cell),
+            actor.into_iter().collect(),
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+        true
     }
 
     /// Someone stepped closer to the wolf. It is gone. The tracks stay.
@@ -5281,5 +5325,126 @@ mod wolf {
             .unwrap()
             .text
             .contains("A wolf stands"));
+        assert!(!after.contains("The wolf flees the fire."));
+    }
+
+    #[test]
+    fn a_fire_sends_the_wolf_off_and_the_lighter_does_not_read_it_twice() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        let standing = world.observe(near).unwrap().text;
+        assert!(standing.contains("A wolf stands here."), "{standing}");
+        let refused = world.step(&[intent("rain", near, super::Attempt::Light)]);
+        assert_eq!(
+            refused.results[0].message,
+            "The rain puts the bark out before it catches."
+        );
+        assert!(!refused.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A wolf stands here."));
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            event.text != "The rain puts the bark out before it catches."
+                && event.text != "The wolf flees the fire."
+        }));
+        let clear = night + world.tuning.night_len + world.tuning.day_len;
+        while world.time < clear {
+            world.step(&[]);
+        }
+        assert!(world.night());
+        assert!(!world.is_raining());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A wolf stands here."));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(
+            super::Material::Branch,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            super::Material::Bark,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let lit = world.step(&[intent("light", near, super::Attempt::Light)]);
+        assert!(
+            lit.results[0].message.contains("You light a fire"),
+            "{}",
+            lit.results[0].message
+        );
+        assert!(
+            lit.results[0].message.contains("The wolf flees the fire."),
+            "{}",
+            lit.results[0].message
+        );
+        let near_look = world.observe(near).unwrap();
+        assert!(
+            !near_look.text.contains("A wolf stands"),
+            "{}",
+            near_look.text
+        );
+        assert!(near_look.text.contains("Wolf tracks mark the ground here."));
+        assert!(near_look
+            .events
+            .iter()
+            .all(|event| event.text != "The wolf flees the fire."));
+        let seen_look = world.observe(seen).unwrap();
+        assert!(seen_look
+            .events
+            .iter()
+            .any(|event| event.text == "The wolf flees the fire."));
+        assert!(!seen_look.text.contains("A wolf stands"));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The wolf flees the fire."));
+    }
+
+    #[test]
+    fn a_brand_on_the_wolfs_ground_sends_it_off() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A wolf stands here."));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(
+            super::Material::Brand,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.step(&[]);
+        let look = world.observe(near).unwrap();
+        assert!(!look.text.contains("A wolf stands"), "{}", look.text);
+        assert!(look.text.contains("Wolf tracks mark the ground here."));
+        assert!(look
+            .events
+            .iter()
+            .any(|event| event.text == "The wolf flees the fire."));
     }
 }
