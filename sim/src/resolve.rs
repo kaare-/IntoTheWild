@@ -707,16 +707,28 @@ impl World {
                 } else if gripping {
                     Err("Your hands are on the log.".into())
                 } else if self.spear_can_hunt(actor.id) {
-                    if self.deer.as_ref().is_none() {
-                        Err("There is no deer to hunt.".into())
-                    } else if self
+                    let wolf = self
+                        .wolf_standing()
+                        .map(|cell| crate::model::chebyshev(actor.cell, cell));
+                    let deer = self
                         .deer
                         .as_ref()
-                        .is_some_and(|deer| crate::model::chebyshev(actor.cell, deer.cell) <= 1)
+                        .map(|deer| crate::model::chebyshev(actor.cell, deer.cell));
+                    let wolf_melee = wolf.is_some_and(|dist| dist <= 1);
+                    let wolf_shot = self.bow_in_hand(actor.id)
+                        && wolf.is_some_and(|dist| dist <= self.tuning.sight);
+                    if wolf_melee
+                        || deer.is_some_and(|dist| dist <= 1)
+                        || wolf_shot
+                        || self.bow_can_reach(actor.id)
                     {
                         Ok(true)
-                    } else if self.bow_can_reach(actor.id) {
-                        Ok(true)
+                    } else if wolf.is_some_and(|dist| dist <= self.tuning.sight)
+                        && wolf.is_some_and(|dist| deer.is_none_or(|far| dist < far))
+                    {
+                        Err("The wolf is not close enough to hunt.".into())
+                    } else if self.deer.as_ref().is_none() {
+                        Err("There is no deer to hunt.".into())
                     } else {
                         Err("The deer is not close enough to hunt.".into())
                     }
@@ -734,14 +746,24 @@ impl World {
                     Err("You are not carrying a spear.".into())
                 } else if self.loose_ids(actor.id, Material::Flake).is_empty() {
                     Err("You need a sharp flint flake.".into())
-                } else if self.deer.as_ref().is_none() {
-                    Err("There is no deer to hunt.".into())
-                } else if self.deer.as_ref().is_some_and(|deer| {
-                    crate::model::chebyshev(actor.cell, deer.cell) > self.tuning.sight
-                }) {
-                    Err("The deer is not close enough for the bow.".into())
                 } else {
-                    Ok(true)
+                    let wolf = self
+                        .wolf_standing()
+                        .map(|cell| crate::model::chebyshev(actor.cell, cell));
+                    let deer = self
+                        .deer
+                        .as_ref()
+                        .map(|deer| crate::model::chebyshev(actor.cell, deer.cell));
+                    let wolf_shot = wolf.is_some_and(|dist| dist <= self.tuning.sight)
+                        && wolf.is_some_and(|dist| deer.is_none_or(|far| dist < far));
+                    let deer_shot = deer.is_some_and(|dist| dist <= self.tuning.sight);
+                    if wolf_shot || deer_shot {
+                        Ok(true)
+                    } else if self.deer.as_ref().is_none() {
+                        Err("There is no deer to hunt.".into())
+                    } else {
+                        Err("The deer is not close enough for the bow.".into())
+                    }
                 }
             }
             Attempt::SetClay => {
@@ -3091,6 +3113,197 @@ impl World {
         })
     }
 
+    fn bow_in_hand(&self, actor: crate::model::ActorId) -> bool {
+        !self.loose_ids(actor, Material::Bow).is_empty()
+            && !self.loose_ids(actor, Material::Flake).is_empty()
+    }
+
+    /// The wolf is the nearer hunt, so the deer is left for another cast.
+    fn wolf_before_the_deer(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        let Some(wolf) = self.wolf_standing() else {
+            return false;
+        };
+        let wolf_dist = crate::model::chebyshev(person.cell, wolf);
+        match self.deer.as_ref() {
+            Some(deer) => wolf_dist < crate::model::chebyshev(person.cell, deer.cell),
+            None => true,
+        }
+    }
+
+    /// A spear on the wolf's cell or the next, or a bow out to sight.
+    /// False when this hunter cannot reach it, so the deer path can speak.
+    fn strike_the_wolf(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        results: &mut Vec<CommandResult>,
+    ) -> bool {
+        let Some(cell) = self.wolf_standing() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(actor.cell, cell);
+        if self.spear_can_hunt(actor.id) && dist == 0 {
+            self.bring_down_wolf(intent, cell, None, results);
+            return true;
+        }
+        if self.spear_can_hunt(actor.id) && dist == 1 {
+            self.contest_the_wolf(intent, actor, cell, results);
+            return true;
+        }
+        if self.bow_in_hand(actor.id) && dist <= self.tuning.sight {
+            self.loose_the_bow_at_the_wolf(intent, actor, cell, results);
+            return true;
+        }
+        false
+    }
+
+    fn bring_down_wolf(
+        &mut self,
+        intent: &Intent,
+        cell: crate::model::CellId,
+        draw: Option<Draw>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let name = self.name_of(intent.actor_id);
+        let flint = self
+            .loose_ids(intent.actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        self.wolf_cell = None;
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.wolf = true;
+        }
+        let (heard, yours) = if flint {
+            let rest = "the wolf down with the flint spear.";
+            (
+                crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+                crate::model::spoken_act(None, "bring", rest),
+            )
+        } else {
+            (
+                format!("{name} brings the wolf down. A wolf carcass lies where it stood."),
+                "You bring the wolf down. A wolf carcass lies where it stood.".to_string(),
+            )
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            draw,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            intent.actor_id,
+            true,
+            yours,
+            results,
+        );
+    }
+
+    fn loose_the_bow_at_the_wolf(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if let Some(flake) = self.loose_ids(actor.id, Material::Flake).first().copied() {
+            self.items.remove(&flake);
+        }
+        self.wolf_cell = None;
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.wolf = true;
+        }
+        let name = self.name_of(actor.id);
+        let rest = "the wolf down with the bow. The flint flake is spent.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            actor.id,
+            true,
+            crate::model::spoken_act(None, "bring", rest),
+            results,
+        );
+    }
+
+    /// The next cell. One of three, from the same draw the deer uses.
+    /// A miss or a bolt leaves no carcass. The tracks stay.
+    fn contest_the_wolf(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let (x, y) = crate::model::cell_xy(cell);
+        let subject = format!("{x},{y}:wolf");
+        let hash = contest_hash(self.seed, self.time, "hunt", &subject, actor.id);
+        let draw = Some(Draw {
+            tag: "hunt".into(),
+            subject,
+            value: hash,
+        });
+        if hash % 3 == 0 {
+            self.bring_down_wolf(intent, cell, draw, results);
+            return;
+        }
+        self.wolf_cell = None;
+        let name = self.name_of(actor.id);
+        let flint = self
+            .loose_ids(actor.id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        let (heard, yours) = if hash % 3 == 1 {
+            if flint {
+                (
+                    format!("{name} misses the wolf with the flint spear. It moves off."),
+                    "You miss the wolf with the flint spear. It moves off.",
+                )
+            } else {
+                (
+                    format!("{name} misses the wolf. It moves off."),
+                    "You miss the wolf. It moves off.",
+                )
+            }
+        } else if flint {
+            (
+                format!("The wolf bolts. {name}'s flint spear does not land."),
+                "The wolf bolts. Your flint spear does not land.",
+            )
+        } else {
+            (
+                format!("The wolf bolts from {name}'s spear."),
+                "The wolf bolts. Your spear does not land.",
+            )
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![],
+            vec![],
+            draw,
+        );
+        self.finish(intent.command_id.clone(), actor.id, false, yours, results);
+    }
+
     fn apply_hunts(&mut self, mut hunts: Vec<Intent>, results: &mut Vec<CommandResult>) {
         hunts.sort_by_key(|intent| intent.actor_id);
         for intent in hunts {
@@ -3118,12 +3331,23 @@ impl World {
                 self.finish(intent.command_id, actor.id, false, message, results);
                 continue;
             }
+            if self.wolf_before_the_deer(actor.id) && self.strike_the_wolf(&intent, &actor, results)
+            {
+                continue;
+            }
             let Some(deer) = self.deer.clone() else {
+                let wolf_in_sight = self.wolf_standing().is_some_and(|cell| {
+                    crate::model::chebyshev(actor.cell, cell) <= self.tuning.sight
+                });
                 self.finish(
                     intent.command_id,
                     actor.id,
                     false,
-                    "There is no deer to hunt.",
+                    if wolf_in_sight {
+                        "The wolf is not close enough to hunt."
+                    } else {
+                        "There is no deer to hunt."
+                    },
                     results,
                 );
                 continue;
@@ -3393,6 +3617,7 @@ impl World {
                 );
                 continue;
             };
+            let wolf = self.item(carcass).is_some_and(|carcass| carcass.wolf);
             self.items.remove(&carcass);
             let mut ids = Vec::new();
             for _ in 0..3 {
@@ -3401,10 +3626,17 @@ impl World {
             ids.push(self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose));
             ids.push(self.mint_item(Material::Bone, 0, actor.cell, None, Role::Loose));
             let name = self.name_of(actor.id);
-            let rest = if with_knife {
-                "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
-            } else {
-                "the carcass into three portions of raw meat, a hide, and a bone."
+            let rest = match (wolf, with_knife) {
+                (true, true) => {
+                    "the wolf carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+                }
+                (true, false) => {
+                    "the wolf carcass into three portions of raw meat, a hide, and a bone."
+                }
+                (false, true) => {
+                    "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+                }
+                (false, false) => "the carcass into three portions of raw meat, a hide, and a bone.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
@@ -4529,6 +4761,14 @@ impl World {
                 results,
             );
             return;
+        }
+        if self.wolf_before_the_deer(actor.id) {
+            if let Some(cell) = self.wolf_standing() {
+                if crate::model::chebyshev(actor.cell, cell) <= self.tuning.sight {
+                    self.loose_the_bow_at_the_wolf(intent, actor, cell, results);
+                    return;
+                }
+            }
         }
         let Some(deer) = self.deer.clone() else {
             self.finish(

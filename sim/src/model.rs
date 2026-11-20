@@ -590,6 +590,9 @@ pub struct Item {
     /// An awl carved from a bone. A copper awl leaves this false.
     #[serde(default)]
     pub bone: bool,
+    /// A carcass from the wolf, not the deer. Other materials leave this false.
+    #[serde(default)]
+    pub wolf: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1326,6 +1329,7 @@ impl World {
                 shaped: false,
                 in_basket: false,
                 bone: false,
+                wolf: false,
             },
         );
         if material == Material::Meat || material == Material::Fish {
@@ -5446,5 +5450,300 @@ mod wolf {
             .events
             .iter()
             .any(|event| event.text == "The wolf flees the fire."));
+    }
+
+    #[test]
+    fn a_hardened_spear_brings_the_wolf_down_on_its_own_cell() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        world.wolf_until = night + world.tuning.night_len;
+        assert!(world.deer_cell().is_some());
+        let bare = world.step(&[intent("bare", near, super::Attempt::Hunt)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(!bare.results[0].success);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You are not carrying a spear."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A wolf stands here."));
+        let cell = world.actor(near).unwrap().cell;
+        let spear = world.mint_item(
+            super::Material::Spear,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let soft = world.step(&[intent("soft", near, super::Attempt::Hunt)]);
+        assert_eq!(
+            soft.results[0].message,
+            "The spear's point is not hardened."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The spear's point is not hardened."));
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        let shot = world.step(&[intent("shot", near, super::Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the wolf down with the flint spear."
+        );
+        assert!(shot.results[0].success);
+        assert!(world.wolf_standing().is_none());
+        assert!(world.deer_cell().is_some());
+        let look = world.observe(near).unwrap();
+        assert!(
+            look.text.contains("A wolf carcass lies here."),
+            "{}",
+            look.text
+        );
+        assert!(!look.text.contains("A deer carcass"), "{}", look.text);
+        assert!(!look.text.contains("A wolf stands"), "{}", look.text);
+        assert!(look.text.contains("Wolf tracks mark the ground here."));
+        assert!(look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("brings the wolf")));
+        let heard = "Near brings the wolf down with the flint spear.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard));
+        let body = world.examine(near, super::ExamineTarget::Carcass);
+        assert!(body.contains("A wolf carcass"), "{body}");
+        let cut = world.step(&[intent("cut", near, super::Attempt::Butcher)]);
+        assert_eq!(
+            cut.results[0].message,
+            "You butcher the wolf carcass into three portions of raw meat, a hide, and a bone."
+        );
+        assert_eq!(world.ground_ids(cell, super::Material::Meat).len(), 3);
+        assert_eq!(world.ground_ids(cell, super::Material::Hide).len(), 1);
+        assert!(world.ground_ids(cell, super::Material::Carcass).is_empty());
+    }
+
+    #[test]
+    fn a_bow_brings_the_wolf_down_at_sight() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        if let Some(deer) = world.deer.as_mut() {
+            deer.cell = super::cell_id(6, 4).unwrap();
+        }
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(
+            super::Material::Bow,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            super::Material::Flake,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let shot = world.step(&[intent("shot", near, super::Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the wolf down with the bow. The flint flake is spent."
+        );
+        assert!(world.loose_ids(near, super::Material::Flake).is_empty());
+        assert_eq!(world.loose_ids(near, super::Material::Bow).len(), 1);
+        assert!(world.wolf_standing().is_none());
+        assert!(world.items.values().any(|item| {
+            item.material == super::Material::Carcass
+                && item.wolf
+                && item.cell == super::cell_id(0, 0).unwrap()
+        }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("the wolf")));
+        let heard = "Near brings the wolf down with the bow. The flint flake is spent.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard));
+    }
+
+    #[test]
+    fn a_spear_from_the_next_cell_can_miss_or_bolt() {
+        let (miss_seed, miss_at) = wolf_cast(1);
+        let (bolt_seed, bolt_at) = wolf_cast(2);
+        expect_cast(miss_seed, miss_at, "You miss the wolf. It moves off.");
+        expect_cast(
+            bolt_seed,
+            bolt_at,
+            "The wolf bolts. Your spear does not land.",
+        );
+    }
+
+    fn wolf_cast(residue: u64) -> (u64, u64) {
+        for seed in 1..80 {
+            let mut world = World::valley(crate::tuning::Tuning::evening(), seed);
+            let near = world.spawn_at("Near", "n", 0, 1).unwrap();
+            let night = world.tuning.night_at;
+            while world.time < night {
+                world.step(&[]);
+            }
+            let end = night + world.tuning.night_len;
+            world.wolf_until = end;
+            while world.time < end {
+                let hash = super::contest_hash(seed, world.time, "hunt", "0,0:wolf", near);
+                if hash % 3 == residue {
+                    return (seed, world.time);
+                }
+                world.step(&[]);
+            }
+        }
+        panic!("no wolf cast for residue {residue}");
+    }
+
+    fn expect_cast(seed: u64, at: u64, yours: &str) {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), seed);
+        let near = world.spawn_at("Near", "n", 0, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        world.wolf_until = night + world.tuning.night_len;
+        while world.time < at {
+            world.step(&[]);
+        }
+        let cell = world.actor(near).unwrap().cell;
+        let spear = world.mint_item(
+            super::Material::Spear,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.items.get_mut(&spear).unwrap().hardened = true;
+        let shot = world.step(&[intent("shot", near, super::Attempt::Hunt)]);
+        assert_eq!(shot.results[0].message, yours);
+        assert!(!shot.results[0].success);
+        assert!(world.wolf_standing().is_none());
+        assert!(world
+            .items
+            .values()
+            .all(|item| item.material != super::Material::Carcass));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && !event.text.contains("the wolf")));
+        let heard = if yours.starts_with("You miss") {
+            "Near misses the wolf. It moves off."
+        } else {
+            "The wolf bolts from Near's spear."
+        };
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard));
+    }
+
+    #[test]
+    fn lighting_still_sends_the_wolf_off_when_a_spear_is_carried() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 0).unwrap();
+        let clear = world.tuning.night_at + world.tuning.night_len + world.tuning.day_len;
+        while world.time < clear {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A wolf stands here."));
+        let cell = world.actor(near).unwrap().cell;
+        let spear = world.mint_item(
+            super::Material::Spear,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.items.get_mut(&spear).unwrap().hardened = true;
+        world.mint_item(
+            super::Material::Branch,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            super::Material::Bark,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let lit = world.step(&[intent("light", near, super::Attempt::Light)]);
+        assert!(
+            lit.results[0].message.contains("The wolf flees the fire."),
+            "{}",
+            lit.results[0].message
+        );
+        assert!(world.wolf_standing().is_none());
+        assert!(world
+            .items
+            .values()
+            .all(|item| item.material != super::Material::Carcass));
     }
 }

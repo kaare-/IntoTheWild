@@ -993,7 +993,17 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Bowl).is_empty() {
             parts.push("A fired bowl sits here. It can boil water over a fire.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Carcass).is_empty() {
+        let carcasses = self.ground_ids(actor.cell, Material::Carcass);
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
+        {
+            parts.push("A wolf carcass lies here.".into());
+        }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| !carcass.wolf))
+        {
             parts.push("A deer carcass lies here.".into());
         }
         if let Some(line) = self.meat_here_line(actor.cell) {
@@ -2398,7 +2408,15 @@ impl World {
         } else if item.material == "bowl" && item.count == 1 {
             "a fired bowl".into()
         } else if item.material == "carcass" && item.count == 1 {
-            "a deer carcass".into()
+            if self
+                .loose_ids(actor_id, Material::Carcass)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
+            {
+                "a wolf carcass".into()
+            } else {
+                "a deer carcass".into()
+            }
         } else if item.material == "strips" && item.count == 1 {
             "hide strips".into()
         } else if item.material == "hide" && item.count == 1 {
@@ -2746,8 +2764,14 @@ impl World {
     }
 
     fn carcass_clause(&self, actor_id: ActorId) -> String {
-        if self.loose_ids(actor_id, Material::Carcass).is_empty() {
+        let carried = self.loose_ids(actor_id, Material::Carcass);
+        if carried.is_empty() {
             String::new()
+        } else if carried
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
+        {
+            " They carry a wolf carcass.".into()
         } else {
             " They carry a deer carcass.".into()
         }
@@ -4700,9 +4724,15 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             for id in self.ground_ids(cell, Material::Carcass) {
-                let moisture = self.item(id).map(|item| item.moisture).unwrap_or(0);
+                let item = self.item(id);
+                let moisture = item.map(|item| item.moisture).unwrap_or(0);
+                let kind = if item.is_some_and(|carcass| carcass.wolf) {
+                    "wolf"
+                } else {
+                    "deer"
+                };
                 lines.push(format!(
-                    "A deer carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.",
+                    "A {kind} carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.",
                     self.place_phrase(origin, cell),
                     self.condition_word(moisture),
                     self.rain_reaches_phrase(cell)
@@ -4719,8 +4749,13 @@ impl World {
                 self.name_of(other)
             };
             let cell = self.actor(other).unwrap().cell;
+            let wolf = self
+                .loose_ids(other, Material::Carcass)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf));
+            let kind = if wolf { "wolf" } else { "deer" };
             lines.push(format!(
-                "A deer carcass is carried by {who}, {}. It must be cooked before it feeds you.",
+                "A {kind} carcass is carried by {who}, {}. It must be cooked before it feeds you.",
                 self.cover_phrase(cell)
             ));
         }
@@ -6851,6 +6886,7 @@ impl World {
                     && self.clothes_for_these_eyes(viewer, event).is_none()
                     && self.bow_hunt_for_these_eyes(viewer, event).is_none()
                     && self.scare_for_these_eyes(viewer, event).is_none()
+                    && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -7163,6 +7199,9 @@ impl World {
         if rest != "the carcass into three portions of raw meat, a hide, and a bone."
             && rest
                 != "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+            && rest != "the wolf carcass into three portions of raw meat, a hide, and a bone."
+            && rest
+                != "the wolf carcass with the iron knife into three portions of raw meat, a hide, and a bone."
         {
             return None;
         }
@@ -8047,6 +8086,33 @@ impl World {
         }
     }
 
+    /// A wolf brought down, or missed, filled for the hunter.
+    /// That person already read the sentence as the command result.
+    fn wolf_hunt_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let lines = [
+            format!("{name} brings the wolf down. A wolf carcass lies where it stood."),
+            format!("{name} brings the wolf down with the flint spear."),
+            format!("{name} brings the wolf down with the bow. The flint flake is spent."),
+            format!("{name} misses the wolf. It moves off."),
+            format!("{name} misses the wolf with the flint spear. It moves off."),
+            format!("The wolf bolts from {name}'s spear."),
+            format!("The wolf bolts. {name}'s flint spear does not land."),
+        ];
+        if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
     /// The fire sent the wolf off, filled for the person whose command did it.
     /// That person already read the sentence as the command result.
     fn scare_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
@@ -8890,7 +8956,18 @@ impl World {
         let close_spear = hardened_spear && deer_dist.is_some_and(|dist| dist <= 1);
         let bow_past_the_spear =
             hardened_spear && bow_ready && deer_dist.is_some_and(|dist| dist > 1);
-        if close_spear || (!any_spear && bow_ready) || bow_past_the_spear {
+        let wolf_dist = self.wolf_standing().map(|cell| chebyshev(actor.cell, cell));
+        let wolf_spear = hardened_spear && wolf_dist.is_some_and(|dist| dist <= 1);
+        let wolf_bow = !self.loose_ids(actor_id, Material::Bow).is_empty()
+            && !self.loose_ids(actor_id, Material::Flake).is_empty()
+            && wolf_dist.is_some_and(|dist| dist <= self.tuning.sight);
+        let wolf_bow_past = hardened_spear && wolf_bow && wolf_dist.is_some_and(|dist| dist > 1);
+        if close_spear
+            || wolf_spear
+            || (!any_spear && (bow_ready || wolf_bow))
+            || bow_past_the_spear
+            || wolf_bow_past
+        {
             actions.push("hunt".into());
         }
         if !self.loose_ids(actor_id, Material::Stone).is_empty()

@@ -29,7 +29,7 @@ drink                        raw water where you stand; still water freezes
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat; poison berries stay poisonous
-hunt                         a hardened spear; the deer on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer comes down. A refusal leaves it. The bow stays.
+hunt                         a hardened spear; the deer on your cell or the next, or a wolf while it stands on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer or the wolf comes down. A refusal leaves it. The bow stays.
 fish                         a fire-hardened flint spear, in the brook or beside it; the spear is not used up. That stretch is quiet for a short wait
 spear fish                   the same cast
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
@@ -267,8 +267,10 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "dry" if rest.is_empty() || rest == "branch" || rest == "wood" || rest == "the branch" => {
             Ok(Attempt::DryBranch)
         }
-        "hunt" if rest.is_empty() || rest == "deer" => Ok(Attempt::Hunt),
-        "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" => Ok(Attempt::Butcher),
+        "hunt" if rest.is_empty() || rest == "deer" || rest == "wolf" => Ok(Attempt::Hunt),
+        "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" || rest == "wolf" => {
+            Ok(Attempt::Butcher)
+        }
         "cut" if rest == "meat" || rest == "raw meat" || rest == "cooked meat" => Ok(Attempt::Cut),
         "cut"
             if rest == "hide"
@@ -374,7 +376,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
         "spear" | "spears" => Ok(Material::Spear),
-        "carcass" | "deer carcass" => Ok(Material::Carcass),
+        "carcass" | "deer carcass" | "wolf carcass" => Ok(Material::Carcass),
         "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
         "fish" | "raw fish" | "cooked fish" => Ok(Material::Fish),
         "brand" | "ember" | "burning brand" => Ok(Material::Brand),
@@ -433,7 +435,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "clay" => ExamineTarget::Clay,
         "bowl" => ExamineTarget::Bowl,
         "spear" | "spears" => ExamineTarget::Spear,
-        "carcass" | "deer carcass" => ExamineTarget::Carcass,
+        "carcass" | "deer carcass" | "wolf carcass" => ExamineTarget::Carcass,
         "hide" | "deer hide" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
         "meat" | "raw meat" => ExamineTarget::Meat,
