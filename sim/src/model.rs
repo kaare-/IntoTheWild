@@ -3679,6 +3679,99 @@ mod moss {
     }
 
     #[test]
+    fn a_press_spends_one_handful_and_leaves_the_other() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let bank = world.actor(near).unwrap().cell;
+        let first = world.step(&[intent("first", near, Attempt::Gather(Material::Moss))]);
+        assert_eq!(first.results[0].message, "You gather a handful of moss.");
+        world.moss_returns_at.remove(&bank);
+        world.add_pile(bank, Material::Moss, 1, 0);
+        let second = world.step(&[intent("second", near, Attempt::Gather(Material::Moss))]);
+        assert_eq!(second.results[0].message, "You gather a handful of moss.");
+        assert_eq!(world.loose_ids(near, Material::Moss).len(), 2);
+        let before = world.observe(near).unwrap().text;
+        assert!(
+            before.contains("You have two handfuls of moss."),
+            "{before}"
+        );
+        let seen_before = world.examine(seen, ExamineTarget::Moss);
+        assert!(
+            seen_before.contains("Two handfuls of moss are carried by Near"),
+            "{seen_before}"
+        );
+        let near_before = world.examine(near, ExamineTarget::Moss);
+        assert!(
+            near_before.contains("Two handfuls of moss are carried by you"),
+            "{near_before}"
+        );
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Moss),
+            "You see no moss from here."
+        );
+        if let Some(person) = world.actors.get_mut(&near) {
+            person.stings_until = Some(world.time.saturating_add(4));
+        }
+        let pressed = world.step(&[intent("press", near, Attempt::DressSting)]);
+        assert_eq!(pressed.results[0].message, "You press moss on the stings.");
+        assert_eq!(world.loose_ids(near, Material::Moss).len(), 1);
+        assert!(world.actor(near).unwrap().stings_until.is_none());
+        let after = world.observe(near).unwrap();
+        assert!(
+            after.text.contains("You have a handful of moss."),
+            "{}",
+            after.text
+        );
+        assert!(after.text.contains("You are well."), "{}", after.text);
+        assert!(!after.text.contains("two handfuls"), "{}", after.text);
+        assert!(!after.text.contains("2 moss"), "{}", after.text);
+        assert!(after
+            .events
+            .iter()
+            .all(|event| !event.text.contains("press")));
+        let near_after = world.examine(near, ExamineTarget::Moss);
+        assert!(
+            near_after.contains("A handful of moss is carried by you"),
+            "{near_after}"
+        );
+        assert!(!near_after.contains("Two handfuls"), "{near_after}");
+        let seen_after = world.examine(seen, ExamineTarget::Moss);
+        assert!(
+            seen_after.contains("A handful of moss is carried by Near"),
+            "{seen_after}"
+        );
+        assert!(!seen_after.contains("Two handfuls"), "{seen_after}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near presses moss on the stings."));
+        let seen_body = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(seen_body.contains("They are well."), "{seen_body}");
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Moss),
+            "You see no moss from here."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("press")));
+        let held = world.step(&[intent("held", near, Attempt::DressSting)]);
+        assert_eq!(held.results[0].message, "You are not stung.");
+        assert_eq!(world.loose_ids(near, Material::Moss).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You have a handful of moss."));
+    }
+
+    #[test]
     fn the_damp_bank_is_bare_until_moss_grows_again() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 1, 3).unwrap();
