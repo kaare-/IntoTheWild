@@ -4290,6 +4290,9 @@ impl World {
                     "cooked" => format!(
                         "A cooked fish lies in contact with the ground {place}. It is good to eat."
                     ),
+                    "salted" => format!(
+                        "A salted fish lies in contact with the ground {place}. It can be eaten cold."
+                    ),
                     "spoiled" => format!(
                         "A spoiled fish lies in contact with the ground {place}. It is not food."
                     ),
@@ -4316,6 +4319,9 @@ impl World {
                     (true, "cooked") => format!(
                         "A cooked fish is in the bark basket carried by {who}, {cover}. It is good to eat."
                     ),
+                    (true, "salted") => format!(
+                        "A salted fish is in the bark basket carried by {who}, {cover}. It can be eaten cold."
+                    ),
                     (true, "spoiled") => format!(
                         "A spoiled fish is in the bark basket carried by {who}, {cover}. It is not food."
                     ),
@@ -4328,6 +4334,9 @@ impl World {
                     (false, "cooked") => {
                         format!("A cooked fish is carried by {who}, {cover}. It is good to eat.")
                     }
+                    (false, "salted") => format!(
+                        "A salted fish is carried by {who}, {cover}. It can be eaten cold."
+                    ),
                     (false, "spoiled") => {
                         format!("A spoiled fish is carried by {who}, {cover}. It is not food.")
                     }
@@ -6347,7 +6356,11 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} eats "))?;
-        if rest != "the cooked meat." && rest != "the salted meat." && rest != "the cooked fish." {
+        if rest != "the cooked meat."
+            && rest != "the salted meat."
+            && rest != "the cooked fish."
+            && rest != "the salted fish."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "eat", rest))
@@ -6529,6 +6542,7 @@ impl World {
             Some(Material::Berry) => "a bark basket holding a handful of berries".into(),
             Some(Material::Fish) => match self.basket_fish_state(actor_id) {
                 "cooked" => "a bark basket holding a cooked fish".into(),
+                "salted" => "a bark basket holding a salted fish".into(),
                 "spoiled" => "a bark basket holding a spoiled fish".into(),
                 "going" => "a bark basket holding a raw fish, going bad".into(),
                 _ => "a bark basket holding a raw fish".into(),
@@ -6548,6 +6562,7 @@ impl World {
             Some(Material::Berry) => "It holds a handful of berries.".into(),
             Some(Material::Fish) => match self.basket_fish_state(actor_id) {
                 "cooked" => "It holds a cooked fish.".into(),
+                "salted" => "It holds a salted fish. It can be eaten cold.".into(),
                 "spoiled" => "It holds a spoiled fish. It is not food.".into(),
                 "going" => "It holds a raw fish. It is going bad.".into(),
                 _ => "It holds a raw fish.".into(),
@@ -6565,6 +6580,8 @@ impl World {
             "cooked"
         } else if fish.spoiled {
             "spoiled"
+        } else if fish.salted {
+            "salted"
         } else if fish.spoils_at == Some(self.time) {
             "going"
         } else {
@@ -6575,6 +6592,7 @@ impl World {
     fn fish_ground_line(&self, id: crate::model::ItemId) -> String {
         match self.fish_state(id) {
             "cooked" => "A cooked fish lies here.".into(),
+            "salted" => "A salted fish lies here. It can be eaten cold.".into(),
             "spoiled" => "A spoiled fish lies here. It is not food.".into(),
             "going" => "A raw fish lies here. It is going bad.".into(),
             _ => "A raw fish lies here.".into(),
@@ -6589,6 +6607,7 @@ impl World {
             }
             bits.push(match self.fish_state(id) {
                 "cooked" => "a cooked fish",
+                "salted" => "a salted fish",
                 "spoiled" => "a spoiled fish",
                 "going" => "a raw fish, going bad",
                 _ => "a raw fish",
@@ -7043,6 +7062,7 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} salts "))?;
         if rest != "a portion of raw meat. It will keep, and it can be eaten cold."
             && rest != "a smaller piece of raw meat. It will keep, and it can be eaten cold."
+            && rest != "a raw fish. It will keep, and it can be eaten cold."
         {
             return None;
         }
@@ -7903,6 +7923,9 @@ impl World {
         }
         if self.has_salt(actor_id) && self.raw_portion_to_salt(actor_id).is_some() {
             actions.push("salt meat".into());
+        }
+        if self.has_salt(actor_id) && self.raw_fish_id(actor_id).is_some() {
+            actions.push("salt fish".into());
         }
         if (self.pile_count(actor.cell, Material::Salt) > 0
             || !self.ground_ids(actor.cell, Material::Salt).is_empty())

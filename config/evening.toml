@@ -49,7 +49,7 @@ snare_ticks = 3
 # Raw meat spoils this many ticks after the step that cut it. A raw fish
 # spoils the same number of ticks after the step it was speared. On the tick
 # before that, look and examine say it is going bad. Then it is not food.
-# Salted meat is not on this timer. Cooked meat and cooked fish stay good.
+# Salted meat and salted fish are not on this timer. Cooked meat and cooked fish stay good.
 meat_ticks = 24
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up

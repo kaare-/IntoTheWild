@@ -83,6 +83,7 @@ impl World {
         let mut snares = Vec::new();
         let mut carves = Vec::new();
         let mut salts = Vec::new();
+        let mut salt_fish = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -148,6 +149,7 @@ impl World {
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
+                        Attempt::SaltFish => salt_fish.push(intent),
                     }
                 }
             }
@@ -255,6 +257,7 @@ impl World {
         self.apply_snares(snares, &mut results);
         self.apply_carves(carves, &mut results);
         self.apply_salts(salts, &mut results);
+        self.apply_salt_fish(salt_fish, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
@@ -504,6 +507,27 @@ impl World {
                         Err("The meat has spoiled.".into())
                     } else {
                         Err("There is no raw meat here to salt.".into())
+                    }
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SaltFish => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.has_salt(actor.id) {
+                    Err("You have no salt.".into())
+                } else if self.raw_fish_id(actor.id).is_none() {
+                    if self.salted_fish_id(actor.id).is_some() {
+                        Err("The fish is already salted.".into())
+                    } else if self.spoiled_fish_near(actor.id) {
+                        Err("The fish has spoiled.".into())
+                    } else {
+                        Err("There is no raw fish here to salt.".into())
                     }
                 } else {
                     Ok(true)
@@ -880,7 +904,9 @@ impl World {
                             }
                         }
                         Material::Fish => {
-                            if self.cooked_fish_id(actor.id).is_some() {
+                            if self.cooked_fish_id(actor.id).is_some()
+                                || self.salted_fish_id(actor.id).is_some()
+                            {
                                 Ok(true)
                             } else if self.raw_fish_near(actor.id) {
                                 Err("Raw fish is not food.".into())
@@ -2613,7 +2639,8 @@ impl World {
     }
 
     fn eat_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
-        let Some(id) = self.cooked_fish_id(intent.actor_id) else {
+        let salted = self.salted_fish_id(intent.actor_id);
+        let Some(id) = self.cooked_fish_id(intent.actor_id).or(salted) else {
             let message = if self.raw_fish_near(intent.actor_id) {
                 "Raw fish is not food."
             } else if self.spoiled_fish_near(intent.actor_id) {
@@ -2624,6 +2651,9 @@ impl World {
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         };
+        let cold = self
+            .item(id)
+            .is_some_and(|fish| fish.salted && !fish.cooked);
         let before = self
             .actor(intent.actor_id)
             .map(|actor| actor.hunger)
@@ -2638,7 +2668,11 @@ impl World {
             .map(|actor| actor.cell)
             .unwrap_or(0);
         let name = self.name_of(intent.actor_id);
-        let rest = "the cooked fish.";
+        let rest = if cold {
+            "the salted fish."
+        } else {
+            "the cooked fish."
+        };
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "eat", rest),
             Scope::Cell(cell),
@@ -3375,6 +3409,68 @@ impl World {
                 vec![actor.id],
                 vec![actor.cell],
                 vec![meat_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "salt", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_salt_fish(&mut self, salts: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in salts {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self.has_salt(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no salt.",
+                    results,
+                );
+                continue;
+            }
+            let Some(fish_id) = self.raw_fish_id(actor.id) else {
+                let message = if self.salted_fish_id(actor.id).is_some() {
+                    "The fish is already salted."
+                } else if self.spoiled_fish_near(actor.id) {
+                    "The fish has spoiled."
+                } else {
+                    "There is no raw fish here to salt."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            if !self.take_one_salt(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no salt.",
+                    results,
+                );
+                continue;
+            }
+            if let Some(fish) = self.items.get_mut(&fish_id) {
+                fish.salted = true;
+                fish.spoiled = false;
+                fish.spoils_at = None;
+            }
+            let name = self.name_of(actor.id);
+            let rest = "a raw fish. It will keep, and it can be eaten cold.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "salt", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![fish_id],
                 vec![],
                 None,
             );

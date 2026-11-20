@@ -50,7 +50,8 @@ eat berries                  sweet berries only; poison berries sicken you
 eat meat                     cooked meat, or salted meat; raw meat is not food
 gather salt                  a salt crust from the slope
 salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
-eat fish                     a cooked fish; raw fish is not food
+salt fish                    salt on a raw fish. The salt is spent. The fish can be eaten cold, and it does not spoil.
+eat fish                     a cooked fish, or salted fish; raw fish is not food
 eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
 eat carcass                  a carcass must be cooked
 eat bark                     bark is tinder, not food
@@ -152,6 +153,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "salt" if rest == "meat" || rest == "raw meat" || rest == "the meat" => {
             Ok(Attempt::SaltMeat)
+        }
+        "salt"
+            if rest == "fish"
+                || rest == "raw fish"
+                || rest == "the fish"
+                || rest == "a fish"
+                || rest == "a raw fish" =>
+        {
+            Ok(Attempt::SaltFish)
         }
         "put"
             if matches!(
