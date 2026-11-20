@@ -306,7 +306,11 @@ fn bark_on_a_supported_frame_keeps_the_wood_beneath_drier() {
         .find(|cell| cell.x == 5 && cell.y == 2)
         .unwrap();
     assert_eq!(open.branch_pile, 0, "open branches rot away");
-    assert_eq!(world.material_tally(Material::Branch), 3);
+    assert_eq!(
+        world.material_tally(Material::Branch),
+        6,
+        "three branches in the frame, and three of the dry pile under the rock"
+    );
     assert_eq!(world.material_tally(Material::Bark), 4);
 }
 

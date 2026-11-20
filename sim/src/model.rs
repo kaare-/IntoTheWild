@@ -674,6 +674,8 @@ pub enum Wake {
     MossReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
+    /// Dry branches lie under this rock again.
+    BranchReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
@@ -849,6 +851,13 @@ pub struct World {
     /// When a bare slope has a flint nodule again. Look says the slope has no flint until then.
     #[serde(default)]
     pub(crate) flint_returns_at: BTreeMap<CellId, u64>,
+    /// The rock cells whose seeded dry branches return after they are taken.
+    #[serde(default)]
+    pub(crate) branch_beds: BTreeSet<CellId>,
+    /// When that rock has a pile of dry branches again. Look says there are
+    /// none under the rock until then.
+    #[serde(default)]
+    pub(crate) branch_returns_at: BTreeMap<CellId, u64>,
     /// When a deer stands on the trail again. Look names no standing deer until then.
     #[serde(default)]
     pub(crate) deer_returns_at: Option<u64>,
@@ -941,6 +950,8 @@ impl World {
             moss_banks: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
+            branch_beds: BTreeSet::new(),
+            branch_returns_at: BTreeMap::new(),
             flint_returns_at: BTreeMap::new(),
             deer_returns_at: None,
             next_deer_id: default_next_deer_id(),
@@ -960,7 +971,9 @@ impl World {
         world.schedule(0, Wake::Energy);
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
-        world.add_pile(cell_id(6, 1).unwrap(), Material::Branch, 4, 0);
+        let rock = cell_id(6, 1).unwrap();
+        world.add_pile(rock, Material::Branch, 4, 0);
+        world.branch_beds.insert(rock);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Bark, 2, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Berry, 4, 0);
         world.add_pile(cell_id(6, 1).unwrap(), Material::Pot, 1, 0);
@@ -1175,6 +1188,7 @@ impl World {
         self.tend_drying();
         self.tend_clothes();
         self.fire_due();
+        self.tend_branch_beds();
         self.normalize();
         self.trim_events();
         self.time += 1;
@@ -1411,6 +1425,26 @@ impl World {
         let at = self.time.saturating_add(self.tuning.flint_ticks);
         self.flint_returns_at.insert(cell, at);
         self.schedule(at, Wake::FlintReturn(cell));
+    }
+
+    /// The seeded branches under a rock are gone, gathered or snapped away.
+    /// The same dry pile lies there again `branch_ticks` after this step.
+    /// A wake that finds branches already there does not add a second pile.
+    pub(crate) fn tend_branch_beds(&mut self) {
+        let beds: Vec<CellId> = self.branch_beds.iter().copied().collect();
+        for cell in beds {
+            if self.branch_returns_at.contains_key(&cell) {
+                continue;
+            }
+            if self.pile_count(cell, Material::Branch) > 0
+                || !self.ground_ids(cell, Material::Branch).is_empty()
+            {
+                continue;
+            }
+            let at = self.time.saturating_add(self.tuning.branch_ticks);
+            self.branch_returns_at.insert(cell, at);
+            self.schedule(at, Wake::BranchReturn(cell));
+        }
     }
 
     /// The deer is down. Another stands on the trail `deer_ticks` after this
@@ -4546,6 +4580,113 @@ mod flint_return {
         assert!(world
             .flint_returns_at
             .contains_key(&world.actor(near).unwrap().cell));
+    }
+}
+
+#[cfg(test)]
+mod branch_return {
+    use super::{Attempt, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn dry_branches_under_the_rock_return_after_they_are_gone() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        let open = super::cell_id(5, 2).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A pile of branches lies here."), "{here}");
+        while world.pile_count(rock, Material::Branch) > 0 {
+            world.take_from_pile(rock, Material::Branch, 1);
+        }
+        while world.pile_count(open, Material::Branch) > 0 {
+            world.take_from_pile(open, Material::Branch, 1);
+        }
+        world.step(&[]);
+        let empty = world.observe(near).unwrap().text;
+        assert!(
+            empty.contains("There are no branches under the rock."),
+            "{empty}"
+        );
+        assert!(!empty.contains("A pile of branches lies here."), "{empty}");
+        let seen_empty = world.observe(seen).unwrap().text;
+        assert!(
+            seen_empty.contains("There are no branches under the rock to the east."),
+            "{seen_empty}"
+        );
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("branches under the rock"));
+        assert!(!world.branch_returns_at.contains_key(&open));
+        let ticks = world.tuning.branch_ticks;
+        let started = world.time;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+            assert!(
+                world
+                    .observe(near)
+                    .unwrap()
+                    .text
+                    .contains("There are no branches under the rock."),
+                "clock {}",
+                world.time
+            );
+        }
+        world.step(&[]);
+        assert_eq!(world.time, started + ticks);
+        let back = "Branches lie under the rock again.";
+        let again = world.observe(near).unwrap();
+        assert!(
+            again.text.contains("A pile of branches lies here."),
+            "{}",
+            again.text
+        );
+        assert!(
+            !again.text.contains("There are no branches under the rock."),
+            "{}",
+            again.text
+        );
+        assert_eq!(world.pile_count(rock, Material::Branch), 4);
+        assert!(world.is_dry(world.pile_moisture(rock, Material::Branch)));
+        assert!(again.events.iter().any(|event| event.text == back));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back.text.contains("a pile of branches"),
+            "{}",
+            seen_back.text
+        );
+        assert!(
+            !seen_back.text.contains("no branches under the rock"),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert_eq!(world.pile_count(open, Material::Branch), 0);
+        let second = world.step(&[intent("again", near, Attempt::Gather(Material::Branch))]);
+        assert_eq!(second.results[0].message, "You gather a branch.");
+        assert_eq!(world.pile_count(rock, Material::Branch), 3);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A pile of branches lies here."));
     }
 }
 

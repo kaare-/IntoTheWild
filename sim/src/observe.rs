@@ -300,6 +300,9 @@ impl World {
             if let Some(flint) = self.seen_flint(actor_id) {
                 lines.push(flint);
             }
+            if let Some(branches) = self.seen_rock_branches(actor_id) {
+                lines.push(branches);
+            }
             if let Some(ochre) = self.seen_ochre(actor_id) {
                 lines.push(ochre);
             }
@@ -756,6 +759,8 @@ impl World {
             } else {
                 parts.push(format!("A {word} branch lies here."));
             }
+        } else if self.branch_bare(actor.cell) {
+            parts.push("There are no branches under the rock.".into());
         }
         if self.loose_ids(actor_id, Material::Branch).iter().any(|id| {
             self.item(*id)
@@ -1919,6 +1924,36 @@ impl World {
             "You see no bow from here.".into()
         } else {
             lines.join(" ")
+        }
+    }
+
+    /// The rock's dry branches were taken and have not lain there again.
+    fn branch_bare(&self, cell: crate::model::CellId) -> bool {
+        self.branch_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Branch) == 0
+            && self.ground_ids(cell, Material::Branch).is_empty()
+    }
+
+    /// The rock's branches, for someone who can see that ground and is not standing on it.
+    /// Past sight, nothing. At night, with no fire nearby, this line is not read.
+    fn seen_rock_branches(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.cell(cell).rock {
+                continue;
+            }
+            if self.branch_bare(cell) {
+                lines.push(format!(
+                    "There are no branches under the rock to the {}.",
+                    self.relative(origin, cell)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
         }
     }
 
