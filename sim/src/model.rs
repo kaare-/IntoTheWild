@@ -498,6 +498,10 @@ pub struct Actor {
     /// A smear of red ochre. It flakes off, and rain in the open washes it off.
     #[serde(default)]
     pub ochre: u32,
+    /// The sim time when bee stings leave the body. None means the skin is clear.
+    /// Mud and ochre do not change it.
+    #[serde(default)]
+    pub stings_until: Option<u64>,
     pub busy: Option<WorkId>,
 }
 
@@ -638,6 +642,8 @@ pub enum Wake {
     Spoil(ItemId),
     /// The salt lick on this cell forms another crust.
     SaltReturn(CellId),
+    /// Bee stings on a body. Each tick, any sting whose time has come fades.
+    Stings,
 }
 
 /// One deer. It is not a sector and not a pile. `route_at` is the cell it
@@ -864,6 +870,7 @@ impl World {
         world.schedule(0, Wake::Thirst);
         world.schedule(0, Wake::Hunger);
         world.schedule(0, Wake::Illness);
+        world.schedule(0, Wake::Stings);
         world.schedule(0, Wake::Energy);
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
@@ -950,6 +957,7 @@ impl World {
                 sunburn: 0,
                 mud: 0,
                 ochre: 0,
+                stings_until: None,
                 busy: None,
             },
         );
@@ -2709,5 +2717,75 @@ mod honey {
             .iter()
             .all(|event| !event.text.contains("honeycomb")));
         assert_eq!(world.material_tally(Material::Honey), 0);
+    }
+
+    #[test]
+    fn bee_stings_show_on_the_body_and_then_fade() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("West", "w", 5, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        if let Some(person) = world.actors.get_mut(&near) {
+            person.mud = 400;
+            person.ochre = 400;
+        }
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a honeycomb. The bees sting."
+        );
+        let body = world.observe(near).unwrap();
+        assert!(body.text.contains("You are stung."), "{}", body.text);
+        assert!(!body.text.contains("You are well."), "{}", body.text);
+        assert_eq!(body.self_info.illness, "stung");
+        let exam = world.examine(near, super::ExamineTarget::SelfBody);
+        assert!(exam.contains("You are stung."), "{exam}");
+        assert!(!exam.contains("You are well."), "{exam}");
+        let west = world.examine(seen, super::ExamineTarget::Person("Near".into()));
+        assert!(west.contains("They are stung."), "{west}");
+        let missed = world.observe(quiet).unwrap().text;
+        assert!(!missed.contains("stung"), "{missed}");
+        assert_eq!(
+            world.examine(quiet, super::ExamineTarget::Person("Near".into())),
+            "You cannot see Near from here."
+        );
+        assert!(body.text.contains("thin mud"), "{}", body.text);
+        assert!(world.actor(near).unwrap().mud > 0);
+        assert!(world.actor(near).unwrap().ochre > 0);
+        let mut faded = false;
+        for _ in 0..8 {
+            world.step(&[]);
+            let look = world.observe(near).unwrap();
+            if look.text.contains("You are well.") {
+                faded = true;
+                assert!(!look.text.contains("You are stung."), "{}", look.text);
+                assert_eq!(look.self_info.illness, "well");
+                assert!(look
+                    .events
+                    .iter()
+                    .any(|event| event.text == "The stings fade."));
+                assert!(look
+                    .events
+                    .iter()
+                    .all(|event| event.text != "The stings on Near fade."));
+                let west = world.observe(seen).unwrap();
+                assert!(west
+                    .events
+                    .iter()
+                    .any(|event| event.text == "The stings on Near fade."));
+                assert!(world
+                    .observe(quiet)
+                    .unwrap()
+                    .events
+                    .iter()
+                    .all(|event| !event.text.contains("sting")));
+                break;
+            }
+            assert!(look.text.contains("You are stung."), "{}", look.text);
+        }
+        assert!(faded);
+        assert!(world.actor(near).unwrap().mud > 0);
+        assert!(world.actor(near).unwrap().ochre > 0);
+        assert!(world.actor(near).unwrap().stings_until.is_none());
     }
 }

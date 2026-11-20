@@ -55,6 +55,9 @@ meat_ticks = 24
 # bare for this many ticks. Then a crust forms there again. Someone who cannot
 # see that slope does not get the line.
 salt_ticks = 24
+# After the bees sting, look says stung for this many ticks. Then the stings
+# fade. Mud and ochre do not clear them.
+sting_ticks = 4
 # The first night falls on this tick, lasts night_len ticks, then morning.
 # day_len ticks of morning follow, and then night again. The rain lets up
 # on the step that opens at that first dawn and holds off through the next

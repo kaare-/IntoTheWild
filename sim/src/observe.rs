@@ -146,7 +146,7 @@ impl World {
                 wetness: self.clothes_word(actor.wetness).into(),
                 thirst: self.thirst_word(actor.thirst).into(),
                 hunger: self.hunger_word(actor.hunger).into(),
-                illness: self.illness_word(actor.illness).into(),
+                illness: self.body_word(actor.stings_until, actor.illness).into(),
                 energy: self.energy_word(actor.energy).into(),
                 cold: self.cold_word(actor.cold).into(),
                 wind: self.wind_at(actor.cell).into(),
@@ -2139,13 +2139,25 @@ impl World {
         }
     }
 
+    /// Bee stings take the well word. An illness still says ill.
+    fn body_word(&self, stings_until: Option<u64>, illness: u32) -> &'static str {
+        if stings_until.is_some() && self.illness_word(illness) == "well" {
+            "stung"
+        } else {
+            self.illness_word(illness)
+        }
+    }
+
     fn self_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let mut parts = vec![
             self.clothes_line(actor_id, actor.wetness),
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
             format!("You are {}.", self.hunger_word(actor.hunger)),
-            format!("You are {}.", self.illness_word(actor.illness)),
+            format!(
+                "You are {}.",
+                self.body_word(actor.stings_until, actor.illness)
+            ),
             format!("You are {}.", self.energy_word(actor.energy)),
             format!("You are {}.", self.cold_word(actor.cold)),
             format!("You are {}.", self.wind_at(actor.cell)),
@@ -2246,7 +2258,7 @@ impl World {
             self.clothes_word(actor.wetness),
             self.thirst_sentence(actor.thirst),
             self.hunger_word(actor.hunger),
-            self.illness_word(actor.illness),
+            self.body_word(actor.stings_until, actor.illness),
             self.energy_word(actor.energy)
         ) + &format!(
             " They are {}. They are {}. Their skin is {}. Their skin is {}. ({x},{y})",
@@ -6427,6 +6439,23 @@ impl World {
         Some(crate::model::spoken_act(None, "mark", rest))
     }
 
+    /// Bee stings leaving, filled for the person they were on.
+    fn stings_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("The stings on {name} fade.") {
+            Some("The stings fade.".into())
+        } else {
+            None
+        }
+    }
+
     /// Rain taking the mud, filled for the person it washed.
     fn wash_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -7499,6 +7528,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.eat_meat_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.stings_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.eat_mushroom_for_these_eyes(viewer, event) {

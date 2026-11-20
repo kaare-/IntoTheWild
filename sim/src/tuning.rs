@@ -44,6 +44,9 @@ pub struct Tuning {
     /// Look says the slope is bare until then.
     #[serde(default = "default_salt_ticks")]
     pub salt_ticks: u64,
+    /// Ticks a bee sting stays on the body. Look says stung until the tick it fades.
+    #[serde(default = "default_sting_ticks")]
+    pub sting_ticks: u64,
     /// Sim time when the first night falls. Night lasts `night_len` ticks,
     /// then morning. The day between nights is `day_len` ticks, and that repeats.
     #[serde(default = "default_night_at")]
@@ -168,6 +171,9 @@ fn default_meat_ticks() -> u64 {
 fn default_salt_ticks() -> u64 {
     24
 }
+fn default_sting_ticks() -> u64 {
+    4
+}
 fn default_night_at() -> u64 {
     72
 }
@@ -271,6 +277,8 @@ struct RawTime {
     meat_ticks: u64,
     #[serde(default = "default_salt_ticks")]
     salt_ticks: u64,
+    #[serde(default = "default_sting_ticks")]
+    sting_ticks: u64,
     #[serde(default = "default_night_at")]
     night_at: u64,
     #[serde(default = "default_night_len")]
@@ -360,6 +368,7 @@ impl Tuning {
             || raw.time.snare_ticks == 0
             || raw.time.meat_ticks == 0
             || raw.time.salt_ticks == 0
+            || raw.time.sting_ticks == 0
             || raw.time.night_len == 0
             || raw.time.day_len == 0
         {
@@ -415,6 +424,7 @@ impl Tuning {
             snare_ticks: raw.time.snare_ticks,
             meat_ticks: raw.time.meat_ticks,
             salt_ticks: raw.time.salt_ticks,
+            sting_ticks: raw.time.sting_ticks,
             night_at: raw.time.night_at,
             night_len: raw.time.night_len,
             day_len: raw.time.day_len,

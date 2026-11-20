@@ -38,6 +38,7 @@ impl World {
                 Wake::Snare(cell) => self.spring_snare(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
+                Wake::Stings => self.apply_stings(),
             }
         }
     }
@@ -990,6 +991,36 @@ impl World {
                 format!("The rain washes the black charcoal mark off the ground on the {region}."),
                 Scope::Cell(cell),
                 vec![],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
+    }
+
+    /// Bee stings leave on their tick. Someone who can see that person hears it.
+    /// The person hears "The stings fade." Mud and ochre do not clear them.
+    fn apply_stings(&mut self) {
+        self.schedule(self.time + 1, Wake::Stings);
+        let now = self.time;
+        let due: Vec<ActorId> = self
+            .actors
+            .iter()
+            .filter(|(_, actor)| actor.stings_until == Some(now))
+            .map(|(id, _)| *id)
+            .collect();
+        for id in due {
+            let Some(actor) = self.actors.get_mut(&id) else {
+                continue;
+            };
+            actor.stings_until = None;
+            let cell = actor.cell;
+            let name = actor.name.clone();
+            self.emit(
+                format!("The stings on {name} fade."),
+                Scope::Cell(cell),
+                vec![id],
                 vec![cell],
                 vec![],
                 vec![],

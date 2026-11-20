@@ -1332,6 +1332,12 @@ impl World {
                     if material == Material::Salt {
                         self.arm_salt_lick(cell);
                     }
+                    if material == Material::Honey {
+                        let until = self.time.saturating_add(self.tuning.sting_ticks);
+                        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                            person.stings_until = Some(until);
+                        }
+                    }
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
