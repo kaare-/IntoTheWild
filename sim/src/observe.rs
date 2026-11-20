@@ -879,16 +879,14 @@ impl World {
         }
     }
 
-    /// Smoke from a fire that is not under the looker's feet. Object detail
-    /// stops at sight. The smoke carries one cell farther.
+    /// Smoke from a fire past sight, still inside the smoke range.
+    /// Someone who can see the cell already has the fire sentence.
     fn seen_smoke(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for fire in self.fires.values() {
-            if fire.cell == origin {
-                continue;
-            }
-            if chebyshev(origin, fire.cell) > self.tuning.smoke_range() {
+            let distance = chebyshev(origin, fire.cell);
+            if distance <= self.tuning.sight || distance > self.tuning.smoke_range() {
                 continue;
             }
             let line = format!("Smoke rises to the {}.", self.relative(origin, fire.cell));

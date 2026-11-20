@@ -8115,7 +8115,7 @@ fn smoke_shows_past_the_fire_and_stops_one_cell_farther() {
     );
     let mid = world.observe(west).unwrap().text;
     assert!(
-        mid.contains("Smoke rises to the north and east.") && mid.contains("A small fire burns"),
+        mid.contains("A small fire burns") && !mid.contains("Smoke rises"),
         "{mid}"
     );
     let smoke = world.observe(far).unwrap().text;
