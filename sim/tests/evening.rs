@@ -13269,7 +13269,10 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
     world.step(&[cmd("west-2", far, Attempt::Move(Dir::West))]);
     assert_eq!(world.actor_cell(far), Some((4, 1)));
     let no_room = world.step(&[cmd("poison", far, Attempt::Gather(Material::BitterBerry))]);
-    assert_eq!(no_room.results[0].message, "Your arms are full.");
+    assert_eq!(
+        no_room.results[0].message,
+        "Your arms are full. Drop something first."
+    );
     assert!(world
         .observe(near)
         .unwrap()
@@ -13424,7 +13427,10 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     let clay = world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
     assert!(clay.results[0].success, "{}", clay.results[0].message);
     let blocked = world.step(&[cmd("clay-2", near, Attempt::Gather(Material::Clay))]);
-    assert_eq!(blocked.results[0].message, "Your arms are full.");
+    assert_eq!(
+        blocked.results[0].message,
+        "Your arms are full. Drop something first."
+    );
     let spilled = world.step(&[cmd("spill", near, Attempt::Drop(Material::Fish))]);
     assert!(spilled.results[0].success, "{}", spilled.results[0].message);
     let tucked = world.step(&[cmd("tuck", near, Attempt::Gather(Material::Fish))]);
@@ -13441,6 +13447,57 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
         .events
         .iter()
         .all(|event| !event.text.contains("arms are full")));
+}
+
+#[test]
+fn full_arms_name_drop_and_the_refusal_stays_with_that_person() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 5, 2).unwrap();
+    let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+    for i in 0..4 {
+        let got = world.step(&[cmd(
+            &format!("branch-{i}"),
+            near,
+            Attempt::Gather(Material::Branch),
+        )]);
+        assert!(got.results[0].success, "{}", got.results[0].message);
+    }
+    world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let sentence = "Your arms are full. Drop something first.";
+    let gather = world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    assert_eq!(gather.results[0].message, sentence);
+    let weave = world.step(&[cmd("basket", near, Attempt::WeaveBasket)]);
+    assert_eq!(weave.results[0].message, sentence);
+    let yours: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| event.text == sentence)
+        .map(|event| event.text.clone())
+        .collect();
+    assert_eq!(yours.len(), 2, "{yours:?}");
+    for witness in [seen, quiet] {
+        assert!(
+            world
+                .observe(witness)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != sentence && !event.text.contains("arms are full") }),
+            "{:?}",
+            world
+                .observe(witness)
+                .unwrap()
+                .events
+                .iter()
+                .map(|event| event.text.clone())
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
 #[test]

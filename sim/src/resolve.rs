@@ -19,6 +19,8 @@ enum WetBranch {
 /// after this person has tried them.
 const RAW_MUSHROOM_REFUSAL: &str = "Raw mushrooms do not feed you. They must be cooked.";
 const BARK_REFUSAL: &str = "Bark does not feed you.";
+/// A gather or a craft that needs a free arm. The second sentence names `drop`.
+const ARMS_FULL: &str = "Your arms are full. Drop something first.";
 
 impl World {
     pub(crate) fn resolve(&mut self, intents: &[Intent]) -> Vec<CommandResult> {
@@ -466,7 +468,7 @@ impl World {
                 } else if !self.loose_ids(actor.id, Material::Brand).is_empty() {
                     Err("You are already carrying a burning brand.".into())
                 } else if self.carry_count(actor.id) >= self.tuning.carry_slots {
-                    Err("Your arms are full.".into())
+                    Err(ARMS_FULL.into())
                 } else {
                     Ok(true)
                 }
@@ -1607,7 +1609,7 @@ impl World {
                 if self.carry_count(actor.id) >= self.tuning.carry_slots
                     && !self.gather_overflows_into_basket(actor.id, *material)
                 {
-                    return Err("Your arms are full.".into());
+                    return Err(ARMS_FULL.into());
                 }
                 Ok(true)
             }
@@ -1720,7 +1722,7 @@ impl World {
                     return Err("You need a sheet of bark to weave a basket.".into());
                 }
                 if !carried_bark && self.carry_count(actor.id) >= self.tuning.carry_slots {
-                    return Err("Your arms are full.".into());
+                    return Err(ARMS_FULL.into());
                 }
                 Ok(true)
             }
@@ -1738,7 +1740,7 @@ impl World {
                 }
                 let spent = carried.min(3);
                 if self.carry_count(actor.id) - spent + 1 > self.tuning.carry_slots {
-                    return Err("Your arms are full.".into());
+                    return Err(ARMS_FULL.into());
                 }
                 Ok(true)
             }
@@ -1756,7 +1758,7 @@ impl World {
                 }
                 let spent = carried.min(2);
                 if self.carry_count(actor.id) - spent + 1 > self.tuning.carry_slots {
-                    return Err("Your arms are full.".into());
+                    return Err(ARMS_FULL.into());
                 }
                 Ok(true)
             }
@@ -3932,7 +3934,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "Your arms are full.",
+                ARMS_FULL,
                 results,
             );
             return;
@@ -6054,7 +6056,7 @@ impl World {
             if ground.is_some() {
                 return Ok(ground.unwrap());
             }
-            return Err("Your arms are full.");
+            return Err(ARMS_FULL);
         }
         if let Some(id) = ground {
             return Ok(id);
@@ -9568,7 +9570,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "Your arms are full.",
+                ARMS_FULL,
                 results,
             );
             return;
