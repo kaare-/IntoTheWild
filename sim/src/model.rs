@@ -772,10 +772,13 @@ pub struct Fire {
     pub cell: CellId,
     pub lit_event: EventId,
     pub goes_out_at: u64,
-    /// Set when someone feeds the fire an extra dry branch. A small fire
-    /// smelts copper. Iron waits for this.
+    /// Set when someone feeds the fire an extra dry branch, or lights it
+    /// with charcoal. A small fire smelts copper. Iron waits for this.
     #[serde(default)]
     pub hot: bool,
+    /// Lit with a lump of charcoal. It is hot, and it burns for twice as long.
+    #[serde(default)]
+    pub charcoal: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2356,9 +2359,24 @@ impl World {
     }
 
     pub(crate) fn mint_fire(&mut self, cell: CellId, lit_event: EventId) -> FireId {
+        self.mint_burning(cell, lit_event, false)
+    }
+
+    /// A lump of charcoal instead of a branch. Hot from the start, and twice
+    /// the life of a bark-and-branch fire.
+    pub(crate) fn mint_charcoal_fire(&mut self, cell: CellId, lit_event: EventId) -> FireId {
+        self.mint_burning(cell, lit_event, true)
+    }
+
+    fn mint_burning(&mut self, cell: CellId, lit_event: EventId, charcoal: bool) -> FireId {
         let id = self.next_fire;
         self.next_fire += 1;
-        let goes_out_at = self.time.saturating_add(self.tuning.fire_ticks);
+        let span = if charcoal {
+            self.tuning.fire_ticks.saturating_mul(2)
+        } else {
+            self.tuning.fire_ticks
+        };
+        let goes_out_at = self.time.saturating_add(span);
         self.fires.insert(
             id,
             Fire {
@@ -2366,7 +2384,8 @@ impl World {
                 cell,
                 lit_event,
                 goes_out_at,
-                hot: false,
+                hot: charcoal,
+                charcoal,
             },
         );
         self.schedule(goes_out_at, Wake::Fire(id));
@@ -11511,22 +11530,16 @@ mod pine_resin {
         let bare = world.step(&[intent("bare", near, Attempt::Light)]);
         assert_eq!(
             bare.results[0].message,
-            "You need a dry branch for the fire."
+            "You need a dry branch or a lump of charcoal for the fire."
         );
         assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
         assert!(world.fire_at(cell).is_none());
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| { event.text != "You need a dry branch for the fire." }));
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| { event.text != "You need a dry branch for the fire." }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You need a dry branch or a lump of charcoal for the fire."
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            event.text != "You need a dry branch or a lump of charcoal for the fire."
+        }));
         world.mint_item(Material::Branch, 0, cell, Some(near), super::Role::Loose);
         world.mint_item(Material::Bark, 0, cell, Some(near), super::Role::Loose);
         let lit = world.step(&[intent("light", near, Attempt::Light)]);
@@ -14537,7 +14550,7 @@ mod wooden_spear {
 
 #[cfg(test)]
 mod charcoal_bank {
-    use super::{cell_id, Attempt, Intent, Material, Role, World};
+    use super::{cell_id, Attempt, ExamineTarget, Intent, Material, Role, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
         Intent {
@@ -14745,5 +14758,90 @@ mod charcoal_bank {
             .events
             .iter()
             .any(|event| { event.text == "The banked wood did not char. The fire is out." }));
+    }
+
+    #[test]
+    fn a_lump_of_charcoal_lights_a_hot_fire() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        world.mint_item(Material::Charcoal, 0, cell, Some(near), Role::Loose);
+        let bare = world.step(&[intent("bare", near, Attempt::Light)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You need dry loose bark for tinder."
+        );
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != bare.results[0].message }));
+        }
+        assert_eq!(world.loose_ids(near, Material::Charcoal).len(), 1);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let lit = world.step(&[intent("lit", near, Attempt::Light)]);
+        let yours = "You light a fire with the bark and a lump of charcoal from the arms.";
+        let witnessed = "Near lights a fire with the bark and a lump of charcoal from the arms.";
+        assert_eq!(lit.results[0].message, yours);
+        assert!(world.loose_ids(near, Material::Charcoal).is_empty());
+        assert!(world.loose_ids(near, Material::Bark).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Branch).len(), 1);
+        let fire = world.fire_at(cell).unwrap();
+        assert!(fire.hot && fire.charcoal);
+        assert_eq!(
+            fire.goes_out_at,
+            world.time + world.tuning.fire_ticks * 2 - 1
+        );
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text.contains("A hot charcoal fire burns here."),
+            "{}",
+            here.text
+        );
+        assert!(!here.text.contains("A small fire burns"), "{}", here.text);
+        assert!(here
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != witnessed));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("lights") }));
+        let named = world.examine(near, ExamineTarget::Fire);
+        assert!(named.contains("A hot charcoal fire burns"), "{named}");
+        let plain = cell_id(3, 4).unwrap();
+        let other = world.spawn_at("Ash", "a", 3, 4).unwrap();
+        world.mint_item(Material::Bark, 0, plain, Some(other), Role::Loose);
+        world.mint_item(Material::Branch, 0, plain, Some(other), Role::Loose);
+        let small = world.step(&[intent("small", other, Attempt::Light)]);
+        assert!(
+            small.results[0].message.contains("branch"),
+            "{}",
+            small.results[0].message
+        );
+        let ordinary = world.fire_at(plain).unwrap();
+        assert!(!ordinary.charcoal && !ordinary.hot);
+        assert_eq!(
+            ordinary.goes_out_at,
+            world.time + world.tuning.fire_ticks - 1
+        );
+        assert!(world
+            .observe(other)
+            .unwrap()
+            .text
+            .contains("A small fire burns here."));
     }
 }

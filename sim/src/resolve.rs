@@ -3435,14 +3435,52 @@ impl World {
                 "You need dry loose bark for tinder.".into()
             });
         }
-        if !self.has_dry(actor, Material::Branch) {
+        if !self.charcoal_in_arms(actor)
+            && !self.has_dry(actor, Material::Branch)
+            && !self.charcoal_on_ground(actor)
+        {
             return Some(if self.has_material_at_hand(actor, Material::Branch) {
                 "The branch is too damp to burn.".into()
             } else {
-                "You need a dry branch for the fire.".into()
+                "You need a dry branch or a lump of charcoal for the fire.".into()
             });
         }
         None
+    }
+
+    /// A lump you are holding. It is the fuel, even when a dry branch lies here.
+    fn charcoal_in_arms(&self, actor: crate::model::ActorId) -> bool {
+        !self.loose_ids(actor, Material::Charcoal).is_empty()
+    }
+
+    fn charcoal_on_ground(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        !self.ground_ids(person.cell, Material::Charcoal).is_empty()
+    }
+
+    /// Arms first, then one lump on the ground. The bool is true when it came from the arms.
+    fn take_charcoal(
+        &mut self,
+        actor: crate::model::ActorId,
+    ) -> Result<(Option<crate::model::ItemId>, bool), ()> {
+        if let Some(id) = self.loose_ids(actor, Material::Charcoal).first().copied() {
+            self.items.remove(&id);
+            return Ok((Some(id), true));
+        }
+        let Some(person) = self.actor(actor) else {
+            return Err(());
+        };
+        let Some(id) = self
+            .ground_ids(person.cell, Material::Charcoal)
+            .first()
+            .copied()
+        else {
+            return Err(());
+        };
+        self.items.remove(&id);
+        Ok((Some(id), false))
     }
 
     pub(crate) fn cook_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
@@ -3507,77 +3545,103 @@ impl World {
                     .loose_ids(intent.actor_id, Material::Brand)
                     .first()
                     .copied();
-                let resin = self
+                let resin_id = self
                     .loose_ids(intent.actor_id, Material::Resin)
                     .first()
                     .copied();
                 let name = self.name_of(intent.actor_id);
-                let (line, yours, spent) = if let Some(resin_id) = resin {
-                    let Ok((branch_item, branch_arms)) =
-                        self.consume_dry(intent.actor_id, Material::Branch)
-                    else {
-                        self.finish(
-                            intent.command_id,
-                            intent.actor_id,
-                            false,
-                            "You need a dry branch for the fire.",
-                            results,
-                        );
-                        continue;
-                    };
+                let use_charcoal = self.charcoal_in_arms(intent.actor_id)
+                    || (!self.has_dry(intent.actor_id, Material::Branch)
+                        && self.charcoal_on_ground(intent.actor_id));
+                let (tinder_item, resin, bark_arms) = if let Some(resin_id) = resin_id {
                     self.items.remove(&resin_id);
-                    if let Some(brand) = brand {
-                        self.items.remove(&brand);
+                    (Some(resin_id), true, true)
+                } else {
+                    match self.consume_dry(intent.actor_id, Material::Bark) {
+                        Ok((bark_item, bark_arms)) => (bark_item, false, bark_arms),
+                        Err(()) => {
+                            self.finish(
+                                intent.command_id,
+                                intent.actor_id,
+                                false,
+                                "You need dry loose bark and a dry branch.",
+                                results,
+                            );
+                            continue;
+                        }
                     }
-                    let line = if brand.is_some() {
-                        resin_brand_light_line(Some(&name), branch_arms)
-                    } else {
-                        resin_light_line(Some(&name), branch_arms)
-                    };
-                    let yours = if brand.is_some() {
-                        resin_brand_light_line(None, branch_arms)
-                    } else {
-                        resin_light_line(None, branch_arms)
-                    };
+                };
+                let (fuel_item, from_charcoal, charcoal_arms, branch_arms) = if use_charcoal {
+                    match self.take_charcoal(intent.actor_id) {
+                        Ok((lump, charcoal_arms)) => (lump, true, charcoal_arms, false),
+                        Err(()) => {
+                            self.finish(
+                                intent.command_id,
+                                intent.actor_id,
+                                false,
+                                "You need a dry branch or a lump of charcoal for the fire.",
+                                results,
+                            );
+                            continue;
+                        }
+                    }
+                } else {
+                    match self.consume_dry(intent.actor_id, Material::Branch) {
+                        Ok((branch_item, branch_arms)) => (branch_item, false, false, branch_arms),
+                        Err(()) => {
+                            self.finish(
+                                intent.command_id,
+                                intent.actor_id,
+                                false,
+                                if resin {
+                                    "You need a dry branch or a lump of charcoal for the fire."
+                                } else {
+                                    "You need dry loose bark and a dry branch."
+                                },
+                                results,
+                            );
+                            continue;
+                        }
+                    }
+                };
+                if let Some(brand_id) = brand {
+                    self.items.remove(&brand_id);
+                }
+                let (line, yours) = if from_charcoal {
                     (
-                        line,
-                        yours,
-                        Some(resin_id).into_iter().chain(branch_item).collect(),
+                        charcoal_light_line(
+                            Some(&name),
+                            resin,
+                            bark_arms,
+                            brand.is_some(),
+                            charcoal_arms,
+                        ),
+                        charcoal_light_line(None, resin, bark_arms, brand.is_some(), charcoal_arms),
+                    )
+                } else if resin {
+                    if brand.is_some() {
+                        (
+                            resin_brand_light_line(Some(&name), branch_arms),
+                            resin_brand_light_line(None, branch_arms),
+                        )
+                    } else {
+                        (
+                            resin_light_line(Some(&name), branch_arms),
+                            resin_light_line(None, branch_arms),
+                        )
+                    }
+                } else if brand.is_some() {
+                    (
+                        brand_light_line(Some(&name), bark_arms, branch_arms),
+                        brand_light_line(None, bark_arms, branch_arms),
                     )
                 } else {
-                    let bark = self.consume_dry(intent.actor_id, Material::Bark);
-                    let branch = self.consume_dry(intent.actor_id, Material::Branch);
-                    let (Ok((bark_item, bark_arms)), Ok((branch_item, branch_arms))) =
-                        (bark, branch)
-                    else {
-                        self.finish(
-                            intent.command_id,
-                            intent.actor_id,
-                            false,
-                            "You need dry loose bark and a dry branch.",
-                            results,
-                        );
-                        continue;
-                    };
-                    if let Some(brand) = brand {
-                        self.items.remove(&brand);
-                    }
-                    let line = if brand.is_some() {
-                        brand_light_line(Some(&name), bark_arms, branch_arms)
-                    } else {
-                        light_line(Some(&name), bark_arms, branch_arms)
-                    };
-                    let yours = if brand.is_some() {
-                        brand_light_line(None, bark_arms, branch_arms)
-                    } else {
-                        light_line(None, bark_arms, branch_arms)
-                    };
                     (
-                        line,
-                        yours,
-                        bark_item.into_iter().chain(branch_item).collect(),
+                        light_line(Some(&name), bark_arms, branch_arms),
+                        light_line(None, bark_arms, branch_arms),
                     )
                 };
+                let spent: Vec<_> = tinder_item.into_iter().chain(fuel_item).collect();
                 let event = self.emit(
                     line,
                     Scope::Cell(cell),
@@ -3587,7 +3651,11 @@ impl World {
                     vec![],
                     draw,
                 );
-                self.mint_fire(cell, event);
+                if from_charcoal {
+                    self.mint_charcoal_fire(cell, event);
+                } else {
+                    self.mint_fire(cell, event);
+                }
                 lit = true;
                 let mut yours = yours;
                 if self.scare_wolf(Some(intent.actor_id)) {
@@ -10209,6 +10277,34 @@ fn brand_light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> St
         "light",
         &format!("a fire with the burning brand and {fuel}."),
     )
+}
+
+/// Charcoal stands in for the branch. Bark or resin is still the tinder.
+fn charcoal_light_line(
+    who: Option<&str>,
+    resin: bool,
+    bark_arms: bool,
+    brand: bool,
+    charcoal_arms: bool,
+) -> String {
+    let lump = if charcoal_arms {
+        "a lump of charcoal from the arms"
+    } else {
+        "a lump of charcoal from the ground"
+    };
+    let tinder = if resin {
+        "the pine resin"
+    } else if bark_arms {
+        "the bark"
+    } else {
+        "bark from the pile at the feet"
+    };
+    let fuel = if brand {
+        format!("the burning brand and {tinder} and {lump}")
+    } else {
+        format!("{tinder} and {lump}")
+    };
+    crate::model::spoken_act(who, "light", &format!("a fire with {fuel}."))
 }
 
 /// One light, filled for the person who set it and for anyone else.

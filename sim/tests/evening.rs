@@ -14040,12 +14040,18 @@ fn a_lump_of_charcoal_feeds_a_fire_hot_enough_for_iron() {
         .iter()
         .all(|event| event.text != "There is no fire burning here."));
 
+    world.step(&[cmd("aside", near, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("down", near, Attempt::Drop(Material::Charcoal))]);
+    world.step(&[cmd("back", near, Attempt::Move(Dir::East))]);
     world.step(&[cmd("light-2", near, Attempt::Light)]);
     assert!(world
         .observe(near)
         .unwrap()
         .text
         .contains("A small fire burns here."));
+    world.step(&[cmd("to-lump", near, Attempt::Move(Dir::West))]);
+    world.step(&[cmd("lift", near, Attempt::Gather(Material::Charcoal))]);
+    world.step(&[cmd("to-fire", near, Attempt::Move(Dir::East))]);
     let branches = world.material_tally(Material::Branch);
     let fed = "You feed a lump of charcoal into the fire. It burns hotter.";
     let seen_feed = "Near feeds a lump of charcoal into the fire. It burns hotter.";

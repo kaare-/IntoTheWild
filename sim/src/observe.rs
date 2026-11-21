@@ -709,7 +709,11 @@ impl World {
             } else {
                 ""
             };
-            if fire.hot {
+            if fire.charcoal {
+                parts.push(format!(
+                    "A hot charcoal fire burns here. It warms you.{kept}"
+                ));
+            } else if fire.hot {
                 parts.push(format!("A fire burns hotter here. It warms you.{kept}"));
             } else {
                 parts.push(format!("A small fire burns here. It warms you.{kept}"));
@@ -3225,11 +3229,15 @@ impl World {
             }
             if let Some(fire) = self.fire_at(cell) {
                 let burn = if parts.is_empty() {
-                    if fire.hot {
+                    if fire.charcoal {
+                        "A hot charcoal fire burns under the rock overhang."
+                    } else if fire.hot {
                         "A fire burns hotter under the rock overhang."
                     } else {
                         "A small fire burns under the rock overhang."
                     }
+                } else if fire.charcoal {
+                    "A hot charcoal fire burns there."
                 } else if fire.hot {
                     "A fire burns hotter there."
                 } else {
@@ -8016,7 +8024,9 @@ impl World {
             } else {
                 ""
             };
-            let kind = if fire.hot {
+            let kind = if fire.charcoal {
+                "A hot charcoal fire burns"
+            } else if fire.hot {
                 "A fire burns hotter"
             } else {
                 "A small fire burns"
