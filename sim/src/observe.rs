@@ -250,7 +250,7 @@ impl World {
                     Some((_, _, display)) => {
                         format!("You cannot see {display} from here.")
                     }
-                    None => format!("You cannot see {} from here.", capitalize(&name)),
+                    None => format!("You cannot see {name} from here."),
                 }
             }
         }
@@ -3801,43 +3801,7 @@ impl World {
         if actor.warm_from_fire && self.fire_at(actor.cell).is_none() {
             parts.push("The warmth of the fire is still on you.".into());
         }
-        let carrying = self.carry_views(actor_id);
-        if carrying.is_empty() {
-            parts.push("Your arms are empty.".into());
-        } else {
-            let drinks = carrying
-                .iter()
-                .find(|item| item.material == "water")
-                .map(|item| item.count)
-                .unwrap_or(0);
-            let raw_drinks = self
-                .items
-                .values()
-                .filter(|item| {
-                    item.carrier == Some(actor_id)
-                        && item.role == Role::Loose
-                        && item.material == Material::Water
-                        && item.raw
-                })
-                .count() as u32;
-            let pot_holds_the_drink = drinks > 0
-                && carrying
-                    .iter()
-                    .any(|item| item.material == "pot" && item.count == 1);
-            let bits: Vec<String> = carrying
-                .iter()
-                .filter_map(|item| {
-                    if pot_holds_the_drink && item.material == "water" {
-                        return None;
-                    }
-                    if pot_holds_the_drink && item.material == "pot" {
-                        return Some(pot_drink_phrase(drinks, raw_drinks));
-                    }
-                    Some(self.arm_bit(actor_id, item))
-                })
-                .collect();
-            parts.push(format!("You have {}.", bits.join(", ")));
-        }
+        parts.push(self.arms_line(actor_id));
         let flakes = self.loose_ids(actor_id, Material::Flake).len();
         if flakes == 1 {
             parts.push("It is sharp enough to cut or haft later.".into());
@@ -3867,6 +3831,46 @@ impl World {
             parts.push("Your body is occupied.".into());
         }
         parts.join(" ")
+    }
+
+    /// The carrying sentence look already uses. Empty arms say so.
+    pub fn arms_line(&self, actor_id: ActorId) -> String {
+        let carrying = self.carry_views(actor_id);
+        if carrying.is_empty() {
+            return "Your arms are empty.".into();
+        }
+        let drinks = carrying
+            .iter()
+            .find(|item| item.material == "water")
+            .map(|item| item.count)
+            .unwrap_or(0);
+        let raw_drinks = self
+            .items
+            .values()
+            .filter(|item| {
+                item.carrier == Some(actor_id)
+                    && item.role == Role::Loose
+                    && item.material == Material::Water
+                    && item.raw
+            })
+            .count() as u32;
+        let pot_holds_the_drink = drinks > 0
+            && carrying
+                .iter()
+                .any(|item| item.material == "pot" && item.count == 1);
+        let bits: Vec<String> = carrying
+            .iter()
+            .filter_map(|item| {
+                if pot_holds_the_drink && item.material == "water" {
+                    return None;
+                }
+                if pot_holds_the_drink && item.material == "pot" {
+                    return Some(pot_drink_phrase(drinks, raw_drinks));
+                }
+                Some(self.arm_bit(actor_id, item))
+            })
+            .collect();
+        format!("You have {}.", bits.join(", "))
     }
 
     fn person_text(&self, actor_id: ActorId) -> String {

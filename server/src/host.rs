@@ -166,6 +166,10 @@ impl Host {
             }
         };
         match attempt {
+            Attempt::Arms => {
+                let text = self.world.arms_line(actor_id);
+                self.settle(command_id, false, false, true, text)
+            }
             Attempt::Look => {
                 let text = self
                     .world

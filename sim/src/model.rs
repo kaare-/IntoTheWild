@@ -365,6 +365,8 @@ pub enum ExamineTarget {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attempt {
     Look,
+    /// The arms line from look, and nothing else.
+    Arms,
     Examine(ExamineTarget),
     Say(String),
     Move(Dir),
@@ -12035,6 +12037,62 @@ mod hare {
     }
 
     #[test]
+    fn bare_inventory_names_the_arms_and_snare_and_canoe_point_at_the_verbs() {
+        use crate::parse::parse_attempt;
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        assert_eq!(parse_attempt("inventory"), Ok(Attempt::Arms));
+        assert_eq!(parse_attempt("inv"), Ok(Attempt::Arms));
+        assert_eq!(parse_attempt("snare").unwrap_err(), "Set a snare.");
+        assert_eq!(parse_attempt("trap").unwrap_err(), "Set a snare.");
+        assert_eq!(
+            parse_attempt("canoe").unwrap_err(),
+            "Board, carve canoe, or paddle."
+        );
+        assert_eq!(
+            parse_attempt("dugout").unwrap_err(),
+            "Board, carve canoe, or paddle."
+        );
+        let empty = world.step(&[intent("arms", near, Attempt::Arms)]);
+        assert_eq!(empty.results[0].message, "Your arms are empty.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Your arms are empty."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Your arms are empty."));
+        world.mint_item(
+            Material::Branch,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            Role::Loose,
+        );
+        let held = world.arms_line(near);
+        assert!(held.starts_with("You have "), "{held}");
+        assert!(world.observe(near).unwrap().text.contains(&held), "{held}");
+        let again = world.step(&[intent("again", near, Attempt::Arms)]);
+        assert_eq!(again.results[0].message, held);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != held));
+        assert_eq!(
+            world.examine(near, super::ExamineTarget::Person("hare".into())),
+            "You cannot see hare from here."
+        );
+    }
+
+    #[test]
     fn a_hare_on_the_dry_floor_is_named_and_bolts_when_someone_comes_close() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         assert_eq!(world.hare_cell(), Some((2, 4)));
@@ -12061,6 +12119,10 @@ mod hare {
             look.map
         );
         assert!(look.map.contains('r'), "{}", look.map);
+        assert_eq!(
+            world.examine(near, super::ExamineTarget::Person("hare".into())),
+            "You cannot see hare from here."
+        );
         assert!(!world.observe(heard).unwrap().text.contains("hare"));
         assert!(!world.observe(heard).unwrap().text.contains("Set a snare"));
         assert!(!world.observe(quiet).unwrap().text.contains("hare"));
