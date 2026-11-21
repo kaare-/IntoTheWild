@@ -721,6 +721,7 @@ impl Tuning {
             Material::Net => 0,
             Material::Mat => 0,
             Material::Canoe => 0,
+            Material::PaleBerry => self.berry_rain,
         }
     }
 }

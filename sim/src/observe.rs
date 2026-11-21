@@ -15,6 +15,7 @@ W wet wood     b bark
 B wet bark     * fire
 y berries      Y wet berries
 m mushrooms    q dark berries
+h pale berries
 k pot          u water
 s stone         c clay
 o ochre        C copper ore   e copper bead
@@ -218,6 +219,7 @@ impl World {
             ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Mat => self.examine_mat(actor_id),
             ExamineTarget::Canoe => self.examine_canoe(actor_id),
+            ExamineTarget::PaleBerries => self.examine_material(actor_id, Material::PaleBerry),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -774,6 +776,32 @@ impl World {
             parts.push(format!(
                 "The {} that were here are gone.",
                 self.bitter_kind(actor_id)
+            ));
+        }
+        if self.pile_count(actor.cell, Material::PaleBerry) > 0 {
+            let known = if self.pale_berry_known(actor_id) {
+                " They must be cooked."
+            } else {
+                ""
+            };
+            parts.push(format!(
+                "Pale berries lie here, {}.{known}",
+                self.condition_word(self.pile_moisture(actor.cell, Material::PaleBerry))
+            ));
+        } else if self.berry_patch_bare(actor.cell, Material::PaleBerry) {
+            parts.push("The pale berries that were here are gone.".into());
+        }
+        let cooked_pale = self
+            .ground_ids(actor.cell, Material::PaleBerry)
+            .into_iter()
+            .filter(|id| self.item(*id).is_some_and(|berry| berry.cooked))
+            .count();
+        if cooked_pale == 1 {
+            parts.push("A cooked handful of pale berries lies here. It is good to eat.".into());
+        } else if cooked_pale > 1 {
+            parts.push(format!(
+                "{} cooked handfuls of pale berries lie here. They are good to eat.",
+                count_word(cooked_pale as u32)
             ));
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0 {
@@ -2909,6 +2937,28 @@ impl World {
             } else {
                 format!("{} {} mushrooms", count_word(item.count), item.condition)
             }
+        } else if item.material == "pale berry" {
+            let ids = self.loose_ids(actor_id, Material::PaleBerry);
+            let cooked = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|berry| berry.cooked))
+                .count() as u32;
+            let raw = ids.len() as u32 - cooked;
+            if cooked > 0 && raw == 0 {
+                if cooked == 1 {
+                    "a cooked handful of pale berries".into()
+                } else {
+                    format!("{} cooked handfuls of pale berries", count_word(cooked))
+                }
+            } else if item.count == 1 {
+                format!("a {} handful of pale berries", item.condition)
+            } else {
+                format!(
+                    "{} {} handfuls of pale berries",
+                    count_word(item.count),
+                    item.condition
+                )
+            }
         } else if item.material == "berry" {
             if item.count == 1 {
                 format!("a {} handful of berries", item.condition)
@@ -3468,6 +3518,9 @@ impl World {
         }
         if self.pile_count(dest, Material::BitterBerry) > 0 {
             bits.push(self.bitter_kind(viewer).into());
+        }
+        if self.pile_count(dest, Material::PaleBerry) > 0 {
+            bits.push("pale berries".into());
         }
         if self.pile_count(dest, Material::Mushroom) > 0 {
             bits.push("mushrooms".into());
@@ -6284,6 +6337,11 @@ impl World {
             .is_some_and(|actor| actor.raw_mushroom_known)
     }
 
+    pub(crate) fn pale_berry_known(&self, viewer: ActorId) -> bool {
+        self.actor(viewer)
+            .is_some_and(|actor| actor.pale_berry_known)
+    }
+
     /// Bitter berries keep their answer until this person has tasted them.
     /// A raw mushroom keeps its warning until this person has tried to eat one.
     fn food_clause_for(&self, viewer: ActorId, material: Material) -> &'static str {
@@ -6291,6 +6349,8 @@ impl World {
             " They taste bitter. They are poisonous."
         } else if material == Material::Mushroom && self.raw_mushroom_known(viewer) {
             " They must be cooked. Raw mushrooms do not feed you."
+        } else if material == Material::PaleBerry && self.pale_berry_known(viewer) {
+            " They must be cooked."
         } else {
             food_clause(material)
         }
@@ -6659,6 +6719,7 @@ impl World {
                 Material::Net => "fishing net",
                 Material::Mat => "reed mat",
                 Material::Canoe => "dugout canoe",
+                Material::PaleBerry => "pale berries",
             };
             format!("You see no {name} from here.")
         } else {
@@ -7332,6 +7393,11 @@ impl World {
         {
             marks.push('q');
         }
+        if self.pile_count(cell, Material::PaleBerry) > 0
+            || self.worst_loose(cell, Material::PaleBerry).is_some()
+        {
+            marks.push('h');
+        }
         if self.pile_count(cell, Material::Pot) > 0
             || self.worst_loose(cell, Material::Pot).is_some()
         {
@@ -7847,7 +7913,11 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} eats "))?;
-        if rest != "the cooked mushroom." && rest != "the cooked eggs." {
+        if rest != "the cooked mushroom."
+            && rest != "the cooked eggs."
+            && rest != "the cooked pale berries."
+            && rest != "a handful of pale berries."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "eat", rest))
@@ -7881,7 +7951,10 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
-        if rest != "the mushroom over the fire." && rest != "the eggs over the fire." {
+        if rest != "the mushroom over the fire."
+            && rest != "the eggs over the fire."
+            && rest != "the pale berries over the fire."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "cook", rest))
@@ -9044,6 +9117,7 @@ impl World {
             "mushroom",
             "handful of poison berries",
             "handful of dark berries",
+            "handful of pale berries",
             "pot",
             "stone",
             "lump of clay",
@@ -9552,6 +9626,7 @@ impl World {
             "examine frame".into(),
             "examine berries".into(),
             format!("examine {}", self.bitter_kind(actor_id)),
+            "examine pale berries".into(),
             "examine mud".into(),
             "examine mushrooms".into(),
             "examine pot".into(),
@@ -9685,6 +9760,9 @@ impl World {
         if self.has_material_at_hand(actor_id, Material::Berry) {
             actions.push("eat berries".into());
         }
+        if self.raw_pale_near(actor_id) || self.cooked_pale_id(actor_id).is_some() {
+            actions.push("eat pale berries".into());
+        }
         if !self.loose_ids(actor_id, Material::Carcass).is_empty()
             || !self.ground_ids(actor.cell, Material::Carcass).is_empty()
         {
@@ -9700,6 +9778,11 @@ impl World {
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
             actions.push(format!("gather {}", self.bitter_kind(actor_id)));
+        }
+        if self.pile_count(actor.cell, Material::PaleBerry) > 0
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather pale berries".into());
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -9974,6 +10057,9 @@ impl World {
         }
         if !self.loose_ids(actor_id, Material::BitterBerry).is_empty() {
             actions.push(format!("drop {}", self.bitter_kind(actor_id)));
+        }
+        if !self.loose_ids(actor_id, Material::PaleBerry).is_empty() {
+            actions.push("drop pale berries".into());
         }
         if !self.loose_ids(actor_id, Material::Mushroom).is_empty() {
             actions.push("drop mushrooms".into());
@@ -10390,6 +10476,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Berry, false) => "handfuls of berries",
         (Material::BitterBerry, true) => "handful of poison berries",
         (Material::BitterBerry, false) => "handfuls of poison berries",
+        (Material::PaleBerry, true) => "handful of pale berries",
+        (Material::PaleBerry, false) => "handfuls of pale berries",
         (Material::Mushroom, true) => "mushroom",
         (Material::Mushroom, false) => "mushrooms",
         (Material::Pot, _) => "pot",
@@ -10450,6 +10538,7 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
         Material::Bark => ("bark", "is"),
         Material::Berry => ("sweet berries", "are"),
         Material::BitterBerry => ("poison berries", "are"),
+        Material::PaleBerry => ("pale berries", "are"),
         Material::Mud => ("mud", "is"),
         Material::Mushroom => ("mushrooms", "are"),
         Material::Pot => ("pot", "is"),

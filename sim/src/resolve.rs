@@ -1091,6 +1091,15 @@ impl World {
                                 ))
                             }
                         }
+                        Material::PaleBerry => {
+                            if self.cooked_pale_id(actor.id).is_some()
+                                || self.raw_pale_near(actor.id)
+                            {
+                                Ok(true)
+                            } else {
+                                Err("There are no pale berries here to eat.".into())
+                            }
+                        }
                         Material::Berry => {
                             if self.has_material_at_hand(actor.id, Material::Berry) {
                                 Ok(true)
@@ -3126,6 +3135,12 @@ impl World {
                 self.cook_mushroom(intent, results);
                 continue;
             }
+            if self.raw_pale_id(intent.actor_id).is_some()
+                || self.pile_count(cell, Material::PaleBerry) > 0
+            {
+                self.cook_pale(intent, results);
+                continue;
+            }
             if self.cookable_carried(intent.actor_id) {
                 carried.push(intent);
             } else {
@@ -3278,6 +3293,69 @@ impl World {
             return;
         };
         let rest = "the mushroom over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
+    }
+
+    /// Heat leaves the pale berries in the arms, or on the ground if they were a pile.
+    /// They do not feed anyone until they are eaten.
+    fn cook_pale(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if let Some(message) = self.cook_refusal(intent.actor_id) {
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let id = if let Some(id) = self.raw_pale_id(intent.actor_id) {
+            if let Some(berry) = self.items.get_mut(&id) {
+                berry.cooked = true;
+            }
+            id
+        } else if self.pile_count(cell, Material::PaleBerry) > 0 {
+            let moisture = self
+                .take_from_pile(cell, Material::PaleBerry, 1)
+                .unwrap_or(0);
+            let id = self.mint_item(Material::PaleBerry, moisture, cell, None, Role::Loose);
+            if let Some(berry) = self.items.get_mut(&id) {
+                berry.cooked = true;
+            }
+            id
+        } else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.pale_berry_known = true;
+        }
+        let rest = "the pale berries over the fire.";
         let name = self.name_of(intent.actor_id);
         let fire_event = self
             .fire_at(cell)
@@ -6958,6 +7036,10 @@ impl World {
                 self.eat_poison(intent, results);
                 continue;
             }
+            if material == Material::PaleBerry {
+                self.eat_pale(intent, results);
+                continue;
+            }
             if material != Material::Berry || !self.has_material_at_hand(intent.actor_id, material)
             {
                 self.finish(
@@ -7010,6 +7092,99 @@ impl World {
             };
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
+    }
+
+    fn eat_pale(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if let Some(id) = self.cooked_pale_id(intent.actor_id) {
+            let before = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.hunger)
+                .unwrap_or(0);
+            let after = before.saturating_sub(self.tuning.cook_relief);
+            if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                person.hunger = after;
+            }
+            self.items.remove(&id);
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            let rest = "the cooked pale berries.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            let eased = self.hunger_word(before) != "not hungry"
+                && self.hunger_word(after) != self.hunger_word(before);
+            let mut message = crate::model::spoken_act(None, "eat", rest);
+            if eased {
+                message.push_str(" The hunger eases.");
+                self.emit(
+                    "The hunger eases.",
+                    Scope::Personal(intent.actor_id),
+                    vec![intent.actor_id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            } else {
+                message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+            }
+            self.finish(intent.command_id, intent.actor_id, true, message, results);
+            return;
+        }
+        if !self.raw_pale_near(intent.actor_id) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There are no pale berries here to eat.",
+                results,
+            );
+            return;
+        }
+        let Ok(item) = self.take_hand(intent.actor_id, Material::PaleBerry) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There are no pale berries here to eat.",
+                results,
+            );
+            return;
+        };
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.pale_berry_known = true;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "a handful of pale berries.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            item.into_iter().collect(),
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            "You eat a handful of pale berries. They do not feed you. They must be cooked.",
+            results,
+        );
     }
 
     fn eat_honey(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {

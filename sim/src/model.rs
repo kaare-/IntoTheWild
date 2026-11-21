@@ -110,6 +110,9 @@ pub enum Material {
     Net,
     Mat,
     Canoe,
+    /// A handful that does not feed until it is cooked. Not the sweet
+    /// berries under the rock, and not the dark berries.
+    PaleBerry,
 }
 
 impl Material {
@@ -155,6 +158,7 @@ impl Material {
             Material::Net => "net",
             Material::Mat => "reed mat",
             Material::Canoe => "dugout canoe",
+            Material::PaleBerry => "pale berry",
         }
     }
 
@@ -200,6 +204,7 @@ impl Material {
             Material::Net => "fishing net",
             Material::Mat => "reed mat",
             Material::Canoe => "dugout canoe",
+            Material::PaleBerry => "handful of pale berries",
         }
     }
 
@@ -208,6 +213,7 @@ impl Material {
             Material::Mushroom => "a mushroom",
             Material::BitterBerry => "a handful of dark berries",
             Material::Berry => "a handful of berries",
+            Material::PaleBerry => "a handful of pale berries",
             Material::Carcass => "the carcass",
             _ => "some food",
         }
@@ -330,6 +336,7 @@ pub enum ExamineTarget {
     Net,
     Mat,
     Canoe,
+    PaleBerries,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -572,6 +579,10 @@ pub struct Actor {
     /// needs heat. Someone who has not tried does not get that sentence.
     #[serde(default)]
     pub raw_mushroom_known: bool,
+    /// This person has eaten pale berries raw. Look may then say they must
+    /// be cooked. Someone who has not eaten them does not get that sentence.
+    #[serde(default)]
+    pub pale_berry_known: bool,
     pub busy: Option<WorkId>,
 }
 
@@ -1159,6 +1170,15 @@ impl World {
             },
         );
         world.add_pile(cell_id(6, 1).unwrap(), Material::Pot, 1, 0);
+        let pale = cell_id(1, 4).unwrap();
+        world.add_pile(pale, Material::PaleBerry, 2, 0);
+        world.berry_patches.insert(
+            pale,
+            BerryPatch {
+                material: Material::PaleBerry,
+                count: 2,
+            },
+        );
         world.add_pile(cell_id(4, 1).unwrap(), Material::BitterBerry, 2, 0);
         world.berry_patches.insert(
             cell_id(4, 1).unwrap(),
@@ -1270,6 +1290,7 @@ impl World {
                 clothes_dry_at: None,
                 tasted_bitter: false,
                 raw_mushroom_known: false,
+                pale_berry_known: false,
                 busy: None,
             },
         );
@@ -1482,7 +1503,10 @@ impl World {
                 self.spent_berries.insert(emptied);
                 self.deer_ate_berries.remove(&emptied);
             }
-            if matches!(material, Material::Berry | Material::BitterBerry) {
+            if matches!(
+                material,
+                Material::Berry | Material::BitterBerry | Material::PaleBerry
+            ) {
                 self.arm_berry_patch(emptied);
             }
             if material == Material::Mushroom {
@@ -2363,6 +2387,43 @@ impl World {
             || self.raw_mushroom_id(actor).is_some()
             || self.raw_egg_id(actor).is_some()
             || !self.loose_ids(actor, Material::Berry).is_empty()
+            || self.raw_pale_id(actor).is_some()
+    }
+
+    /// A raw handful of pale berries in the arms. A cooked one is already food.
+    pub(crate) fn raw_pale_id(&self, actor: ActorId) -> Option<ItemId> {
+        self.loose_ids(actor, Material::PaleBerry)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|berry| !berry.cooked))
+    }
+
+    /// One cooked handful of pale berries, from the arms before the ground.
+    pub(crate) fn cooked_pale_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::PaleBerry)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|berry| berry.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::PaleBerry)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|berry| berry.cooked))
+    }
+
+    pub(crate) fn raw_pale_near(&self, actor: ActorId) -> bool {
+        if self.raw_pale_id(actor).is_some() {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.pile_count(cell, Material::PaleBerry) > 0
+            || self
+                .ground_ids(cell, Material::PaleBerry)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|berry| !berry.cooked))
     }
 
     /// Raw eggs in the arms. Cooked eggs are already food.
@@ -2438,10 +2499,15 @@ impl World {
     }
 
     pub(crate) fn cookable_pile(&self, cell: CellId) -> u32 {
-        let piles: u32 = [Material::Mushroom, Material::Berry, Material::Egg]
-            .into_iter()
-            .map(|material| self.pile_count(cell, material))
-            .sum();
+        let piles: u32 = [
+            Material::Mushroom,
+            Material::Berry,
+            Material::PaleBerry,
+            Material::Egg,
+        ]
+        .into_iter()
+        .map(|material| self.pile_count(cell, material))
+        .sum();
         piles + self.ground_ids(cell, Material::Carcass).len() as u32
     }
 

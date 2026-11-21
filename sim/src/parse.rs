@@ -5,11 +5,11 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|dark berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|bow|self|here|<name>
+examine wood|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|bow|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
-gather branch|bark|berries|dark berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
-drop branch|bark|berries|dark berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
+gather branch|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
+drop branch|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
@@ -64,6 +64,7 @@ wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries, raw
 eat dark berries             the other patch of berries
+eat pale berries             pale berries
 eat meat                     cooked meat, or salted meat, or smoked meat; raw meat is not food
 gather salt                  a salt crust from the slope. The slope is bare, then the crust forms again.
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
@@ -459,6 +460,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
         | "poison berries" | "dark" | "dark berry" | "dark berries" => Ok(Material::BitterBerry),
         "mushroom" | "mushrooms" => Ok(Material::Mushroom),
+        "pale" | "pale berry" | "pale berries" => Ok(Material::PaleBerry),
         "pot" => Ok(Material::Pot),
         "mud" => Ok(Material::Mud),
         "water" => Ok(Material::Water),
@@ -493,7 +495,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "canoe" | "dugout" | "dugout canoe" => Ok(Material::Canoe),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
-            "Name a material: branch, bark, berries, dark berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
+            "Name a material: branch, bark, berries, dark berries, pale berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
                 .into(),
         ),
     }
@@ -503,6 +505,7 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
     match text.trim() {
         "" | "berry" | "berries" | "sweet" | "sweet berries" => Ok(Attempt::Eat(Material::Berry)),
         "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
+        "pale" | "pale berry" | "pale berries" => Ok(Attempt::Eat(Material::PaleBerry)),
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
         | "poison berries" | "dark" | "dark berry" | "dark berries" => {
             Ok(Attempt::Eat(Material::BitterBerry))
@@ -517,7 +520,7 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         "fish" | "cooked fish" | "raw fish" => Ok(Attempt::Eat(Material::Fish)),
         "honey" | "honeycomb" => Ok(Attempt::Eat(Material::Honey)),
         "egg" | "eggs" | "cooked eggs" => Ok(Attempt::Eat(Material::Egg)),
-        _ => Err("Name a food: berries, dark berries, mushrooms, or carcass.".into()),
+        _ => Err("Name a food: berries, dark berries, pale berries, mushrooms, or carcass.".into()),
     }
 }
 
@@ -532,6 +535,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         | "poison berry" | "dark" | "dark berries" | "dark berry" => ExamineTarget::BitterBerries,
         "mud" => ExamineTarget::Mud,
         "mushroom" | "mushrooms" => ExamineTarget::Mushrooms,
+        "pale" | "pale berries" | "pale berry" => ExamineTarget::PaleBerries,
         "pot" => ExamineTarget::Pot,
         "stone" | "stones" => ExamineTarget::Stone,
         "flint" | "flint nodule" | "nodule" => ExamineTarget::Flint,
