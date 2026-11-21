@@ -66,7 +66,7 @@ impl World {
         let Some(item) = self.item(id).cloned() else {
             return;
         };
-        if item.cooked || item.salted || item.spoiled {
+        if item.cooked || item.salted || item.smoked || item.spoiled {
             return;
         }
         if item.material != Material::Meat && item.material != Material::Fish {

@@ -5313,6 +5313,9 @@ impl World {
                     "cooked" => format!(
                         "A cooked fish lies in contact with the ground {place}. It is good to eat."
                     ),
+                    "smoked" => format!(
+                        "A smoked fish lies in contact with the ground {place}. It can be eaten cold."
+                    ),
                     "salted" => format!(
                         "A salted fish lies in contact with the ground {place}. It can be eaten cold."
                     ),
@@ -5342,6 +5345,9 @@ impl World {
                     (true, "cooked") => format!(
                         "A cooked fish is in the bark basket carried by {who}, {cover}. It is good to eat."
                     ),
+                    (true, "smoked") => format!(
+                        "A smoked fish is in the bark basket carried by {who}, {cover}. It can be eaten cold."
+                    ),
                     (true, "salted") => format!(
                         "A salted fish is in the bark basket carried by {who}, {cover}. It can be eaten cold."
                     ),
@@ -5357,6 +5363,9 @@ impl World {
                     (false, "cooked") => {
                         format!("A cooked fish is carried by {who}, {cover}. It is good to eat.")
                     }
+                    (false, "smoked") => format!(
+                        "A smoked fish is carried by {who}, {cover}. It can be eaten cold."
+                    ),
                     (false, "salted") => format!(
                         "A salted fish is carried by {who}, {cover}. It can be eaten cold."
                     ),
@@ -7610,9 +7619,10 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        let text = format!("{name} smokes the bees' nest. The bees quiet.");
-        if event.text == text {
-            Some(text)
+        let nest = format!("{name} smokes the bees' nest. The bees quiet.");
+        let fish = format!("{name} smokes a raw fish. It will keep, and it can be eaten cold.");
+        if event.text == nest || event.text == fish {
+            Some(event.text.clone())
         } else {
             None
         }
@@ -7665,6 +7675,7 @@ impl World {
             && rest != "the salted meat."
             && rest != "the cooked fish."
             && rest != "the salted fish."
+            && rest != "the smoked fish."
             && rest != "the honeycomb."
         {
             return None;
@@ -7869,6 +7880,7 @@ impl World {
             Some(Material::Berry) => "a bark basket holding a handful of berries".into(),
             Some(Material::Fish) => match self.basket_fish_state(actor_id) {
                 "cooked" => "a bark basket holding a cooked fish".into(),
+                "smoked" => "a bark basket holding a smoked fish".into(),
                 "salted" => "a bark basket holding a salted fish".into(),
                 "spoiled" => "a bark basket holding a spoiled fish".into(),
                 "going" => "a bark basket holding a raw fish, going bad".into(),
@@ -7889,6 +7901,7 @@ impl World {
             Some(Material::Berry) => "It holds a handful of berries.".into(),
             Some(Material::Fish) => match self.basket_fish_state(actor_id) {
                 "cooked" => "It holds a cooked fish.".into(),
+                "smoked" => "It holds a smoked fish. It can be eaten cold.".into(),
                 "salted" => "It holds a salted fish. It can be eaten cold.".into(),
                 "spoiled" => "It holds a spoiled fish. It is not food.".into(),
                 "going" => "It holds a raw fish. It is going bad.".into(),
@@ -7907,6 +7920,8 @@ impl World {
             "cooked"
         } else if fish.spoiled {
             "spoiled"
+        } else if fish.smoked {
+            "smoked"
         } else if fish.salted {
             "salted"
         } else if fish.spoils_at == Some(self.time) {
@@ -7919,6 +7934,7 @@ impl World {
     fn fish_ground_line(&self, id: crate::model::ItemId) -> String {
         match self.fish_state(id) {
             "cooked" => "A cooked fish lies here.".into(),
+            "smoked" => "A smoked fish lies here. It can be eaten cold.".into(),
             "salted" => "A salted fish lies here. It can be eaten cold.".into(),
             "spoiled" => "A spoiled fish lies here. It is not food.".into(),
             "going" => "A raw fish lies here. It is going bad.".into(),
@@ -7934,6 +7950,7 @@ impl World {
             }
             bits.push(match self.fish_state(id) {
                 "cooked" => "a cooked fish",
+                "smoked" => "a smoked fish",
                 "salted" => "a salted fish",
                 "spoiled" => "a spoiled fish",
                 "going" => "a raw fish, going bad",

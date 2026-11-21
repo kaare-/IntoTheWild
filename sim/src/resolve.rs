@@ -95,6 +95,7 @@ impl World {
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
+        let mut smoke_fish = Vec::new();
         let mut smokes = Vec::new();
         let mut dresses = Vec::new();
         let mut bows = Vec::new();
@@ -176,6 +177,7 @@ impl World {
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
+                        Attempt::SmokeFish => smoke_fish.push(intent),
                         Attempt::SmokeNest => smokes.push(intent),
                         Attempt::DressSting => dresses.push(intent),
                         Attempt::CraftBow => bows.push(intent),
@@ -299,6 +301,7 @@ impl World {
         self.apply_carves(carves, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
+        self.apply_smoke_fish(smoke_fish, &mut results);
         self.apply_smokes(smokes, &mut results);
         self.apply_dresses(dresses, &mut results);
         self.apply_bows(bows, &mut results);
@@ -599,6 +602,27 @@ impl World {
                         Err("The fish has spoiled.".into())
                     } else {
                         Err("There is no raw fish here to salt.".into())
+                    }
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SmokeFish => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.raw_fish_id(actor.id).is_none() {
+                    if self.smoked_fish_id(actor.id).is_some() {
+                        Err("The fish is already smoked.".into())
+                    } else if self.spoiled_fish_near(actor.id) {
+                        Err("The fish has spoiled.".into())
+                    } else {
+                        Err("There is no raw fish here to smoke.".into())
                     }
                 } else {
                     Ok(true)
@@ -1043,6 +1067,7 @@ impl World {
                         Material::Fish => {
                             if self.cooked_fish_id(actor.id).is_some()
                                 || self.salted_fish_id(actor.id).is_some()
+                                || self.smoked_fish_id(actor.id).is_some()
                             {
                                 Ok(true)
                             } else if self.raw_fish_near(actor.id) {
@@ -3801,7 +3826,8 @@ impl World {
 
     fn eat_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
         let salted = self.salted_fish_id(intent.actor_id);
-        let Some(id) = self.cooked_fish_id(intent.actor_id).or(salted) else {
+        let smoked = self.smoked_fish_id(intent.actor_id);
+        let Some(id) = self.cooked_fish_id(intent.actor_id).or(salted).or(smoked) else {
             let message = if self.raw_fish_near(intent.actor_id) {
                 "Raw fish is not food."
             } else if self.spoiled_fish_near(intent.actor_id) {
@@ -3812,9 +3838,12 @@ impl World {
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         };
-        let cold = self
-            .item(id)
-            .is_some_and(|fish| fish.salted && !fish.cooked);
+        let (salted_bite, smoked_bite) = self.item(id).map_or((false, false), |fish| {
+            (
+                fish.salted && !fish.cooked && !fish.smoked,
+                fish.smoked && !fish.cooked,
+            )
+        });
         let before = self
             .actor(intent.actor_id)
             .map(|actor| actor.hunger)
@@ -3829,8 +3858,10 @@ impl World {
             .map(|actor| actor.cell)
             .unwrap_or(0);
         let name = self.name_of(intent.actor_id);
-        let rest = if cold {
+        let rest = if salted_bite {
             "the salted fish."
+        } else if smoked_bite {
+            "the smoked fish."
         } else {
             "the cooked fish."
         };
@@ -4881,6 +4912,59 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "salt", rest),
+                results,
+            );
+        }
+    }
+
+    /// Hang a raw fish in the smoke. The fire is not used up. The fish keeps, and it can be eaten cold.
+    fn apply_smoke_fish(&mut self, smokes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in smokes {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(fish_id) = self.raw_fish_id(actor.id) else {
+                let message = if self.smoked_fish_id(actor.id).is_some() {
+                    "The fish is already smoked."
+                } else if self.spoiled_fish_near(actor.id) {
+                    "The fish has spoiled."
+                } else {
+                    "There is no raw fish here to smoke."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            if let Some(fish) = self.items.get_mut(&fish_id) {
+                fish.smoked = true;
+                fish.spoiled = false;
+                fish.spoils_at = None;
+            }
+            let name = self.name_of(actor.id);
+            let rest = "a raw fish. It will keep, and it can be eaten cold.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "smoke", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![fish_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "smoke", rest),
                 results,
             );
         }
