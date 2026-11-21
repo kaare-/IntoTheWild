@@ -63,7 +63,7 @@ put fish                     a raw fish from the arms into that basket. Berries 
 wear hide                    a carried deer hide, against the cold
 remove hide                  a worn deer hide; it returns to the arms
 eat berries                  sweet berries only; poison berries sicken you
-eat meat                     cooked meat, or salted meat; raw meat is not food
+eat meat                     cooked meat, or salted meat, or smoked meat; raw meat is not food
 gather salt                  a salt crust from the slope. The slope is bare, then the crust forms again.
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
@@ -77,6 +77,7 @@ eat eggs                     cooked eggs. Raw eggs are not food. Hunger eases on
 salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
 salt fish                    salt on a raw fish. The salt is spent. The fish can be eaten cold, and it does not spoil.
 smoke fish                   a raw fish at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the fish is the same
+smoke meat                   a portion of raw meat at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the meat is the same
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
 eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
 eat carcass                  a carcass must be cooked
@@ -139,6 +140,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "a raw fish" =>
         {
             Ok(Attempt::SmokeFish)
+        }
+        "smoke"
+            if rest == "meat"
+                || rest == "the meat"
+                || rest == "raw meat"
+                || rest == "the raw meat"
+                || rest == "a portion of meat"
+                || rest == "a portion of raw meat" =>
+        {
+            Ok(Attempt::SmokeMeat)
         }
         "smoke"
             if rest == "nest"
@@ -497,7 +508,9 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         "wood" | "branch" | "branches" | "log" => Err("Bark is tinder, not food.".into()),
         "mud" => Err("Mud is for your skin, not your stomach.".into()),
         "carcass" | "deer carcass" => Ok(Attempt::Eat(Material::Carcass)),
-        "meat" | "cooked meat" | "raw meat" => Ok(Attempt::Eat(Material::Meat)),
+        "meat" | "cooked meat" | "raw meat" | "salted meat" | "smoked meat" | "the smoked meat" => {
+            Ok(Attempt::Eat(Material::Meat))
+        }
         "fish" | "cooked fish" | "raw fish" => Ok(Attempt::Eat(Material::Fish)),
         "honey" | "honeycomb" => Ok(Attempt::Eat(Material::Honey)),
         "egg" | "eggs" | "cooked eggs" => Ok(Attempt::Eat(Material::Egg)),
@@ -533,7 +546,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "carcass" | "deer carcass" | "wolf carcass" => ExamineTarget::Carcass,
         "hide" | "deer hide" | "wolf hide" | "wolf cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
-        "meat" | "raw meat" => ExamineTarget::Meat,
+        "meat" | "raw meat" | "cooked meat" | "salted meat" | "smoked meat" => ExamineTarget::Meat,
         "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,
         "brand" | "ember" | "burning brand" => ExamineTarget::Brand,
         "fire" | "flame" => ExamineTarget::Fire,

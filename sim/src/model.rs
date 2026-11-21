@@ -388,6 +388,7 @@ pub enum Attempt {
     SaltMeat,
     SaltFish,
     SmokeFish,
+    SmokeMeat,
     SmokeNest,
     DressSting,
     CraftBow,
@@ -457,6 +458,7 @@ impl Attempt {
                 | Attempt::SaltMeat
                 | Attempt::SaltFish
                 | Attempt::SmokeFish
+                | Attempt::SmokeMeat
                 | Attempt::SmokeNest
                 | Attempt::DressSting
                 | Attempt::CraftBow
@@ -596,7 +598,8 @@ pub struct Item {
     /// Raw meat rubbed with salt. It can be eaten cold. Cooked meat leaves this false.
     #[serde(default)]
     pub salted: bool,
-    /// A raw fish hung in the smoke of a fire. It can be eaten cold. It does not spoil.
+    /// A raw fish or a portion of raw meat hung in the smoke of a fire.
+    /// It can be eaten cold. It does not spoil.
     #[serde(default)]
     pub smoked: bool,
     /// Raw meat that has waited out its spoil time. It is not food.
@@ -2508,7 +2511,30 @@ impl World {
     }
 
     pub(crate) fn raw_meat_near(&self, actor: ActorId) -> bool {
-        self.meat_near(actor, |meat| !meat.cooked && !meat.salted && !meat.spoiled)
+        self.meat_near(actor, |meat| {
+            !meat.cooked && !meat.salted && !meat.smoked && !meat.spoiled
+        })
+    }
+
+    /// Smoked meat in the arms, else on this cell. It can be eaten cold.
+    pub(crate) fn smoked_meat_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|meat| meat.smoked && !meat.cooked)
+            });
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|meat| meat.smoked && !meat.cooked)
+            })
     }
 
     pub(crate) fn spoiled_meat_near(&self, actor: ActorId) -> bool {
@@ -2765,13 +2791,13 @@ impl World {
     }
 
     /// One piece of raw meat lying on this cell. Cooked meat is not raw.
-    /// Spoiled meat is not raw either. It is not food.
+    /// Smoked meat is not raw. Spoiled meat is not raw either. It is not food.
     pub(crate) fn raw_meat_at(&self, cell: CellId) -> Option<ItemId> {
         self.ground_ids(cell, Material::Meat)
             .into_iter()
             .find(|id| {
                 self.item(*id)
-                    .is_some_and(|meat| !meat.cooked && !meat.spoiled)
+                    .is_some_and(|meat| !meat.cooked && !meat.smoked && !meat.spoiled)
             })
     }
 
@@ -3680,6 +3706,199 @@ mod smoke_fish {
         assert!(!only.contains(", going bad"), "{only}");
         assert!(world.item(raw).unwrap().spoils_at.is_some());
         assert!(!world.item(raw).unwrap().smoked);
+    }
+}
+
+#[cfg(test)]
+mod smoke_meat {
+    use super::{Attempt, ExamineTarget, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_fire_smokes_raw_meat_and_the_raw_portion_still_spoils() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("smoke meat").unwrap(),
+            Attempt::SmokeMeat
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("smoke the meat").unwrap(),
+            Attempt::SmokeMeat
+        );
+        let cell = world.actor(near).unwrap().cell;
+        let carried = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
+        let no_fire = world.step(&[intent("cold", near, Attempt::SmokeMeat)]);
+        assert_eq!(no_fire.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no fire burning here."));
+        world.items.remove(&carried);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("light", near, Attempt::Light)]);
+        let none = world.step(&[intent("none", near, Attempt::SmokeMeat)]);
+        assert_eq!(
+            none.results[0].message,
+            "There is no raw meat here to smoke."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no raw meat here to smoke."));
+        let ground = world.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        let from_ground = world.step(&[intent("ground", near, Attempt::SmokeMeat)]);
+        assert_eq!(
+            from_ground.results[0].message,
+            "You smoke a portion of raw meat. It will keep, and it can be eaten cold."
+        );
+        assert!(world.item(ground).unwrap().smoked);
+        assert!(world.item(ground).unwrap().spoils_at.is_none());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A portion of smoked meat lies here. It can be eaten cold."));
+        world.items.remove(&ground);
+        let yours = "You smoke a portion of raw meat. It will keep, and it can be eaten cold.";
+        let kept = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
+        let smoked = world.step(&[intent("smoke", near, Attempt::SmokeMeat)]);
+        assert_eq!(smoked.results[0].message, yours);
+        assert!(world.item(kept).unwrap().smoked);
+        assert!(world.item(kept).unwrap().spoils_at.is_none());
+        let arms = world.observe(near).unwrap();
+        assert!(
+            arms.text.contains("You have a portion of smoked meat."),
+            "{}",
+            arms.text
+        );
+        assert!(arms.events.iter().all(|event| {
+            event.text != yours && !event.text.contains("Near smokes a portion of raw meat")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near smokes a portion of raw meat. It will keep, and it can be eaten cold."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("smokes a portion of raw meat")));
+        let again = world.step(&[intent("again", near, Attempt::SmokeMeat)]);
+        assert_eq!(again.results[0].message, "The meat is already smoked.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The meat is already smoked."));
+        let raw = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
+        let before = world.observe(near).unwrap().text;
+        assert!(
+            before.contains("a portion of smoked meat") && before.contains("a portion of raw meat"),
+            "{before}"
+        );
+        assert!(!before.contains("going bad"), "{before}");
+        let ticks = world.tuning.meat_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let mixed = world.observe(near).unwrap().text;
+        assert!(
+            mixed.contains("a portion of raw meat that is going bad, a portion of smoked meat"),
+            "{mixed}"
+        );
+        assert!(!mixed.contains(", going bad"), "{mixed}");
+        let examined = world.examine(seen, ExamineTarget::Meat);
+        assert!(
+            examined.contains("A portion of smoked meat is carried by Near"),
+            "{examined}"
+        );
+        assert!(examined.contains("It can be eaten cold."), "{examined}");
+        assert!(
+            examined.contains("A portion of raw meat is carried by Near"),
+            "{examined}"
+        );
+        assert!(examined.contains("It is going bad."), "{examined}");
+        assert!(
+            !examined.contains("salted meat") && !examined.contains("cooked meat"),
+            "{examined}"
+        );
+        assert_eq!(
+            world.examine(quiet, ExamineTarget::Meat),
+            "You see no meat from here."
+        );
+        world.step(&[]);
+        let spoiled = world.observe(near).unwrap();
+        assert!(spoiled
+            .events
+            .iter()
+            .any(|event| event.text == "A portion of raw meat spoils. It is not food."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "A portion of raw meat spoils. It is not food." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "A portion of raw meat spoils. It is not food."));
+        assert!(world.item(kept).unwrap().smoked);
+        assert!(!world.item(kept).unwrap().spoiled);
+        assert!(world.item(raw).unwrap().spoiled);
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Meat))]);
+        assert!(
+            eaten.results[0]
+                .message
+                .starts_with("You eat the smoked meat."),
+            "{}",
+            eaten.results[0].message
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near eats the smoked meat."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You eat the smoked meat."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near eats the smoked")
+                && !event.text.contains("Near smokes")));
+        let refused = world.step(&[intent("bad", near, Attempt::Eat(Material::Meat))]);
+        assert_eq!(refused.results[0].message, "The meat has spoiled.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The meat has spoiled."));
     }
 }
 

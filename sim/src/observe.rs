@@ -2958,7 +2958,7 @@ impl World {
     fn meat_carry_phrase(&self, actor_id: ActorId) -> String {
         let ids = self.loose_ids(actor_id, Material::Meat);
         let mut bits = Vec::new();
-        for face in ["raw", "going", "spoiled", "salted", "cooked"] {
+        for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
             let full = self.meat_tally(&ids, face, false);
             let small = self.meat_tally(&ids, face, true);
             if full > 0 {
@@ -5399,11 +5399,39 @@ impl World {
             let place = self.place_phrase(origin, cell);
             lines.extend(self.meat_place_lines(&ids, &place));
         }
+        for other in self.visible_actor_ids(viewer) {
+            let ids = self.loose_ids(other, Material::Meat);
+            if ids.is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "you".to_string()
+            } else {
+                self.name_of(other)
+            };
+            let cover = self.cover_phrase(self.actor(other).unwrap().cell);
+            lines.extend(self.meat_held_lines(&ids, &who, &cover));
+        }
         if lines.is_empty() {
             "You see no meat from here.".into()
         } else {
             lines.join("\n")
         }
+    }
+
+    fn meat_held_lines(&self, ids: &[crate::model::ItemId], who: &str, cover: &str) -> Vec<String> {
+        let mut lines = Vec::new();
+        for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
+            let full = self.meat_tally(ids, face, false);
+            let small = self.meat_tally(ids, face, true);
+            if full > 0 {
+                lines.push(meat_held(face, full, false, who, cover));
+            }
+            if small > 0 {
+                lines.push(meat_held(face, small, true, who, cover));
+            }
+        }
+        lines
     }
 
     fn hide_stage(&self, ids: &[crate::model::ItemId], wolf: bool) -> Option<(bool, bool)> {
@@ -7621,7 +7649,13 @@ impl World {
         let name = self.name_of(viewer);
         let nest = format!("{name} smokes the bees' nest. The bees quiet.");
         let fish = format!("{name} smokes a raw fish. It will keep, and it can be eaten cold.");
-        if event.text == nest || event.text == fish {
+        let portion =
+            format!("{name} smokes a portion of raw meat. It will keep, and it can be eaten cold.");
+        let piece = format!(
+            "{name} smokes a smaller piece of raw meat. It will keep, and it can be eaten cold."
+        );
+        if event.text == nest || event.text == fish || event.text == portion || event.text == piece
+        {
             Some(event.text.clone())
         } else {
             None
@@ -7676,6 +7710,7 @@ impl World {
             && rest != "the cooked fish."
             && rest != "the salted fish."
             && rest != "the smoked fish."
+            && rest != "the smoked meat."
             && rest != "the honeycomb."
         {
             return None;
@@ -7744,7 +7779,7 @@ impl World {
 
     fn meat_place_lines(&self, ids: &[crate::model::ItemId], place: &str) -> Vec<String> {
         let mut lines = Vec::new();
-        for face in ["raw", "going", "spoiled", "salted", "cooked"] {
+        for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
             let full = self.meat_tally(ids, face, false);
             let small = self.meat_tally(ids, face, true);
             if full > 0 {
@@ -7763,6 +7798,8 @@ impl World {
             "cooked"
         } else if meat.spoiled {
             "spoiled"
+        } else if meat.smoked {
+            "smoked"
         } else if meat.salted {
             "salted"
         } else if meat.spoils_at == Some(self.time) {
@@ -7787,7 +7824,7 @@ impl World {
             return None;
         }
         let mut parts = Vec::new();
-        for face in ["raw", "going", "spoiled", "salted", "cooked"] {
+        for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
             let full = self.meat_tally(&ids, face, false);
             let small = self.meat_tally(&ids, face, true);
             if full > 0 {
@@ -7868,6 +7905,7 @@ impl World {
         if rest != "the raw meat into two smaller pieces with the iron knife."
             && rest != "the cooked meat into two smaller pieces with the iron knife."
             && rest != "the salted meat into two smaller pieces with the iron knife."
+            && rest != "the smoked meat into two smaller pieces with the iron knife."
             && rest != "the deer hide into strips with the iron knife."
         {
             return None;
@@ -9724,6 +9762,9 @@ impl World {
         if self.has_salt(actor_id) && self.raw_portion_to_salt(actor_id).is_some() {
             actions.push("salt meat".into());
         }
+        if self.fire_at(actor.cell).is_some() && self.raw_portion_to_salt(actor_id).is_some() {
+            actions.push("smoke meat".into());
+        }
         if self.has_salt(actor_id) && self.raw_fish_id(actor_id).is_some() {
             actions.push("salt fish".into());
         }
@@ -10072,6 +10113,7 @@ fn drink_count_phrase(count: u32, raw: bool) -> String {
 fn meat_kind_name(face: &str) -> &'static str {
     match face {
         "salted" => "salted meat",
+        "smoked" => "smoked meat",
         "cooked" => "cooked meat",
         "spoiled" => "spoiled meat",
         _ => "raw meat",
@@ -10098,7 +10140,7 @@ fn meat_lie(face: &str, count: u32, place: &str, small: bool) -> String {
         )
     };
     let tail = match face {
-        "salted" => " It can be eaten cold.",
+        "salted" | "smoked" => " It can be eaten cold.",
         "going" => {
             if count == 1 {
                 " It is going bad."
@@ -10126,10 +10168,54 @@ fn meat_bit(face: &str, count: u32, small: bool) -> String {
         portion_bit(kind, count)
     };
     if face == "going" {
-        format!("{bit}, going bad")
+        let verb = if count == 1 { "is" } else { "are" };
+        format!("{bit} that {verb} going bad")
     } else {
         bit
     }
+}
+
+fn meat_held(face: &str, count: u32, small: bool, who: &str, cover: &str) -> String {
+    let kind = meat_kind_name(face);
+    let (noun, verb) = if small {
+        if count == 1 {
+            (format!("A smaller piece of {kind}"), "is")
+        } else {
+            (
+                format!(
+                    "{} smaller pieces of {kind}",
+                    capitalize(&count_word(count))
+                ),
+                "are",
+            )
+        }
+    } else if count == 1 {
+        (format!("A portion of {kind}"), "is")
+    } else {
+        (
+            format!("{} portions of {kind}", capitalize(&count_word(count))),
+            "are",
+        )
+    };
+    let tail = match face {
+        "salted" | "smoked" => " It can be eaten cold.",
+        "going" => {
+            if count == 1 {
+                " It is going bad."
+            } else {
+                " They are going bad."
+            }
+        }
+        "spoiled" => {
+            if count == 1 {
+                " It is not food."
+            } else {
+                " They are not food."
+            }
+        }
+        _ => "",
+    };
+    format!("{noun} {verb} carried by {who}, {cover}.{tail}")
 }
 
 fn smaller_bit(kind: &str, count: u32) -> String {

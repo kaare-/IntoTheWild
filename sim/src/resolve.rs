@@ -96,6 +96,7 @@ impl World {
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smoke_fish = Vec::new();
+        let mut smoke_meat = Vec::new();
         let mut smokes = Vec::new();
         let mut dresses = Vec::new();
         let mut bows = Vec::new();
@@ -178,6 +179,7 @@ impl World {
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeFish => smoke_fish.push(intent),
+                        Attempt::SmokeMeat => smoke_meat.push(intent),
                         Attempt::SmokeNest => smokes.push(intent),
                         Attempt::DressSting => dresses.push(intent),
                         Attempt::CraftBow => bows.push(intent),
@@ -302,6 +304,7 @@ impl World {
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smoke_fish(smoke_fish, &mut results);
+        self.apply_smoke_meat(smoke_meat, &mut results);
         self.apply_smokes(smokes, &mut results);
         self.apply_dresses(dresses, &mut results);
         self.apply_bows(bows, &mut results);
@@ -623,6 +626,27 @@ impl World {
                         Err("The fish has spoiled.".into())
                     } else {
                         Err("There is no raw fish here to smoke.".into())
+                    }
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SmokeMeat => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.raw_portion_to_salt(actor.id).is_none() {
+                    if self.smoked_meat_id(actor.id).is_some() {
+                        Err("The meat is already smoked.".into())
+                    } else if self.spoiled_meat_near(actor.id) {
+                        Err("The meat has spoiled.".into())
+                    } else {
+                        Err("There is no raw meat here to smoke.".into())
                     }
                 } else {
                     Ok(true)
@@ -1081,6 +1105,7 @@ impl World {
                         Material::Meat => {
                             if self.cooked_meat_id(actor.id).is_some()
                                 || self.salted_meat_id(actor.id).is_some()
+                                || self.smoked_meat_id(actor.id).is_some()
                             {
                                 Ok(true)
                             } else if self.raw_meat_near(actor.id) {
@@ -4970,6 +4995,65 @@ impl World {
         }
     }
 
+    /// Hang a portion of raw meat in the smoke. The fire is not used up.
+    /// The meat keeps, and it can be eaten cold.
+    fn apply_smoke_meat(&mut self, smokes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in smokes {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            let Some(meat_id) = self.raw_portion_to_salt(actor.id) else {
+                let message = if self.smoked_meat_id(actor.id).is_some() {
+                    "The meat is already smoked."
+                } else if self.spoiled_meat_near(actor.id) {
+                    "The meat has spoiled."
+                } else {
+                    "There is no raw meat here to smoke."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            let small = self.item(meat_id).is_some_and(|meat| meat.small);
+            if let Some(meat) = self.items.get_mut(&meat_id) {
+                meat.smoked = true;
+                meat.spoiled = false;
+                meat.spoils_at = None;
+            }
+            let name = self.name_of(actor.id);
+            let rest = if small {
+                "a smaller piece of raw meat. It will keep, and it can be eaten cold."
+            } else {
+                "a portion of raw meat. It will keep, and it can be eaten cold."
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "smoke", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![meat_id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "smoke", rest),
+                results,
+            );
+        }
+    }
+
     pub(crate) fn has_salt(&self, actor: crate::model::ActorId) -> bool {
         let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
         !self.loose_ids(actor, Material::Salt).is_empty()
@@ -4995,7 +5079,7 @@ impl World {
         false
     }
 
-    /// A raw unsalted portion in the arms, else one on this cell.
+    /// A raw unsalted, unsmoked portion in the arms, else one on this cell.
     pub(crate) fn raw_portion_to_salt(
         &self,
         actor: crate::model::ActorId,
@@ -5004,8 +5088,9 @@ impl World {
             .loose_ids(actor, Material::Meat)
             .into_iter()
             .find(|id| {
-                self.item(*id)
-                    .is_some_and(|meat| !meat.cooked && !meat.salted && !meat.spoiled)
+                self.item(*id).is_some_and(|meat| {
+                    !meat.cooked && !meat.salted && !meat.smoked && !meat.spoiled
+                })
             });
         if carried.is_some() {
             return carried;
@@ -5014,8 +5099,9 @@ impl World {
         self.ground_ids(cell, Material::Meat)
             .into_iter()
             .find(|id| {
-                self.item(*id)
-                    .is_some_and(|meat| !meat.cooked && !meat.salted && !meat.spoiled)
+                self.item(*id).is_some_and(|meat| {
+                    !meat.cooked && !meat.salted && !meat.smoked && !meat.spoiled
+                })
             })
     }
 
@@ -5893,15 +5979,16 @@ impl World {
                 if let Some(item) = self.items.get_mut(&piece) {
                     item.cooked = meat.cooked;
                     item.salted = meat.salted;
+                    item.smoked = meat.smoked;
                     item.small = true;
                     item.spoiled = meat.spoiled;
-                    if meat.cooked || meat.salted || meat.spoiled {
+                    if meat.cooked || meat.salted || meat.smoked || meat.spoiled {
                         item.spoils_at = None;
                     } else {
                         item.spoils_at = meat.spoils_at;
                     }
                 }
-                if !meat.cooked && !meat.salted && !meat.spoiled {
+                if !meat.cooked && !meat.salted && !meat.smoked && !meat.spoiled {
                     if let Some(at) = meat.spoils_at {
                         self.schedule(at, Wake::Spoil(piece));
                     }
@@ -5913,6 +6000,8 @@ impl World {
                 "the cooked meat into two smaller pieces with the iron knife."
             } else if meat.salted {
                 "the salted meat into two smaller pieces with the iron knife."
+            } else if meat.smoked {
+                "the smoked meat into two smaller pieces with the iron knife."
             } else {
                 "the raw meat into two smaller pieces with the iron knife."
             };
@@ -7049,7 +7138,8 @@ impl World {
 
     fn eat_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
         let salted = self.salted_meat_id(intent.actor_id);
-        let Some(id) = self.cooked_meat_id(intent.actor_id).or(salted) else {
+        let smoked = self.smoked_meat_id(intent.actor_id);
+        let Some(id) = self.cooked_meat_id(intent.actor_id).or(salted).or(smoked) else {
             let message = if self.raw_meat_near(intent.actor_id) {
                 "Raw meat is not food."
             } else if self.spoiled_meat_near(intent.actor_id) {
@@ -7060,9 +7150,12 @@ impl World {
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         };
-        let cold = self
-            .item(id)
-            .is_some_and(|meat| meat.salted && !meat.cooked);
+        let (salted_bite, smoked_bite) = self.item(id).map_or((false, false), |meat| {
+            (
+                meat.salted && !meat.cooked && !meat.smoked,
+                meat.smoked && !meat.cooked,
+            )
+        });
         let before = self
             .actor(intent.actor_id)
             .map(|actor| actor.hunger)
@@ -7082,8 +7175,10 @@ impl World {
             .map(|actor| actor.cell)
             .unwrap_or(0);
         let name = self.name_of(intent.actor_id);
-        let rest = if cold {
+        let rest = if salted_bite {
             "the salted meat."
+        } else if smoked_bite {
+            "the smoked meat."
         } else {
             "the cooked meat."
         };
