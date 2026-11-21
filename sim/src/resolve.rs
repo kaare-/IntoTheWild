@@ -204,6 +204,11 @@ impl World {
             .collect();
 
         for (intent, message, personal) in failures {
+            if message == "Raw mushrooms do not feed you." {
+                if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                    person.raw_mushroom_known = true;
+                }
+            }
             if personal {
                 let cell = start_cells.get(&intent.actor_id).copied();
                 self.emit(
@@ -7116,7 +7121,13 @@ impl World {
 
     fn eat_mushroom(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
         let Some(id) = self.cooked_mushroom_id(intent.actor_id) else {
-            let message = if self.raw_mushroom_near(intent.actor_id) {
+            let raw = self.raw_mushroom_near(intent.actor_id);
+            if raw {
+                if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                    person.raw_mushroom_known = true;
+                }
+            }
+            let message = if raw {
                 "Raw mushrooms do not feed you."
             } else {
                 "There is no cooked mushroom here to eat."

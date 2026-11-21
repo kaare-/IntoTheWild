@@ -80,7 +80,7 @@ salt fish                    salt on a raw fish. The salt is spent. The fish can
 smoke fish                   a raw fish at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the fish is the same
 smoke meat                   a portion of raw meat at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the meat is the same
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
-eat mushrooms                a cooked mushroom; raw mushrooms do not feed you
+eat mushrooms                mushrooms
 eat carcass                  a carcass must be cooked
 eat bark                     bark is tinder, not food
 smear mud                    mud on skin against the sun

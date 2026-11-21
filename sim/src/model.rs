@@ -568,6 +568,10 @@ pub struct Actor {
     /// Someone who has not tasted them does not get that sentence.
     #[serde(default)]
     pub tasted_bitter: bool,
+    /// This person has tried to eat a raw mushroom. Look may then say it
+    /// needs heat. Someone who has not tried does not get that sentence.
+    #[serde(default)]
+    pub raw_mushroom_known: bool,
     pub busy: Option<WorkId>,
 }
 
@@ -1265,6 +1269,7 @@ impl World {
                 stings_until: None,
                 clothes_dry_at: None,
                 tasted_bitter: false,
+                raw_mushroom_known: false,
                 busy: None,
             },
         );

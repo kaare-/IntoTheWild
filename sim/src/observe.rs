@@ -777,8 +777,13 @@ impl World {
             ));
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0 {
+            let known = if self.raw_mushroom_known(actor_id) {
+                " They must be cooked. Raw mushrooms do not feed you."
+            } else {
+                ""
+            };
             parts.push(format!(
-                "Mushrooms lie here, {}. They must be cooked. Raw mushrooms do not feed you.",
+                "Mushrooms lie here, {}.{known}",
                 self.condition_word(self.pile_moisture(actor.cell, Material::Mushroom))
             ));
         } else if self.mushroom_patch_bare(actor.cell) {
@@ -6274,10 +6279,18 @@ impl World {
         }
     }
 
+    pub(crate) fn raw_mushroom_known(&self, viewer: ActorId) -> bool {
+        self.actor(viewer)
+            .is_some_and(|actor| actor.raw_mushroom_known)
+    }
+
     /// Bitter berries keep their answer until this person has tasted them.
+    /// A raw mushroom keeps its warning until this person has tried to eat one.
     fn food_clause_for(&self, viewer: ActorId, material: Material) -> &'static str {
         if material == Material::BitterBerry && self.bitter_known(viewer) {
             " They taste bitter. They are poisonous."
+        } else if material == Material::Mushroom && self.raw_mushroom_known(viewer) {
+            " They must be cooked. Raw mushrooms do not feed you."
         } else {
             food_clause(material)
         }
@@ -10455,7 +10468,7 @@ fn food_clause(material: Material) -> &'static str {
         Material::Berry => " They are good to eat raw.",
         Material::BitterBerry => "",
         Material::Mud => " It can be smeared on skin against the sun.",
-        Material::Mushroom => " They must be cooked. Raw mushrooms do not feed you.",
+        Material::Mushroom => "",
         Material::Pot => " It can boil water over a fire.",
         Material::Stone => " It is a found stone.",
         _ => "",

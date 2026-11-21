@@ -2956,9 +2956,15 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     assert!(world
         .examine(sera, ExamineTarget::Berries)
         .contains("They are good to eat raw."));
-    assert!(world
-        .examine(nils, ExamineTarget::Mushrooms)
-        .contains("Raw mushrooms do not feed you."));
+    let naive = world.examine(nils, ExamineTarget::Mushrooms);
+    assert!(naive.contains("mushrooms"), "{naive}");
+    assert!(!naive.contains("Raw mushrooms do not feed you."), "{naive}");
+    assert!(!naive.contains("must be cooked"), "{naive}");
+    assert!(!naive.contains("poison"), "{naive}");
+    let naive_look = world.observe(nils).unwrap().text;
+    assert!(naive_look.contains("Mushrooms lie here"), "{naive_look}");
+    assert!(!naive_look.contains("must be cooked"), "{naive_look}");
+    assert!(!naive_look.contains("poison"), "{naive_look}");
     let bitter = world.examine(linde, ExamineTarget::BitterBerries);
     assert!(!bitter.contains("poisonous"), "{bitter}");
     assert!(!bitter.contains("bitter"), "{bitter}");
@@ -2975,6 +2981,22 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     assert!(world.observe(linde).unwrap().events.iter().all(|event| {
         !event.text.contains("Raw mushrooms") && !event.text.contains("mushroom")
     }));
+    let learned = world.examine(nils, ExamineTarget::Mushrooms);
+    assert!(
+        learned.contains("They must be cooked. Raw mushrooms do not feed you."),
+        "{learned}"
+    );
+    assert!(!learned.contains("poison"), "{learned}");
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .text
+        .contains("Mushrooms lie here, dry. They must be cooked. Raw mushrooms do not feed you."));
+    let hidden = world.examine(linde, ExamineTarget::Mushrooms);
+    assert!(hidden.contains("mushrooms"), "{hidden}");
+    assert!(!hidden.contains("must be cooked"), "{hidden}");
+    assert!(!hidden.contains("do not feed"), "{hidden}");
+    assert!(!hidden.contains("poison"), "{hidden}");
     world.step(&[cmd(
         "raw-bitter",
         linde,
@@ -5412,8 +5434,31 @@ fn carried_food_examine_uses_the_arms_words() {
     assert_eq!(world.sim_time(), clock);
     assert_eq!(
         mushrooms,
-        "Two dry mushrooms are carried by you, under the rock overhang. They must be cooked. Raw mushrooms do not feed you."
+        "Two dry mushrooms are carried by you, under the rock overhang."
     );
+    assert!(!mushrooms.contains("must be cooked"), "{mushrooms}");
+    assert!(!mushrooms.contains("poison"), "{mushrooms}");
+    let west = world.spawn_at("West", "w", 5, 1).unwrap();
+    let refused = world.step(&[cmd("raw", near, Attempt::Eat(Material::Mushroom))]);
+    assert_eq!(refused.results[0].message, "Raw mushrooms do not feed you.");
+    let after = world.examine(near, ExamineTarget::Mushrooms);
+    assert!(
+        after.contains(
+            "Two dry mushrooms are carried by you, under the rock overhang. They must be cooked. Raw mushrooms do not feed you."
+        ),
+        "{after}"
+    );
+    let west_mushrooms = world.examine(west, ExamineTarget::Mushrooms);
+    assert!(
+        west_mushrooms.contains("carried by Near"),
+        "{west_mushrooms}"
+    );
+    assert!(
+        !west_mushrooms.contains("must be cooked"),
+        "{west_mushrooms}"
+    );
+    assert!(!west_mushrooms.contains("do not feed"), "{west_mushrooms}");
+    assert!(!west_mushrooms.contains("poison"), "{west_mushrooms}");
     assert!(!mushrooms.contains("2 mushrooms"), "{mushrooms}");
     assert!(!mushrooms.contains(". dry"), "{mushrooms}");
     let carried_berries = berries
