@@ -1066,9 +1066,11 @@ impl World {
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
                 let rock = x == 6 && y == 1;
+                // The seeded brook is (0,1), (1,1), (0,2), (1,2), plus one
+                // cell farther south at (0,3). (1,3) stays the dry south bank.
                 let region = if y == 0 {
                     Region::Slope
-                } else if x <= 1 && (y == 1 || y == 2) {
+                } else if (x <= 1 && (y == 1 || y == 2)) || (x == 0 && y == 3) {
                     Region::Brook
                 } else {
                     Region::Floor
@@ -6751,7 +6753,7 @@ mod set_net {
     fn a_net_set_in_the_brook_catches_a_fish_and_can_be_gathered() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 0, 3).unwrap();
-        let seen = world.spawn_at("Seen", "s", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 4).unwrap();
         let heard = world.spawn_at("Heard", "h", 3, 2).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
         for (id, _) in [("one", 1), ("two", 2), ("three", 3)] {
@@ -6759,6 +6761,8 @@ mod set_net {
         }
         let woven = world.step(&[intent("weave", near, Attempt::WeaveNet)]);
         assert_eq!(woven.results[0].message, "You weave a fishing net.");
+        let ashore = world.step(&[intent("ashore", near, Attempt::Move(Dir::South))]);
+        assert_eq!(ashore.results[0].message, "You walk south.");
         let bank = world.step(&[intent("bank", near, Attempt::SetNet)]);
         assert_eq!(
             bank.results[0].message,
@@ -6772,7 +6776,7 @@ mod set_net {
             .all(|event| !event.text.contains("out of the brook")));
         let wade = world.step(&[intent("wade", near, Attempt::Move(Dir::North))]);
         assert_eq!(wade.results[0].message, "You wade north.");
-        assert_eq!(world.actor_cell(near), Some((0, 2)));
+        assert_eq!(world.actor_cell(near), Some((0, 3)));
         let set = world.step(&[intent("set", near, Attempt::SetNet)]);
         assert_eq!(
             set.results[0].message,
@@ -6854,7 +6858,7 @@ mod set_net {
             "{}",
             seen_landed.text
         );
-        let splash = "You hear a splash to the west.";
+        let splash = "You hear a splash to the south and west.";
         let ears = world.observe(heard).unwrap();
         assert!(ears.events.iter().any(|event| event.text == splash));
         assert!(ears.events.iter().all(|event| event.text != caught));
@@ -10394,5 +10398,149 @@ mod fish_hook {
         assert!(look.text.contains("a bone fish hook"), "{}", look.text);
         assert!(look.text.contains("raw fish"), "{}", look.text);
         assert!(!look.text.contains("hide strips"), "{}", look.text);
+    }
+}
+
+#[cfg(test)]
+mod brook_south {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_brook_runs_one_cell_farther_south() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let water = super::cell_id(0, 3).unwrap();
+        let bank = super::cell_id(1, 3).unwrap();
+        assert_eq!(world.cell(water).region, super::Region::Brook);
+        assert!(!world.cell(water).still);
+        assert_ne!(world.cell(bank).region, super::Region::Brook);
+
+        let near = world.spawn_at("Near", "n", 0, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let south = world.spawn_at("South", "o", 0, 4).unwrap();
+
+        let wade = world.step(&[intent("wade", near, Attempt::Move(super::Dir::South))]);
+        assert_eq!(wade.results[0].message, "You wade south.");
+        assert_eq!(world.actor_cell(near), Some((0, 3)));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("You are on the brook"), "{here}");
+        assert!(here.contains("The water here is raw."), "{here}");
+        assert!(
+            here.contains("Reeds grow here, at the brook's edge."),
+            "{here}"
+        );
+        let distant = world.observe(seen).unwrap().text;
+        assert!(distant.contains("West: brook"), "{distant}");
+        assert!(
+            distant.contains("Reeds grow at the brook's edge to the west."),
+            "{distant}"
+        );
+        let from_south = world.observe(south).unwrap().text;
+        assert!(from_south.contains("North: brook"), "{from_south}");
+        let named = world.examine(south, super::ExamineTarget::Water);
+        assert!(
+            named.contains("The brook to the north, in the open is running water."),
+            "{named}"
+        );
+        let far = world.observe(quiet).unwrap();
+        assert!(!far.text.contains("brook"), "{}", far.text);
+        assert!(far
+            .events
+            .iter()
+            .all(|event| !event.text.contains("wade") && !event.text.contains("brook")));
+
+        let spear = world.mint_item(
+            Material::Spear,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            Role::Loose,
+        );
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        let caught = world.step(&[intent("cast", near, Attempt::Fish)]);
+        assert_eq!(
+            caught.results[0].message,
+            "You spear a fish from the brook."
+        );
+        let again = world.step(&[intent("again", near, Attempt::Fish)]);
+        assert_eq!(
+            again.results[0].message,
+            "The fish are gone from this stretch of the brook."
+        );
+        let quiet_here = world.observe(near).unwrap().text;
+        assert!(
+            quiet_here.contains("The brook is quiet. The fish are gone."),
+            "{quiet_here}"
+        );
+        let same_stretch = world.observe(seen).unwrap().text;
+        assert!(
+            same_stretch.contains("The brook is quiet. The fish are gone."),
+            "{same_stretch}"
+        );
+
+        let back = world.step(&[intent("back", near, Attempt::Move(super::Dir::North))]);
+        assert_eq!(back.results[0].message, "You wade north.");
+        assert_eq!(world.actor_cell(near), Some((0, 2)));
+        let old = world.step(&[intent("old", near, Attempt::Fish)]);
+        assert_eq!(old.results[0].message, "You spear a fish from the brook.");
+
+        world.mint_item(
+            Material::Canoe,
+            0,
+            world.actor(near).unwrap().cell,
+            None,
+            Role::Loose,
+        );
+        let boarded = world.step(&[intent("board", near, Attempt::Board)]);
+        assert_eq!(boarded.results[0].message, "You board the dugout canoe.");
+        let paddled = world.step(&[intent(
+            "paddle",
+            near,
+            Attempt::Paddle(Some(super::Dir::South)),
+        )]);
+        assert_eq!(
+            paddled.results[0].message,
+            "You paddle the dugout canoe south."
+        );
+        assert_eq!(world.actor_cell(near), Some((0, 3)));
+        let aboard = world.observe(near).unwrap().text;
+        assert!(aboard.contains("You are aboard the dugout canoe in the brook."));
+        assert!(aboard.contains("The water here is raw."), "{aboard}");
+        let stays = world.step(&[intent(
+            "stay",
+            near,
+            Attempt::Paddle(Some(super::Dir::South)),
+        )]);
+        assert_eq!(stays.results[0].message, "The canoe stays in the brook.");
+        let east = world.step(&[intent(
+            "east",
+            near,
+            Attempt::Paddle(Some(super::Dir::East)),
+        )]);
+        assert_eq!(east.results[0].message, "The canoe stays in the brook.");
+        let witness = world.observe(seen).unwrap().text;
+        assert!(
+            witness.contains("A dugout canoe floats in the brook to the west."),
+            "{witness}"
+        );
+        let named = world.observe(south).unwrap().text;
+        assert!(named.contains("North: brook"), "{named}");
+        assert!(
+            world.observe(quiet).unwrap().text.contains("brook") == false,
+            "{}",
+            world.observe(quiet).unwrap().text
+        );
     }
 }

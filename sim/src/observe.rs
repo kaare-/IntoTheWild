@@ -1871,6 +1871,10 @@ impl World {
     }
 
     fn beside_the_brook(&self, cell: CellId) -> bool {
+        // The reed bed stays the edge even where the brook now runs through it.
+        if self.reed_beds.contains_key(&cell) {
+            return true;
+        }
         if self.cell(cell).region == crate::model::Region::Brook {
             return false;
         }
