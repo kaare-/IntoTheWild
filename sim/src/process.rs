@@ -3,7 +3,8 @@
 
 use crate::model::{
     cell_id, cell_xy, chebyshev, ActorId, CellId, ConstructionId, Dir, EventId, FireId, ItemId,
-    Material, Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE, OTTER_ROUTE,
+    Material, Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE, FOX_ROUTE,
+    OTTER_ROUTE,
 };
 
 impl World {
@@ -29,6 +30,7 @@ impl World {
                 Wake::Fire(id) => self.burn_down(id),
                 Wake::Deer => self.apply_deer(),
                 Wake::Otter => self.apply_otter(),
+                Wake::Fox => self.apply_fox(),
                 Wake::Season => self.apply_season(),
                 Wake::Rot => self.apply_rot(),
                 Wake::Harden(id) => self.harden_clay(id),
@@ -1394,6 +1396,98 @@ impl World {
         for step in [1isize, -1] {
             let index = (route_at as isize + step).rem_euclid(len as isize) as usize;
             let (x, y) = OTTER_ROUTE[index];
+            let cell = cell_id(x, y)?;
+            if cell == person {
+                continue;
+            }
+            let away = chebyshev(person, cell);
+            let replace = best.is_none_or(|(_, _, far)| away > far)
+                || (best.is_some_and(|(_, _, far)| away == far) && step > 0);
+            if replace {
+                best = Some((index, cell, away));
+            }
+        }
+        best.map(|(index, cell, _)| (index, cell))
+    }
+
+    /// One step on the dry floor when nobody is beside the fox.
+    /// A person who has just stepped close already sent it off.
+    fn apply_fox(&mut self) {
+        self.schedule(self.time + 4, Wake::Fox);
+        let Some(fox) = self.fox.clone() else {
+            return;
+        };
+        if self
+            .actors
+            .values()
+            .any(|person| chebyshev(person.cell, fox.cell) <= 1)
+        {
+            return;
+        }
+        let next_at = (fox.route_at + 1) % FOX_ROUTE.len();
+        let (nx, ny) = FOX_ROUTE[next_at];
+        let Some(dest) = cell_id(nx, ny) else {
+            return;
+        };
+        if self.actors.values().any(|person| person.cell == dest) {
+            return;
+        }
+        let dir = step_dir(fox.cell, dest);
+        let origin = fox.cell;
+        self.emit(
+            format!("A fox trots {}.", dir.word()),
+            Scope::Cell(dest),
+            vec![],
+            vec![origin, dest],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(fox) = self.fox.as_mut() {
+            fox.cell = dest;
+            fox.route_at = next_at;
+        }
+    }
+
+    /// Someone stepped onto the fox. It slips along the floor, away from them.
+    /// The step they took already has its own reply, so this slip is only the event.
+    pub(crate) fn frighten_fox(&mut self, _origin: CellId, dest: CellId) {
+        let Some(fox) = self.fox.clone() else {
+            return;
+        };
+        if dest != fox.cell {
+            return;
+        }
+        let Some((next_at, next)) = self.fox_away(fox.route_at, dest) else {
+            return;
+        };
+        if next == fox.cell {
+            return;
+        }
+        let dir = step_dir(fox.cell, next);
+        let from = fox.cell;
+        self.emit(
+            format!("A fox slips away to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(fox) = self.fox.as_mut() {
+            fox.cell = next;
+            fox.route_at = next_at;
+        }
+    }
+
+    /// The route neighbor farther from the person. Their own cell is not a landing.
+    pub(crate) fn fox_away(&self, route_at: usize, person: CellId) -> Option<(usize, CellId)> {
+        let len = FOX_ROUTE.len();
+        let mut best: Option<(usize, CellId, i32)> = None;
+        for step in [1isize, -1] {
+            let index = (route_at as isize + step).rem_euclid(len as isize) as usize;
+            let (x, y) = FOX_ROUTE[index];
             let cell = cell_id(x, y)?;
             if cell == person {
                 continue;

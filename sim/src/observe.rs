@@ -288,6 +288,9 @@ impl World {
             if let Some(otter) = self.seen_otter(actor_id) {
                 lines.push(otter);
             }
+            if let Some(fox) = self.seen_fox(actor_id) {
+                lines.push(fox);
+            }
             if self
                 .seen_wolf_tracks(actor_id)
                 .is_some_and(|tracks| tracks.contains("Wolf tracks mark the ground here."))
@@ -307,6 +310,9 @@ impl World {
             }
             if let Some(otter) = self.seen_otter(actor_id) {
                 lines.push(otter);
+            }
+            if let Some(fox) = self.seen_fox(actor_id) {
+                lines.push(fox);
             }
             if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
                 lines.push(tracks);
@@ -1352,6 +1358,25 @@ impl World {
             } else {
                 Some(format!("An otter is on the bank to the {way}."))
             }
+        }
+    }
+
+    /// A fox on the dry valley floor. Past sight, nothing.
+    /// At night, with no fire nearby, only a fox underfoot is named.
+    fn seen_fox(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let fox = self.fox.as_ref()?;
+        if self.dark_for(viewer) && fox.cell != origin {
+            return None;
+        }
+        if !self.visible_cell_ids(viewer).contains(&fox.cell) {
+            return None;
+        }
+        if fox.cell == origin {
+            Some("A fox is on the valley floor here.".into())
+        } else {
+            let way = self.relative(origin, fox.cell);
+            Some(format!("A fox is on the valley floor to the {way}."))
         }
     }
 
@@ -4321,6 +4346,9 @@ impl World {
         }
         if self.otter.as_ref().is_some_and(|otter| otter.cell == dest) {
             bits.push("an otter".into());
+        }
+        if self.fox.as_ref().is_some_and(|fox| fox.cell == dest) {
+            bits.push("a fox".into());
         }
         if self.fire_at(dest).is_some() {
             bits.push("a fire".into());
@@ -9668,6 +9696,35 @@ impl World {
         Some(format!("You hear a splash to the {way}."))
     }
 
+    /// A fox slipping away, heard from out of sight. Someone who can see the
+    /// cell it left keeps that sentence. Past hearing, nothing is delivered.
+    fn fox_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
+        let cell = self.fox_slip_cell(event)?;
+        if chebyshev(origin, cell) <= self.tuning.sight {
+            return None;
+        }
+        if chebyshev(origin, cell) > self.tuning.hearing {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear a fox to the {way}."))
+    }
+
+    fn hears_a_fox(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.fox_slip_cell(event) else {
+            return false;
+        };
+        chebyshev(origin, cell) > self.tuning.sight
+            && chebyshev(origin, cell) <= self.tuning.hearing
+    }
+
+    fn fox_slip_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !event.text.contains("slips away") {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     fn hears_a_splash(&self, origin: CellId, event: &crate::model::Event) -> bool {
         let Some(cell) = self.splash_cell(event) else {
             return false;
@@ -10311,6 +10368,9 @@ impl World {
         if let Some(line) = self.splash_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.fox_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.walk_for_these_eyes(viewer, event) {
             return line;
         }
@@ -10555,6 +10615,7 @@ impl World {
                     || event.affected_actors.contains(&viewer)
                     || self.hears_a_branch_break(origin, event)
                     || self.hears_a_splash(origin, event)
+                    || self.hears_a_fox(origin, event)
                     || self.hears_footsteps(origin, event)
             }
         }

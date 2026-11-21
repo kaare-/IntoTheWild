@@ -815,6 +815,8 @@ pub enum Wake {
     OtterReturn,
     /// The otter swims one step along the brook when nobody is beside it.
     Otter,
+    /// The fox trots one step on the dry floor when nobody is beside it.
+    Fox,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
     /// Wet clothes on this person dry at the fire they are standing by.
@@ -853,6 +855,16 @@ pub struct Otter {
 
 /// A short loop on the brook and the dry bank beside it. Orthogonal.
 pub(crate) const OTTER_ROUTE: [(i32, i32); 6] = [(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3)];
+
+/// One fox. It keeps to the dry valley floor, not the brook.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fox {
+    pub cell: CellId,
+    pub route_at: usize,
+}
+
+/// A short run on the dry floor at the south-east. Orthogonal.
+pub(crate) const FOX_ROUTE: [(i32, i32); 2] = [(5, 4), (6, 4)];
 
 /// Trail the deer already uses, then a detour to the berries under the rock
 /// and back. Orthogonal, so each step is one direction.
@@ -940,6 +952,9 @@ pub struct World {
     /// An otter on the brook, or on the bank beside it. Old valleys have none.
     #[serde(default)]
     pub(crate) otter: Option<Otter>,
+    /// A fox on the dry valley floor. Old valleys have none.
+    #[serde(default)]
+    pub(crate) fox: Option<Fox>,
     /// Cells the deer has left. The marks stay; decay is not in this valley.
     #[serde(default)]
     pub(crate) tracks: BTreeSet<CellId>,
@@ -1187,6 +1202,10 @@ impl World {
                 route_at: 1,
                 held: false,
             }),
+            fox: Some(Fox {
+                cell: cell_id(5, 4).unwrap(),
+                route_at: 0,
+            }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
             deer_ate_berries: BTreeSet::new(),
@@ -1259,6 +1278,7 @@ impl World {
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
         world.schedule(4, Wake::Otter);
+        world.schedule(4, Wake::Fox);
         let rock = cell_id(6, 1).unwrap();
         world.add_pile(rock, Material::Branch, 4, 0);
         world.branch_beds.insert(rock);
@@ -1511,6 +1531,10 @@ impl World {
 
     pub fn otter_cell(&self) -> Option<(i32, i32)> {
         self.otter.as_ref().map(|otter| cell_xy(otter.cell))
+    }
+
+    pub fn fox_cell(&self) -> Option<(i32, i32)> {
+        self.fox.as_ref().map(|fox| cell_xy(fox.cell))
     }
 
     pub fn hoofprints_at(&self, x: i32, y: i32) -> bool {
@@ -11806,6 +11830,94 @@ mod otter {
             alone.step(&[]);
         }
         assert_eq!(alone.otter_cell(), Some((1, 2)));
+    }
+}
+
+#[cfg(test)]
+mod fox {
+    use super::{Attempt, Dir, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_fox_on_the_dry_floor_is_named_in_sight_and_slips_away() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 2, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 1, 3).unwrap();
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("A fox is on the valley floor to the south and east."),
+            "{from_seen}"
+        );
+        assert!(!world.observe(heard).unwrap().text.contains("fox"));
+        assert!(!world.observe(quiet).unwrap().text.contains("fox"));
+
+        let beside = world.step(&[intent("south", seen, Attempt::Move(Dir::South))]);
+        assert_eq!(beside.results[0].message, "You walk south.");
+        assert!(!beside.results[0].message.contains("fox"));
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        let named = world.observe(seen).unwrap().text;
+        assert!(named.contains("East: valley floor, a fox."), "{named}");
+
+        let step = world.step(&[intent("onto", seen, Attempt::Move(Dir::East))]);
+        assert_eq!(step.results[0].message, "You walk east.");
+        assert!(!step.results[0].message.contains("fox"));
+        assert_eq!(world.fox_cell(), Some((6, 4)));
+        let yours: Vec<_> = world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("fox"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(yours, vec!["A fox slips away to the east.".to_string()]);
+        let ears: Vec<_> = world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("fox"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(ears, vec!["You hear a fox to the east.".to_string()]);
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        let after = world.observe(seen).unwrap().text;
+        assert!(
+            after.contains("A fox is on the valley floor to the east."),
+            "{after}"
+        );
+        assert!(after.contains("East: valley floor, a fox."), "{after}");
+
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        assert_eq!(world.fox_cell(), Some((6, 4)));
+
+        let mut alone = World::valley(crate::tuning::Tuning::evening(), 1);
+        for _ in 0..5 {
+            alone.step(&[]);
+        }
+        assert_eq!(alone.fox_cell(), Some((6, 4)));
+        let walker = alone.spawn_at("Seen", "s", 5, 3).unwrap();
+        let look = alone.observe(walker).unwrap().text;
+        assert!(
+            look.contains("A fox is on the valley floor to the south and east."),
+            "{look}"
+        );
     }
 }
 
