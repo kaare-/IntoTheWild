@@ -3629,6 +3629,58 @@ mod smoke_fish {
             .iter()
             .all(|event| event.text != "The fish has spoiled."));
     }
+
+    #[test]
+    fn going_bad_stays_on_the_raw_fish_in_a_mixed_arms_line() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let smoked = world.mint_item(Material::Fish, 0, cell, Some(near), Role::Loose);
+        if let Some(fish) = world.items.get_mut(&smoked) {
+            fish.smoked = true;
+            fish.spoils_at = None;
+        }
+        let raw = world.mint_item(Material::Fish, 0, cell, Some(near), Role::Loose);
+        let before = world.observe(near).unwrap().text;
+        assert!(
+            before.contains("You have a smoked fish, a raw fish."),
+            "{before}"
+        );
+        assert!(!before.contains("going bad"), "{before}");
+        let ticks = world.tuning.meat_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let mixed = world.observe(near).unwrap().text;
+        assert!(
+            mixed.contains("You have a smoked fish, a raw fish that is going bad."),
+            "{mixed}"
+        );
+        assert!(!mixed.contains(", going bad"), "{mixed}");
+        assert!(
+            world
+                .examine(seen, ExamineTarget::Fish)
+                .contains("A smoked fish is carried by Near")
+                && world
+                    .examine(seen, ExamineTarget::Fish)
+                    .contains("A raw fish is carried by Near")
+                && world
+                    .examine(seen, ExamineTarget::Fish)
+                    .contains("It is going bad."),
+            "{}",
+            world.examine(seen, ExamineTarget::Fish)
+        );
+        world.items.remove(&smoked);
+        let only = world.observe(near).unwrap().text;
+        assert!(
+            only.contains("You have a raw fish that is going bad."),
+            "{only}"
+        );
+        assert!(!only.contains(", going bad"), "{only}");
+        assert!(world.item(raw).unwrap().spoils_at.is_some());
+        assert!(!world.item(raw).unwrap().smoked);
+    }
 }
 
 #[cfg(test)]

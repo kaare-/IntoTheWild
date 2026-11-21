@@ -7883,7 +7883,7 @@ impl World {
                 "smoked" => "a bark basket holding a smoked fish".into(),
                 "salted" => "a bark basket holding a salted fish".into(),
                 "spoiled" => "a bark basket holding a spoiled fish".into(),
-                "going" => "a bark basket holding a raw fish, going bad".into(),
+                "going" => "a bark basket holding a raw fish that is going bad".into(),
                 _ => "a bark basket holding a raw fish".into(),
             },
             _ => "a bark basket".into(),
@@ -7953,7 +7953,7 @@ impl World {
                 "smoked" => "a smoked fish",
                 "salted" => "a salted fish",
                 "spoiled" => "a spoiled fish",
-                "going" => "a raw fish, going bad",
+                "going" => "a raw fish that is going bad",
                 _ => "a raw fish",
             });
         }
