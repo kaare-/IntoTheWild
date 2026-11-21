@@ -113,7 +113,14 @@ impl World {
             };
             let taken = body_taken.contains(&actor.id);
             match self.precheck(&actor, &intent.attempt, taken) {
-                Err(message) => failures.push((intent, message, true)),
+                Err(message) => {
+                    // A smoke refusal is the reply only. "There is no fire
+                    // burning here" is also a feed, cook, and dry refusal,
+                    // and those still sit in the actor's event list.
+                    let personal =
+                        !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat);
+                    failures.push((intent, message, personal));
+                }
                 Ok(uses_body) => {
                     if uses_body {
                         body_taken.insert(actor.id);

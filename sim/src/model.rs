@@ -3503,12 +3503,14 @@ mod smoke_fish {
         let carried = world.mint_item(Material::Fish, 0, cell, Some(near), Role::Loose);
         let no_fire = world.step(&[intent("cold", near, Attempt::SmokeFish)]);
         assert_eq!(no_fire.results[0].message, "There is no fire burning here.");
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != "There is no fire burning here."));
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "There is no fire burning here."));
+        }
         world.items.remove(&carried);
         world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
         world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
@@ -3519,12 +3521,14 @@ mod smoke_fish {
             none.results[0].message,
             "There is no raw fish here to smoke."
         );
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != "There is no raw fish here to smoke."));
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "There is no raw fish here to smoke."));
+        }
         let ground = world.mint_item(Material::Fish, 0, cell, None, Role::Loose);
         let from_ground = world.step(&[intent("ground", near, Attempt::SmokeFish)]);
         assert_eq!(
@@ -3566,12 +3570,14 @@ mod smoke_fish {
             .all(|event| !event.text.contains("smokes a raw fish")));
         let again = world.step(&[intent("again", near, Attempt::SmokeFish)]);
         assert_eq!(again.results[0].message, "The fish is already smoked.");
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != "The fish is already smoked."));
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "The fish is already smoked."));
+        }
         let raw = world.mint_item(Material::Fish, 0, cell, None, Role::Loose);
         let ticks = world.tuning.meat_ticks;
         for _ in 0..ticks {
@@ -3739,12 +3745,14 @@ mod smoke_meat {
         let carried = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
         let no_fire = world.step(&[intent("cold", near, Attempt::SmokeMeat)]);
         assert_eq!(no_fire.results[0].message, "There is no fire burning here.");
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != "There is no fire burning here."));
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "There is no fire burning here."));
+        }
         world.items.remove(&carried);
         world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
         world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
@@ -3754,12 +3762,14 @@ mod smoke_meat {
             none.results[0].message,
             "There is no raw meat here to smoke."
         );
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != "There is no raw meat here to smoke."));
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "There is no raw meat here to smoke."));
+        }
         let ground = world.mint_item(Material::Meat, 0, cell, None, Role::Loose);
         let from_ground = world.step(&[intent("ground", near, Attempt::SmokeMeat)]);
         assert_eq!(
@@ -3801,12 +3811,14 @@ mod smoke_meat {
             .all(|event| !event.text.contains("smokes a portion of raw meat")));
         let again = world.step(&[intent("again", near, Attempt::SmokeMeat)]);
         assert_eq!(again.results[0].message, "The meat is already smoked.");
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != "The meat is already smoked."));
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "The meat is already smoked."));
+        }
         let raw = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
         let before = world.observe(near).unwrap().text;
         assert!(
