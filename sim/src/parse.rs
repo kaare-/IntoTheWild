@@ -73,6 +73,7 @@ gather salt                  a salt crust from the slope. The slope is bare, the
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
+gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
 press moss                   a carried handful on a sting. The stings clear.
 dress sting                  the same press
 use moss                     the same press
@@ -512,6 +513,13 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "honey" | "honeycomb" | "bees nest" | "bee nest" => Ok(Material::Honey),
         "egg" | "eggs" => Ok(Material::Egg),
         "moss" | "handful of moss" => Ok(Material::Moss),
+        "resin"
+        | "pine resin"
+        | "pitch"
+        | "lump of pitch"
+        | "lumps of pitch"
+        | "lump of pine resin"
+        | "lumps of pine resin" => Ok(Material::Resin),
         "bow" | "a bow" => Ok(Material::Bow),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
@@ -612,6 +620,9 @@ fn parse_target(text: &str) -> ExamineTarget {
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
         "moss" => ExamineTarget::Moss,
+        "resin" | "pine resin" | "pitch" | "lump of pitch" | "lump of pine resin" => {
+            ExamineTarget::Resin
+        }
         "bow" | "a bow" => ExamineTarget::Bow,
         "paddle" | "wooden paddle" | "a wooden paddle" => ExamineTarget::Paddle,
         "hook" | "fish hook" | "a fish hook" | "bone hook" | "bone fish hook" => {

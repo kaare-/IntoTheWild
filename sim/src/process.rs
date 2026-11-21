@@ -42,6 +42,7 @@ impl World {
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::MossReturn(cell) => self.return_moss(cell),
+                Wake::ResinReturn(cell) => self.return_resin(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -196,6 +197,33 @@ impl World {
         self.add_pile(cell, Material::Moss, 1, 0);
         self.emit(
             "Moss grows on the damp bank again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The pine has waited out its ticks. Two lumps of pitch lie there again.
+    /// Someone who cannot see the pine hears nothing.
+    fn return_resin(&mut self, cell: CellId) {
+        let Some(at) = self.resin_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.resin_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Resin) > 0
+            || !self.ground_ids(cell, Material::Resin).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Resin, 2, 0);
+        self.emit(
+            "Pine resin lies under the pine again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

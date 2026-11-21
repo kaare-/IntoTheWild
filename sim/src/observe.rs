@@ -215,6 +215,7 @@ impl World {
             ExamineTarget::Honey => self.examine_honey(actor_id),
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
+            ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
@@ -386,6 +387,9 @@ impl World {
             }
             if let Some(moss) = self.seen_moss(actor_id) {
                 lines.push(moss);
+            }
+            if let Some(resin) = self.seen_resin(actor_id) {
+                lines.push(resin);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -1040,6 +1044,15 @@ impl World {
             parts.push("Moss grows on the damp bank here.".into());
         } else if self.moss_bare(actor.cell) {
             parts.push("The damp bank here is bare.".into());
+        }
+        let resin_here = self.pile_count(actor.cell, Material::Resin)
+            + self.ground_ids(actor.cell, Material::Resin).len() as u32;
+        if resin_here > 1 {
+            parts.push("Lumps of pitch lie here. It is pine resin.".into());
+        } else if resin_here == 1 {
+            parts.push("A lump of pitch lies here. It is pine resin.".into());
+        } else if self.resin_bare(actor.cell) {
+            parts.push("The pine here has no resin.".into());
         }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
@@ -2295,6 +2308,93 @@ impl World {
         }
     }
 
+    /// Pitch under a pine this person can see but is not standing on.
+    fn seen_resin(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            let count = self.pile_count(cell, Material::Resin)
+                + self.ground_ids(cell, Material::Resin).len() as u32;
+            if count > 1 {
+                lines.push(format!(
+                    "Lumps of pitch lie to the {way}. It is pine resin."
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A lump of pitch lies to the {way}. It is pine resin."
+                ));
+            } else if self.resin_bare(cell) {
+                lines.push(format!("The pine to the {way} has no resin."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_resin(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::Resin)
+                + self.ground_ids(cell, Material::Resin).len() as u32;
+            if count == 0 && !self.resin_bare(cell) {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if count > 1 {
+                lines.push(format!(
+                    "Lumps of pine resin lie {place}. They are pitch from a pine."
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A lump of pine resin lies {place}. It is pitch from a pine."
+                ));
+            } else if cell == origin {
+                lines.push("The pine here has no resin.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The pine to the {way} has no resin."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Resin).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A lump of pine resin is carried by {who} {cover}. It is pitch from a pine."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} lumps of pine resin are carried by {who} {cover}. They are pitch from a pine.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no resin from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     fn examine_bow(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -2562,6 +2662,13 @@ impl World {
         self.moss_returns_at.contains_key(&cell)
             && self.pile_count(cell, Material::Moss) == 0
             && self.ground_ids(cell, Material::Moss).is_empty()
+    }
+
+    /// The pine was gathered bare and pitch has not lain there again.
+    fn resin_bare(&self, cell: crate::model::CellId) -> bool {
+        self.resin_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Resin) == 0
+            && self.ground_ids(cell, Material::Resin).is_empty()
     }
 
     /// The salt lick on this cell was gathered and has not formed again.
@@ -3047,6 +3154,10 @@ impl World {
             "a handful of moss".into()
         } else if item.material == "moss" {
             format!("{} handfuls of moss", count_word(item.count))
+        } else if item.material == "resin" && item.count == 1 {
+            "a lump of pine resin".into()
+        } else if item.material == "resin" {
+            format!("{} lumps of pine resin", count_word(item.count))
         } else if item.material == "net" && item.count == 1 {
             "a fishing net".into()
         } else if item.material == "net" {
@@ -3799,6 +3910,13 @@ impl World {
             bits.push("moss".into());
         } else if self.moss_bare(dest) {
             bits.push("a bare bank".into());
+        }
+        if self.pile_count(dest, Material::Resin) > 0
+            || !self.ground_ids(dest, Material::Resin).is_empty()
+        {
+            bits.push("pine resin".into());
+        } else if self.resin_bare(dest) {
+            bits.push("a bare pine".into());
         }
         if self.pile_count(dest, Material::IronOre) > 0
             || self.ground_ids(dest, Material::IronOre).len() > self.iron_smelting_count(dest)
@@ -6928,6 +7046,7 @@ impl World {
                 Material::Honey => "honey",
                 Material::Egg => "eggs",
                 Material::Moss => "moss",
+                Material::Resin => "resin",
                 Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
@@ -9433,6 +9552,7 @@ impl World {
             "honeycomb",
             "the eggs",
             "handful of moss",
+            "lump of pine resin",
             "fishing net",
             "reed mat",
         ];
@@ -10330,6 +10450,12 @@ impl World {
         {
             actions.push("gather moss".into());
         }
+        if (self.pile_count(actor.cell, Material::Resin) > 0
+            || !self.ground_ids(actor.cell, Material::Resin).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather resin".into());
+        }
         if !self.loose_ids(actor_id, Material::Moss).is_empty() && actor.stings_until.is_some() {
             actions.push("press moss".into());
         }
@@ -10821,6 +10947,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Honey, _) => "honeycomb",
         (Material::Egg, _) => "eggs",
         (Material::Moss, _) => "handful of moss",
+        (Material::Resin, true) => "lump of pine resin",
+        (Material::Resin, false) => "lumps of pine resin",
         (Material::Bow, true) => "bow",
         (Material::Bow, false) => "bows",
         (Material::Net, true) => "fishing net",

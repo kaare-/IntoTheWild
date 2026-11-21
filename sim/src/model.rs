@@ -117,6 +117,8 @@ pub enum Material {
     Paddle,
     /// Carved from a bone. With hide strips, it takes a fish from the brook.
     Hook,
+    /// Pitch from the pine on the dry floor south of the trail.
+    Resin,
 }
 
 impl Material {
@@ -165,6 +167,7 @@ impl Material {
             Material::PaleBerry => "pale berry",
             Material::Paddle => "paddle",
             Material::Hook => "fish hook",
+            Material::Resin => "resin",
         }
     }
 
@@ -213,6 +216,7 @@ impl Material {
             Material::PaleBerry => "handful of pale berries",
             Material::Paddle => "wooden paddle",
             Material::Hook => "bone fish hook",
+            Material::Resin => "lump of pine resin",
         }
     }
 
@@ -348,6 +352,7 @@ pub enum ExamineTarget {
     PaleBerries,
     Paddle,
     Hook,
+    Resin,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -760,6 +765,8 @@ pub enum Wake {
     EggReturn(CellId),
     /// The damp bank on this cell grows moss again.
     MossReturn(CellId),
+    /// Pitch lumps lie under the pine on this cell again.
+    ResinReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
     /// A lump of ochre lies on this slope cell again.
@@ -978,6 +985,12 @@ pub struct World {
     /// When a bare bank grows moss again. Look says the bank is bare until then.
     #[serde(default)]
     pub(crate) moss_returns_at: BTreeMap<CellId, u64>,
+    /// The pine on the dry floor. Bare once the last lump of pitch is taken.
+    #[serde(default)]
+    pub(crate) resin_stands: BTreeSet<CellId>,
+    /// When a bare pine has pitch again. Look says the pine has no resin until then.
+    #[serde(default)]
+    pub(crate) resin_returns_at: BTreeMap<CellId, u64>,
     /// Slope cells where a flint nodule lies again after it is taken.
     #[serde(default)]
     pub(crate) flint_beds: BTreeSet<CellId>,
@@ -1142,6 +1155,8 @@ impl World {
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
+            resin_stands: BTreeSet::new(),
+            resin_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
@@ -1248,6 +1263,10 @@ impl World {
         let bank = cell_id(1, 3).unwrap();
         world.add_pile(bank, Material::Moss, 1, 0);
         world.moss_banks.insert(bank);
+        // A pine on the dry floor south of the trail. Two lumps of pitch.
+        let pine = cell_id(2, 4).unwrap();
+        world.add_pile(pine, Material::Resin, 2, 0);
+        world.resin_stands.insert(pine);
         world.normalize();
         world
     }
@@ -1671,6 +1690,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.moss_returns_at.insert(cell, at);
         self.schedule(at, Wake::MossReturn(cell));
+    }
+
+    /// The pine is bare. Pitch returns `resin_ticks` after this step.
+    /// A wake that finds resin already there does not add a second stand.
+    pub(crate) fn arm_resin_stand(&mut self, cell: CellId) {
+        if !self.resin_stands.contains(&cell) || self.resin_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Resin) > 0
+            || !self.ground_ids(cell, Material::Resin).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.resin_ticks);
+        self.resin_returns_at.insert(cell, at);
+        self.schedule(at, Wake::ResinReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -10542,5 +10577,181 @@ mod brook_south {
             "{}",
             world.observe(quiet).unwrap().text
         );
+    }
+}
+
+#[cfg(test)]
+mod pine_resin {
+    use super::{Attempt, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_pine_south_of_the_trail_gives_pitch_and_grows_it_again() {
+        assert!(matches!(
+            crate::parse::parse_attempt("gather resin").unwrap(),
+            Attempt::Gather(Material::Resin)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather pitch").unwrap(),
+            Attempt::Gather(Material::Resin)
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("Lumps of pitch lie here. It is pine resin."),
+            "{here}"
+        );
+        let south = world.observe(seen).unwrap().text;
+        assert!(
+            south.contains("Lumps of pitch lie to the south. It is pine resin."),
+            "{south}"
+        );
+        assert!(south.contains("South: valley floor, pine resin"), "{south}");
+        assert!(!world.observe(quiet).unwrap().text.contains("resin"));
+        assert!(!world.observe(quiet).unwrap().text.contains("pitch"));
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Resin))]);
+        assert_eq!(none.results[0].message, "There is no resin here to gather.");
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "There is no resin here to gather."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no resin here to gather." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no resin here to gather." }));
+        let one = world.step(&[intent("one", near, Attempt::Gather(Material::Resin))]);
+        assert_eq!(one.results[0].message, "You gather a lump of pine resin.");
+        let left = world.observe(near).unwrap();
+        assert!(
+            left.text
+                .contains("A lump of pitch lies here. It is pine resin."),
+            "{}",
+            left.text
+        );
+        assert!(
+            left.text.contains("You have a lump of pine resin."),
+            "{}",
+            left.text
+        );
+        assert!(left
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a lump of pine resin."));
+        assert!(
+            world
+                .observe(seen)
+                .unwrap()
+                .text
+                .contains("A lump of pitch lies to the south. It is pine resin."),
+            "{}",
+            world.observe(seen).unwrap().text
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        let two = world.step(&[intent("two", near, Attempt::Gather(Material::Resin))]);
+        assert_eq!(two.results[0].message, "You gather a lump of pine resin.");
+        let bare = world.observe(near).unwrap();
+        assert!(
+            bare.text.contains("The pine here has no resin."),
+            "{}",
+            bare.text
+        );
+        assert!(
+            bare.text.contains("You have two lumps of pine resin."),
+            "{}",
+            bare.text
+        );
+        assert!(!bare.text.contains("pitch lie"), "{}", bare.text);
+        assert!(bare
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        let seen_bare = world.observe(seen).unwrap().text;
+        assert!(
+            seen_bare.contains("The pine to the south has no resin."),
+            "{seen_bare}"
+        );
+        assert!(
+            seen_bare.contains("South: valley floor, a bare pine"),
+            "{seen_bare}"
+        );
+        let carried = world.examine(near, super::ExamineTarget::Resin);
+        assert!(
+            carried.contains("Two lumps of pine resin are carried by you"),
+            "{carried}"
+        );
+        assert!(
+            world
+                .examine(seen, super::ExamineTarget::Resin)
+                .contains("Two lumps of pine resin are carried by Near"),
+            "{}",
+            world.examine(seen, super::ExamineTarget::Resin)
+        );
+        assert_eq!(
+            world.examine(quiet, super::ExamineTarget::Resin),
+            "You see no resin from here."
+        );
+        let ticks = world.tuning.resin_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The pine here has no resin."));
+        world.step(&[]);
+        let grown = "Pine resin lies under the pine again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text
+                .contains("Lumps of pitch lie here. It is pine resin."),
+            "{}",
+            back.text
+        );
+        assert!(back.events.iter().any(|event| event.text == grown));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == grown));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown && !event.text.contains("pitch")));
+        assert!(!world.observe(quiet).unwrap().text.contains("resin"));
     }
 }

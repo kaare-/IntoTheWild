@@ -1458,6 +1458,7 @@ impl World {
                             | Material::Mat
                             | Material::Paddle
                             | Material::Hook
+                            | Material::Resin
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(if *material == Material::BitterBerry {
@@ -1959,6 +1960,9 @@ impl World {
                     }
                     if material == Material::Moss {
                         self.arm_moss_bank(cell);
+                    }
+                    if material == Material::Resin {
+                        self.arm_resin_stand(cell);
                     }
                     if material == Material::Flint {
                         self.arm_flint_bed(cell);

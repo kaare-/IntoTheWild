@@ -72,6 +72,10 @@ pub struct Tuning {
     /// Look says the bank is bare until then.
     #[serde(default = "default_moss_ticks")]
     pub moss_ticks: u64,
+    /// Ticks after the last lump of pine resin is gathered before pitch lies there again.
+    /// Look says the pine has no resin until then.
+    #[serde(default = "default_resin_ticks")]
+    pub resin_ticks: u64,
     /// Ticks after the flint nodule on the slope is gathered before another lies there.
     /// Look says the slope has no flint until then. Knapping the carried nodule
     /// leaves the same wait.
@@ -268,6 +272,9 @@ fn default_egg_ticks() -> u64 {
 fn default_moss_ticks() -> u64 {
     24
 }
+fn default_resin_ticks() -> u64 {
+    24
+}
 fn default_flint_ticks() -> u64 {
     24
 }
@@ -418,6 +425,8 @@ struct RawTime {
     egg_ticks: u64,
     #[serde(default = "default_moss_ticks")]
     moss_ticks: u64,
+    #[serde(default = "default_resin_ticks")]
+    resin_ticks: u64,
     #[serde(default = "default_flint_ticks")]
     flint_ticks: u64,
     #[serde(default = "default_ochre_ticks")]
@@ -536,6 +545,7 @@ impl Tuning {
             || raw.time.honey_ticks == 0
             || raw.time.egg_ticks == 0
             || raw.time.moss_ticks == 0
+            || raw.time.resin_ticks == 0
             || raw.time.flint_ticks == 0
             || raw.time.ochre_ticks == 0
             || raw.time.clay_bank_ticks == 0
@@ -606,6 +616,7 @@ impl Tuning {
             honey_ticks: raw.time.honey_ticks,
             egg_ticks: raw.time.egg_ticks,
             moss_ticks: raw.time.moss_ticks,
+            resin_ticks: raw.time.resin_ticks,
             flint_ticks: raw.time.flint_ticks,
             ochre_ticks: raw.time.ochre_ticks,
             clay_bank_ticks: raw.time.clay_bank_ticks,
@@ -724,6 +735,7 @@ impl Tuning {
             Material::PaleBerry => self.berry_rain,
             Material::Paddle => 0,
             Material::Hook => 0,
+            Material::Resin => 0,
         }
     }
 }
