@@ -73,7 +73,7 @@ eat berries                  sweet berries, raw
 eat dark berries             the other patch of berries
 eat pale berries             pale berries
 eat meat                     cooked meat, or salted meat, or smoked meat; raw meat is not food
-gather salt                  a salt crust from the slope. The slope is bare, then the crust forms again.
+gather salt                  a salt crust from the slope, or from the dry margin of the still. The ground is bare, then the crust forms again.
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.

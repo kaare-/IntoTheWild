@@ -124,8 +124,13 @@ impl World {
             return;
         }
         self.add_pile(cell, Material::Salt, 1, 0);
+        let text = if self.salt_pans.contains(&cell) {
+            "A salt crust forms on the still margin."
+        } else {
+            "A salt crust forms on the slope."
+        };
         self.emit(
-            "A salt crust forms on the slope.",
+            text,
             Scope::Cell(cell),
             vec![],
             vec![cell],

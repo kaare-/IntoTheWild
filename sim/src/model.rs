@@ -1099,6 +1099,9 @@ pub struct World {
     /// Slope cells where a salt crust forms again after it is taken.
     #[serde(default)]
     pub(crate) salt_licks: BTreeSet<CellId>,
+    /// The dry margin of the still, where evaporated water leaves a salt crust.
+    #[serde(default)]
+    pub(crate) salt_pans: BTreeSet<CellId>,
     /// When the bare lick forms another crust. Look says the slope is bare until then.
     #[serde(default)]
     pub(crate) salt_returns_at: BTreeMap<CellId, u64>,
@@ -1322,6 +1325,7 @@ impl World {
             wolf_cell: None,
             wolf_until: 0,
             salt_licks: BTreeSet::new(),
+            salt_pans: BTreeSet::new(),
             salt_returns_at: BTreeMap::new(),
             honey_nests: BTreeSet::new(),
             honey_returns_at: BTreeMap::new(),
@@ -1437,6 +1441,9 @@ impl World {
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
         world.salt_licks.insert(cell_id(0, 0).unwrap());
+        let pan = cell_id(2, 0).unwrap();
+        world.add_pile(pan, Material::Salt, 1, 0);
+        world.salt_pans.insert(pan);
         let tree = cell_id(6, 0).unwrap();
         world.add_pile(tree, Material::Honey, 1, 0);
         world.honey_nests.insert(tree);
@@ -1842,7 +1849,9 @@ impl World {
     /// The lick is empty. Another crust forms `salt_ticks` after this step.
     /// A wake that finds salt already there does not add a second crust.
     pub(crate) fn arm_salt_lick(&mut self, cell: CellId) {
-        if !self.salt_licks.contains(&cell) || self.salt_returns_at.contains_key(&cell) {
+        if (!self.salt_licks.contains(&cell) && !self.salt_pans.contains(&cell))
+            || self.salt_returns_at.contains_key(&cell)
+        {
             return;
         }
         if self.pile_count(cell, Material::Salt) > 0
@@ -3697,7 +3706,11 @@ mod salt_meat {
             ground.contains("A portion of salted meat lies here. It can be eaten cold."),
             "{ground}"
         );
-        assert_eq!(world.material_tally(Material::Salt), 0);
+        assert_eq!(
+            world.pile_count(super::cell_id(2, 0).unwrap(), Material::Salt),
+            1
+        );
+        assert_eq!(world.material_tally(Material::Salt), 1);
         assert!(world.item(meat).unwrap().salted);
         let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Meat))]);
         assert!(
@@ -3723,10 +3736,15 @@ mod salt_meat {
             .events
             .iter()
             .all(|event| !event.text.contains("not food")));
-        let _ = (raw, ExamineTarget::Salt);
-        assert!(world
-            .examine(near, ExamineTarget::Salt)
-            .contains("You see no salt from here."));
+        let _ = raw;
+        let still_salt = world.examine(near, ExamineTarget::Salt);
+        assert!(
+            still_salt.contains(
+                "A salt crust lies on the dry margin of the still to the east, in the open."
+            ),
+            "{still_salt}"
+        );
+        assert!(!still_salt.contains("carried by you"), "{still_salt}");
     }
 }
 
@@ -4548,7 +4566,7 @@ mod smoke_meat {
 
 #[cfg(test)]
 mod salt_lick {
-    use super::{Attempt, Intent, Material, World};
+    use super::{Attempt, Intent, Material, Role, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
         Intent {
@@ -4632,7 +4650,139 @@ mod salt_lick {
             .unwrap()
             .text
             .contains("The slope is bare."));
-        assert_eq!(world.material_tally(Material::Salt), 2);
+        assert_eq!(
+            world.pile_count(super::cell_id(2, 0).unwrap(), Material::Salt),
+            1
+        );
+        assert_eq!(world.material_tally(Material::Salt), 3);
+    }
+
+    #[test]
+    fn the_still_margin_holds_a_salt_crust_that_can_be_gathered() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no salt here to gather."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no salt here to gather." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no salt here to gather." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no salt here to gather." }));
+
+        let _ = world.step(&[intent("west", near, Attempt::Move(super::Dir::West))]);
+        let _ = world.step(&[intent("west2", near, Attempt::Move(super::Dir::West))]);
+        assert_eq!(super::cell_xy(world.actor(near).unwrap().cell), (2, 0));
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A salt crust lies on the dry margin of the still."),
+            "{here}"
+        );
+        assert!(!here.contains("The still margin is dry."), "{here}");
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("A salt crust lies on the dry margin of the still to the west."),
+            "{from_seen}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("still margin"));
+
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(gathered.results[0].message, "You gather a salt crust.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You gather a salt crust." && event.text != "Near gathers a salt crust."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a salt crust." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("salt") }));
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The still margin is dry."), "{bare}");
+        assert!(
+            !bare.contains("A salt crust lies on the dry margin"),
+            "{bare}"
+        );
+        assert!(bare.contains("a salt crust"), "{bare}");
+        let held = world.examine(near, super::ExamineTarget::Salt);
+        assert!(held.contains("It can salt raw meat."), "{held}");
+
+        world.mint_item(
+            Material::Meat,
+            0,
+            world.actor(near).unwrap().cell,
+            None,
+            Role::Loose,
+        );
+        let salted = world.step(&[intent("salt", near, Attempt::SaltMeat)]);
+        assert_eq!(
+            salted.results[0].message,
+            "You salt a portion of raw meat. It will keep, and it can be eaten cold."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("You salt") && !event.text.contains("Near salts")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near salts a portion of raw meat. It will keep, and it can be eaten cold."
+        }));
+
+        let back_at = *world.salt_returns_at.values().next().unwrap();
+        assert_eq!(world.tuning.salt_ticks, 24);
+        assert!(back_at > world.time);
+        while world.time < back_at {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The still margin is dry."));
+        world.step(&[]);
+        let formed = "A salt crust forms on the still margin.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text
+                .contains("A salt crust lies on the dry margin of the still."),
+            "{}",
+            back.text
+        );
+        assert!(back.events.iter().any(|event| event.text == formed));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == formed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != formed));
     }
 }
 

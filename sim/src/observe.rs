@@ -1079,7 +1079,15 @@ impl World {
         if self.pile_count(actor.cell, Material::Salt) > 0
             || !self.ground_ids(actor.cell, Material::Salt).is_empty()
         {
-            parts.push("A salt crust lies here.".into());
+            if self.salt_pans.contains(&actor.cell) {
+                parts.push("A salt crust lies on the dry margin of the still.".into());
+            } else {
+                parts.push("A salt crust lies here.".into());
+            }
+        } else if self.salt_pans.contains(&actor.cell)
+            && self.salt_returns_at.contains_key(&actor.cell)
+        {
+            parts.push("The still margin is dry.".into());
         } else if self.salt_lick_bare(actor.cell) {
             parts.push("The slope is bare.".into());
         }
@@ -2235,7 +2243,15 @@ impl World {
             if self.pile_count(cell, Material::Salt) > 0
                 || !self.ground_ids(cell, Material::Salt).is_empty()
             {
-                lines.push(format!("A salt crust lies on the {region} to the {way}."));
+                if self.salt_pans.contains(&cell) {
+                    lines.push(format!(
+                        "A salt crust lies on the dry margin of the still to the {way}."
+                    ));
+                } else {
+                    lines.push(format!("A salt crust lies on the {region} to the {way}."));
+                }
+            } else if self.salt_pans.contains(&cell) && self.salt_returns_at.contains_key(&cell) {
+                lines.push(format!("The still margin to the {way} is dry."));
             } else if self.salt_lick_bare(cell) {
                 lines.push(format!("The slope to the {way} is bare."));
             }
@@ -2256,10 +2272,21 @@ impl World {
             {
                 continue;
             }
-            lines.push(format!(
-                "A salt crust lies {}. It can salt raw meat.",
+            let place = if self.salt_pans.contains(&cell) && cell == origin {
+                format!(
+                    "on the dry margin of the still, {}",
+                    self.cover_phrase(cell)
+                )
+            } else if self.salt_pans.contains(&cell) {
+                format!(
+                    "on the dry margin of the still to the {}, {}",
+                    self.relative(origin, cell),
+                    self.cover_phrase(cell)
+                )
+            } else {
                 self.place_phrase(origin, cell)
-            ));
+            };
+            lines.push(format!("A salt crust lies {place}. It can salt raw meat."));
         }
         for actor in self.actors.values() {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
@@ -11019,6 +11046,7 @@ impl World {
             "honeycomb",
             "the eggs",
             "handful of moss",
+            "salt crust",
             "lump of pine resin",
             "bundle of willow cordage",
             "fishing net",
