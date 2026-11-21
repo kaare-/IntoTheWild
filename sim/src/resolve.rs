@@ -794,7 +794,7 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.snares.contains_key(&actor.cell) {
                     Err("A snare is already set here.".into())
-                } else if !self.has_cord(actor.id) {
+                } else if !self.has_snare_line(actor.id) {
                     Err("You have no hide strips to set a snare.".into())
                 } else {
                     Ok(true)
@@ -5909,7 +5909,7 @@ impl World {
                 );
                 continue;
             }
-            if !self.take_one_cord(actor.id, actor.cell) {
+            let Some(willow) = self.take_snare_line(actor.id, actor.cell) else {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -5918,12 +5918,19 @@ impl World {
                     results,
                 );
                 continue;
-            }
+            };
             let ready = self.time.saturating_add(self.tuning.snare_ticks);
             self.snares.insert(actor.cell, ready);
+            if willow {
+                self.snare_willow.insert(actor.cell);
+            }
             self.schedule(ready, crate::model::Wake::Snare(actor.cell));
             let name = self.name_of(actor.id);
-            let rest = "a snare of hide strips.";
+            let rest = if willow {
+                "a snare of willow cordage."
+            } else {
+                "a snare of hide strips."
+            };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "set", rest),
                 Scope::Cell(actor.cell),
@@ -6012,6 +6019,38 @@ impl World {
         let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
         !self.loose_ids(actor, Material::Cord).is_empty()
             || !self.ground_ids(cell, Material::Cord).is_empty()
+    }
+
+    /// Hide strips if any are here, otherwise a bundle of willow cordage.
+    pub(crate) fn has_snare_line(&self, actor: crate::model::ActorId) -> bool {
+        self.has_cord(actor) || self.has_willow_cord(actor)
+    }
+
+    fn has_willow_cord(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Willow).is_empty()
+            || !self.ground_ids(cell, Material::Willow).is_empty()
+    }
+
+    /// `Some(false)` spends hide strips. `Some(true)` spends willow cordage.
+    /// Hide strips win when both are held, in the arms or on the ground.
+    fn take_snare_line(
+        &mut self,
+        actor: crate::model::ActorId,
+        cell: crate::model::CellId,
+    ) -> Option<bool> {
+        if self.take_one_cord(actor, cell) {
+            return Some(false);
+        }
+        if let Some(id) = self.loose_ids(actor, Material::Willow).first().copied() {
+            self.items.remove(&id);
+            return Some(true);
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Willow).first().copied() {
+            self.items.remove(&id);
+            return Some(true);
+        }
+        None
     }
 
     fn take_one_cord(&mut self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {

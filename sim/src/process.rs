@@ -591,9 +591,15 @@ impl World {
             return;
         }
         self.snares.remove(&cell);
+        let willow = self.snare_willow.remove(&cell);
         let meat = self.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        let caught = if willow {
+            "The willow snare catches a hare."
+        } else {
+            "The snare catches a hare."
+        };
         self.emit(
-            "The snare catches a hare.",
+            caught,
             Scope::Cell(cell),
             vec![],
             vec![cell],

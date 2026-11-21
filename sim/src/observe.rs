@@ -1221,7 +1221,11 @@ impl World {
             parts.push("A wooden paddle lies here.".into());
         }
         if self.snares.contains_key(&actor.cell) {
-            parts.push("A hide snare is set here.".into());
+            if self.snare_willow.contains(&actor.cell) {
+                parts.push("A willow snare is set here.".into());
+            } else {
+                parts.push("A hide snare is set here.".into());
+            }
         }
         parts.extend(self.hide_here_lines(&self.ground_ids(actor.cell, Material::Hide)));
         for id in self.ground_ids(actor.cell, Material::Spear) {
@@ -2916,7 +2920,12 @@ impl World {
                 let region = self.cell(cell).region.word();
                 format!("on the {region} to the {}", self.relative(origin, cell))
             };
-            lines.push(format!("A hide snare is set {place}."));
+            let kind = if self.snare_willow.contains(&cell) {
+                "willow"
+            } else {
+                "hide"
+            };
+            lines.push(format!("A {kind} snare is set {place}."));
         }
         if lines.is_empty() {
             None
@@ -2932,10 +2941,16 @@ impl World {
             if !self.snares.contains_key(&cell) {
                 continue;
             }
-            lines.push(format!(
-                "A hide snare is set {}. It is made of hide strips.",
-                self.place_phrase(origin, cell)
-            ));
+            let place = self.place_phrase(origin, cell);
+            if self.snare_willow.contains(&cell) {
+                lines.push(format!(
+                    "A willow snare is set {place}. It is made of willow cordage."
+                ));
+            } else {
+                lines.push(format!(
+                    "A hide snare is set {place}. It is made of hide strips."
+                ));
+            }
         }
         if lines.is_empty() {
             "You see no snare from here.".into()
@@ -8568,7 +8583,7 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} sets "))?;
-        if rest != "a snare of hide strips." {
+        if rest != "a snare of hide strips." && rest != "a snare of willow cordage." {
             return None;
         }
         Some(crate::model::spoken_act(None, "set", rest))
@@ -10633,7 +10648,7 @@ impl World {
         {
             actions.push("gather bone".into());
         }
-        if !self.snares.contains_key(&actor.cell) && self.has_cord(actor_id) {
+        if !self.snares.contains_key(&actor.cell) && self.has_snare_line(actor_id) {
             actions.push("set snare".into());
         }
         if self.water_here(actor.cell)

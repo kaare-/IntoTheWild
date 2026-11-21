@@ -940,6 +940,9 @@ pub struct World {
     /// A hide snare set on a cell, springing at this sim time. The strips are spent.
     #[serde(default)]
     pub(crate) snares: BTreeMap<CellId, u64>,
+    /// Snares in `snares` that were set with willow cordage rather than hide strips.
+    #[serde(default)]
+    pub(crate) snare_willow: BTreeSet<CellId>,
     /// Brook cells where a fishing net is set. It stays until someone gathers it.
     #[serde(default)]
     pub(crate) set_nets: BTreeSet<CellId>,
@@ -1158,6 +1161,7 @@ impl World {
             lean_tos: BTreeSet::new(),
             thatched: BTreeSet::new(),
             snares: BTreeMap::new(),
+            snare_willow: BTreeSet::new(),
             set_nets: BTreeSet::new(),
             net_catches_at: BTreeMap::new(),
             charred_logs: BTreeSet::new(),
@@ -11360,5 +11364,110 @@ mod willow {
         );
         assert!(world.loose_ids(other, Material::Cord).is_empty());
         assert_eq!(world.loose_ids(other, Material::Willow).len(), 1);
+    }
+
+    #[test]
+    fn a_willow_bundle_sets_a_snare_and_hide_strips_are_spent_first() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let floor = super::cell_id(6, 2).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        world.mint_item(Material::Willow, 0, floor, Some(near), Role::Loose);
+        world.mint_item(Material::Cord, 0, floor, Some(near), Role::Loose);
+        let prefer = world.step(&[intent("prefer", near, Attempt::SetSnare)]);
+        assert_eq!(prefer.results[0].message, "You set a snare of hide strips.");
+        assert!(world.loose_ids(near, Material::Cord).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Willow).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A hide snare is set here."));
+        for _ in 0..world.tuning.snare_ticks {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The snare catches a hare." }));
+        assert!(!world.snares.contains_key(&floor));
+
+        world.mint_item(Material::Willow, 0, floor, Some(near), Role::Loose);
+        let set = world.step(&[intent("set", near, Attempt::SetSnare)]);
+        assert_eq!(set.results[0].message, "You set a snare of willow cordage.");
+        assert_eq!(world.loose_ids(near, Material::Willow).len(), 1);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You set a snare of willow cordage."
+                && !event.text.contains("sets a snare")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sets a snare of willow cordage." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("snare") }));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A willow snare is set here."), "{here}");
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("A willow snare is set on the valley floor to the north."),
+            "{from_seen}"
+        );
+        let examined = world.examine(near, super::ExamineTarget::Snare);
+        assert!(
+            examined.contains("A willow snare is set here")
+                && examined.contains("It is made of willow cordage."),
+            "{examined}"
+        );
+        let none = world.step(&[intent("none", quiet, Attempt::SetSnare)]);
+        assert_eq!(
+            none.results[0].message,
+            "You have no hide strips to set a snare."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You have no hide strips to set a snare." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You have no hide strips to set a snare." }));
+        for _ in 0..world.tuning.snare_ticks {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The willow snare catches a hare." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The willow snare catches a hare." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hare") }));
+        let after = world.observe(near).unwrap().text;
+        assert!(after.contains("raw meat lie"), "{after}");
+        assert!(!after.contains("willow snare"), "{after}");
     }
 }
