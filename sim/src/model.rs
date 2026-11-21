@@ -12350,28 +12350,62 @@ mod beaver {
             .all(|event| !event.text.contains("beaver")));
         let here = beside.observe(hunter).unwrap().text;
         assert!(here.contains("A beaver carcass lies here."), "{here}");
-        let cut = beside.step(&[intent("cut", hunter, Attempt::Butcher)]);
+        let bare = beside.step(&[intent("empty", ears, Attempt::Butcher)]);
         assert_eq!(
-            cut.results[0].message,
-            "The beaver carcass is not cut up yet."
+            bare.results[0].message,
+            "You need a flint spear or an iron knife."
         );
+        assert!(beside
+            .observe(ears)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You need a flint spear or an iron knife." }));
         assert!(beside
             .observe(hunter)
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "The beaver carcass is not cut up yet." }));
+            .all(|event| { event.text != "You need a flint spear or an iron knife." }));
+        let cut = beside.step(&[intent("cut", hunter, Attempt::Butcher)]);
+        let yours =
+            "You butcher the beaver carcass into a portion of raw meat, a beaver hide, and a bone.";
+        let witnessed =
+            "Near butchers the beaver carcass into a portion of raw meat, a beaver hide, and a bone.";
+        assert_eq!(cut.results[0].message, yours);
+        assert!(cut.results[0].success);
+        assert!(beside
+            .observe(hunter)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
         assert!(beside
             .observe(eyes)
             .unwrap()
             .events
             .iter()
-            .all(|event| { !event.text.contains("not cut up") }));
-        assert!(beside
-            .observe(hunter)
-            .unwrap()
-            .text
-            .contains("A beaver carcass lies here."));
+            .any(|event| event.text == witnessed));
+        assert!(beside.observe(ears).unwrap().events.iter().all(|event| {
+            !event.text.contains("butcher") && !event.text.contains("beaver hide")
+        }));
+        let left = beside.observe(hunter).unwrap().text;
+        assert!(left.contains("A portion of raw meat lies here."), "{left}");
+        assert!(left.contains("A beaver hide lies here."), "{left}");
+        assert!(left.contains("A bone lies here."), "{left}");
+        assert!(!left.contains("A beaver carcass"), "{left}");
+        assert!(!left.contains("A deer hide"), "{left}");
+        let taken = beside.step(&[intent(
+            "hide",
+            hunter,
+            Attempt::Gather(super::Material::Hide),
+        )]);
+        assert_eq!(taken.results[0].message, "You gather a beaver hide.");
+        let wear = beside.step(&[intent("wear", hunter, Attempt::Wear)]);
+        assert_eq!(wear.results[0].message, "The beaver hide is not sewn yet.");
+        let arms = beside.observe(hunter).unwrap().text;
+        assert!(arms.contains("a beaver hide"), "{arms}");
+        assert!(!arms.contains("cloak"), "{arms}");
 
         let mut shot = quiet_valley(4);
         let archer = shot.spawn_at("Near", "n", 2, 3).unwrap();
@@ -12419,6 +12453,52 @@ mod beaver {
         let bank = shot.spawn_at("Bank", "b", 0, 4).unwrap();
         let from_bank = shot.observe(bank).unwrap().text;
         assert!(from_bank.contains("a beaver carcass"), "{from_bank}");
+    }
+
+    #[test]
+    fn an_iron_knife_butchers_the_beaver() {
+        let mut world = quiet_valley(1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.beaver = None;
+        let carcass = world.mint_item(super::Material::Carcass, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&carcass).unwrap().beaver = true;
+        world.mint_item(
+            super::Material::Knife,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let cut = world.step(&[intent("cut", near, Attempt::Butcher)]);
+        let yours = "You butcher the beaver carcass with the iron knife into a portion of raw meat, a beaver hide, and a bone.";
+        let witnessed = "Near butchers the beaver carcass with the iron knife into a portion of raw meat, a beaver hide, and a bone.";
+        assert_eq!(cut.results[0].message, yours);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("beaver") }));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A beaver hide lies here."), "{here}");
+        assert!(here.contains("A portion of raw meat lies here."), "{here}");
+        assert!(here.contains("A bone lies here."), "{here}");
+        assert_eq!(world.loose_ids(near, super::Material::Knife).len(), 1);
     }
 }
 

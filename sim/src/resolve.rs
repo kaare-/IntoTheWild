@@ -673,6 +673,8 @@ impl World {
                     Err(self
                         .hide_missing(actor.id, "You are not carrying a deer hide.")
                         .into())
+                } else if self.beaver_hide_only(actor.id) {
+                    Err("The beaver hide is not sewn yet.".into())
                 } else {
                     Ok(true)
                 }
@@ -985,12 +987,6 @@ impl World {
                     Err("You need a flint spear or an iron knife.".into())
                 } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
                     Err("There is no carcass here to butcher.".into())
-                } else if self
-                    .ground_ids(actor.cell, Material::Carcass)
-                    .iter()
-                    .all(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
-                {
-                    Err("The beaver carcass is not cut up yet.".into())
                 } else {
                     Ok(true)
                 }
@@ -1331,6 +1327,8 @@ impl World {
                     Err(self
                         .hide_missing(actor.id, "You are not carrying a deer hide.")
                         .into())
+                } else if self.beaver_hide_only(actor.id) {
+                    Err("The beaver hide is not sewn yet.".into())
                 } else if self
                     .loose_ids(actor.id, Material::Hide)
                     .iter()
@@ -1375,6 +1373,8 @@ impl World {
                     Err(self
                         .hide_missing(actor.id, "You are not carrying a deer hide.")
                         .into())
+                } else if self.beaver_hide_only(actor.id) {
+                    Err("The beaver hide is not sewn yet.".into())
                 } else if self
                     .loose_ids(actor.id, Material::Hide)
                     .iter()
@@ -2175,6 +2175,10 @@ impl World {
                 {
                     "hare hide"
                 } else if material == Material::Hide
+                    && first_hide.as_ref().is_some_and(|hide| hide.beaver)
+                {
+                    "beaver hide"
+                } else if material == Material::Hide
                     && first_hide.as_ref().is_some_and(|hide| hide.otter)
                 {
                     "otter hide"
@@ -2247,6 +2251,10 @@ impl World {
                         format!("an otter hide{from}.")
                     } else if noun == "fox hide" {
                         format!("a fox hide{from}.")
+                    } else if noun == "hare hide" {
+                        format!("a hare hide{from}.")
+                    } else if noun == "beaver hide" {
+                        format!("a beaver hide{from}.")
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -6575,15 +6583,17 @@ impl World {
             let Some(id) = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
-                .find(|id| self.item(*id).is_some_and(|hide| !hide.worn))
+                .find(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| !hide.worn && !hide.beaver)
+                })
             else {
-                self.finish(
-                    intent.command_id,
-                    intent.actor_id,
-                    false,
-                    "You are not carrying a deer hide.",
-                    results,
-                );
+                let message = if self.beaver_hide_only(intent.actor_id) {
+                    "The beaver hide is not sewn yet."
+                } else {
+                    "You are not carrying a deer hide."
+                };
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
@@ -6722,6 +6732,15 @@ impl World {
         self.has_flint_spear(actor) || !self.loose_ids(actor, Material::Knife).is_empty()
     }
 
+    /// Every hide in the arms is a beaver hide. Sewing it is a later slice.
+    fn beaver_hide_only(&self, actor: crate::model::ActorId) -> bool {
+        let hides = self.loose_ids(actor, Material::Hide);
+        !hides.is_empty()
+            && hides
+                .iter()
+                .all(|id| self.item(*id).is_some_and(|hide| hide.beaver))
+    }
+
     fn apply_butchers(&mut self, butchers: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in butchers {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -6760,22 +6779,7 @@ impl World {
                     !carcass.otter && !carcass.fox && !carcass.hare && !carcass.beaver
                 })
             });
-            if beaver.is_some()
-                && other.is_none()
-                && fox.is_none()
-                && otter.is_none()
-                && hare.is_none()
-            {
-                self.finish(
-                    intent.command_id,
-                    actor.id,
-                    false,
-                    "The beaver carcass is not cut up yet.",
-                    results,
-                );
-                continue;
-            }
-            let Some(carcass) = other.or(fox).or(otter).or(hare) else {
+            let Some(carcass) = other.or(fox).or(otter).or(hare).or(beaver) else {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -6788,19 +6792,21 @@ impl World {
             let otter = self.item(carcass).is_some_and(|carcass| carcass.otter);
             let fox = self.item(carcass).is_some_and(|carcass| carcass.fox);
             let hare = self.item(carcass).is_some_and(|carcass| carcass.hare);
+            let beaver = self.item(carcass).is_some_and(|carcass| carcass.beaver);
             let wolf = self.item(carcass).is_some_and(|carcass| carcass.wolf);
             self.items.remove(&carcass);
             let mut ids = Vec::new();
-            let portions = if otter || fox || hare { 1 } else { 3 };
+            let portions = if otter || fox || hare || beaver { 1 } else { 3 };
             for _ in 0..portions {
                 ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
             }
             let hide = self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose);
             if let Some(item) = self.items.get_mut(&hide) {
-                item.wolf = wolf && !otter && !fox && !hare;
+                item.wolf = wolf && !otter && !fox && !hare && !beaver;
                 item.otter = otter;
                 item.fox = fox;
                 item.hare = hare;
+                item.beaver = beaver;
             }
             ids.push(hide);
             ids.push(self.mint_item(Material::Bone, 0, actor.cell, None, Role::Loose));
@@ -6817,6 +6823,10 @@ impl World {
                 "the hare carcass with the iron knife into a portion of raw meat, a hare hide, and a bone."
             } else if hare {
                 "the hare carcass into a portion of raw meat, a hare hide, and a bone."
+            } else if beaver && with_knife {
+                "the beaver carcass with the iron knife into a portion of raw meat, a beaver hide, and a bone."
+            } else if beaver {
+                "the beaver carcass into a portion of raw meat, a beaver hide, and a bone."
             } else {
                 match (wolf, with_knife) {
                     (true, true) => {
@@ -8360,7 +8370,7 @@ impl World {
     fn whole_hide_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
         let whole = |id: &crate::model::ItemId| {
             self.item(*id)
-                .is_some_and(|hide| !hide.pierced && !hide.sewn && !hide.worn)
+                .is_some_and(|hide| !hide.pierced && !hide.sewn && !hide.worn && !hide.beaver)
         };
         if let Some(id) = self
             .loose_ids(actor, Material::Hide)
@@ -9260,7 +9270,20 @@ impl World {
             let hide = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
-                .find(|id| self.item(*id).is_some_and(|hide| !hide.pierced));
+                .find(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| !hide.pierced && !hide.beaver)
+                });
+            if hide.is_none() && self.beaver_hide_only(intent.actor_id) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The beaver hide is not sewn yet.",
+                    results,
+                );
+                continue;
+            }
             let (Some(_awl), Some(hide)) = (awl, hide) else {
                 let message = self.hide_line(
                     intent.actor_id,
@@ -9326,7 +9349,20 @@ impl World {
             let hide = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
-                .find(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+                .find(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| hide.pierced && !hide.beaver)
+                });
+            if hide.is_none() && self.beaver_hide_only(intent.actor_id) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The beaver hide is not sewn yet.",
+                    results,
+                );
+                continue;
+            }
             let Some(hide) = hide else {
                 let message = self.hide_line(
                     intent.actor_id,

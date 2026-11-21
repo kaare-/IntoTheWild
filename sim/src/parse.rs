@@ -43,7 +43,7 @@ hunt                         a hardened spear; the deer on your cell or the next
 fish                         a fire-hardened flint spear, or a fishing net, or a bone fish hook with hide strips, in the brook or beside it, and from a dugout on the brook. The spear and the net are not used up. The hide strips are spent as the line. That stretch is quiet for a short wait
 fish with hook               the same cast with a bone fish hook and hide strips in the arms. The hook stays. The strips are spent.
 spear fish                   the same cast with the spear
-butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
+butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up. An otter, a fox, a hare, or a beaver is one portion of raw meat, that animal's hide, and a bone.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
 carve awl                    a bone, with a flint flake or an iron knife, into a bone awl. The tool is not used up. The awl can pierce hide.
