@@ -8737,6 +8737,7 @@ impl World {
                     && self.point_for_these_eyes(viewer, event).is_none()
                     && self.hold_point_for_these_eyes(viewer, event).is_none()
                     && self.wooden_deer_for_these_eyes(viewer, event).is_none()
+                    && self.copper_set_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
@@ -10263,8 +10264,31 @@ impl World {
         Some(format!("You rest{rest}"))
     }
 
-    /// A lump of copper ore set by the fire, filled for the person who set it.
-    /// Anyone else keeps the stored sentence. The bead, when it comes, is the same words for both.
+    /// A lump of copper ore set by the fire. The person who set it already
+    /// has the reply, so the event list does not repeat the shorter line.
+    /// Someone who can see it keeps the stored sentence.
+    fn copper_set_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text
+            != format!("{name} sets a lump of copper ore by the fire. It leaves their arms.")
+        {
+            return None;
+        }
+        Some(
+            "You set a lump of copper ore by the fire. It leaves your arms. It is not metal yet."
+                .into(),
+        )
+    }
+
+    /// A lump of iron ore set by the fire, filled for the person who set it.
+    /// Anyone else keeps the stored sentence. Copper is the reply only.
     fn smelt_set_for_these_eyes(
         &self,
         viewer: ActorId,
@@ -10275,16 +10299,10 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} sets "))?;
-        if rest != "a lump of copper ore by the fire. It leaves their arms."
-            && rest != "a lump of iron ore by the fire. It leaves their arms."
-        {
+        if rest != "a lump of iron ore by the fire. It leaves their arms." {
             return None;
         }
-        if rest.starts_with("a lump of iron") {
-            Some("You set a lump of iron ore by the fire. It leaves your arms.".into())
-        } else {
-            Some("You set a lump of copper ore by the fire. It leaves your arms.".into())
-        }
+        Some("You set a lump of iron ore by the fire. It leaves your arms.".into())
     }
 
     /// A dry branch fed into a fire, filled for the person who fed it.

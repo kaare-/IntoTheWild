@@ -10820,12 +10820,9 @@ fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
         "You set a lump of copper ore by the fire. It leaves your arms. It is not metal yet."
     );
     let after_set = world.sim_time();
-    assert!(world
-        .observe(near)
-        .unwrap()
-        .events
-        .iter()
-        .any(|event| event.text == yours));
+    assert!(world.observe(near).unwrap().events.iter().all(|event| {
+        event.text != yours && event.text != witnessed && !event.text.contains("not metal yet")
+    }));
     assert!(world
         .observe(far)
         .unwrap()
