@@ -5273,6 +5273,7 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
         self.beaver = None;
+        self.arm_beaver_return();
         let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
         if let Some(carcass) = self.items.get_mut(&id) {
             carcass.beaver = true;
@@ -5318,6 +5319,7 @@ impl World {
             self.items.remove(&flake);
         }
         self.beaver = None;
+        self.arm_beaver_return();
         let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
         if let Some(carcass) = self.items.get_mut(&id) {
             carcass.beaver = true;

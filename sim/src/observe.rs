@@ -10525,6 +10525,35 @@ impl World {
         Some(format!("You hear a splash to the {way}."))
     }
 
+    /// A beaver returning to the brook, heard from out of sight. Someone who
+    /// can see that water keeps the sentence. Past hearing, nothing is delivered.
+    fn beaver_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
+        let cell = self.beaver_return_cell(event)?;
+        if chebyshev(origin, cell) <= self.tuning.sight {
+            return None;
+        }
+        if chebyshev(origin, cell) > self.tuning.hearing {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear a beaver to the {way}."))
+    }
+
+    fn hears_a_beaver(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.beaver_return_cell(event) else {
+            return false;
+        };
+        chebyshev(origin, cell) > self.tuning.sight
+            && chebyshev(origin, cell) <= self.tuning.hearing
+    }
+
+    fn beaver_return_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if event.text != "A beaver is in the brook again." {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     /// A fox slipping away, or one returning to the floor, heard from out of
     /// sight. Someone who can see the cell keeps that sentence. Past hearing,
     /// nothing is delivered.
@@ -11569,6 +11598,9 @@ impl World {
         if let Some(line) = self.hare_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.beaver_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.walk_for_these_eyes(viewer, event) {
             return line;
         }
@@ -11818,6 +11850,7 @@ impl World {
                     || self.hears_a_splash(origin, event)
                     || self.hears_a_fox(origin, event)
                     || self.hears_a_hare(origin, event)
+                    || self.hears_a_beaver(origin, event)
                     || self.hears_footsteps(origin, event)
             }
         }

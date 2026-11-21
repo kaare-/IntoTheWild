@@ -849,6 +849,8 @@ pub enum Wake {
     FoxReturn,
     /// A hare is on the dry floor again after the last one was snared.
     HareReturn,
+    /// A beaver is in the brook again after the last one was brought down.
+    BeaverReturn,
     /// The otter swims one step along the brook when nobody is beside it.
     Otter,
     /// A beaver returns to its brook cell when that water is clear.
@@ -1209,6 +1211,9 @@ pub struct World {
     /// When a hare is on the dry floor again. Look names no live hare until then.
     #[serde(default)]
     pub(crate) hare_returns_at: Option<u64>,
+    /// When a beaver is in the brook again. Look names no live beaver until then.
+    #[serde(default)]
+    pub(crate) beaver_returns_at: Option<u64>,
     /// The next deer's id. The first deer is 1.
     #[serde(default = "default_next_deer_id")]
     pub(crate) next_deer_id: u32,
@@ -1353,6 +1358,7 @@ impl World {
             otter_returns_at: None,
             fox_returns_at: None,
             hare_returns_at: None,
+            beaver_returns_at: None,
             next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
             schedule: Vec::new(),
@@ -2212,6 +2218,18 @@ impl World {
         let at = self.time.saturating_add(self.tuning.deer_ticks);
         self.hare_returns_at = Some(at);
         self.schedule(at, Wake::HareReturn);
+    }
+
+    /// The beaver is down. Another is in the south brook after the same wait
+    /// as the otter. A carcass still lying where it fell does not move that
+    /// tick. A wake that finds a beaver already there does not add a second one.
+    pub(crate) fn arm_beaver_return(&mut self) {
+        if self.beaver.is_some() || self.beaver_returns_at.is_some() {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.deer_ticks);
+        self.beaver_returns_at = Some(at);
+        self.schedule(at, Wake::BeaverReturn);
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -12664,6 +12682,157 @@ mod beaver {
             world.actor(near).unwrap().wetness * 2,
             world.actor(bare).unwrap().wetness
         );
+    }
+
+    #[test]
+    fn a_beaver_is_in_the_brook_again_after_the_same_wait_as_the_otter() {
+        let mut world = quiet_valley(1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let stood = world.actor(near).unwrap().cell;
+        flint_spear(&mut world, near, stood);
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the beaver down with the flint spear."
+        );
+        assert!(world.beaver_cell().is_none());
+        assert_eq!(world.beaver_returns_at, Some(world.tuning.deer_ticks));
+        assert_eq!(world.tuning.deer_ticks, 24);
+        let ticks = world.tuning.deer_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world.beaver_cell().is_none());
+        let waiting = world.observe(near).unwrap();
+        assert!(
+            !waiting.text.contains("A beaver is in the brook"),
+            "{}",
+            waiting.text
+        );
+        assert!(
+            waiting.text.contains("A beaver carcass lies here."),
+            "{}",
+            waiting.text
+        );
+        assert!(waiting
+            .events
+            .iter()
+            .all(|event| event.text != "A beaver is in the brook again."));
+        world.step(&[]);
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        assert!(world.beaver_returns_at.is_none());
+        let arrived = "A beaver is in the brook again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("A beaver is in the brook here."),
+            "{}",
+            back.text
+        );
+        assert!(
+            back.text.contains("A beaver carcass lies here."),
+            "{}",
+            back.text
+        );
+        assert_eq!(
+            back.events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("A beaver is in the brook to the west."),
+            "{}",
+            seen_back.text
+        );
+        assert_eq!(
+            seen_back
+                .events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+        assert!(seen_back
+            .events
+            .iter()
+            .all(|event| !event.text.starts_with("You hear a beaver")));
+        let heard_back = world.observe(heard).unwrap();
+        assert!(!heard_back.text.contains("A beaver is in the brook"));
+        assert_eq!(
+            heard_back
+                .events
+                .iter()
+                .filter(|event| event.text == "You hear a beaver to the west.")
+                .count(),
+            1
+        );
+        assert!(heard_back.events.iter().all(|event| event.text != arrived));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("beaver")));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("A beaver is in the brook"));
+        world.step(&[]);
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+
+        let off = world.step(&[intent("off", near, Attempt::Move(Dir::South))]);
+        assert!(off.results[0].success, "{off:?}");
+        assert!(!off.results[0].message.contains("beaver"));
+        let onto = world.step(&[intent("onto", near, Attempt::Move(Dir::North))]);
+        assert!(onto.results[0].success, "{onto:?}");
+        assert!(!onto.results[0].message.contains("beaver"));
+        assert_eq!(world.beaver_cell(), Some((0, 4)));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "A beaver splashes away to the south." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("beaver") && !event.text.contains("splash") }));
+
+        let mut brought = false;
+        for n in 0..12 {
+            if world.beaver_cell().is_none() {
+                brought = true;
+                break;
+            }
+            let (bx, by) = world.beaver_cell().unwrap();
+            let (nx, ny) = super::cell_xy(world.actor(near).unwrap().cell);
+            if (bx - nx).abs().max((by - ny).abs()) > 1 {
+                world.step(&[]);
+                continue;
+            }
+            let again = world.step(&[intent(&format!("again-{n}"), near, Attempt::Hunt)]);
+            if again.results[0]
+                .message
+                .starts_with("You bring the beaver down")
+            {
+                brought = true;
+                assert!(world.beaver_cell().is_none());
+                let second = world.beaver_returns_at.unwrap();
+                assert_eq!(second, world.time + world.tuning.deer_ticks - 1);
+                break;
+            }
+        }
+        assert!(brought, "the returned beaver can be hunted");
     }
 }
 

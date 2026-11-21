@@ -62,6 +62,7 @@ impl World {
                 Wake::OtterReturn => self.return_otter(),
                 Wake::FoxReturn => self.return_fox(),
                 Wake::HareReturn => self.return_hare(),
+                Wake::BeaverReturn => self.return_beaver(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
                 Wake::Charcoal(cell) => self.char_bank(cell),
@@ -679,6 +680,37 @@ impl World {
         self.hare = Some(crate::model::Hare { cell });
         self.emit(
             "A hare is on the valley floor again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The same wait as the hare. A beaver is in the south brook again, on its
+    /// home cell, and it does not swim on this tick. Someone who can see that
+    /// water reads the sentence. Someone out of sight but within hearing hears
+    /// a beaver that way. Past hearing, nothing.
+    fn return_beaver(&mut self) {
+        let Some(at) = self.beaver_returns_at else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.beaver_returns_at = None;
+        if self.beaver.is_some() {
+            return;
+        }
+        let (x, y) = BEAVER_HOME;
+        let Some(cell) = cell_id(x, y) else {
+            return;
+        };
+        self.beaver = Some(crate::model::Beaver { cell, held: true });
+        self.emit(
+            "A beaver is in the brook again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
