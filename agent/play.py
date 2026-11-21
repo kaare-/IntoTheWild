@@ -30,11 +30,19 @@ def main() -> None:
     print(f"joined as {joined['name']} token={joined['token']}")
     memory = Memory()
     last_time = None
+    pending = None
     for _ in range(args.turns):
         if args.manual_advance:
             client.advance(1)
         else:
             wait_for_next_window(client, last_time)
+        if pending:
+            try:
+                done = client.intent("", pending)
+                print(f"  {done['message']}")
+            except ValleyError as err:
+                print(f"  refused: {err}")
+            pending = None
         obs = client.observe()
         last_time = obs["sim_time"]
         command = choose(obs, memory)
@@ -46,6 +54,8 @@ def main() -> None:
                 print(f"  refused: {err}")
                 continue
             print(f"  {ack['message']}")
+            if not ack.get("immediate"):
+                pending = ack["command_id"]
     final = client.observe()
     print(final["text"])
     print(final["map"])

@@ -1,7 +1,7 @@
 //! HTTP and WebSocket edge. Handlers do not touch the valley; they send
 //! messages to the host task and wait for an acknowledgement.
 
-use crate::host::{Ack, Clock, Host, Joined};
+use crate::host::{Ack, AdvanceReport, Clock, Host, Joined, SpokenReply};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -37,7 +37,11 @@ pub enum Msg {
     },
     Advance {
         steps: u32,
-        reply: oneshot::Sender<Result<u64, String>>,
+        reply: oneshot::Sender<Result<AdvanceReport, String>>,
+    },
+    Spoken {
+        token: String,
+        reply: oneshot::Sender<Vec<SpokenReply>>,
     },
     Shutdown,
 }
@@ -147,6 +151,9 @@ async fn handle(host: &mut Host, msg: Msg, ticks: &broadcast::Sender<u64>) -> bo
                 let _ = ticks.send(host.world().sim_time());
             }
             let _ = reply.send(result);
+        }
+        Msg::Spoken { token, reply } => {
+            let _ = reply.send(host.replies_for(&token));
         }
         Msg::Shutdown => return true,
     }
@@ -289,7 +296,7 @@ async fn advance(State(app): State<App>, Json(body): Json<AdvanceBody>) -> impl 
         return err(StatusCode::SERVICE_UNAVAILABLE, "The valley is shut.");
     }
     match rx.await {
-        Ok(Ok(sim_time)) => (StatusCode::OK, Json(json!({ "sim_time": sim_time }))).into_response(),
+        Ok(Ok(report)) => (StatusCode::OK, Json(report)).into_response(),
         Ok(Err(message)) => err(StatusCode::BAD_REQUEST, &message),
         Err(_) => err(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -361,7 +368,17 @@ async fn observe_json(app: &App, token: &str) -> Option<String> {
         .await
         .ok()?;
     let value = rx.await.ok()?.ok()?;
-    serde_json::to_string(&json!({ "type": "observe", "observation": value })).ok()
+    let (spoken, spoken_rx) = oneshot::channel();
+    app.tx
+        .send(Msg::Spoken {
+            token: token.to_string(),
+            reply: spoken,
+        })
+        .await
+        .ok()?;
+    let replies = spoken_rx.await.unwrap_or_default();
+    serde_json::to_string(&json!({ "type": "observe", "observation": value, "replies": replies }))
+        .ok()
 }
 
 fn bearer(headers: &HeaderMap) -> Option<String> {

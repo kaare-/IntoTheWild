@@ -111,6 +111,7 @@ async function resumeWith(value: string) {
 
 let socket: WebSocket | null = null;
 let seenEvents = new Set<number>();
+let seenReplies = new Set<string>();
 let localNotes: string[] = [];
 let commandHistory: string[] = [];
 let historyAt = 0;
@@ -295,10 +296,31 @@ function connectSocket() {
     try {
       const payload = JSON.parse(String(event.data));
       if (payload.observation) paint(payload.observation as Observation);
+      showReplies(payload.replies);
     } catch {
       /* ignore non-json */
     }
   });
+}
+
+function showReplies(replies: unknown) {
+  if (!Array.isArray(replies)) return;
+  const ack = app.querySelector("#ack");
+  const log = app.querySelector("#log");
+  for (const reply of replies) {
+    if (!reply || typeof reply !== "object") continue;
+    const row = reply as { command_id?: string; message?: string };
+    if (!row.command_id || !row.message || seenReplies.has(row.command_id)) continue;
+    seenReplies.add(row.command_id);
+    localNotes.push(row.message);
+    if (log) {
+      const item = document.createElement("li");
+      item.textContent = row.message;
+      log.appendChild(item);
+      log.scrollTop = log.scrollHeight;
+    }
+    if (ack) ack.textContent = row.message;
+  }
 }
 
 async function pollClock() {

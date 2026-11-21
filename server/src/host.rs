@@ -43,12 +43,28 @@ struct Pending {
     late: bool,
 }
 
+/// A successful gather or light. The person who did it reads this as the
+/// command reply when the window closes. It is not copied into their events.
+#[derive(Clone, Debug, Serialize)]
+pub struct SpokenReply {
+    pub command_id: String,
+    pub actor_id: u32,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AdvanceReport {
+    pub sim_time: u64,
+    pub replies: Vec<SpokenReply>,
+}
+
 pub struct Host {
     world: World,
     store: Store,
     queued: Vec<Intent>,
     pending: BTreeMap<String, Pending>,
     settled: BTreeMap<String, Ack>,
+    latest_replies: Vec<SpokenReply>,
     pub manual: bool,
     window_secs: f64,
     deadline: Instant,
@@ -74,6 +90,7 @@ impl Host {
             queued: Vec::new(),
             pending: BTreeMap::new(),
             settled: BTreeMap::new(),
+            latest_replies: Vec::new(),
             manual,
             window_secs,
             deadline: Instant::now() + duration_from_secs(window_secs),
@@ -219,26 +236,49 @@ impl Host {
     }
 
     pub fn seal(&mut self) -> Result<u64, String> {
-        let intents = std::mem::take(&mut self.queued);
-        self.pending.clear();
-        self.world.step(&intents);
-        self.store.commit(&self.world, &Record::Step { intents })?;
+        let replies = self.seal_once()?;
+        self.latest_replies = replies;
         self.deadline = Instant::now() + duration_from_secs(self.window_secs);
         Ok(self.world.sim_time())
     }
 
-    pub fn advance(&mut self, steps: u32) -> Result<u64, String> {
+    pub fn advance(&mut self, steps: u32) -> Result<AdvanceReport, String> {
         if !self.manual {
             return Err(
                 "The valley advances on its own clock. Omit --manual to play that way.".into(),
             );
         }
         let steps = steps.clamp(1, 500);
-        let mut time = self.world.sim_time();
+        let mut replies = Vec::new();
+        let mut sim_time = self.world.sim_time();
         for _ in 0..steps {
-            time = self.seal()?;
+            replies.extend(self.seal_once()?);
+            sim_time = self.world.sim_time();
+            self.deadline = Instant::now() + duration_from_secs(self.window_secs);
         }
-        Ok(time)
+        self.latest_replies = replies.clone();
+        Ok(AdvanceReport { sim_time, replies })
+    }
+
+    /// Replies from the latest seal, for the person this token names.
+    pub fn replies_for(&self, token: &str) -> Vec<SpokenReply> {
+        let Some(actor) = self.world.actor_by_token(token) else {
+            return Vec::new();
+        };
+        self.latest_replies
+            .iter()
+            .filter(|reply| reply.actor_id == actor)
+            .cloned()
+            .collect()
+    }
+
+    fn seal_once(&mut self) -> Result<Vec<SpokenReply>, String> {
+        let intents = std::mem::take(&mut self.queued);
+        self.pending.clear();
+        let report = self.world.step(&intents);
+        let replies = spoken_replies(&intents, &report.results);
+        self.store.commit(&self.world, &Record::Step { intents })?;
+        Ok(replies)
     }
 
     pub fn snapshot(&mut self) -> Result<(), String> {
@@ -283,6 +323,30 @@ impl Host {
     }
 }
 
+fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenReply> {
+    let mut attempts = BTreeMap::new();
+    for intent in intents {
+        attempts.insert(intent.command_id.as_str(), &intent.attempt);
+    }
+    results
+        .iter()
+        .filter_map(|result| {
+            if !result.success {
+                return None;
+            }
+            let attempt = attempts.get(result.command_id.as_str())?;
+            match attempt {
+                Attempt::Gather(_) | Attempt::Light => Some(SpokenReply {
+                    command_id: result.command_id.clone(),
+                    actor_id: result.actor_id,
+                    message: result.message.clone(),
+                }),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 fn bad(command_id: &str, message: &str) -> Ack {
     Ack {
         ok: false,
@@ -306,5 +370,67 @@ fn duration_from_secs(secs: f64) -> std::time::Duration {
         std::time::Duration::from_millis(1)
     } else {
         std::time::Duration::from_secs_f64(secs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Host;
+
+    #[test]
+    fn a_queued_gather_comes_back_as_the_reply_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-gather-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        for (id, line) in [("m1", "n"), ("m2", "n"), ("m3", "n")] {
+            let queued = host.submit(&near.token, id, line, None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{}",
+                queued.message
+            );
+            host.advance(1).unwrap();
+        }
+        for (id, line) in [("s1", "w"), ("s2", "n"), ("s3", "n")] {
+            host.submit(&seen.token, id, line, None);
+            host.advance(1).unwrap();
+        }
+        let queued = host.submit(&near.token, "flint", "gather flint", None);
+        assert!(
+            queued.message.starts_with("Queued for the window"),
+            "{}",
+            queued.message
+        );
+        assert!(!queued.immediate);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1);
+        assert_eq!(closed.replies[0].message, "You gather a flint nodule.");
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let again = host.submit(&near.token, "flint", "gather flint", None);
+        assert!(again.duplicate);
+        assert_eq!(again.message, "You gather a flint nodule.");
+        let yours = host.observe(&near.token).unwrap();
+        assert!(yours
+            .events
+            .iter()
+            .all(|event| event.text != "You gather a flint nodule."));
+        let witness = host.observe(&seen.token).unwrap();
+        assert!(witness
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a flint nodule." }));
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
     }
 }
