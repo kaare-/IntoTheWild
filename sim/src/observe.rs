@@ -2,8 +2,8 @@
 //! facts. Moisture numbers, tokens, and the cause log stay here.
 
 use crate::model::{
-    cell_id, cell_xy, chebyshev, ActorId, CellId, Dir, ExamineTarget, Material, Role, Scope, World,
-    DEER_ROUTE,
+    cell_id, cell_xy, chebyshev, ActorId, CellId, Dir, ExamineTarget, ItemId, Material, Role,
+    Scope, World, DEER_ROUTE,
 };
 use serde::Serialize;
 
@@ -3639,30 +3639,35 @@ impl World {
             parts.push("The sun is hot on your skin.".into());
         }
         if self.wearing_hide(actor_id) {
-            let sewn = self
-                .loose_ids(actor_id, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.worn && hide.sewn));
-            let pierced = self
-                .loose_ids(actor_id, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.worn && hide.pierced));
-            let wolf = self
-                .loose_ids(actor_id, Material::Hide)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.worn && hide.wolf));
-            if sewn {
+            let worn = |pred: fn(&crate::model::Item) -> bool| {
+                self.loose_ids(actor_id, Material::Hide)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.worn && pred(hide)))
+            };
+            let sewn = worn(|hide| hide.sewn && !hide.otter);
+            let pierced = worn(|hide| hide.pierced && !hide.sewn && !hide.otter);
+            let wolf = worn(|hide| hide.wolf);
+            let otter_sewn = worn(|hide| hide.otter && hide.sewn);
+            let otter_pierced = worn(|hide| hide.otter && hide.pierced && !hide.sewn);
+            let otter_plain = worn(|hide| hide.otter && !hide.sewn && !hide.pierced);
+            if otter_sewn {
+                parts.push("The sewn otter-hide cloak is on you.".into());
+            } else if sewn {
                 parts.push(if wolf {
                     "The sewn wolf-hide cloak is on you.".into()
                 } else {
                     "The sewn deer-hide cloak is on you.".into()
                 });
+            } else if otter_pierced {
+                parts.push("The pierced otter hide is on you. It is ready to sew.".into());
             } else if pierced {
                 parts.push(if wolf {
                     "The pierced wolf hide is on you. It is ready to sew.".into()
                 } else {
                     "The pierced deer hide is on you. It is ready to sew.".into()
                 });
+            } else if otter_plain {
+                parts.push("The otter hide is on you.".into());
             } else {
                 parts.push(if wolf {
                     "The wolf hide is on you.".into()
@@ -6170,12 +6175,7 @@ impl World {
                 lines.push(format!("A {kind} hide lies here."));
             }
         }
-        if ids
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
-        {
-            lines.push("An otter hide lies here.".into());
-        }
+        lines.extend(self.otter_hide_here(&ids));
         lines
     }
 
@@ -6195,13 +6195,125 @@ impl World {
                 bits.push(format!("a {kind} hide"));
             }
         }
-        if ids
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
-        {
-            bits.push("an otter hide".into());
-        }
+        bits.extend(self.otter_hide_compass(&ids));
         bits
+    }
+
+    fn otter_hide_here(&self, ids: &[ItemId]) -> Vec<String> {
+        let otter: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.otter))
+            .collect();
+        if otter.is_empty() {
+            return Vec::new();
+        }
+        let sewn = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        if sewn {
+            vec!["A sewn otter-hide cloak lies here.".into()]
+        } else if pierced {
+            vec!["A pierced otter hide lies here. It is ready to sew.".into()]
+        } else {
+            vec!["An otter hide lies here.".into()]
+        }
+    }
+
+    fn otter_hide_compass(&self, ids: &[ItemId]) -> Vec<String> {
+        let otter: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.otter))
+            .collect();
+        if otter.is_empty() {
+            return Vec::new();
+        }
+        let sewn = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        if sewn {
+            vec!["a sewn otter-hide cloak".into()]
+        } else if pierced {
+            vec!["a pierced otter hide".into()]
+        } else {
+            vec!["an otter hide".into()]
+        }
+    }
+
+    fn otter_hide_ground_line(&self, ids: &[ItemId], place: &str) -> Option<String> {
+        let otter: Vec<_> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.otter))
+            .collect();
+        if otter.is_empty() {
+            return None;
+        }
+        let sewn = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        if sewn {
+            Some(format!(
+                "A sewn otter-hide cloak lies {place}. It keeps the rain and the brook off."
+            ))
+        } else if pierced {
+            Some(format!(
+                "A pierced otter hide lies {place}. It is ready to sew."
+            ))
+        } else {
+            Some(format!("An otter hide lies {place}."))
+        }
+    }
+
+    fn otter_hide_held_line(&self, hides: &[ItemId], who: &str, cover: &str) -> Option<String> {
+        let otter: Vec<_> = hides
+            .iter()
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.otter))
+            .collect();
+        if otter.is_empty() {
+            return None;
+        }
+        let sewn = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        let worn = otter
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.worn));
+        if sewn && worn {
+            Some(format!(
+                "A sewn otter-hide cloak is on {who}, {cover}. It keeps the rain and the brook off."
+            ))
+        } else if sewn {
+            Some(format!(
+                "A sewn otter-hide cloak is carried by {who}, {cover}. It keeps the rain and the brook off."
+            ))
+        } else if pierced && worn {
+            Some(format!(
+                "A pierced otter hide is on {who}, {cover}. It is ready to sew."
+            ))
+        } else if pierced {
+            Some(format!(
+                "A pierced otter hide is carried by {who}, {cover}. It is ready to sew."
+            ))
+        } else if worn {
+            Some(format!("An otter hide is on {who}, {cover}."))
+        } else {
+            Some(format!("An otter hide is carried by {who}, {cover}."))
+        }
     }
 
     fn examine_hide(&self, viewer: ActorId) -> String {
@@ -6241,11 +6353,8 @@ impl World {
                     lines.push(format!("A deer hide lies {place}."));
                 }
             }
-            if ids
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
-            {
-                lines.push(format!("An otter hide lies {place}."));
+            if let Some(line) = self.otter_hide_ground_line(&ids, &place) {
+                lines.push(line);
             }
         }
         for other in self.visible_actor_ids(viewer) {
@@ -6323,18 +6432,8 @@ impl World {
                     lines.push(format!("A deer hide is carried by {who}, {cover}."));
                 }
             }
-            if hides
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
-            {
-                let worn = hides
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|hide| hide.otter && hide.worn));
-                if worn {
-                    lines.push(format!("An otter hide is on {who}, {cover}."));
-                } else {
-                    lines.push(format!("An otter hide is carried by {who}, {cover}."));
-                }
+            if let Some(line) = self.otter_hide_held_line(&hides, &who, &cover) {
+                lines.push(line);
             }
         }
         if lines.is_empty() {
@@ -8375,6 +8474,7 @@ impl World {
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_butcher_for_these_eyes(viewer, event).is_none()
+                    && self.otter_cloak_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
@@ -9978,6 +10078,44 @@ impl World {
             ))
         } else {
             Some(public.to_string())
+        }
+    }
+
+    /// An otter hide pierced, sewn, worn, or taken off. The person who did it
+    /// already read the sentence as the command result. A refusal stays with them.
+    fn otter_cloak_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let failures = [
+            "The otter hide is not pierced.",
+            "The otter hide is already pierced.",
+            "The otter hide is already a cloak.",
+            "You are not wearing an otter hide.",
+            "You are not carrying an otter hide.",
+            "You need a copper awl and an otter hide.",
+        ];
+        if failures.iter().any(|line| line == &event.text) {
+            return Some(event.text.clone());
+        }
+        let name = self.name_of(viewer);
+        let lines = [
+            format!("{name} pierces the otter hide with the copper awl. It is ready to sew."),
+            format!("{name} pierces the otter hide with the bone awl. It is ready to sew."),
+            format!("{name} sews the pierced otter hide into a cloak."),
+            format!("{name} wears the sewn otter-hide cloak."),
+            format!("{name} wears the otter hide."),
+            format!("{name} removes the sewn otter-hide cloak."),
+            format!("{name} removes the otter hide."),
+        ];
+        if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
         }
     }
 

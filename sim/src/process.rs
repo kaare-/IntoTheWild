@@ -1540,6 +1540,13 @@ impl World {
             } else if wearing {
                 cold_gain /= 2;
             }
+            // An otter cloak is a hide, so the line above already halved the
+            // sky. Rain and the brook cut that wet cold once more.
+            if self.wearing_otter_cloak(id)
+                && (self.raining || self.cell(cell).region == Region::Brook)
+            {
+                cold_gain /= 2;
+            }
             // Rain and night hide the sun. Open day sky is what burns.
             let mut sun_gain = if raining || self.night() {
                 0
@@ -1965,6 +1972,9 @@ impl World {
                     .is_some_and(|canoe| self.canoe_pitched(*canoe));
                 if self.cell(cell).region == Region::Brook && !pitched {
                     gain += self.tuning.brook_rain;
+                }
+                if self.wearing_otter_cloak(*id) {
+                    gain /= 2;
                 }
                 (*id, gain)
             })

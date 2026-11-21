@@ -2702,6 +2702,31 @@ impl World {
         })
     }
 
+    pub(crate) fn carrying_otter_hide(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
+    }
+
+    /// A sewn otter hide worn on the body. Rain and the brook wet it less
+    /// than a deer cloak, and that wet cold is cut again.
+    pub(crate) fn wearing_otter_cloak(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| hide.worn && hide.sewn && hide.otter)
+        })
+    }
+
+    /// A step into the brook. An otter cloak takes half of that wet.
+    pub(crate) fn wade_wet(&self, actor: ActorId) -> u32 {
+        let wet = self.tuning.wade;
+        if self.wearing_otter_cloak(actor) {
+            wet / 2
+        } else {
+            wet
+        }
+    }
+
     /// The wind a body feels. A wolf cloak, or a reed mat underfoot, takes the
     /// open wind down to a little. Carrying the mat does not.
     pub(crate) fn wind_on(&self, actor: ActorId) -> &'static str {
@@ -12031,5 +12056,153 @@ mod otter_hunt {
             .events
             .iter()
             .all(|event| !event.text.contains("You gather an otter hide.")));
+    }
+
+    #[test]
+    fn an_otter_hide_sews_into_a_cloak_that_keeps_off_the_wet() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let hide = world.mint_item(Material::Hide, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&hide).unwrap().otter = true;
+        let awl = world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&awl).unwrap().bone = true;
+
+        let early = world.step(&[intent("sew", near, Attempt::Sew)]);
+        assert_eq!(early.results[0].message, "The otter hide is not pierced.");
+        assert!(!early.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The otter hide is not pierced." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter")));
+
+        let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
+        assert_eq!(
+            pierced.results[0].message,
+            "You pierce the otter hide with the bone awl. It is ready to sew."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("pierce") && !event.text.contains("otter hide")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near pierces the otter hide with the bone awl. It is ready to sew."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter") && !event.text.contains("pierce")));
+
+        let sewn = world.step(&[intent("sew-cloak", near, Attempt::Sew)]);
+        assert_eq!(
+            sewn.results[0].message,
+            "You sew the pierced otter hide into a cloak."
+        );
+        let again = world.step(&[intent("again", near, Attempt::Sew)]);
+        assert_eq!(
+            again.results[0].message,
+            "The otter hide is already a cloak."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The otter hide is already a cloak."));
+        let wore = world.step(&[intent("wear", near, Attempt::Wear)]);
+        assert_eq!(
+            wore.results[0].message,
+            "You wear the sewn otter-hide cloak."
+        );
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("The sewn otter-hide cloak is on you."),
+            "{look}"
+        );
+        assert!(look.contains("a sewn otter-hide cloak"), "{look}");
+        assert!(!look.contains("deer-hide"), "{look}");
+        let held = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            held.contains(
+                "A sewn otter-hide cloak is on you, in the open. It keeps the rain and the brook off."
+            ),
+            "{held}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sews the pierced otter hide into a cloak." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near wears the sewn otter-hide cloak." }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("sewn otter-hide") && !event.text.contains("pierced otter")
+        }));
+
+        let deer = world.spawn_at("Deer", "d", 1, 3).unwrap();
+        let bank = world.actor(deer).unwrap().cell;
+        let deer_hide = world.mint_item(Material::Hide, 0, bank, Some(deer), Role::Loose);
+        world.items.get_mut(&deer_hide).unwrap().sewn = true;
+        world.items.get_mut(&deer_hide).unwrap().worn = true;
+        world.actors.get_mut(&near).unwrap().cell = bank;
+        world.actors.get_mut(&near).unwrap().wetness = 0;
+        world.actors.get_mut(&near).unwrap().cold = 0;
+        world.actors.get_mut(&deer).unwrap().wetness = 0;
+        world.actors.get_mut(&deer).unwrap().cold = 0;
+        let waded = world.step(&[
+            intent("wade-otter", near, Attempt::Move(super::Dir::North)),
+            intent("wade-deer", deer, Attempt::Move(super::Dir::North)),
+        ]);
+        assert!(
+            waded.results.iter().all(|result| result.success),
+            "{waded:?}"
+        );
+        let otter_wet = world.actor(near).unwrap().wetness;
+        let deer_wet = world.actor(deer).unwrap().wetness;
+        assert_eq!(deer_wet, world.tuning.wade);
+        assert_eq!(otter_wet, world.tuning.wade / 2);
+        assert!(otter_wet < deer_wet);
+
+        world.actors.get_mut(&near).unwrap().cell = cell;
+        world.actors.get_mut(&deer).unwrap().cell = cell;
+        world.actors.get_mut(&near).unwrap().wetness = 0;
+        world.actors.get_mut(&deer).unwrap().wetness = 0;
+        world.actors.get_mut(&near).unwrap().cold = 0;
+        world.actors.get_mut(&deer).unwrap().cold = 0;
+        world.time = world.tuning.rain_starts_at;
+        world.step(&[]);
+        world.step(&[]);
+        let otter_cold = world.actor(near).unwrap().cold;
+        let deer_cold = world.actor(deer).unwrap().cold;
+        let otter_rain = world.actor(near).unwrap().wetness;
+        let deer_rain = world.actor(deer).unwrap().wetness;
+        assert!(
+            otter_cold < deer_cold,
+            "otter {otter_cold} deer {deer_cold}"
+        );
+        assert!(
+            otter_rain < deer_rain,
+            "otter {otter_rain} deer {deer_rain}"
+        );
+        assert_eq!(otter_rain * 2, deer_rain);
     }
 }

@@ -3,8 +3,8 @@
 //! break by a recorded hash.
 
 use crate::model::{
-    cell_id, cell_xy, contest_hash, Attempt, CommandResult, Dir, Draw, Intent, Material, Region,
-    Role, Scope, Wake, WorkKind, World,
+    cell_id, cell_xy, contest_hash, ActorId, Attempt, CommandResult, Dir, Draw, Intent, Material,
+    Region, Role, Scope, Wake, WorkKind, World,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -594,7 +594,9 @@ impl World {
                 {
                     Err("The hide is already on you.".into())
                 } else if self.loose_ids(actor.id, Material::Hide).is_empty() {
-                    Err("You are not carrying a deer hide.".into())
+                    Err(self
+                        .hide_missing(actor.id, "You are not carrying a deer hide.")
+                        .into())
                 } else {
                     Ok(true)
                 }
@@ -611,12 +613,14 @@ impl World {
                     .iter()
                     .any(|id| self.item(*id).is_some_and(|hide| hide.worn))
                 {
-                    Err(if self.carrying_wolf_hide(actor.id) {
-                        "You are not wearing a wolf hide."
-                    } else {
-                        "You are not wearing a deer hide."
-                    }
-                    .into())
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "You are not wearing a deer hide.",
+                            "You are not wearing a wolf hide.",
+                            "You are not wearing an otter hide.",
+                        )
+                        .into())
                 } else {
                     Ok(true)
                 }
@@ -1110,18 +1114,22 @@ impl World {
                 } else if self.loose_ids(actor.id, Material::Awl).is_empty() {
                     Err("You are not carrying a copper awl.".into())
                 } else if self.loose_ids(actor.id, Material::Hide).is_empty() {
-                    Err("You are not carrying a deer hide.".into())
+                    Err(self
+                        .hide_missing(actor.id, "You are not carrying a deer hide.")
+                        .into())
                 } else if self
                     .loose_ids(actor.id, Material::Hide)
                     .iter()
                     .all(|id| self.item(*id).is_some_and(|hide| hide.pierced))
                 {
-                    Err(if self.carrying_wolf_hide(actor.id) {
-                        "The wolf hide is already pierced."
-                    } else {
-                        "The deer hide is already pierced."
-                    }
-                    .into())
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "The deer hide is already pierced.",
+                            "The wolf hide is already pierced.",
+                            "The otter hide is already pierced.",
+                        )
+                        .into())
                 } else {
                     Ok(true)
                 }
@@ -1149,7 +1157,9 @@ impl World {
                 } else if gripping {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Hide).is_empty() {
-                    Err("You are not carrying a deer hide.".into())
+                    Err(self
+                        .hide_missing(actor.id, "You are not carrying a deer hide.")
+                        .into())
                 } else if self
                     .loose_ids(actor.id, Material::Hide)
                     .iter()
@@ -1161,19 +1171,23 @@ impl World {
                     .iter()
                     .any(|id| self.item(*id).is_some_and(|hide| hide.sewn))
                 {
-                    Err(if self.carrying_wolf_hide(actor.id) {
-                        "The wolf hide is already a cloak."
-                    } else {
-                        "The deer hide is already a cloak."
-                    }
-                    .into())
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "The deer hide is already a cloak.",
+                            "The wolf hide is already a cloak.",
+                            "The otter hide is already a cloak.",
+                        )
+                        .into())
                 } else {
-                    Err(if self.carrying_wolf_hide(actor.id) {
-                        "The wolf hide is not pierced."
-                    } else {
-                        "The deer hide is not pierced."
-                    }
-                    .into())
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "The deer hide is not pierced.",
+                            "The wolf hide is not pierced.",
+                            "The otter hide is not pierced.",
+                        )
+                        .into())
                 }
             }
             Attempt::Eat(material) => {
@@ -2287,8 +2301,9 @@ impl World {
             let brook = self.cell(dest).region == Region::Brook;
             let ice = self.still_frozen(dest);
             if brook {
+                let wet = self.wade_wet(intent.actor_id);
                 if let Some(actor) = self.actors.get_mut(&intent.actor_id) {
-                    actor.wetness = (actor.wetness + self.tuning.wade).min(1000);
+                    actor.wetness = (actor.wetness + wet).min(1000);
                 }
             }
             let entered_overhang = self.cell(dest).rock && !self.cell(origin).rock;
@@ -2682,8 +2697,9 @@ impl World {
             let from_bank = actor.cell != dest;
             self.move_actor(actor.id, dest);
             if from_bank && self.cell(dest).region == Region::Brook {
+                let wet = self.wade_wet(actor.id);
                 if let Some(person) = self.actors.get_mut(&actor.id) {
-                    person.wetness = (person.wetness + self.tuning.wade).min(1000);
+                    person.wetness = (person.wetness + wet).min(1000);
                 }
             }
             self.aboard.insert(actor.id, id);
@@ -5199,7 +5215,8 @@ impl World {
             };
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
             let wolf = self.item(id).is_some_and(|hide| hide.wolf);
-            let rest = worn_phrase(wolf, sewn);
+            let otter = self.item(id).is_some_and(|hide| hide.otter);
+            let rest = worn_phrase(wolf, otter, sewn);
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = true;
             }
@@ -5245,7 +5262,8 @@ impl World {
             };
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
             let wolf = self.item(id).is_some_and(|hide| hide.wolf);
-            let rest = worn_phrase(wolf, sewn);
+            let otter = self.item(id).is_some_and(|hide| hide.otter);
+            let rest = worn_phrase(wolf, otter, sewn);
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = false;
             }
@@ -7683,20 +7701,24 @@ impl World {
                 .into_iter()
                 .find(|id| self.item(*id).is_some_and(|hide| !hide.pierced));
             let (Some(_awl), Some(hide)) = (awl, hide) else {
-                let message = if self.carrying_wolf_hide(intent.actor_id) {
-                    "You need a copper awl and a wolf hide."
-                } else {
-                    "You need a copper awl and a deer hide."
-                };
+                let message = self.hide_line(
+                    intent.actor_id,
+                    "You need a copper awl and a deer hide.",
+                    "You need a copper awl and a wolf hide.",
+                    "You need a copper awl and an otter hide.",
+                );
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
             let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
-            let rest = match (wolf, bone_awl) {
-                (true, true) => "the wolf hide with the bone awl. It is ready to sew.",
-                (true, false) => "the wolf hide with the copper awl. It is ready to sew.",
-                (false, true) => "the deer hide with the bone awl. It is ready to sew.",
-                (false, false) => "the deer hide with the copper awl. It is ready to sew.",
+            let otter = self.item(hide).is_some_and(|hide| hide.otter);
+            let rest = match (otter, wolf, bone_awl) {
+                (true, _, true) => "the otter hide with the bone awl. It is ready to sew.",
+                (true, _, false) => "the otter hide with the copper awl. It is ready to sew.",
+                (false, true, true) => "the wolf hide with the bone awl. It is ready to sew.",
+                (false, true, false) => "the wolf hide with the copper awl. It is ready to sew.",
+                (false, false, true) => "the deer hide with the bone awl. It is ready to sew.",
+                (false, false, false) => "the deer hide with the copper awl. It is ready to sew.",
             };
             if let Some(item) = self.items.get_mut(&hide) {
                 item.pierced = true;
@@ -7732,16 +7754,20 @@ impl World {
                 .into_iter()
                 .find(|id| self.item(*id).is_some_and(|hide| hide.pierced));
             let Some(hide) = hide else {
-                let message = if self.carrying_wolf_hide(intent.actor_id) {
-                    "The wolf hide is not pierced."
-                } else {
-                    "The deer hide is not pierced."
-                };
+                let message = self.hide_line(
+                    intent.actor_id,
+                    "The deer hide is not pierced.",
+                    "The wolf hide is not pierced.",
+                    "The otter hide is not pierced.",
+                );
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
             let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
-            let rest = if wolf {
+            let otter = self.item(hide).is_some_and(|hide| hide.otter);
+            let rest = if otter {
+                "the pierced otter hide into a cloak."
+            } else if wolf {
                 "the pierced wolf hide into a cloak."
             } else {
                 "the pierced deer hide into a cloak."
@@ -8993,12 +9019,43 @@ fn boil_actor_rest(in_pot: bool) -> &'static str {
     }
 }
 
-fn worn_phrase(wolf: bool, sewn: bool) -> &'static str {
-    match (wolf, sewn) {
-        (true, true) => "the sewn wolf-hide cloak.",
-        (true, false) => "the wolf hide.",
-        (false, true) => "the sewn deer-hide cloak.",
-        (false, false) => "the deer hide.",
+fn worn_phrase(wolf: bool, otter: bool, sewn: bool) -> &'static str {
+    match (otter, wolf, sewn) {
+        (true, _, true) => "the sewn otter-hide cloak.",
+        (true, _, false) => "the otter hide.",
+        (false, true, true) => "the sewn wolf-hide cloak.",
+        (false, true, false) => "the wolf hide.",
+        (false, false, true) => "the sewn deer-hide cloak.",
+        (false, false, false) => "the deer hide.",
+    }
+}
+
+impl World {
+    /// Name the hide the person is holding. An otter hide wins over a wolf
+    /// hide, and a wolf hide over a deer hide.
+    fn hide_line<'a>(
+        &self,
+        actor: ActorId,
+        deer: &'a str,
+        wolf: &'a str,
+        otter: &'a str,
+    ) -> &'a str {
+        if self.carrying_otter_hide(actor) {
+            otter
+        } else if self.carrying_wolf_hide(actor) {
+            wolf
+        } else {
+            deer
+        }
+    }
+
+    fn hide_missing<'a>(&self, actor: ActorId, deer: &'a str) -> &'a str {
+        self.hide_line(
+            actor,
+            deer,
+            "You are not carrying a wolf hide.",
+            "You are not carrying an otter hide.",
+        )
     }
 }
 
