@@ -12162,33 +12162,146 @@ mod hare {
                 .events
                 .iter()
                 .all(|event| { !event.text.contains("hare") && !event.text.contains("snare") }));
-            let spear = world.mint_item(
-                super::Material::Spear,
-                0,
-                floor,
-                Some(near),
-                super::Role::Loose,
-            );
-            let point = world.items.get_mut(&spear).unwrap();
-            point.hardened = true;
-            point.flint_tip = true;
-            let refused = world.step(&[intent("cut", near, Attempt::Butcher)]);
-            assert_eq!(
-                refused.results[0].message,
-                "There is no carcass here to butcher."
-            );
-            assert!(world
-                .observe(near)
-                .unwrap()
-                .text
-                .contains("A hare carcass lies here."));
-            assert!(world
-                .observe(seen)
-                .unwrap()
-                .events
-                .iter()
-                .all(|event| { event.text != "There is no carcass here to butcher." }));
         }
+    }
+
+    #[test]
+    fn a_flint_spear_or_an_iron_knife_butchers_the_hare_carcass() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let bare = world.step(&[intent("none", near, Attempt::Butcher)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You need a flint spear or an iron knife."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You need a flint spear or an iron knife." }));
+        let spear = world.mint_item(
+            super::Material::Spear,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let point = world.items.get_mut(&spear).unwrap();
+        point.hardened = true;
+        point.flint_tip = true;
+        let empty = world.step(&[intent("empty", near, Attempt::Butcher)]);
+        assert_eq!(
+            empty.results[0].message,
+            "There is no carcass here to butcher."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no carcass here to butcher." }));
+        let carcass = world.mint_item(super::Material::Carcass, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&carcass).unwrap().hare = true;
+        let cut = world.step(&[intent("cut", near, Attempt::Butcher)]);
+        let yours =
+            "You butcher the hare carcass into a portion of raw meat, a hare hide, and a bone.";
+        let heard =
+            "Near butchers the hare carcass into a portion of raw meat, a hare hide, and a bone.";
+        assert_eq!(cut.results[0].message, yours);
+        let here = world.observe(near).unwrap();
+        assert!(here
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != heard));
+        assert!(
+            here.text.contains("A portion of raw meat lies here."),
+            "{}",
+            here.text
+        );
+        assert!(
+            here.text.contains("A hare hide lies here."),
+            "{}",
+            here.text
+        );
+        assert!(here.text.contains("A bone lies here."), "{}", here.text);
+        assert!(!here.text.contains("A hare carcass"), "{}", here.text);
+        assert!(!here.text.contains("deer hide"), "{}", here.text);
+        assert_eq!(world.ground_ids(cell, super::Material::Meat).len(), 1);
+        assert!(world
+            .ground_ids(cell, super::Material::Hide)
+            .iter()
+            .any(|id| {
+                world
+                    .item(*id)
+                    .is_some_and(|hide| hide.hare && !hide.fox && !hide.otter && !hide.wolf)
+            }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("butcher") && !event.text.contains("hare") }));
+        let taken = world.step(&[intent("hide", near, Attempt::Gather(super::Material::Hide))]);
+        assert_eq!(taken.results[0].message, "You gather a hare hide.");
+        let arms = world.observe(near).unwrap();
+        assert!(arms.text.contains("a hare hide"), "{}", arms.text);
+        assert!(arms.events.iter().all(|event| {
+            event.text != "You gather a hare hide." && event.text != "Near gathers a hare hide."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a hare hide." }));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let spear = world.mint_item(
+            super::Material::Spear,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.items.get_mut(&spear).unwrap().flint_tip = true;
+        world.mint_item(
+            super::Material::Knife,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let carcass = world.mint_item(super::Material::Carcass, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&carcass).unwrap().hare = true;
+        let both = world.step(&[intent("both", near, Attempt::Butcher)]);
+        assert_eq!(
+            both.results[0].message,
+            "You butcher the hare carcass with the iron knife into a portion of raw meat, a hare hide, and a bone."
+        );
+        assert_eq!(world.loose_ids(near, super::Material::Knife).len(), 1);
+        assert_eq!(world.loose_ids(near, super::Material::Spear).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("butcher") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near butchers the hare carcass with the iron knife into a portion of raw meat, a hare hide, and a bone."
+        }));
     }
 }
 

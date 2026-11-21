@@ -3431,11 +3431,14 @@ impl World {
                 .and_then(|id| self.item(*id));
             let otter = hide.is_some_and(|hide| hide.otter);
             let fox = hide.is_some_and(|hide| hide.fox);
+            let hare = hide.is_some_and(|hide| hide.hare);
             let wolf = hide.is_some_and(|hide| hide.wolf);
             let kind = if otter {
                 "otter"
             } else if fox {
                 "fox"
+            } else if hare {
+                "hare"
             } else if wolf {
                 "wolf"
             } else {
@@ -3737,15 +3740,17 @@ impl World {
                     .iter()
                     .any(|id| self.item(*id).is_some_and(|hide| hide.worn && pred(hide)))
             };
-            let sewn = worn(|hide| hide.sewn && !hide.otter && !hide.fox);
-            let pierced = worn(|hide| hide.pierced && !hide.sewn && !hide.otter && !hide.fox);
-            let wolf = worn(|hide| hide.wolf && !hide.fox);
+            let sewn = worn(|hide| hide.sewn && !hide.otter && !hide.fox && !hide.hare);
+            let pierced =
+                worn(|hide| hide.pierced && !hide.sewn && !hide.otter && !hide.fox && !hide.hare);
+            let wolf = worn(|hide| hide.wolf && !hide.fox && !hide.hare);
             let otter_sewn = worn(|hide| hide.otter && hide.sewn);
             let otter_pierced = worn(|hide| hide.otter && hide.pierced && !hide.sewn);
             let otter_plain = worn(|hide| hide.otter && !hide.sewn && !hide.pierced);
             let fox_sewn = worn(|hide| hide.fox && hide.sewn);
             let fox_pierced = worn(|hide| hide.fox && hide.pierced && !hide.sewn);
             let fox_plain = worn(|hide| hide.fox && !hide.sewn && !hide.pierced);
+            let hare_plain = worn(|hide| hide.hare && !hide.sewn && !hide.pierced);
             if otter_sewn {
                 parts.push("The sewn otter-hide cloak is on you.".into());
             } else if fox_sewn {
@@ -3770,6 +3775,8 @@ impl World {
                 parts.push("The otter hide is on you.".into());
             } else if fox_plain {
                 parts.push("The fox hide is on you.".into());
+            } else if hare_plain {
+                parts.push("The hare hide is on you.".into());
             } else {
                 parts.push(if wolf {
                     "The wolf hide is on you.".into()
@@ -6321,7 +6328,7 @@ impl World {
             .copied()
             .filter(|id| {
                 self.item(*id)
-                    .is_some_and(|hide| hide.wolf == wolf && !hide.otter && !hide.fox)
+                    .is_some_and(|hide| hide.wolf == wolf && !hide.otter && !hide.fox && !hide.hare)
             })
             .collect();
         if mine.is_empty() {
@@ -6356,6 +6363,7 @@ impl World {
         }
         lines.extend(self.otter_hide_here(&ids));
         lines.extend(self.fox_hide_here(&ids));
+        lines.extend(self.hare_hide_here(&ids));
         lines
     }
 
@@ -6450,6 +6458,45 @@ impl World {
         }
     }
 
+    fn hare_hide_ids(&self, ids: &[ItemId]) -> Vec<ItemId> {
+        ids.iter()
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.hare))
+            .collect()
+    }
+
+    fn hare_hide_here(&self, ids: &[ItemId]) -> Vec<String> {
+        if self.hare_hide_ids(ids).is_empty() {
+            Vec::new()
+        } else {
+            vec!["A hare hide lies here.".into()]
+        }
+    }
+
+    fn hare_hide_compass(&self, ids: &[ItemId]) -> Vec<String> {
+        if self.hare_hide_ids(ids).is_empty() {
+            Vec::new()
+        } else {
+            vec!["a hare hide".into()]
+        }
+    }
+
+    fn hare_hide_ground_line(&self, ids: &[ItemId], place: &str) -> Option<String> {
+        if self.hare_hide_ids(ids).is_empty() {
+            None
+        } else {
+            Some(format!("A hare hide lies {place}."))
+        }
+    }
+
+    fn hare_hide_held_line(&self, hides: &[ItemId], who: &str, cover: &str) -> Option<String> {
+        if self.hare_hide_ids(hides).is_empty() {
+            None
+        } else {
+            Some(format!("A hare hide is carried by {who}, {cover}."))
+        }
+    }
+
     fn hide_compass_bits(&self, ids: &[crate::model::ItemId]) -> Vec<String> {
         let mut bits = Vec::new();
         for wolf in [true, false] {
@@ -6468,6 +6515,7 @@ impl World {
         }
         bits.extend(self.otter_hide_compass(&ids));
         bits.extend(self.fox_hide_compass(&ids));
+        bits.extend(self.hare_hide_compass(&ids));
         bits
     }
 
@@ -6631,6 +6679,9 @@ impl World {
             if let Some(line) = self.fox_hide_ground_line(&ids, &place) {
                 lines.push(line);
             }
+            if let Some(line) = self.hare_hide_ground_line(&ids, &place) {
+                lines.push(line);
+            }
         }
         for other in self.visible_actor_ids(viewer) {
             let hides = self.loose_ids(other, Material::Hide);
@@ -6649,8 +6700,9 @@ impl World {
                     .iter()
                     .copied()
                     .filter(|id| {
-                        self.item(*id)
-                            .is_some_and(|hide| hide.wolf == wolf && !hide.otter && !hide.fox)
+                        self.item(*id).is_some_and(|hide| {
+                            hide.wolf == wolf && !hide.otter && !hide.fox && !hide.hare
+                        })
                     })
                     .collect();
                 if mine.is_empty() {
@@ -6711,6 +6763,9 @@ impl World {
                 lines.push(line);
             }
             if let Some(line) = self.fox_hide_held_line(&hides, &who, &cover) {
+                lines.push(line);
+            }
+            if let Some(line) = self.hare_hide_held_line(&hides, &who, &cover) {
                 lines.push(line);
             }
         }
@@ -8789,6 +8844,7 @@ impl World {
                     && self.fox_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_butcher_for_these_eyes(viewer, event).is_none()
                     && self.fox_butcher_for_these_eyes(viewer, event).is_none()
+                    && self.hare_butcher_for_these_eyes(viewer, event).is_none()
                     && self.otter_cloak_for_these_eyes(viewer, event).is_none()
                     && self.fox_cloak_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
@@ -10457,6 +10513,7 @@ impl World {
             "wolf hide",
             "otter hide",
             "fox hide",
+            "hare hide",
             "bone",
             "drink of water",
             "flint nodule",
@@ -10814,6 +10871,31 @@ impl World {
             == format!("{name} butchers the fox carcass with the iron knife into a portion of raw meat, a fox hide, and a bone.")
             || text
                 == format!("{name} butchers the fox carcass into a portion of raw meat, a fox hide, and a bone.")
+        {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// A hare carcass cut up, filled for the person who cut it.
+    /// That person already read the sentence as the command result.
+    fn hare_butcher_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        if text
+            == format!("{name} butchers the hare carcass with the iron knife into a portion of raw meat, a hare hide, and a bone.")
+            || text
+                == format!(
+                    "{name} butchers the hare carcass into a portion of raw meat, a hare hide, and a bone."
+                )
         {
             Some(event.text.clone())
         } else {
@@ -11503,10 +11585,7 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
             || !self.loose_ids(actor_id, Material::Knife).is_empty())
-            && self
-                .ground_ids(actor.cell, Material::Carcass)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|carcass| !carcass.hare))
+            && !self.ground_ids(actor.cell, Material::Carcass).is_empty()
         {
             actions.push("butcher".into());
         }
