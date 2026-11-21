@@ -2408,7 +2408,7 @@ impl World {
                         .unwrap_or(false)
             })
             .collect();
-        if (still.len() as u32) < self.tuning.drag_needed {
+        if (still.len() as u32) < self.hands_on_the_log(item.cell) {
             self.abort_drag(
                 &work,
                 item_id,
@@ -2444,10 +2444,11 @@ impl World {
             self.move_actor(*actor, dest);
         }
         let names = self.names(&still);
+        let verb = if still.len() == 1 { "moves" } else { "move" };
         self.free_actors(&work.actors, work.id);
         self.emit(
             format!(
-                "The log shifts {dir}. {names} move with it, still in contact with it.",
+                "The log shifts {dir}. {names} {verb} with it, still in contact with it.",
                 dir = dir.word()
             ),
             Scope::Cell(dest),
@@ -2694,12 +2695,12 @@ impl World {
                     .copied()
                     .filter(|id| *id != actor_id)
                     .collect();
-                if (remaining.len() as u32) < self.tuning.drag_needed {
-                    let cell = work
-                        .item
-                        .and_then(|id| self.item(id))
-                        .map(|item| item.cell)
-                        .unwrap_or(0);
+                let cell = work
+                    .item
+                    .and_then(|id| self.item(id))
+                    .map(|item| item.cell)
+                    .unwrap_or(0);
+                if (remaining.len() as u32) < self.hands_on_the_log(cell) {
                     self.works.remove(&work_id);
                     self.schedule
                         .retain(|entry| entry.wake != Wake::Work(work_id));

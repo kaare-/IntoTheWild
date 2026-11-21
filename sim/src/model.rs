@@ -2354,6 +2354,15 @@ impl World {
         })
     }
 
+    /// A charred log is light enough for one person. A raw log still needs two.
+    pub(crate) fn hands_on_the_log(&self, cell: CellId) -> u32 {
+        if self.log_charred_at(cell) {
+            1
+        } else {
+            self.tuning.drag_needed
+        }
+    }
+
     /// The dugout on this cell, or the one floating on the next cell.
     /// A beached canoe, one afloat underfoot, and one you are aboard all count.
     pub(crate) fn canoe_to_seal(&self, actor: ActorId) -> Option<ItemId> {
@@ -6384,6 +6393,76 @@ mod dugout {
             actor_id: actor,
             attempt,
         }
+    }
+
+    #[test]
+    fn one_person_drags_a_charred_log_and_a_raw_log_names_that() {
+        let mut raw = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = raw.spawn_at("Near", "n", 3, 2).unwrap();
+        let seen = raw.spawn_at("Seen", "s", 2, 3).unwrap();
+        raw.step(&[intent("grip", near, Attempt::Grab)]);
+        let stay = raw.step(&[intent("pull", near, Attempt::Drag(Dir::East))]);
+        assert_eq!(
+            stay.results[0].message,
+            "The log does not move for you alone. A charred log is light enough."
+        );
+        assert!(raw
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("light enough") }));
+        assert!(raw
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near pulls on the log alone. It does not move." }));
+        assert!(raw
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("light enough")));
+        raw.step(&[]);
+        assert_eq!(raw.log_cell(), Some((3, 2)));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.charred_logs.insert(cell);
+        world.step(&[intent("grip", near, Attempt::Grab)]);
+        assert!(world.log_charred_at(cell));
+        let set = world.step(&[intent("pull", near, Attempt::Drag(Dir::West))]);
+        assert_eq!(
+            set.results[0].message,
+            "You set your weight to drag the log west."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You set your weight to drag the log west." }));
+        world.step(&[]);
+        assert_eq!(world.log_cell(), Some((2, 2)));
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        assert!(world.log_charred_at(world.actor(near).unwrap().cell));
+        let shift = "The log shifts west. Near moves with it, still in contact with it.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == shift));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("shifts")));
     }
 
     #[test]

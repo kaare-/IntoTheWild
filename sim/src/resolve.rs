@@ -3156,7 +3156,11 @@ impl World {
         let Some((dir, people)) = groups.into_iter().next() else {
             return;
         };
-        if (people.len() as u32) < self.tuning.drag_needed {
+        let here = self
+            .actor(people[0].actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        if (people.len() as u32) < self.hands_on_the_log(here) {
             for intent in people {
                 let name = self.name_of(intent.actor_id);
                 let cell = self.actor(intent.actor_id).map(|a| a.cell).unwrap_or(0);
@@ -3173,7 +3177,7 @@ impl World {
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "The log does not move for you alone.",
+                    "The log does not move for you alone. A charred log is light enough.",
                     results,
                 );
             }
