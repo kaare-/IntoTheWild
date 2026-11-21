@@ -338,6 +338,7 @@ pub enum ExamineTarget {
     Fire,
     Water,
     Deer,
+    Hare,
     Tracks,
     Rock,
     Slope,
@@ -6406,12 +6407,9 @@ mod dugout {
             stay.results[0].message,
             "The log does not move for you alone. A charred log is light enough."
         );
-        assert!(raw
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| { !event.text.contains("light enough") }));
+        assert!(raw.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("light enough") && !event.text.contains("pulls on the log alone")
+        }));
         assert!(raw
             .observe(seen)
             .unwrap()
@@ -12166,9 +12164,26 @@ mod hare {
             .iter()
             .all(|event| event.text != held));
         assert_eq!(
-            world.examine(near, super::ExamineTarget::Person("hare".into())),
-            "You cannot see hare from here."
+            world.examine(near, super::ExamineTarget::Hare),
+            "A hare is on the valley floor to the south and west."
         );
+    }
+
+    #[test]
+    fn examine_hare_names_the_animal_underfoot() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let foot = world.spawn_at("Foot", "f", 2, 4).unwrap();
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert_eq!(
+            world.examine(foot, super::ExamineTarget::Hare),
+            "A hare is on the valley floor here."
+        );
+        assert!(world
+            .observe(foot)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
     }
 
     #[test]
@@ -12199,9 +12214,25 @@ mod hare {
         );
         assert!(look.map.contains('r'), "{}", look.map);
         assert_eq!(
-            world.examine(near, super::ExamineTarget::Person("hare".into())),
-            "You cannot see hare from here."
+            world.examine(near, super::ExamineTarget::Hare),
+            "A hare is on the valley floor to the south and west."
         );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
+        assert_eq!(
+            world.examine(heard, super::ExamineTarget::Hare),
+            "You cannot see a hare from here."
+        );
+        assert!(world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
         assert!(!world.observe(heard).unwrap().text.contains("hare"));
         assert!(!world.observe(heard).unwrap().text.contains("Set a snare"));
         assert!(!world.observe(quiet).unwrap().text.contains("hare"));

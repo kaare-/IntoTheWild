@@ -230,6 +230,7 @@ impl World {
             ExamineTarget::Fire => self.examine_fire(actor_id),
             ExamineTarget::Water => self.examine_water(actor_id),
             ExamineTarget::Deer => self.examine_deer(actor_id),
+            ExamineTarget::Hare => self.examine_hare(actor_id),
             ExamineTarget::Tracks => self.examine_tracks(actor_id),
             ExamineTarget::Rock => self.examine_rock(actor_id),
             ExamineTarget::Slope => self.examine_slope(actor_id),
@@ -8147,6 +8148,11 @@ impl World {
         format!("The slope is open ground. It runs {way} from where you stand.")
     }
 
+    fn examine_hare(&self, viewer: ActorId) -> String {
+        self.seen_hare(viewer)
+            .unwrap_or_else(|| "You cannot see a hare from here.".into())
+    }
+
     fn examine_deer(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let Some(deer) = self.deer.as_ref() else {
@@ -8945,6 +8951,7 @@ impl World {
                     && self.wooden_deer_for_these_eyes(viewer, event).is_none()
                     && self.copper_set_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
+                    && self.alone_pull_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
                     && self.haft_for_these_eyes(viewer, event).is_none()
@@ -9723,6 +9730,23 @@ impl World {
 
     /// A canoe refusal the actor already has as the command reply.
     /// It does not sit in their event list. Nobody else is in the audience.
+    /// The solo pull is the reply only. Someone who can see still hears the pull.
+    fn alone_pull_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        if text == format!("{name} pulls on the log alone. It does not move.") {
+            return Some(text.to_string());
+        }
+        None
+    }
+
     fn canoe_refusal_for_these_eyes(
         &self,
         viewer: ActorId,

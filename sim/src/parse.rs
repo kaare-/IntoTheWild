@@ -683,6 +683,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "fire" | "flame" => ExamineTarget::Fire,
         "water" | "brook" => ExamineTarget::Water,
         "deer" | "animal" => ExamineTarget::Deer,
+        "hare" | "a hare" | "the hare" => ExamineTarget::Hare,
         "tracks" | "hoofprints" | "prints" => ExamineTarget::Tracks,
         "log" => ExamineTarget::Log,
         "frame" | "shelter" | "roof" => ExamineTarget::Frame,
