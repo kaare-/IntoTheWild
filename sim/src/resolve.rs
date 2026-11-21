@@ -136,11 +136,15 @@ impl World {
                                 | "You have no hide strips for a line."
                                 | "The fish are gone from this stretch of the brook."
                         );
+                    // A light refusal is the reply only. Bark, resin, rain,
+                    // and a fire already burning stay with the person who tried.
+                    let light_refusal = matches!(intent.attempt, Attempt::Light);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
                             && message != BARK_REFUSAL
-                            && !hook_refusal;
+                            && !hook_refusal
+                            && !light_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -3162,13 +3166,21 @@ impl World {
 
     pub(crate) fn light_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
         let person = self.actor(actor)?;
+        let resin = !self.loose_ids(actor, Material::Resin).is_empty();
         if self.raining && self.exposure_millis(person.cell) >= 1000 {
-            return Some("The rain puts the bark out before it catches.".into());
+            return Some(if resin {
+                "The rain puts the resin out before it catches.".into()
+            } else {
+                "The rain puts the bark out before it catches.".into()
+            });
         }
         if self.fire_at(person.cell).is_some() {
             return Some("A fire already burns here.".into());
         }
-        if !self.has_dry(actor, Material::Bark) {
+        // A lump of pine resin in the arms is tinder. It is spent before
+        // bark when both are held, and it stands in when bark is absent.
+        // Resin on the ground is not tinder.
+        if !resin && !self.has_dry(actor, Material::Bark) {
             return Some(if self.has_material_at_hand(actor, Material::Bark) {
                 "The bark is too damp to catch.".into()
             } else {
@@ -3247,44 +3259,89 @@ impl World {
                     .loose_ids(intent.actor_id, Material::Brand)
                     .first()
                     .copied();
-                let bark = self.consume_dry(intent.actor_id, Material::Bark);
-                let branch = self.consume_dry(intent.actor_id, Material::Branch);
-                let (Ok((bark_item, bark_arms)), Ok((branch_item, branch_arms))) = (bark, branch)
-                else {
-                    self.finish(
-                        intent.command_id,
-                        intent.actor_id,
-                        false,
-                        "You need dry loose bark and a dry branch.",
-                        results,
-                    );
-                    continue;
-                };
-                if let Some(brand) = brand {
-                    self.items.remove(&brand);
-                }
+                let resin = self
+                    .loose_ids(intent.actor_id, Material::Resin)
+                    .first()
+                    .copied();
                 let name = self.name_of(intent.actor_id);
-                let line = if brand.is_some() {
-                    brand_light_line(Some(&name), bark_arms, branch_arms)
+                let (line, yours, spent) = if let Some(resin_id) = resin {
+                    let Ok((branch_item, branch_arms)) =
+                        self.consume_dry(intent.actor_id, Material::Branch)
+                    else {
+                        self.finish(
+                            intent.command_id,
+                            intent.actor_id,
+                            false,
+                            "You need a dry branch for the fire.",
+                            results,
+                        );
+                        continue;
+                    };
+                    self.items.remove(&resin_id);
+                    if let Some(brand) = brand {
+                        self.items.remove(&brand);
+                    }
+                    let line = if brand.is_some() {
+                        resin_brand_light_line(Some(&name), branch_arms)
+                    } else {
+                        resin_light_line(Some(&name), branch_arms)
+                    };
+                    let yours = if brand.is_some() {
+                        resin_brand_light_line(None, branch_arms)
+                    } else {
+                        resin_light_line(None, branch_arms)
+                    };
+                    (
+                        line,
+                        yours,
+                        Some(resin_id).into_iter().chain(branch_item).collect(),
+                    )
                 } else {
-                    light_line(Some(&name), bark_arms, branch_arms)
+                    let bark = self.consume_dry(intent.actor_id, Material::Bark);
+                    let branch = self.consume_dry(intent.actor_id, Material::Branch);
+                    let (Ok((bark_item, bark_arms)), Ok((branch_item, branch_arms))) =
+                        (bark, branch)
+                    else {
+                        self.finish(
+                            intent.command_id,
+                            intent.actor_id,
+                            false,
+                            "You need dry loose bark and a dry branch.",
+                            results,
+                        );
+                        continue;
+                    };
+                    if let Some(brand) = brand {
+                        self.items.remove(&brand);
+                    }
+                    let line = if brand.is_some() {
+                        brand_light_line(Some(&name), bark_arms, branch_arms)
+                    } else {
+                        light_line(Some(&name), bark_arms, branch_arms)
+                    };
+                    let yours = if brand.is_some() {
+                        brand_light_line(None, bark_arms, branch_arms)
+                    } else {
+                        light_line(None, bark_arms, branch_arms)
+                    };
+                    (
+                        line,
+                        yours,
+                        bark_item.into_iter().chain(branch_item).collect(),
+                    )
                 };
                 let event = self.emit(
                     line,
                     Scope::Cell(cell),
                     vec![intent.actor_id],
                     vec![cell],
-                    bark_item.into_iter().chain(branch_item).collect(),
+                    spent,
                     vec![],
                     draw,
                 );
                 self.mint_fire(cell, event);
                 lit = true;
-                let mut yours = if brand.is_some() {
-                    brand_light_line(None, bark_arms, branch_arms)
-                } else {
-                    light_line(None, bark_arms, branch_arms)
-                };
+                let mut yours = yours;
                 if self.scare_wolf(Some(intent.actor_id)) {
                     yours.push_str(" The wolf flees the fire.");
                 }
@@ -8548,6 +8605,28 @@ fn worn_phrase(wolf: bool, sewn: bool) -> &'static str {
         (false, true) => "the sewn deer-hide cloak.",
         (false, false) => "the deer hide.",
     }
+}
+
+fn resin_light_line(who: Option<&str>, branch_arms: bool) -> String {
+    let fuel = if branch_arms {
+        "the pine resin and the branch from the arms"
+    } else {
+        "the pine resin from the arms and a dry branch from the pile at the feet"
+    };
+    crate::model::spoken_act(who, "light", &format!("a fire with {fuel}."))
+}
+
+fn resin_brand_light_line(who: Option<&str>, branch_arms: bool) -> String {
+    let fuel = if branch_arms {
+        "the pine resin and the branch from the arms"
+    } else {
+        "the pine resin from the arms and a dry branch from the pile at the feet"
+    };
+    crate::model::spoken_act(
+        who,
+        "light",
+        &format!("a fire with the burning brand and {fuel}."),
+    )
 }
 
 fn brand_light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {

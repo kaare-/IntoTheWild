@@ -11013,4 +11013,125 @@ mod pine_resin {
             .all(|event| event.text != grown && !event.text.contains("pitch")));
         assert!(!world.observe(quiet).unwrap().text.contains("resin"));
     }
+
+    #[test]
+    fn pine_resin_in_the_arms_lights_a_fire_and_bark_still_does() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Resin, 0, cell, Some(near), super::Role::Loose);
+        let bare = world.step(&[intent("bare", near, Attempt::Light)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You need a dry branch for the fire."
+        );
+        assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
+        assert!(world.fire_at(cell).is_none());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You need a dry branch for the fire." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You need a dry branch for the fire." }));
+        world.mint_item(Material::Branch, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Bark, 0, cell, Some(near), super::Role::Loose);
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert_eq!(
+            lit.results[0].message,
+            "You light a fire with the pine resin and the branch from the arms."
+        );
+        assert!(world.fire_at(cell).is_some());
+        assert!(world.loose_ids(near, Material::Resin).is_empty());
+        assert!(world.loose_ids(near, Material::Branch).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Bark).len(), 1);
+        let look = world.observe(near).unwrap();
+        assert!(
+            look.text.contains("A small fire burns here."),
+            "{}",
+            look.text
+        );
+        assert!(look.events.iter().all(|event| {
+            !event.text.contains("lights a fire") && !event.text.contains("You light")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near lights a fire with the pine resin and the branch from the arms."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("lights a fire") && !event.text.contains("resin")
+        }));
+        let again = world.step(&[intent("again", near, Attempt::Light)]);
+        assert_eq!(again.results[0].message, "A fire already burns here.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "A fire already burns here." }));
+        world.raining = true;
+        let open = world.spawn_at("Open", "o", 2, 4).unwrap();
+        let pine = world.actor(open).unwrap().cell;
+        world.mint_item(Material::Resin, 0, pine, Some(open), super::Role::Loose);
+        world.mint_item(Material::Branch, 0, pine, Some(open), super::Role::Loose);
+        let wet = world.step(&[intent("wet", open, Attempt::Light)]);
+        assert_eq!(
+            wet.results[0].message,
+            "The rain puts the resin out before it catches."
+        );
+        assert_eq!(world.loose_ids(open, Material::Resin).len(), 1);
+        assert!(world
+            .observe(open)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The rain puts the resin out before it catches." }));
+        world.raining = false;
+        let feet = world.spawn_at("Feet", "f", 5, 2).unwrap();
+        let bank = world.actor(feet).unwrap().cell;
+        world.mint_item(Material::Resin, 0, bank, Some(feet), super::Role::Loose);
+        let from_pile = world.step(&[intent("pile", feet, Attempt::Light)]);
+        assert_eq!(
+            from_pile.results[0].message,
+            "You light a fire with the pine resin from the arms and a dry branch from the pile at the feet."
+        );
+        assert!(world.loose_ids(feet, Material::Resin).is_empty());
+        assert!(world.fire_at(bank).is_some());
+        let elsewhere = world.spawn_at("Else", "e", 4, 4).unwrap();
+        let floor = world.actor(elsewhere).unwrap().cell;
+        world.mint_item(
+            Material::Bark,
+            0,
+            floor,
+            Some(elsewhere),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            Material::Branch,
+            0,
+            floor,
+            Some(elsewhere),
+            super::Role::Loose,
+        );
+        let still = world.step(&[intent("still", elsewhere, Attempt::Light)]);
+        assert_eq!(
+            still.results[0].message,
+            "You light a fire with the bark and the branch from the arms."
+        );
+        assert!(world.loose_ids(elsewhere, Material::Bark).is_empty());
+        assert!(world
+            .observe(elsewhere)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| {
+                event.text == "You light a fire with the bark and the branch from the arms."
+            }));
+    }
 }

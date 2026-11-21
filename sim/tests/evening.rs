@@ -506,7 +506,8 @@ fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
     slope.step(&[]);
     slope.step(&[cmd("back", sera, Attempt::Move(Dir::East))]);
     let bark = slope.material_tally(Material::Bark);
-    slope.step(&[cmd("damp", sera, Attempt::Light)]);
+    let damp = slope.step(&[cmd("damp", sera, Attempt::Light)]);
+    assert_eq!(damp.results[0].message, "The bark is too damp to catch.");
     let seen: Vec<_> = slope
         .observe(sera)
         .unwrap()
@@ -515,7 +516,7 @@ fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
         .map(|event| event.text.clone())
         .collect();
     assert!(
-        seen.iter().any(|text| text.contains("too damp")),
+        seen.iter().all(|text| !text.contains("too damp")),
         "{seen:?}"
     );
     assert_eq!(slope.material_tally(Material::Bark), bark);
