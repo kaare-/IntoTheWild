@@ -959,7 +959,11 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if !self.has_butcher_tool(actor.id) {
                     Err("You need a flint spear or an iron knife.".into())
-                } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
+                } else if !self
+                    .ground_ids(actor.cell, Material::Carcass)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|carcass| !carcass.hare))
+                {
                     Err("There is no carcass here to butcher.".into())
                 } else {
                     Ok(true)
@@ -5942,7 +5946,7 @@ impl World {
                 .find(|id| self.item(*id).is_some_and(|carcass| carcass.fox));
             let other = carcasses.iter().copied().find(|id| {
                 self.item(*id)
-                    .is_some_and(|carcass| !carcass.otter && !carcass.fox)
+                    .is_some_and(|carcass| !carcass.otter && !carcass.fox && !carcass.hare)
             });
             let Some(carcass) = other.or(fox).or(otter) else {
                 self.finish(

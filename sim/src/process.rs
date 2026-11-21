@@ -656,7 +656,9 @@ impl World {
     }
 
     /// The hide snare on this cell has waited out its ticks. It is gone.
-    /// A hare is caught, and one portion of raw meat lies where the snare was.
+    /// If the valley hare is on this cell or the next, that hare is caught
+    /// and a hare carcass lies where the snare was. Otherwise one portion of
+    /// raw meat lies there, as before.
     fn spring_snare(&mut self, cell: CellId) {
         let Some(ready) = self.snares.get(&cell).copied() else {
             return;
@@ -666,7 +668,20 @@ impl World {
         }
         self.snares.remove(&cell);
         let willow = self.snare_willow.remove(&cell);
-        let meat = self.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        let valley = self
+            .hare
+            .as_ref()
+            .is_some_and(|hare| chebyshev(hare.cell, cell) <= 1);
+        let caught_id = if valley {
+            self.hare = None;
+            let carcass = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+            if let Some(item) = self.items.get_mut(&carcass) {
+                item.hare = true;
+            }
+            carcass
+        } else {
+            self.mint_item(Material::Meat, 0, cell, None, Role::Loose)
+        };
         let caught = if willow {
             "The willow snare catches a hare."
         } else {
@@ -677,7 +692,7 @@ impl World {
             Scope::Cell(cell),
             vec![],
             vec![cell],
-            vec![meat],
+            vec![caught_id],
             vec![],
             None,
         );

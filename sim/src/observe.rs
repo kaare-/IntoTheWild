@@ -1233,9 +1233,16 @@ impl World {
         {
             parts.push("A fox carcass lies here.".into());
         }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
+        {
+            parts.push("A hare carcass lies here.".into());
+        }
         if carcasses.iter().any(|id| {
-            self.item(*id)
-                .is_some_and(|carcass| !carcass.wolf && !carcass.otter && !carcass.fox)
+            self.item(*id).is_some_and(|carcass| {
+                !carcass.wolf && !carcass.otter && !carcass.fox && !carcass.hare
+            })
         }) {
             parts.push("A deer carcass lies here.".into());
         }
@@ -3406,6 +3413,12 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
             {
                 "a fox carcass".into()
+            } else if self
+                .loose_ids(actor_id, Material::Carcass)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
+            {
+                "a hare carcass".into()
             } else {
                 "a deer carcass".into()
             }
@@ -3894,6 +3907,11 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
         {
             " They carry a fox carcass.".into()
+        } else if carried
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
+        {
+            " They carry a hare carcass.".into()
         } else {
             " They carry a deer carcass.".into()
         }
@@ -4393,9 +4411,16 @@ impl World {
         {
             bits.push("a fox carcass".into());
         }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
+        {
+            bits.push("a hare carcass".into());
+        }
         if carcasses.iter().any(|id| {
-            self.item(*id)
-                .is_some_and(|carcass| !carcass.wolf && !carcass.otter && !carcass.fox)
+            self.item(*id).is_some_and(|carcass| {
+                !carcass.wolf && !carcass.otter && !carcass.fox && !carcass.hare
+            })
         }) {
             bits.push("a carcass".into());
         }
@@ -5952,6 +5977,8 @@ impl World {
                     "wolf"
                 } else if item.is_some_and(|carcass| carcass.fox) {
                     "fox"
+                } else if item.is_some_and(|carcass| carcass.hare) {
+                    "hare"
                 } else {
                     "deer"
                 };
@@ -5990,6 +6017,11 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
             {
                 "fox"
+            } else if carried
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
+            {
+                "hare"
             } else {
                 "deer"
             };
@@ -11471,7 +11503,10 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
             || !self.loose_ids(actor_id, Material::Knife).is_empty())
-            && !self.ground_ids(actor.cell, Material::Carcass).is_empty()
+            && self
+                .ground_ids(actor.cell, Material::Carcass)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| !carcass.hare))
         {
             actions.push("butcher".into());
         }

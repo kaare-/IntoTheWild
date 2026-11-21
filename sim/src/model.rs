@@ -709,6 +709,10 @@ pub struct Item {
     /// A carcass from the fox, not the deer, the wolf, or the otter. Other materials leave this false.
     #[serde(default)]
     pub fox: bool,
+    /// A carcass from the hare, not the deer, the wolf, the otter, or the fox.
+    /// Other materials leave this false.
+    #[serde(default)]
+    pub hare: bool,
     /// Pine resin rubbed into a dugout. Other materials leave this false.
     /// A pitched canoe does not keep soaking the person aboard it.
     #[serde(default)]
@@ -1737,6 +1741,7 @@ impl World {
                 wolf: false,
                 otter: false,
                 fox: false,
+                hare: false,
                 pitched: false,
             },
         );
@@ -12074,6 +12079,116 @@ mod hare {
             after.contains("A hare is on the valley floor to the south and west."),
             "{after}"
         );
+    }
+
+    #[test]
+    fn a_snare_on_the_next_cell_catches_the_hare_and_leaves_a_carcass() {
+        for willow in [false, true] {
+            let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+            assert_eq!(world.hare_cell(), Some((2, 4)));
+            let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+            let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+            let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+            let step = world.step(&[intent("south", near, Attempt::Move(Dir::South))]);
+            assert_eq!(step.results[0].message, "You walk south.");
+            assert_eq!(world.hare_cell(), Some((3, 4)));
+            let floor = world.actor(near).unwrap().cell;
+            if willow {
+                world.mint_item(
+                    super::Material::Willow,
+                    0,
+                    floor,
+                    Some(near),
+                    super::Role::Loose,
+                );
+            } else {
+                world.mint_item(
+                    super::Material::Cord,
+                    0,
+                    floor,
+                    Some(near),
+                    super::Role::Loose,
+                );
+            }
+            let set = world.step(&[intent("set", near, Attempt::SetSnare)]);
+            let reply = if willow {
+                "You set a snare of willow cordage."
+            } else {
+                "You set a snare of hide strips."
+            };
+            assert_eq!(set.results[0].message, reply);
+            assert!(world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != reply));
+            for _ in 0..world.tuning.snare_ticks {
+                world.step(&[]);
+            }
+            let caught = if willow {
+                "The willow snare catches a hare."
+            } else {
+                "The snare catches a hare."
+            };
+            assert!(world.hare_cell().is_none());
+            let here = world.observe(near).unwrap();
+            assert!(here.events.iter().any(|event| event.text == caught));
+            assert!(
+                here.text.contains("A hare carcass lies here."),
+                "{}",
+                here.text
+            );
+            assert!(!here.text.contains("raw meat"), "{}", here.text);
+            assert!(
+                !here.text.contains("A hare is on the valley floor"),
+                "{}",
+                here.text
+            );
+            let body = world.examine(near, super::ExamineTarget::Carcass);
+            assert!(
+                body.contains("A hare carcass lies in contact with the ground"),
+                "{body}"
+            );
+            assert!(world
+                .observe(seen)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == caught));
+            assert!(world
+                .observe(quiet)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("hare") && !event.text.contains("snare") }));
+            let spear = world.mint_item(
+                super::Material::Spear,
+                0,
+                floor,
+                Some(near),
+                super::Role::Loose,
+            );
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+            let refused = world.step(&[intent("cut", near, Attempt::Butcher)]);
+            assert_eq!(
+                refused.results[0].message,
+                "There is no carcass here to butcher."
+            );
+            assert!(world
+                .observe(near)
+                .unwrap()
+                .text
+                .contains("A hare carcass lies here."));
+            assert!(world
+                .observe(seen)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is no carcass here to butcher." }));
+        }
     }
 }
 

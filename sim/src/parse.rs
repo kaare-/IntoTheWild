@@ -50,7 +50,7 @@ carve awl                    a bone, with a flint flake or an iron knife, into a
 carve paddle                 a dry branch, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The wooden paddle stays in the arms. Holding it names the paddle when you paddle. Bare hands still paddle.
 carve hook                   a bone, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The bone fish hook stays in the arms.
 make awl                     the same bone awl
-set snare                    hide strips or willow cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches a hare. The line is spent. Hide strips are spent when both are here.
+set snare                    hide strips or willow cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches a hare. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent when both are here.
 set trap                     the same snare
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
