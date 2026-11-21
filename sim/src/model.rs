@@ -12218,7 +12218,7 @@ mod hare {
         );
         assert!(
             look.text
-                .contains("Set a snare with the willow cordage south of the brook."),
+                .contains("Strip willow south of the brook, then set a snare."),
             "{}",
             look.text
         );
@@ -12250,9 +12250,9 @@ mod hare {
             .iter()
             .all(|event| !event.text.contains("hare")));
         assert!(!world.observe(heard).unwrap().text.contains("hare"));
-        assert!(!world.observe(heard).unwrap().text.contains("Set a snare"));
+        assert!(!world.observe(heard).unwrap().text.contains("strip willow"));
         assert!(!world.observe(quiet).unwrap().text.contains("hare"));
-        assert!(!world.observe(quiet).unwrap().text.contains("Set a snare"));
+        assert!(!world.observe(quiet).unwrap().text.contains("strip willow"));
 
         let beside = world.spawn_at("Beside", "b", 2, 3).unwrap();
         let south = world.observe(beside).unwrap().text;

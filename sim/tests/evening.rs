@@ -11641,7 +11641,7 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
     assert!(!west_look.contains("hide snare"), "{west_look}");
     assert!(!west_look.contains("snare is set"), "{west_look}");
     assert!(
-        west_look.contains("Set a snare with the willow cordage south of the brook."),
+        west_look.contains("Strip willow south of the brook, then set a snare."),
         "{west_look}"
     );
     let examined = world.examine(near, ExamineTarget::Snare);
