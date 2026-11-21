@@ -612,6 +612,20 @@ impl World {
         self.time >= self.tuning.night_at && !self.night()
     }
 
+    /// Night wind, from the same shelter the cold uses. The open rushes.
+    /// A little wind is only a whisper. Rock and a thatched lean-to say nothing.
+    /// The line is look, not a tick event.
+    fn night_wind_line(&self, actor_id: ActorId) -> Option<String> {
+        if !self.night() {
+            return None;
+        }
+        match self.wind_on(actor_id) {
+            "in the wind" => Some("You hear the wind rush.".into()),
+            "in a little wind" => Some("The wind is a whisper here.".into()),
+            _ => None,
+        }
+    }
+
     /// A fire underfoot or on the next cell. Farther light does not help.
     fn fire_nearby(&self, cell: CellId) -> bool {
         self.fires
@@ -3854,6 +3868,9 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
+        if let Some(wind) = self.night_wind_line(actor_id) {
+            parts.push(wind);
+        }
         if self.illness_word(actor.illness) == "ill" {
             parts.push("Your stomach has not settled.".into());
         }

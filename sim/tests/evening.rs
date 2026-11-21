@@ -12886,6 +12886,120 @@ fn a_splash_is_heard_one_cell_past_sight() {
 }
 
 #[test]
+fn night_in_the_open_lets_you_hear_the_wind() {
+    let mut world = world_at(10_000);
+    let open = world.spawn_at("Open", "o", 4, 3).unwrap();
+    let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+    let bare = world.spawn_at("Bare", "b", 6, 1).unwrap();
+    let thatch = world.spawn_at("Thatch", "t", 5, 2).unwrap();
+    let built = world.step(&[cmd("build", thatch, Attempt::BuildLeanTo)]);
+    assert!(built.results[0].success, "{}", built.results[0].message);
+    for (id, dir) in [
+        ("reed-w1", Dir::West),
+        ("reed-w2", Dir::West),
+        ("reed-w3", Dir::West),
+        ("reed-w4", Dir::West),
+        ("reed-w5", Dir::West),
+        ("reed-s", Dir::South),
+    ] {
+        world.step(&[cmd(id, thatch, Attempt::Move(dir))]);
+    }
+    let reeds = world.step(&[cmd("reeds", thatch, Attempt::Gather(Material::Reed))]);
+    assert!(reeds.results[0].success, "{}", reeds.results[0].message);
+    for (id, dir) in [
+        ("back-n", Dir::North),
+        ("back-e1", Dir::East),
+        ("back-e2", Dir::East),
+        ("back-e3", Dir::East),
+        ("back-e4", Dir::East),
+        ("back-e5", Dir::East),
+    ] {
+        world.step(&[cmd(id, thatch, Attempt::Move(dir))]);
+    }
+    let covered = world.step(&[cmd("thatch", thatch, Attempt::Thatch)]);
+    assert!(covered.results[0].success, "{}", covered.results[0].message);
+    for i in 0..3 {
+        let got = world.step(&[cmd(
+            &format!("branch-{i}"),
+            bare,
+            Attempt::Gather(Material::Branch),
+        )]);
+        assert!(got.results[0].success, "{}", got.results[0].message);
+    }
+    world.step(&[cmd("south", bare, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(bare), Some((6, 2)));
+    let second = world.step(&[cmd("bare-build", bare, Attempt::BuildLeanTo)]);
+    assert!(second.results[0].success, "{}", second.results[0].message);
+    let day = world.observe(open).unwrap().text;
+    assert!(day.contains("You are in the wind."), "{day}");
+    assert!(!day.contains("You hear the wind rush."), "{day}");
+    assert!(!day.contains("whisper"), "{day}");
+    while world.sim_time() < world.tuning.night_at {
+        world.step(&[]);
+    }
+    let night_open = world.observe(open).unwrap();
+    assert!(
+        night_open.text.contains("You hear the wind rush.")
+            && night_open.text.contains("You are in the wind."),
+        "{}",
+        night_open.text
+    );
+    assert!(!night_open.text.contains("whisper"), "{}", night_open.text);
+    let night_rock = world.observe(rock).unwrap().text;
+    assert!(
+        night_rock.contains("You are out of the wind."),
+        "{night_rock}"
+    );
+    assert!(
+        !night_rock.contains("You hear the wind rush."),
+        "{night_rock}"
+    );
+    assert!(!night_rock.contains("whisper"), "{night_rock}");
+    let night_bare = world.observe(bare).unwrap().text;
+    assert!(
+        night_bare.contains("You are in a little wind.")
+            && night_bare.contains("The wind is a whisper here."),
+        "{night_bare}"
+    );
+    assert!(
+        !night_bare.contains("You hear the wind rush."),
+        "{night_bare}"
+    );
+    let night_thatch = world.observe(thatch).unwrap().text;
+    assert!(
+        world.sim_time() < world.tuning.night_at + world.tuning.night_len,
+        "{}",
+        world.sim_time()
+    );
+    assert!(
+        night_thatch.contains("You are out of the wind."),
+        "{night_thatch}"
+    );
+    assert!(
+        !night_thatch.contains("You hear the wind rush."),
+        "{night_thatch}"
+    );
+    assert!(!night_thatch.contains("whisper"), "{night_thatch}");
+    for person in [open, rock, bare, thatch] {
+        assert!(world.observe(person).unwrap().events.iter().all(|event| {
+            event.text != "You hear the wind rush." && !event.text.contains("whisper")
+        }));
+    }
+    world.step(&[]);
+    world.step(&[]);
+    let still = world.observe(open).unwrap();
+    assert!(
+        still.text.contains("You hear the wind rush."),
+        "{}",
+        still.text
+    );
+    assert!(still.events.iter().all(|event| {
+        event.text != "You hear the wind rush." && !event.text.contains("whisper")
+    }));
+    assert!(world.sim_time() < world.tuning.night_at + world.tuning.night_len);
+}
+
+#[test]
 fn night_shortens_the_look_until_a_fire_is_nearby() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();
