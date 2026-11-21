@@ -2970,14 +2970,16 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     assert!(!bitter.contains("bitter"), "{bitter}");
     assert_eq!(world.sim_time(), 0);
 
-    world.step(&[cmd("raw-mushroom", nils, Attempt::Eat(Material::Mushroom))]);
+    let refused = world.step(&[cmd("raw-mushroom", nils, Attempt::Eat(Material::Mushroom))]);
+    assert_eq!(
+        refused.results[0].message,
+        "Raw mushrooms do not feed you. They must be cooked."
+    );
+    assert!(!refused.results[0].success);
     assert_eq!(world.material_tally(Material::Mushroom), 2);
-    assert!(world
-        .observe(nils)
-        .unwrap()
-        .events
-        .iter()
-        .any(|event| { event.text.contains("Raw mushrooms do not feed you.") }));
+    assert!(world.observe(nils).unwrap().events.iter().all(|event| {
+        !event.text.contains("Raw mushrooms") && !event.text.contains("must be cooked")
+    }));
     assert!(world.observe(linde).unwrap().events.iter().all(|event| {
         !event.text.contains("Raw mushrooms") && !event.text.contains("mushroom")
     }));
@@ -5440,7 +5442,13 @@ fn carried_food_examine_uses_the_arms_words() {
     assert!(!mushrooms.contains("poison"), "{mushrooms}");
     let west = world.spawn_at("West", "w", 5, 1).unwrap();
     let refused = world.step(&[cmd("raw", near, Attempt::Eat(Material::Mushroom))]);
-    assert_eq!(refused.results[0].message, "Raw mushrooms do not feed you.");
+    assert_eq!(
+        refused.results[0].message,
+        "Raw mushrooms do not feed you. They must be cooked."
+    );
+    assert!(world.observe(near).unwrap().events.iter().all(|event| {
+        !event.text.contains("Raw mushrooms") && !event.text.contains("must be cooked")
+    }));
     let after = world.examine(near, ExamineTarget::Mushrooms);
     assert!(
         after.contains(

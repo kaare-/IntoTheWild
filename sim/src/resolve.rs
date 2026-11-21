@@ -15,6 +15,10 @@ enum WetBranch {
     None,
 }
 
+/// The raw mushroom refusal. Reply only. The same two sentences as the look
+/// after this person has tried them.
+const RAW_MUSHROOM_REFUSAL: &str = "Raw mushrooms do not feed you. They must be cooked.";
+
 impl World {
     pub(crate) fn resolve(&mut self, intents: &[Intent]) -> Vec<CommandResult> {
         let mut results = Vec::new();
@@ -114,11 +118,13 @@ impl World {
             let taken = body_taken.contains(&actor.id);
             match self.precheck(&actor, &intent.attempt, taken) {
                 Err(message) => {
-                    // A smoke refusal is the reply only. "There is no fire
-                    // burning here" is also a feed, cook, and dry refusal,
-                    // and those still sit in the actor's event list.
+                    // A smoke refusal is the reply only, and so is a raw
+                    // mushroom. "There is no fire burning here" is also a
+                    // feed, cook, and dry refusal, and those still sit in
+                    // the actor's event list.
                     let personal =
-                        !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat);
+                        !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
+                            && message != RAW_MUSHROOM_REFUSAL;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -204,7 +210,7 @@ impl World {
             .collect();
 
         for (intent, message, personal) in failures {
-            if message == "Raw mushrooms do not feed you." {
+            if message == RAW_MUSHROOM_REFUSAL {
                 if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                     person.raw_mushroom_known = true;
                 }
@@ -1070,7 +1076,7 @@ impl World {
                             if self.cooked_mushroom_id(actor.id).is_some() {
                                 Ok(true)
                             } else if self.raw_mushroom_near(actor.id) {
-                                Err("Raw mushrooms do not feed you.".into())
+                                Err(RAW_MUSHROOM_REFUSAL.into())
                             } else {
                                 Err("There is no cooked mushroom here to eat.".into())
                             }
@@ -7128,7 +7134,7 @@ impl World {
                 }
             }
             let message = if raw {
-                "Raw mushrooms do not feed you."
+                RAW_MUSHROOM_REFUSAL
             } else {
                 "There is no cooked mushroom here to eat."
             };
