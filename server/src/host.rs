@@ -170,6 +170,16 @@ impl Host {
                 let text = self.world.arms_line(actor_id);
                 self.settle(command_id, false, false, true, text)
             }
+            Attempt::NameSnare => {
+                self.settle(command_id, false, false, true, "Set a snare.".into())
+            }
+            Attempt::NameCanoe => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Board, carve canoe, or paddle.".into(),
+            ),
             Attempt::Look => {
                 let text = self
                     .world

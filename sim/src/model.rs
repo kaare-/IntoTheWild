@@ -368,6 +368,10 @@ pub enum Attempt {
     Look,
     /// The arms line from look, and nothing else.
     Arms,
+    /// Bare `snare`. Names the verb. Does not set one.
+    NameSnare,
+    /// Bare `canoe`. Names the verbs. Does not board, carve, or paddle.
+    NameCanoe,
     Examine(ExamineTarget),
     Say(String),
     Move(Dir),
@@ -12121,16 +12125,11 @@ mod hare {
         let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
         assert_eq!(parse_attempt("inventory"), Ok(Attempt::Arms));
         assert_eq!(parse_attempt("inv"), Ok(Attempt::Arms));
-        assert_eq!(parse_attempt("snare").unwrap_err(), "Set a snare.");
-        assert_eq!(parse_attempt("trap").unwrap_err(), "Set a snare.");
-        assert_eq!(
-            parse_attempt("canoe").unwrap_err(),
-            "Board, carve canoe, or paddle."
-        );
-        assert_eq!(
-            parse_attempt("dugout").unwrap_err(),
-            "Board, carve canoe, or paddle."
-        );
+        assert_eq!(parse_attempt("snare"), Ok(Attempt::NameSnare));
+        assert_eq!(parse_attempt("trap"), Ok(Attempt::NameSnare));
+        assert_eq!(parse_attempt("canoe"), Ok(Attempt::NameCanoe));
+        assert_eq!(parse_attempt("dugout"), Ok(Attempt::NameCanoe));
+        assert!(matches!(parse_attempt("set snare"), Ok(Attempt::SetSnare)));
         let empty = world.step(&[intent("arms", near, Attempt::Arms)]);
         assert_eq!(empty.results[0].message, "Your arms are empty.");
         assert!(world
@@ -12145,6 +12144,19 @@ mod hare {
             .events
             .iter()
             .all(|event| event.text != "Your arms are empty."));
+        let snare = world.step(&[intent("snare", near, Attempt::NameSnare)]);
+        assert!(snare.results[0].success);
+        assert_eq!(snare.results[0].message, "Set a snare.");
+        let canoe = world.step(&[intent("canoe", near, Attempt::NameCanoe)]);
+        assert!(canoe.results[0].success);
+        assert_eq!(canoe.results[0].message, "Board, carve canoe, or paddle.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "Set a snare." && event.text != "Board, carve canoe, or paddle."
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            event.text != "Set a snare." && event.text != "Board, carve canoe, or paddle."
+        }));
+        assert!(world.snares.is_empty());
         world.mint_item(
             Material::Branch,
             0,

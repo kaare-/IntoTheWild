@@ -120,8 +120,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
     match head {
         "help" | "?" => Err(help_text().into()),
         "inventory" | "inv" if rest.is_empty() => Ok(Attempt::Arms),
-        "snare" | "trap" if rest.is_empty() => Err("Set a snare.".into()),
-        "canoe" | "dugout" if rest.is_empty() => Err("Board, carve canoe, or paddle.".into()),
+        "snare" | "trap" if rest.is_empty() => Ok(Attempt::NameSnare),
+        "canoe" | "dugout" if rest.is_empty() => Ok(Attempt::NameCanoe),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)

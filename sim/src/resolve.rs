@@ -47,6 +47,7 @@ impl World {
         let mut releases = Vec::new();
         let mut quiet = Vec::new();
         let mut arms = Vec::new();
+        let mut hints = Vec::new();
         let mut gathers = Vec::new();
         let mut drops = Vec::new();
         let mut grabs = Vec::new();
@@ -166,6 +167,7 @@ impl World {
                         Attempt::Release => releases.push(intent),
                         Attempt::Look | Attempt::Examine(_) => quiet.push(intent),
                         Attempt::Arms => arms.push(intent),
+                        Attempt::NameSnare | Attempt::NameCanoe => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -309,6 +311,13 @@ impl World {
             let line = self.arms_line(intent.actor_id);
             self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
         }
+        for intent in hints {
+            let line = match intent.attempt {
+                Attempt::NameSnare => "Set a snare.",
+                _ => "Board, carve canoe, or paddle.",
+            };
+            self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
+        }
 
         let released: BTreeSet<_> = results
             .iter()
@@ -395,7 +404,11 @@ impl World {
         let busy = actor.busy.is_some();
         let gripping = self.gripping(actor.id).is_some();
         match attempt {
-            Attempt::Look | Attempt::Examine(_) | Attempt::Arms => Ok(false),
+            Attempt::Look
+            | Attempt::Examine(_)
+            | Attempt::Arms
+            | Attempt::NameSnare
+            | Attempt::NameCanoe => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
