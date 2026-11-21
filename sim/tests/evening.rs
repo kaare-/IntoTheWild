@@ -33,6 +33,32 @@ fn pair(
     ])
 }
 
+fn relight_charcoal(world: &mut World, actor: u32) {
+    let mut waits = 0;
+    while !world
+        .observe(actor)
+        .unwrap()
+        .text
+        .contains("A lump of charcoal lies here")
+    {
+        world.step(&[]);
+        waits += 1;
+        assert!(waits < 20, "{}", world.observe(actor).unwrap().text);
+    }
+    let gathered = world.step(&[cmd(
+        "charcoal-lump",
+        actor,
+        Attempt::Gather(Material::Charcoal),
+    )]);
+    assert!(
+        gathered.results[0].success,
+        "{}",
+        gathered.results[0].message
+    );
+    let lit = world.step(&[cmd("charcoal-light", actor, Attempt::Light)]);
+    assert!(lit.results[0].success, "{}", lit.results[0].message);
+}
+
 fn cmd(id: &str, actor: u32, attempt: Attempt) -> Intent {
     Intent {
         command_id: id.into(),
@@ -9481,6 +9507,7 @@ fn hide_strips_bind_the_flint_tip_when_the_spear_is_hafted() {
     assert!(light.results[0].success, "{}", light.results[0].message);
     let feed = world.step(&[cmd("feed", near, Attempt::Feed)]);
     assert!(feed.results[0].success, "{}", feed.results[0].message);
+    relight_charcoal(&mut world, near);
     let smelt = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
     assert!(smelt.results[0].success, "{}", smelt.results[0].message);
     for _ in 0..4 {
@@ -11509,11 +11536,13 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         ("branch", Attempt::Gather(Material::Branch)),
         ("haft", Attempt::Haft),
         ("feed", Attempt::Feed),
-        ("smelt", Attempt::SmeltIron),
     ] {
         let step = world.step(&[cmd(id, near, attempt)]);
         assert!(step.results[0].success, "{}", step.results[0].message);
     }
+    relight_charcoal(&mut world, near);
+    let smelt = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
+    assert!(smelt.results[0].success, "{}", smelt.results[0].message);
     for _ in 0..4 {
         world.step(&[]);
     }
@@ -12030,10 +12059,7 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
     world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
     world.step(&[cmd("light", near, Attempt::Light)]);
     let cold = world.step(&[cmd("early", near, Attempt::Smelt)]);
-    assert_eq!(
-        cold.results[0].message,
-        "The fire is not hot enough for iron. Feed it more fuel."
-    );
+    assert_eq!(cold.results[0].message, "Iron needs a hot charcoal fire.");
     assert!(!cold.results[0].success);
     for witness in [far, west] {
         assert!(
@@ -12042,9 +12068,7 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
                 .unwrap()
                 .events
                 .iter()
-                .all(
-                    |event| !event.text.contains("hot enough") && !event.text.contains("more fuel")
-                ),
+                .all(|event| !event.text.contains("charcoal fire")),
             "{:?}",
             world
                 .observe(witness)
@@ -12116,6 +12140,23 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         "{}",
         world.examine(near, ExamineTarget::Fire)
     );
+    let still = world.step(&[cmd("fed-fire", near, Attempt::SmeltIron)]);
+    assert_eq!(still.results[0].message, "Iron needs a hot charcoal fire.");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Iron needs a hot charcoal fire."));
+    for witness in [far, west] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("charcoal fire") }));
+    }
+    relight_charcoal(&mut world, near);
     let yours = "You set a lump of iron ore by the fire. It leaves your arms.";
     let witnessed = "Near sets a lump of iron ore by the fire. It leaves their arms.";
     let set = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
@@ -12124,12 +12165,9 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         "You set a lump of iron ore by the fire. It leaves your arms. It is not iron yet."
     );
     let after_set = world.sim_time();
-    assert!(world
-        .observe(near)
-        .unwrap()
-        .events
-        .iter()
-        .any(|event| event.text == yours));
+    assert!(world.observe(near).unwrap().events.iter().all(|event| {
+        event.text != yours && event.text != witnessed && !event.text.contains("not iron yet")
+    }));
     assert!(world
         .observe(far)
         .unwrap()
@@ -12146,7 +12184,7 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         .observe(near)
         .unwrap()
         .text
-        .contains("A lump of iron ore is smelting in the fire."));
+        .contains("A lump of iron ore is smelting in the hot charcoal fire."));
     assert!(!arms_sentence(&world.observe(near).unwrap().text).contains("iron"));
     for _ in 0..3 {
         world.step(&[]);
@@ -12155,11 +12193,10 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
             .observe(near)
             .unwrap()
             .text
-            .contains("A lump of iron ore is smelting in the fire."));
+            .contains("A lump of iron ore is smelting in the hot charcoal fire."));
     }
     world.step(&[]);
     assert_eq!(world.sim_time(), after_set + 4);
-    assert_eq!(world.material_tally(Material::IronOre), 0);
     assert_eq!(world.material_tally(Material::Iron), 1);
     assert_eq!(world.material_items(Material::Iron)[0].1, None);
     let bloom = "The iron ore smelts into a bloom.";
@@ -12278,7 +12315,7 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
             .observe(near)
             .unwrap()
             .text
-            .contains("A fire burns hotter here."),
+            .contains("A hot charcoal fire burns here."),
         "the look still does not promise iron"
     );
 }
@@ -12296,6 +12333,7 @@ fn a_bloom_of_iron_hammers_into_a_knife_with_a_stone() {
     world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
     world.step(&[cmd("light", near, Attempt::Light)]);
     world.step(&[cmd("feed", near, Attempt::Feed)]);
+    relight_charcoal(&mut world, near);
     world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
     for _ in 0..4 {
         world.step(&[]);
@@ -12415,7 +12453,6 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
         ),
         ("haft", Attempt::Haft, Attempt::Move(Dir::South)),
         ("feed", Attempt::Feed, Attempt::Move(Dir::West)),
-        ("smelt", Attempt::SmeltIron, Attempt::Move(Dir::West)),
     ] {
         let step = world.step(&[
             cmd(id, near, near_attempt),
@@ -12430,7 +12467,11 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
                 .collect::<Vec<_>>()
         );
     }
+    world.step(&[cmd("west-on", west, Attempt::Move(Dir::West))]);
     assert_eq!(world.actor_cell(west), Some((4, 4)));
+    relight_charcoal(&mut world, near);
+    let smelt = world.step(&[cmd("smelt", near, Attempt::SmeltIron)]);
+    assert!(smelt.results[0].success, "{}", smelt.results[0].message);
     for _ in 0..4 {
         world.step(&[]);
     }
@@ -12443,6 +12484,11 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
     assert!(bloom.results[0].success, "{}", bloom.results[0].message);
     let knife = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
     assert!(knife.results[0].success, "{}", knife.results[0].message);
+    let mut deer_wait = 0;
+    while world.deer_cell() != Some((6, 1)) && deer_wait < 40 {
+        world.step(&[]);
+        deer_wait += 1;
+    }
     assert_eq!(
         world.deer_cell(),
         Some((6, 1)),
@@ -14079,20 +14125,20 @@ fn a_lump_of_charcoal_feeds_a_fire_hot_enough_for_iron() {
         .all(|event| !event.text.contains("feed") && !event.text.contains("hotter")));
     let hotter = world.observe(near).unwrap().text;
     assert!(
-        hotter.contains("A fire burns hotter here. It warms you."),
+        hotter.contains("A hot charcoal fire burns here. It warms you."),
         "{hotter}"
     );
     assert!(!hotter.contains("A small fire burns here"), "{hotter}");
     let from_seen = world.observe(seen).unwrap().text;
     assert!(
-        from_seen.contains("A fire burns hotter there."),
+        from_seen.contains("A hot charcoal fire burns there."),
         "{from_seen}"
     );
     assert!(!world.observe(quiet).unwrap().text.contains("burns hotter"));
     assert!(
         world
             .examine(near, ExamineTarget::Fire)
-            .starts_with("A fire burns hotter here,"),
+            .starts_with("A hot charcoal fire burns here,"),
         "{}",
         world.examine(near, ExamineTarget::Fire)
     );

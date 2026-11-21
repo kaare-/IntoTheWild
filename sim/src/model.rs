@@ -10747,9 +10747,16 @@ mod carve_hook {
             say(&mut world, "bind", near, Attempt::BindSpear),
             "You bind a stone and a branch into a spear."
         );
+        world.mint_item(
+            Material::Charcoal,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            super::Role::Loose,
+        );
         assert_eq!(
             say(&mut world, "feed", near, Attempt::Feed),
-            "You feed a dry branch into the fire. It burns hotter."
+            "You feed a lump of charcoal into the fire. It burns hotter."
         );
         assert_eq!(
             say(&mut world, "smelt", near, Attempt::SmeltIron),
@@ -14957,5 +14964,125 @@ mod charcoal_bank {
             .iter()
             .any(|event| event.text == hammer_seen));
         assert!(world.observe(near).unwrap().text.contains("a copper awl"));
+    }
+
+    #[test]
+    fn iron_needs_a_hot_charcoal_fire() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 3);
+        let cell = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::SmeltIron)]);
+        assert_eq!(bare.results[0].message, "You are not carrying iron ore.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You are not carrying iron ore."));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "You are not carrying iron ore."));
+        }
+        world.mint_item(Material::IronOre, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("lit", near, Attempt::Light)]);
+        let refused = world.step(&[intent("plain", near, Attempt::SmeltIron)]);
+        assert_eq!(
+            refused.results[0].message,
+            "Iron needs a hot charcoal fire."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Iron needs a hot charcoal fire."));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("charcoal fire") }));
+        }
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("branch", near, Attempt::Feed)]);
+        let fed = world.step(&[intent("fed", near, Attempt::SmeltIron)]);
+        assert_eq!(fed.results[0].message, "Iron needs a hot charcoal fire.");
+        assert!(!world.fire_at(cell).unwrap().charcoal);
+        let mut waits = 0;
+        while !world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A lump of charcoal lies here")
+        {
+            world.step(&[]);
+            waits += 1;
+            assert!(waits < 20);
+        }
+        world.step(&[intent("lump", near, Attempt::Gather(Material::Charcoal))]);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        let relit = world.step(&[intent("again", near, Attempt::Light)]);
+        assert!(
+            relit.results[0].message.contains("charcoal"),
+            "{}",
+            relit.results[0].message
+        );
+        assert!(world.fire_at(cell).unwrap().charcoal);
+        let set = world.step(&[intent("smelt", near, Attempt::SmeltIron)]);
+        let yours =
+            "You set a lump of iron ore by the fire. It leaves your arms. It is not iron yet.";
+        let witnessed = "Near sets a lump of iron ore by the fire. It leaves their arms.";
+        assert_eq!(set.results[0].message, yours);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != yours && event.text != witnessed && !event.text.contains("not iron yet")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("iron ore")));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A lump of iron ore is smelting in the hot charcoal fire."));
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        assert_eq!(world.material_tally(Material::Iron), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "The iron ore smelts into a bloom."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "The iron ore smelts into a bloom."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The iron ore smelts into a bloom."));
     }
 }

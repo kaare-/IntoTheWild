@@ -1132,9 +1132,15 @@ impl World {
             parts.push("The slope has no iron ore.".into());
         }
         if iron_smelting == 1 {
-            parts.push("A lump of iron ore is smelting in the fire.".into());
+            parts.push(format!(
+                "A lump of iron ore is smelting in {}.",
+                self.iron_smelt_fire(actor.cell)
+            ));
         } else if iron_smelting > 1 {
-            parts.push("Lumps of iron ore are smelting in the fire.".into());
+            parts.push(format!(
+                "Lumps of iron ore are smelting in {}.",
+                self.iron_smelt_fire(actor.cell)
+            ));
         }
         if !self.ground_ids(actor.cell, Material::Iron).is_empty() {
             parts.push("A bloom of iron lies here. It is metal from a hotter fire.".into());
@@ -4080,6 +4086,15 @@ impl World {
             .count()
     }
 
+    /// Iron smelts only in a hot charcoal fire, and look names that heat.
+    fn iron_smelt_fire(&self, cell: CellId) -> &'static str {
+        if self.fire_at(cell).is_some_and(|fire| fire.charcoal) {
+            "the hot charcoal fire"
+        } else {
+            "the fire"
+        }
+    }
+
     /// A hot charcoal fire is named. A plain fire stays "the fire".
     fn copper_smelt_fire(&self, cell: CellId) -> &'static str {
         if self.fire_at(cell).is_some_and(|fire| fire.charcoal) {
@@ -4399,7 +4414,10 @@ impl World {
             bits.push("a lump of iron ore".into());
         }
         if self.iron_smelting_count(dest) > 0 {
-            bits.push("iron ore smelting in the fire".into());
+            bits.push(format!(
+                "iron ore smelting in {}",
+                self.iron_smelt_fire(dest)
+            ));
         }
         if !self.ground_ids(dest, Material::Iron).is_empty() {
             bits.push("a bloom of iron, metal from a hotter fire".into());
@@ -7182,11 +7200,12 @@ impl World {
                 }
             }
             if smelting > 0 {
+                let fire = self.iron_smelt_fire(cell);
                 if origin == cell {
-                    lines.push("A lump of iron ore is smelting in the fire.".into());
+                    lines.push(format!("A lump of iron ore is smelting in {fire}."));
                 } else {
                     lines.push(format!(
-                        "A lump of iron ore is smelting in the fire {}.",
+                        "A lump of iron ore is smelting in {fire} {}.",
                         self.place_phrase(origin, cell)
                     ));
                 }
@@ -9016,6 +9035,7 @@ impl World {
                     && self.wooden_deer_for_these_eyes(viewer, event).is_none()
                     && self.copper_set_for_these_eyes(viewer, event).is_none()
                     && self.copper_awl_for_these_eyes(viewer, event).is_none()
+                    && self.smelt_set_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.alone_pull_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
@@ -11801,7 +11821,7 @@ impl World {
         }
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()
-            && self.fire_at(actor.cell).is_some()
+            && self.fire_at(actor.cell).is_some_and(|fire| fire.charcoal)
             && !self.loose_ids(actor_id, Material::IronOre).is_empty()
         {
             actions.push("smelt iron".into());

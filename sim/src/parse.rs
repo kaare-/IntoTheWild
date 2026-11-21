@@ -98,8 +98,8 @@ smear ochre                  red ochre on the skin, a mark unlike mud
 mark                         a carried lump of ochre leaves a red mark on this ground. A lump of charcoal leaves a black mark instead, and is used up. With neither, you have nothing to mark with
 mark rock                    the same mark on the rock, when you stand under it. Rain washes an open mark and leaves one under the rock
 smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead. A hot charcoal fire does it in half that wait. Look says the ore is smelting in the hot charcoal fire
-smelt iron                   a carried lump of iron ore; a small fire refuses it, and a fire fed an extra dry branch yields a bloom of iron
-feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hot enough for iron. With neither, you have nothing to feed the fire
+smelt iron                   a carried lump of iron ore at a hot charcoal fire; after the same wait as clay, a bloom of iron. A plain fire refuses it, even after a dry branch is fed in
+feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hotter. Charcoal fed in makes it a charcoal fire, which iron needs. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way. A fox hide uses a copper awl or a bone awl the same way. A hare hide uses a copper awl or a bone awl the same way

@@ -8489,8 +8489,8 @@ impl World {
             Err("You are not carrying iron ore.".into())
         } else if self.fire_at(actor.cell).is_none() {
             Err("There is no fire burning here.".into())
-        } else if self.fire_at(actor.cell).is_some_and(|fire| !fire.hot) {
-            Err("The fire is not hot enough for iron. Feed it more fuel.".into())
+        } else if self.fire_at(actor.cell).is_some_and(|fire| !fire.charcoal) {
+            Err("Iron needs a hot charcoal fire.".into())
         } else {
             Ok(true)
         }
@@ -8533,15 +8533,15 @@ impl World {
                 );
                 continue;
             }
-            let rest = if let Some(item_id) = self
+            let (rest, from_charcoal) = if let Some(item_id) = self
                 .loose_ids(intent.actor_id, Material::Charcoal)
                 .first()
                 .copied()
             {
                 self.items.remove(&item_id);
-                "a lump of charcoal into the fire. It burns hotter."
+                ("a lump of charcoal into the fire. It burns hotter.", true)
             } else if self.consume_dry(intent.actor_id, Material::Branch).is_ok() {
-                "a dry branch into the fire. It burns hotter."
+                ("a dry branch into the fire. It burns hotter.", false)
             } else {
                 self.finish(
                     intent.command_id,
@@ -8554,6 +8554,9 @@ impl World {
             };
             if let Some(fire) = self.fires.values_mut().find(|fire| fire.cell == cell) {
                 fire.hot = true;
+                if from_charcoal {
+                    fire.charcoal = true;
+                }
             }
             let name = self.name_of(intent.actor_id);
             self.emit(
@@ -8684,12 +8687,12 @@ impl World {
             );
             return;
         }
-        if self.fire_at(cell).is_some_and(|fire| !fire.hot) {
+        if self.fire_at(cell).is_some_and(|fire| !fire.charcoal) {
             self.finish(
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "The fire is not hot enough for iron. Feed it more fuel.",
+                "Iron needs a hot charcoal fire.",
                 results,
             );
             return;

@@ -843,8 +843,8 @@ impl World {
 
     /// A lump set by a fire becomes metal if that fire is still burning.
     /// Copper becomes a bead in a small fire, and in half that wait when the
-    /// fire is a hot charcoal fire. Iron becomes a bloom only when the fire
-    /// was fed an extra dry branch and is still hot. The plain wait is clay's.
+    /// fire is a hot charcoal fire. Iron becomes a bloom only in a hot
+    /// charcoal fire. The plain wait is clay's.
     fn finish_smelt(&mut self, id: ItemId) {
         let Some(item) = self.item(id).cloned() else {
             return;
@@ -866,14 +866,14 @@ impl World {
             _ => return,
         };
         let hot_enough = item.material != Material::IronOre
-            || self.fire_at(item.cell).is_some_and(|fire| fire.hot);
+            || self.fire_at(item.cell).is_some_and(|fire| fire.charcoal);
         if item.carrier.is_some() || self.fire_at(item.cell).is_none() || !hot_enough {
             if let Some(lying) = self.items.get_mut(&id) {
                 lying.firing_ready_at = None;
             }
             if item.carrier.is_none() {
                 let text = if self.fire_at(item.cell).is_some() {
-                    "The iron ore is still ore. The fire is not hot enough."
+                    "The iron ore is still ore. It needs a hot charcoal fire."
                 } else {
                     cold
                 };
