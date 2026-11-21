@@ -781,6 +781,9 @@ impl World {
                 parts.push("The berries that were here are gone.".into());
             }
         }
+        if !berries_here && !self.ground_ids(actor.cell, Material::Berry).is_empty() {
+            parts.push("A handful of berries lies here. It is good to eat raw.".into());
+        }
         let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
         let deer_named_standing_here = deer_here
             && !berries_here
@@ -7683,6 +7686,19 @@ impl World {
                         self.place_phrase(origin, cell),
                         self.condition_word(worst),
                         self.rain_reaches_phrase(cell)
+                    ));
+                } else if material == Material::Berry && loose.len() == 1 {
+                    let ate = if self.deer_ate_berries.contains(&cell) {
+                        " A deer ate the rest."
+                    } else {
+                        ""
+                    };
+                    lines.push(format!(
+                        "A handful of berries lies in contact with the ground {}. It is {}. {}{}{ate}",
+                        self.place_phrase(origin, cell),
+                        self.condition_word(worst),
+                        self.rain_reaches_phrase(cell),
+                        self.food_clause_for(viewer, material)
                     ));
                 } else if material == Material::Branch {
                     let drying = self.ground_ids(cell, Material::Branch).iter().any(|id| {

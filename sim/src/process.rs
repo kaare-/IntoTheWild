@@ -1308,6 +1308,9 @@ impl World {
             let last = self.pile_count(cell, Material::Berry) == 0;
             if last {
                 self.deer_ate_berries.insert(cell);
+                if self.ground_ids(cell, Material::Berry).is_empty() {
+                    self.mint_item(Material::Berry, 0, cell, None, Role::Loose);
+                }
             }
             let text = if last {
                 "A deer eats the last handful of berries."

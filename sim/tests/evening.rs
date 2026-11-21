@@ -2,6 +2,17 @@ use villmarks_sim::{
     contest_hash, parse_attempt, Attempt, Dir, ExamineTarget, Intent, Material, Tuning, World,
 };
 
+fn rock_berry_pile(world: &World, actor: u32) -> u32 {
+    world
+        .observe(actor)
+        .unwrap()
+        .visible_cells
+        .iter()
+        .find(|cell| cell.x == 6 && cell.y == 1)
+        .map(|cell| cell.berry_pile)
+        .unwrap_or(0)
+}
+
 fn world_at(rain_at: u64) -> World {
     let mut tuning = Tuning::evening();
     tuning.rain_starts_at = rain_at;
@@ -425,8 +436,8 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     assert!(!prose.contains("0.45"));
     assert_eq!(
         world.material_tally(Material::Berry),
-        1,
-        "the deer eats the pile; the carried handful remains"
+        2,
+        "the deer eats the pile; the carried handful and the one it left remain"
     );
 
     world.step(&[cmd("none", otto, Attempt::Light)]);
@@ -456,7 +467,7 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         world.material_tally(Material::Branch),
         branches_before_light - 1
     );
-    assert_eq!(world.material_tally(Material::Berry), 1);
+    assert_eq!(world.material_tally(Material::Berry), 2);
     let here = lit
         .visible_cells
         .iter()
@@ -475,8 +486,8 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .any(|event| event.text.contains("cooks a handful of berries")));
     assert_eq!(
         world.material_tally(Material::Berry),
-        4,
-        "the carried handful is cooked, and the patch grew back the same step"
+        5,
+        "the carried handful is cooked, the deer left one, and the patch grew back the same step"
     );
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert!(world
@@ -1589,7 +1600,7 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
     for _ in 0..3 {
         near.step(&[]);
     }
-    assert_eq!(near.material_tally(Material::Berry), 0);
+    assert_eq!(near.material_tally(Material::Berry), 1);
     assert_eq!(near.deer_cell(), Some((6, 1)));
     let eats: Vec<_> = near
         .event_log()
@@ -1622,12 +1633,20 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
         .iter()
         .all(|event| !event.text.contains("handful")));
     let witness = near.spawn_at("Witness", "w", 6, 1).unwrap();
-    assert!(!near
+    let left = near.observe(witness).unwrap().text;
+    assert!(
+        left.contains("A handful of berries lies here. It is good to eat raw."),
+        "{left}"
+    );
+    assert!(!left.contains("Berries lie here"), "{left}");
+    let got = near.step(&[cmd("spare", witness, Attempt::Gather(Material::Berry))]);
+    assert_eq!(got.results[0].message, "You gather a handful of berries.");
+    assert!(near
         .observe(witness)
         .unwrap()
-        .text
-        .contains("Berries lie here"));
-    near.step(&[]);
+        .events
+        .iter()
+        .all(|event| event.text != "You gather a handful of berries."));
     assert_eq!(near.deer_cell(), Some((5, 1)));
 
     let mut race = world_at(10_000);
@@ -1770,7 +1789,9 @@ fn open_berries_soak_when_the_wet_season_arrives_and_the_rock_stays_dry() {
     let before_rock = world.examine(near, ExamineTarget::Berries);
     assert!(!before_rock.contains("soaked"), "{before_rock}");
     assert!(
-        before_rock.contains("You see no berries from here."),
+        before_rock.contains(
+            "A handful of berries lies in contact with the ground to the north and east, under the rock overhang. It is dry. Rain does not reach it. They are good to eat raw. A deer ate the rest."
+        ),
         "{before_rock}"
     );
 
@@ -4321,7 +4342,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A deer ate the berries that were here. A handful of berries lies here. It is good to eat raw. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let step_west = step_look
         .text
@@ -4366,7 +4387,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         near_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A deer ate the berries that were here. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A deer ate the berries that were here. A handful of berries lies here. It is good to eat raw. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let far_look = world.observe(far).unwrap();
     assert_eq!(far_look.self_info.cold, "cold");
@@ -6726,7 +6747,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .contains("This handful is the last"));
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((6, 1)));
-    assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(world.material_tally(Material::Berry), 1);
     assert_eq!(world.sim_time(), 10);
     assert!(world.hoofprints_at(3, 3));
     let last = world.examine(near, ExamineTarget::Wood);
@@ -6858,7 +6879,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .contains("A deer stands here."));
     world.step(&[]);
     assert_eq!(world.deer_cell(), Some((5, 1)));
-    assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(world.material_tally(Material::Berry), 1);
     let left_clock = world.sim_time();
     let left_look = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), left_clock);
@@ -8425,12 +8446,12 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     let mut saw_eating = false;
     let mut later_handful = false;
     for _ in 0..12 {
-        if world.material_tally(Material::Berry) == 0 {
+        if rock_berry_pile(&world, near) == 0 {
             break;
         }
-        let before = world.material_tally(Material::Berry);
+        let before = rock_berry_pile(&world, near);
         world.step(&[]);
-        let after = world.material_tally(Material::Berry);
+        let after = rock_berry_pile(&world, near);
         if world.deer_cell() == Some((6, 1)) && after > 0 {
             let text = world.observe(near).unwrap().text;
             if after < before {
@@ -8477,7 +8498,7 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
             let far_text = world.observe(far).unwrap().text;
             assert!(!far_text.contains("eating the berries"), "{far_text}");
             assert!(!far_text.contains("these branches"), "{far_text}");
-            let count = world.material_tally(Material::Berry);
+            let count = after;
             let berries = world.examine(near, ExamineTarget::Berries);
             assert!(berries.contains("A deer is eating them."), "{berries}");
             if count == 1 {
@@ -8500,15 +8521,16 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
         }
     }
     assert!(saw_eating);
-    assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(rock_berry_pile(&world, near), 0);
+    assert_eq!(world.material_tally(Material::Berry), 1);
     assert_eq!(world.deer_cell(), Some((6, 1)));
     let clock = world.sim_time();
     assert_eq!(
         world.examine(near, ExamineTarget::Berries),
-        "The berries that were here are gone. The deer here ate them."
+        "A handful of berries lies in contact with the ground here, under the rock overhang. It is dry. Rain does not reach it. They are good to eat raw. A deer ate the rest."
     );
     assert_eq!(world.sim_time(), clock);
-    assert_eq!(world.material_tally(Material::Berry), 0);
+    assert_eq!(world.material_tally(Material::Berry), 1);
     let gone = world.observe(near).unwrap().text;
     assert!(!gone.contains("Berries lie here"), "{gone}");
     assert!(!gone.contains("The last handful is gone."), "{gone}");
@@ -8551,7 +8573,7 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     let clock = world.sim_time();
     assert_eq!(
         world.examine(near, ExamineTarget::Berries),
-        "The berries that were here are gone. A deer ate them."
+        "A handful of berries lies in contact with the ground here, under the rock overhang. It is dry. Rain does not reach it. They are good to eat raw. A deer ate the rest."
     );
     let deer = world.examine(near, ExamineTarget::Deer);
     assert_eq!(deer, "A deer stands one cell west, in the open.");
