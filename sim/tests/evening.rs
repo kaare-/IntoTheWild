@@ -1635,10 +1635,20 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
     let witness = near.spawn_at("Witness", "w", 6, 1).unwrap();
     let left = near.observe(witness).unwrap().text;
     assert!(
-        left.contains("A handful of berries lies here. It is good to eat raw."),
+        left.contains(
+            "A handful of berries lies here. It is good to eat raw. A deer ate the rest."
+        ),
         "{left}"
     );
-    assert!(!left.contains("Berries lie here"), "{left}");
+    assert!(!left.contains("are gone"), "{left}");
+    assert!(!left.contains("ate the berries that were here"), "{left}");
+    let body = near.examine(witness, ExamineTarget::Berries);
+    assert!(
+        body.contains("A handful of berries lies in contact with the ground")
+            && body.contains("A deer ate the rest."),
+        "{body}"
+    );
+    assert!(!body.contains("are gone"), "{body}");
     let got = near.step(&[cmd("spare", witness, Attempt::Gather(Material::Berry))]);
     assert_eq!(got.results[0].message, "You gather a handful of berries.");
     assert!(near
@@ -4342,7 +4352,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A deer ate the berries that were here. A handful of berries lies here. It is good to eat raw. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A handful of berries lies here. It is good to eat raw. A deer ate the rest. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let step_west = step_look
         .text
@@ -4387,7 +4397,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         near_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A deer ate the berries that were here. A handful of berries lies here. It is good to eat raw. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A handful of berries lies here. It is good to eat raw. A deer ate the rest. A pot sits here. A pile of branches lies here. A pile of bark lies here. Hoofprints mark the ground."
     );
     let far_look = world.observe(far).unwrap();
     assert_eq!(far_look.self_info.cold, "cold");
@@ -6762,7 +6772,8 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         last_look.text
     );
-    let deer_sentence = "A deer stands here after eating the berries that were here.";
+    let deer_sentence =
+        "A handful of berries lies here. It is good to eat raw. A deer ate the rest.";
     let stand_at = last_look.text.find(deer_sentence).expect(&last_look.text);
     let pot_at = last_look
         .text
@@ -6884,7 +6895,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let left_look = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), left_clock);
     assert!(
-        left_look
+        left_look.text.contains(
+            "A handful of berries lies here. It is good to eat raw. A deer ate the rest."
+        ),
+        "{}",
+        left_look.text
+    );
+    assert!(
+        !left_look
             .text
             .contains("The berries that were here are gone."),
         "{}",
@@ -6900,28 +6918,13 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         left_look.text
     );
-    let west_at = left_look
-        .text
-        .find("West: valley floor, a deer, hoofprints. That way, to the south, reaches the same wood.")
-        .expect(&left_look.text);
-    let ate_west = left_look
-        .text
-        .find("That deer ate the berries that were here.")
-        .expect(&left_look.text);
-    assert!(west_at < ate_west, "{}", left_look.text);
+    assert!(left_look.text.contains(
+        "West: valley floor, a deer, hoofprints. That way, to the south, reaches the same wood."
+    ));
     assert!(
-        !left_look
-            .text
-            .contains("The deer ate the berries that were here."),
+        !left_look.text.contains("ate the berries that were here"),
         "{}",
         left_look.text
-    );
-    assert_eq!(
-        left_look
-            .text
-            .matches("That deer ate the berries that were here.")
-            .count(),
-        1
     );
     assert!(
         left_look
@@ -6980,7 +6983,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let wood_clock = world.sim_time();
     let wood_look = world.observe(near).unwrap();
     assert!(
-        wood_look
+        wood_look.text.contains(
+            "A handful of berries lies here. It is good to eat raw. A deer ate the rest."
+        ),
+        "{}",
+        wood_look.text
+    );
+    assert!(
+        !wood_look
             .text
             .contains("The berries that were here are gone."),
         "{}",
@@ -7003,15 +7013,16 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         wood_look.text
     );
-    let south_at = wood_look
+    assert!(wood_look
         .text
-        .find("The corner beyond, to the west, has the rotting wood and the deer")
-        .expect(&wood_look.text);
-    let ate_at = wood_look
-        .text
-        .find("The deer on that wood ate the berries.")
-        .expect(&wood_look.text);
-    assert!(south_at < ate_at, "{}", wood_look.text);
+        .contains("The corner beyond, to the west, has the rotting wood and the deer"));
+    assert!(
+        !wood_look
+            .text
+            .contains("The deer on that wood ate the berries."),
+        "{}",
+        wood_look.text
+    );
     assert!(!wood_look.text.contains("ate them"), "{}", wood_look.text);
     assert!(
         !wood_look.text.contains("Past that wood"),
@@ -7141,13 +7152,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let on_left = world.observe(near).unwrap();
     assert_eq!(world.sim_time(), wood_clock + 1);
     assert!(
-        on_left
-            .text
-            .contains("The berries that were here are gone. The deer ate them."),
+        on_left.text.contains(
+            "A handful of berries lies here. It is good to eat raw. A deer ate the rest."
+        ),
         "{}",
         on_left.text
     );
-    assert_eq!(on_left.text.matches("The deer ate them.").count(), 1);
+    assert!(!on_left.text.contains("are gone"), "{}", on_left.text);
+    assert_eq!(on_left.text.matches("The deer ate them.").count(), 0);
     assert_eq!(
         on_left
             .text
@@ -7574,25 +7586,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         on_south.text
     );
-    assert_eq!(
+    assert_ne!(
         look_lines[south_at + 2],
         "The deer ate the berries that were here.",
         "{}",
         on_south.text
     );
-    let ate_floor = on_south
+    assert!(on_south
         .text
-        .find("The deer ate the berries that were here.")
-        .expect(&on_south.text);
+        .contains("A handful of berries lies here. It is good to eat raw. A deer ate the rest."));
     let around = on_south.text.find("Around you:").expect(&on_south.text);
-    assert!(around < ate_floor, "{}", on_south.text);
     assert!(!on_south.text.contains("That deer"), "{}", on_south.text);
-    assert_eq!(
-        on_south
-            .text
-            .matches("ate the berries that were here")
-            .count(),
-        1,
+    assert!(
+        !on_south.text.contains("ate the berries that were here"),
         "{}",
         on_south.text
     );
@@ -7604,11 +7610,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .text
         .find("Hoofprints on that wood mark the deer's walk south off the west floor, onto the south floor, still in sight.")
         .expect(&on_south.text);
-    assert!(
-        around < named && named < ate_floor && ate_floor < onto,
-        "{}",
-        on_south.text
-    );
+    assert!(around < named && named < onto, "{}", on_south.text);
     assert!(
         !on_south.text.contains("where the deer is now")
             && !on_south.text.contains("which is still in sight")
@@ -7709,15 +7711,19 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "{}",
         unseen.text
     );
-    let prints_at = unseen
+    assert!(unseen.text.contains(
+        "Hoofprints on that wood mark the deer's walk, and on the south floor they turn west out of sight."
+    ));
+    assert!(unseen
         .text
-        .find("Hoofprints on that wood mark the deer's walk, and on the south floor they turn west out of sight.")
-        .expect(&unseen.text);
-    let ate_after = unseen
-        .text
-        .find("The deer ate the berries that were here.")
-        .expect(&unseen.text);
-    assert!(ate_after < prints_at, "{}", unseen.text);
+        .contains("A handful of berries lies here. It is good to eat raw. A deer ate the rest."));
+    assert!(
+        !unseen
+            .text
+            .contains("The deer ate the berries that were here."),
+        "{}",
+        unseen.text
+    );
     assert!(
         !unseen.text.contains("The deer is no longer in sight"),
         "{}",
@@ -8070,7 +8076,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .expect(&unseen.text);
     let prints_gone = unseen
         .text
-        .find("The deer ate the berries that were here.\nHoofprints on that wood mark the deer's walk, and on the south floor they turn west out of sight.")
+        .find("Hoofprints on that wood mark the deer's walk, and on the south floor they turn west out of sight.")
         .expect(&unseen.text);
     assert!(south_gone < prints_gone, "{}", unseen.text);
     assert!(
@@ -8536,9 +8542,12 @@ fn examine_berries_after_the_pile_is_gone_says_they_are_gone() {
     assert!(!gone.contains("The last handful is gone."), "{gone}");
     assert!(!gone.contains("is eating"), "{gone}");
     assert!(
-        gone.contains("A deer stands here after eating the berries that were here."),
+        gone.contains(
+            "A handful of berries lies here. It is good to eat raw. A deer ate the rest."
+        ),
         "{gone}"
     );
+    assert!(!gone.contains("after eating the berries"), "{gone}");
     assert!(
         !gone.contains("The deer standing here ate the berries that were here."),
         "{gone}"

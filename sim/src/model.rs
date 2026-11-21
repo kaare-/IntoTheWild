@@ -9943,9 +9943,13 @@ mod berry_return {
         assert!(world.berry_returns_at.contains_key(&rock));
         let gone = world.observe(near).unwrap().text;
         assert!(
-            gone.contains("A deer stands here after eating the berries that were here."),
+            gone.contains(
+                "A handful of berries lies here. It is good to eat raw. A deer ate the rest."
+            ),
             "{gone}"
         );
+        assert!(!gone.contains("are gone"), "{gone}");
+        assert!(!gone.contains("after eating the berries"), "{gone}");
         assert!(!gone.contains("Berries lie here"), "{gone}");
         world.deer = None;
         let ticks = world.tuning.berry_ticks;

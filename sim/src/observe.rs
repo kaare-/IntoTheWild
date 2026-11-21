@@ -434,16 +434,18 @@ impl World {
         for dir in Dir::all() {
             lines.push(self.adjacent_line(actor_id, actor.cell, dir));
         }
-        if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
-            lines.push(ate);
-        } else if self.meal_follows_the_prints(actor.cell) {
-            lines.push("The deer ate the berries that were here.".into());
-        }
-        if self.deer_named_on_corner(actor.cell) {
-            lines.push("The deer on that wood ate the berries.".into());
-        }
-        if self.deer_named_next_door(actor.cell) {
-            lines.push("That deer ate the berries that were here.".into());
+        if !self.leftover_handful(actor.cell) {
+            if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
+                lines.push(ate);
+            } else if self.meal_follows_the_prints(actor.cell) {
+                lines.push("The deer ate the berries that were here.".into());
+            }
+            if self.deer_named_on_corner(actor.cell) {
+                lines.push("The deer on that wood ate the berries.".into());
+            }
+            if self.deer_named_next_door(actor.cell) {
+                lines.push("That deer ate the berries that were here.".into());
+            }
         }
         if self.prints_stay_on_the_wood(actor.cell) && self.deer_past_the_wood(actor.cell).is_none()
         {
@@ -745,7 +747,8 @@ impl World {
             }
             _ => {}
         }
-        if !berries_here && self.spent_berries.contains(&actor.cell) {
+        let leftover = self.leftover_handful(actor.cell);
+        if !berries_here && self.spent_berries.contains(&actor.cell) && !leftover {
             if self.deer_ate_berries.contains(&actor.cell) {
                 if deer_here {
                     parts
@@ -784,8 +787,15 @@ impl World {
                 parts.push("The berries that were here are gone.".into());
             }
         }
-        if !berries_here && !self.ground_ids(actor.cell, Material::Berry).is_empty() {
-            parts.push("A handful of berries lies here. It is good to eat raw.".into());
+        if leftover {
+            let rest = if self.deer_ate_berries.contains(&actor.cell) {
+                " A deer ate the rest."
+            } else {
+                ""
+            };
+            parts.push(format!(
+                "A handful of berries lies here. It is good to eat raw.{rest}"
+            ));
         }
         let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
         let deer_named_standing_here = deer_here
@@ -1558,6 +1568,12 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// The pile is gone and one loose handful is still on this ground.
+    fn leftover_handful(&self, cell: CellId) -> bool {
+        self.pile_count(cell, Material::Berry) == 0
+            && !self.ground_ids(cell, Material::Berry).is_empty()
     }
 
     /// A berry patch in sight that has not grown back. The compass drops the
