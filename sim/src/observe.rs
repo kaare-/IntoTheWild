@@ -7489,6 +7489,7 @@ impl World {
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
                     && self.canoe_for_these_eyes(viewer, event).is_none()
+                    && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
@@ -8219,6 +8220,40 @@ impl World {
             return Some(text.to_string());
         }
         None
+    }
+
+    /// A canoe refusal the actor already has as the command reply.
+    /// It does not sit in their event list. Nobody else is in the audience.
+    fn canoe_refusal_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        const LINES: &[&str] = &[
+            "You are aboard the canoe. Disembark first.",
+            "The canoe stays in the brook.",
+            "There is nowhere to paddle.",
+            "The canoe has nowhere to go.",
+            "The canoe is already on land.",
+            "There is no dugout canoe here.",
+            "There is no bank here.",
+            "The canoe is already in the brook.",
+            "There is nowhere to drag the canoe.",
+            "Launch the canoe from the bank.",
+            "The canoe is already carved.",
+            "You need a flint flake or an iron knife to carve the canoe.",
+            "You are already aboard the canoe.",
+            "There is no canoe here to board.",
+            "You are not aboard a canoe.",
+            "The brook is not beside you.",
+            "The log is already a canoe.",
+        ];
+        LINES
+            .contains(&event.text.as_str())
+            .then(|| event.text.clone())
     }
 
     /// A reed mat woven, set, dropped, or rested on. The person who did it

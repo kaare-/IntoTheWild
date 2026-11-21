@@ -5594,6 +5594,12 @@ mod dugout {
         assert!(!walked.results[0].success);
         assert_eq!(world.actor_cell(near), Some((1, 2)));
         assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are aboard the canoe. Disembark first." }));
+        assert!(world
             .observe(seen)
             .unwrap()
             .events
@@ -5639,6 +5645,18 @@ mod dugout {
         let banked = world.step(&[intent("east", near, Attempt::Paddle(Some(Dir::East)))]);
         assert_eq!(banked.results[0].message, "The canoe stays in the brook.");
         assert_eq!(world.actor_cell(near), Some((1, 1)));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The canoe stays in the brook." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The canoe stays in the brook." }));
         let left = world.step(&[intent("leave", near, Attempt::Disembark)]);
         assert_eq!(left.results[0].message, "You leave the dugout canoe.");
         assert_eq!(world.actor_cell(near), Some((1, 0)));
@@ -5912,7 +5930,7 @@ mod dugout {
         assert!(told
             .events
             .iter()
-            .any(|event| event.text == "The canoe is already on land."));
+            .all(|event| event.text != "The canoe is already on land."));
         assert!(told.events.iter().all(|event| {
             event.text != "You beach the dugout canoe."
                 && event.text != "Near beaches the dugout canoe."
