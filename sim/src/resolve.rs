@@ -906,7 +906,11 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if !self.has_butcher_tool(actor.id) {
                     Err("You need a flint spear or an iron knife.".into())
-                } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
+                } else if !self
+                    .ground_ids(actor.cell, Material::Carcass)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|carcass| !carcass.fox))
+                {
                     Err("There is no carcass here to butcher.".into())
                 } else {
                     Ok(true)
@@ -931,8 +935,19 @@ impl World {
                         .otter
                         .as_ref()
                         .map(|otter| crate::model::chebyshev(actor.cell, otter.cell));
+                    let fox = self
+                        .fox
+                        .as_ref()
+                        .map(|fox| crate::model::chebyshev(actor.cell, fox.cell));
                     let nearer = |dist: i32| {
-                        deer.is_none_or(|far| dist < far) && wolf.is_none_or(|far| dist < far)
+                        deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                    };
+                    let fox_nearer = |dist: i32| {
+                        deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
                     };
                     let wolf_melee = wolf.is_some_and(|dist| dist <= 1);
                     let wolf_shot = self.bow_in_hand(actor.id)
@@ -940,14 +955,21 @@ impl World {
                     let otter_melee = otter.is_some_and(|dist| dist <= 1 && nearer(dist));
                     let otter_shot = self.bow_in_hand(actor.id)
                         && otter.is_some_and(|dist| dist <= self.tuning.sight && nearer(dist));
+                    let fox_melee = fox.is_some_and(|dist| dist <= 1 && fox_nearer(dist));
+                    let fox_shot = self.bow_in_hand(actor.id)
+                        && fox.is_some_and(|dist| dist <= self.tuning.sight && fox_nearer(dist));
                     if wolf_melee
                         || deer.is_some_and(|dist| dist <= 1)
                         || wolf_shot
                         || self.bow_can_reach(actor.id)
                         || otter_melee
                         || otter_shot
+                        || fox_melee
+                        || fox_shot
                     {
                         Ok(true)
+                    } else if fox.is_some_and(|dist| fox_nearer(dist)) {
+                        Err("The fox is not close enough to hunt.".into())
                     } else if otter.is_some_and(|dist| nearer(dist)) {
                         Err("The otter is not close enough to hunt.".into())
                     } else if wolf.is_some_and(|dist| dist <= self.tuning.sight)
@@ -985,6 +1007,10 @@ impl World {
                         .otter
                         .as_ref()
                         .map(|otter| crate::model::chebyshev(actor.cell, otter.cell));
+                    let fox = self
+                        .fox
+                        .as_ref()
+                        .map(|fox| crate::model::chebyshev(actor.cell, fox.cell));
                     let wolf_shot = wolf.is_some_and(|dist| dist <= self.tuning.sight)
                         && wolf.is_some_and(|dist| deer.is_none_or(|far| dist < far));
                     let deer_shot = deer.is_some_and(|dist| dist <= self.tuning.sight);
@@ -992,9 +1018,20 @@ impl World {
                         dist <= self.tuning.sight
                             && deer.is_none_or(|far| dist < far)
                             && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
                     });
-                    if wolf_shot || deer_shot || otter_shot {
+                    let fox_shot = fox.is_some_and(|dist| {
+                        dist <= self.tuning.sight
+                            && deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                    });
+                    if wolf_shot || deer_shot || otter_shot || fox_shot {
                         Ok(true)
+                    } else if self.deer.as_ref().is_none()
+                        && fox.is_some_and(|dist| otter.is_none_or(|far| dist < far))
+                    {
+                        Err("The fox is not close enough for the bow.".into())
                     } else if self.deer.as_ref().is_none() && self.otter.is_some() {
                         Err("The otter is not close enough for the bow.".into())
                     } else if self.deer.as_ref().is_none() {
@@ -4640,6 +4677,13 @@ impl World {
             return false;
         }
         if self
+            .fox
+            .as_ref()
+            .is_some_and(|fox| dist > crate::model::chebyshev(person.cell, fox.cell))
+        {
+            return false;
+        }
+        if self
             .wolf_standing()
             .is_some_and(|wolf| dist >= crate::model::chebyshev(person.cell, wolf))
         {
@@ -4688,6 +4732,265 @@ impl World {
             return true;
         }
         false
+    }
+
+    /// The fox is nearer than the deer, the otter, and a standing wolf.
+    /// A wolf this weapon can already reach stays the quarry.
+    fn fox_is_nearest(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        let Some(fox) = self.fox.as_ref() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(person.cell, fox.cell);
+        if self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| dist >= crate::model::chebyshev(person.cell, deer.cell))
+        {
+            return false;
+        }
+        if self
+            .otter
+            .as_ref()
+            .is_some_and(|otter| dist >= crate::model::chebyshev(person.cell, otter.cell))
+        {
+            return false;
+        }
+        if self
+            .wolf_standing()
+            .is_some_and(|wolf| dist >= crate::model::chebyshev(person.cell, wolf))
+        {
+            return false;
+        }
+        let wolf_dist = self
+            .wolf_standing()
+            .map(|wolf| crate::model::chebyshev(person.cell, wolf));
+        let wolf_in_reach = wolf_dist.is_some_and(|far| {
+            (self.spear_can_hunt(actor) && far <= 1)
+                || (self.bow_in_hand(actor) && far <= self.tuning.sight)
+        });
+        if wolf_in_reach {
+            return false;
+        }
+        true
+    }
+
+    /// A spear on the fox's cell or the next, or a bow out to sight,
+    /// and only when the fox is the nearer animal.
+    fn strike_the_fox(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        results: &mut Vec<CommandResult>,
+    ) -> bool {
+        if !self.fox_is_nearest(actor.id) {
+            return false;
+        }
+        let Some(fox) = self.fox.clone() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(actor.cell, fox.cell);
+        if self.spear_can_hunt(actor.id) && dist == 0 {
+            self.bring_down_fox(intent, fox.cell, None, results);
+            return true;
+        }
+        if self.spear_can_hunt(actor.id) && dist == 1 {
+            self.contest_the_fox(intent, actor, &fox, results);
+            return true;
+        }
+        if self.bow_in_hand(actor.id) && dist <= self.tuning.sight {
+            self.loose_the_bow_at_the_fox(intent, actor, fox.cell, results);
+            return true;
+        }
+        false
+    }
+
+    fn bring_down_fox(
+        &mut self,
+        intent: &Intent,
+        cell: crate::model::CellId,
+        draw: Option<Draw>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let name = self.name_of(intent.actor_id);
+        let flint = self
+            .loose_ids(intent.actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        self.fox = None;
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.fox = true;
+        }
+        let (heard, yours) = if flint {
+            let rest = "the fox down with the flint spear.";
+            (
+                crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+                crate::model::spoken_act(None, "bring", rest),
+            )
+        } else {
+            (
+                format!("{name} brings the fox down. A fox carcass lies where it stood."),
+                "You bring the fox down. A fox carcass lies where it stood.".to_string(),
+            )
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            draw,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            intent.actor_id,
+            true,
+            yours,
+            results,
+        );
+    }
+
+    fn loose_the_bow_at_the_fox(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if let Some(flake) = self.loose_ids(actor.id, Material::Flake).first().copied() {
+            self.items.remove(&flake);
+        }
+        self.fox = None;
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.fox = true;
+        }
+        let name = self.name_of(actor.id);
+        let rest = "the fox down with the bow. The flint flake is spent.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            actor.id,
+            true,
+            crate::model::spoken_act(None, "bring", rest),
+            results,
+        );
+    }
+
+    /// The next cell. One of three, from the same draw the deer uses.
+    /// A miss or a bolt leaves no carcass. The fox slips away along the floor
+    /// when the route has a cell that is not the hunter.
+    fn contest_the_fox(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        fox: &crate::model::Fox,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let (x, y) = crate::model::cell_xy(fox.cell);
+        let subject = format!("{x},{y}:fox");
+        let hash = contest_hash(self.seed, self.time, "hunt", &subject, actor.id);
+        let draw = Some(Draw {
+            tag: "hunt".into(),
+            subject,
+            value: hash,
+        });
+        if hash % 3 == 0 {
+            self.bring_down_fox(intent, fox.cell, draw, results);
+            return;
+        }
+        let cell = fox.cell;
+        let way = self.slip_the_fox(actor.cell);
+        let name = self.name_of(actor.id);
+        let flint = self
+            .loose_ids(actor.id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        let (heard, yours) = if hash % 3 == 1 {
+            match (flint, way) {
+                (true, Some(way)) => (
+                    format!(
+                        "{name} misses the fox with the flint spear. It slips away to the {way}."
+                    ),
+                    format!("You miss the fox with the flint spear. It slips away to the {way}."),
+                ),
+                (false, Some(way)) => (
+                    format!("{name} misses the fox. It slips away to the {way}."),
+                    format!("You miss the fox. It slips away to the {way}."),
+                ),
+                (true, None) => (
+                    format!("{name} misses the fox with the flint spear. It stays."),
+                    "You miss the fox with the flint spear. It stays.".to_string(),
+                ),
+                (false, None) => (
+                    format!("{name} misses the fox. It stays."),
+                    "You miss the fox. It stays.".to_string(),
+                ),
+            }
+        } else {
+            match (flint, way) {
+                (true, Some(way)) => (
+                    format!("The fox slips away to the {way}. {name}'s flint spear does not land."),
+                    format!("The fox slips away to the {way}. Your flint spear does not land."),
+                ),
+                (false, Some(way)) => (
+                    format!("The fox slips away to the {way}. {name}'s spear does not land."),
+                    format!("The fox slips away to the {way}. Your spear does not land."),
+                ),
+                (true, None) => (
+                    format!("The fox stays. {name}'s flint spear does not land."),
+                    "The fox stays. Your flint spear does not land.".to_string(),
+                ),
+                (false, None) => (
+                    format!("The fox stays. {name}'s spear does not land."),
+                    "The fox stays. Your spear does not land.".to_string(),
+                ),
+            }
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![],
+            vec![],
+            draw,
+        );
+        self.finish(intent.command_id.clone(), actor.id, false, yours, results);
+    }
+
+    /// One step along the floor, away from the hunter. None when that cell is the hunter.
+    fn slip_the_fox(&mut self, hunter: crate::model::CellId) -> Option<&'static str> {
+        let fox = self.fox.clone()?;
+        let (next_at, next) = self.fox_away(fox.route_at, hunter)?;
+        let (x1, y1) = crate::model::cell_xy(fox.cell);
+        let (x2, y2) = crate::model::cell_xy(next);
+        let word = if x2 > x1 {
+            "east"
+        } else if x2 < x1 {
+            "west"
+        } else if y2 > y1 {
+            "south"
+        } else {
+            "north"
+        };
+        if let Some(fox) = self.fox.as_mut() {
+            fox.cell = next;
+            fox.route_at = next_at;
+        }
+        Some(word)
     }
 
     fn bring_down_otter(
@@ -5076,6 +5379,19 @@ impl World {
                 self.finish(intent.command_id, actor.id, false, message, results);
                 continue;
             }
+            if self.fox_is_nearest(actor.id) {
+                if self.strike_the_fox(&intent, &actor, results) {
+                    continue;
+                }
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The fox is not close enough to hunt.",
+                    results,
+                );
+                continue;
+            }
             if self.otter_is_nearest(actor.id) {
                 if self.strike_the_otter(&intent, &actor, results) {
                     continue;
@@ -5370,10 +5686,10 @@ impl World {
                 .iter()
                 .copied()
                 .find(|id| self.item(*id).is_some_and(|carcass| carcass.otter));
-            let other = carcasses
-                .iter()
-                .copied()
-                .find(|id| self.item(*id).is_some_and(|carcass| !carcass.otter));
+            let other = carcasses.iter().copied().find(|id| {
+                self.item(*id)
+                    .is_some_and(|carcass| !carcass.otter && !carcass.fox)
+            });
             let Some(carcass) = other.or(otter) else {
                 self.finish(
                     intent.command_id,
@@ -7117,6 +7433,22 @@ impl World {
                 actor.id,
                 false,
                 "You need a sharp flint flake.",
+                results,
+            );
+            return;
+        }
+        if self.fox_is_nearest(actor.id) {
+            if let Some(fox) = self.fox.clone() {
+                if crate::model::chebyshev(actor.cell, fox.cell) <= self.tuning.sight {
+                    self.loose_the_bow_at_the_fox(intent, actor, fox.cell, results);
+                    return;
+                }
+            }
+            self.finish(
+                intent.command_id.clone(),
+                actor.id,
+                false,
+                "The fox is not close enough for the bow.",
                 results,
             );
             return;

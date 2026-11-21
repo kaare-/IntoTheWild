@@ -23,7 +23,7 @@ g iron ore     I bloom of iron
 K iron knife   i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
-d deer         \" tracks
+d deer    x fox  \" tracks
 R rock roof    H bark roof
 f unfinished frame
 ~ brook    = still water
@@ -1220,9 +1220,15 @@ impl World {
         {
             parts.push("A wolf carcass lies here.".into());
         }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
+        {
+            parts.push("A fox carcass lies here.".into());
+        }
         if carcasses.iter().any(|id| {
             self.item(*id)
-                .is_some_and(|carcass| !carcass.wolf && !carcass.otter)
+                .is_some_and(|carcass| !carcass.wolf && !carcass.otter && !carcass.fox)
         }) {
             parts.push("A deer carcass lies here.".into());
         }
@@ -3362,6 +3368,12 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
             {
                 "a wolf carcass".into()
+            } else if self
+                .loose_ids(actor_id, Material::Carcass)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
+            {
+                "a fox carcass".into()
             } else {
                 "a deer carcass".into()
             }
@@ -3823,6 +3835,11 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
         {
             " They carry a wolf carcass.".into()
+        } else if carried
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
+        {
+            " They carry a fox carcass.".into()
         } else {
             " They carry a deer carcass.".into()
         }
@@ -4290,9 +4307,15 @@ impl World {
         {
             bits.push("a wolf carcass".into());
         }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
+        {
+            bits.push("a fox carcass".into());
+        }
         if carcasses.iter().any(|id| {
             self.item(*id)
-                .is_some_and(|carcass| !carcass.wolf && !carcass.otter)
+                .is_some_and(|carcass| !carcass.wolf && !carcass.otter && !carcass.fox)
         }) {
             bits.push("a carcass".into());
         }
@@ -5838,6 +5861,8 @@ impl World {
                     "otter"
                 } else if item.is_some_and(|carcass| carcass.wolf) {
                     "wolf"
+                } else if item.is_some_and(|carcass| carcass.fox) {
+                    "fox"
                 } else {
                     "deer"
                 };
@@ -5871,6 +5896,11 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
             {
                 "wolf"
+            } else if carried
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.fox))
+            {
+                "fox"
             } else {
                 "deer"
             };
@@ -8133,6 +8163,9 @@ impl World {
         if self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
             marks.push('d');
         }
+        if self.fox.as_ref().is_some_and(|fox| fox.cell == cell) {
+            marks.push('x');
+        }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {
                 item.material == Material::Log && item.cell == cell && item.carrier.is_none()
@@ -8501,6 +8534,7 @@ impl World {
                     && self.scare_for_these_eyes(viewer, event).is_none()
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.fox_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_butcher_for_these_eyes(viewer, event).is_none()
                     && self.otter_cloak_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
@@ -10270,6 +10304,38 @@ impl World {
         }
     }
 
+    /// A fox brought down, or missed, filled for the hunter.
+    /// That person already read the sentence as the command result.
+    fn fox_hunt_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        let brings = text == format!("{name} brings the fox down with the flint spear.")
+            || text == format!("{name} brings the fox down. A fox carcass lies where it stood.")
+            || text
+                == format!("{name} brings the fox down with the bow. The flint flake is spent.");
+        let misses =
+            text.starts_with(&format!("{name} misses the fox")) && text.contains("slips away");
+        let bolts = text.starts_with("The fox slips away to the ")
+            && (text.ends_with(&format!("{name}'s flint spear does not land."))
+                || text.ends_with(&format!("{name}'s spear does not land.")));
+        let stays = text == format!("{name} misses the fox with the flint spear. It stays.")
+            || text == format!("{name} misses the fox. It stays.")
+            || text == format!("The fox stays. {name}'s flint spear does not land.")
+            || text == format!("The fox stays. {name}'s spear does not land.");
+        if brings || misses || bolts || stays {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
     /// An otter carcass cut up, filled for the person who cut it.
     /// That person already read the sentence as the command result.
     fn otter_butcher_for_these_eyes(
@@ -11209,11 +11275,29 @@ impl World {
             && !self.loose_ids(actor_id, Material::Flake).is_empty()
             && wolf_dist.is_some_and(|dist| dist <= self.tuning.sight);
         let wolf_bow_past = hardened_spear && wolf_bow && wolf_dist.is_some_and(|dist| dist > 1);
+        let otter_dist = self
+            .otter
+            .as_ref()
+            .map(|otter| chebyshev(actor.cell, otter.cell));
+        let fox_dist = self.fox.as_ref().map(|fox| chebyshev(actor.cell, fox.cell));
+        let fox_nearer = fox_dist.is_some_and(|dist| {
+            deer_dist.is_none_or(|far| dist < far)
+                && otter_dist.is_none_or(|far| dist < far)
+                && wolf_dist.is_none_or(|far| dist < far)
+        });
+        let fox_spear = hardened_spear && fox_dist.is_some_and(|dist| dist <= 1) && fox_nearer;
+        let fox_bow = !self.loose_ids(actor_id, Material::Bow).is_empty()
+            && !self.loose_ids(actor_id, Material::Flake).is_empty()
+            && fox_dist.is_some_and(|dist| dist <= self.tuning.sight)
+            && fox_nearer;
+        let fox_bow_past = hardened_spear && fox_bow && fox_dist.is_some_and(|dist| dist > 1);
         if close_spear
             || wolf_spear
-            || (!any_spear && (bow_ready || wolf_bow))
+            || fox_spear
+            || (!any_spear && (bow_ready || wolf_bow || fox_bow))
             || bow_past_the_spear
             || wolf_bow_past
+            || fox_bow_past
         {
             actions.push("hunt".into());
         }

@@ -697,6 +697,9 @@ pub struct Item {
     /// A carcass from the otter, not the deer or the wolf. Other materials leave this false.
     #[serde(default)]
     pub otter: bool,
+    /// A carcass from the fox, not the deer, the wolf, or the otter. Other materials leave this false.
+    #[serde(default)]
+    pub fox: bool,
     /// Pine resin rubbed into a dugout. Other materials leave this false.
     /// A pitched canoe does not keep soaking the person aboard it.
     #[serde(default)]
@@ -1697,6 +1700,7 @@ impl World {
                 bone: false,
                 wolf: false,
                 otter: false,
+                fox: false,
                 pitched: false,
             },
         );
@@ -11918,6 +11922,230 @@ mod fox {
             look.contains("A fox is on the valley floor to the south and east."),
             "{look}"
         );
+    }
+}
+
+#[cfg(test)]
+mod fox_hunt {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn flint_spear(world: &mut World, actor: u32) {
+        let cell = world.actor(actor).unwrap().cell;
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(actor), Role::Loose);
+        let point = world.items.get_mut(&spear).unwrap();
+        point.hardened = true;
+        point.flint_tip = true;
+    }
+
+    #[test]
+    fn a_flint_spear_or_a_bow_brings_the_fox_down() {
+        assert!(matches!(
+            crate::parse::parse_attempt("hunt fox").unwrap(),
+            Attempt::Hunt
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 1, 3).unwrap();
+        assert!(world.observe(near).unwrap().legend.contains("x fox"));
+        assert!(
+            world.observe(seen).unwrap().map.contains('x'),
+            "{}",
+            world.observe(seen).unwrap().map
+        );
+        let bare = world.step(&[intent("bare", near, Attempt::Hunt)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You are not carrying a spear."));
+        flint_spear(&mut world, near);
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the fox down with the flint spear."
+        );
+        assert!(shot.results[0].success);
+        assert!(world.fox_cell().is_none());
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A fox carcass lies here."), "{here}");
+        assert!(!here.contains("A deer carcass"), "{here}");
+        assert!(!here.contains("A fox is on the valley floor"), "{here}");
+        let east = world.observe(seen).unwrap().text;
+        assert!(east.contains("East: valley floor, a fox carcass"), "{east}");
+        let body = world.examine(near, super::ExamineTarget::Carcass);
+        assert!(
+            body.contains("A fox carcass lies in contact with the ground"),
+            "{body}"
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        let heard = "Near brings the fox down with the flint spear.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        let left = world.step(&[intent("butcher", near, Attempt::Butcher)]);
+        assert_eq!(
+            left.results[0].message,
+            "There is no carcass here to butcher."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A fox carcass lies here."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no carcass here to butcher."));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bow, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let shot = world.step(&[intent("bow", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the fox down with the bow. The flint flake is spent."
+        );
+        assert!(world.fox_cell().is_none());
+        assert!(world.loose_ids(near, Material::Flake).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near brings the fox down with the bow. The flint flake is spent."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        let floor = world.observe(near).unwrap().text;
+        assert!(
+            floor.contains("East: valley floor, a fox carcass"),
+            "{floor}"
+        );
+    }
+
+    #[test]
+    fn a_spear_from_the_next_cell_can_miss_the_fox() {
+        let mut found = None;
+        for seed in 1..40 {
+            let hash = super::contest_hash(seed, 0, "hunt", "5,4:fox", 1);
+            if hash % 3 == 1 {
+                found = Some(seed);
+                break;
+            }
+        }
+        let seed = found.expect("a miss seed");
+        let mut world = World::valley(crate::tuning::Tuning::evening(), seed);
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 4).unwrap();
+        let heard = world.spawn_at("Heard", "h", 2, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        flint_spear(&mut world, near);
+        let shot = world.step(&[intent("miss", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You miss the fox with the flint spear. It slips away to the east."
+        );
+        assert!(!shot.results[0].success);
+        assert_eq!(world.fox_cell(), Some((6, 4)));
+        assert!(world
+            .items
+            .values()
+            .all(|item| item.material != Material::Carcass));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near misses the fox with the flint spear. It slips away to the east."
+        }));
+        let ears: Vec<_> = world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("fox"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(ears, vec!["You hear a fox to the east.".to_string()]);
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+    }
+
+    #[test]
+    fn a_fox_out_of_reach_stays_with_the_hunter() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        flint_spear(&mut world, near);
+        let far = world.step(&[intent("far", near, Attempt::Hunt)]);
+        assert_eq!(
+            far.results[0].message,
+            "The fox is not close enough to hunt."
+        );
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The fox is not close enough to hunt." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The fox is not close enough to hunt."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The fox is not close enough to hunt."));
     }
 }
 
