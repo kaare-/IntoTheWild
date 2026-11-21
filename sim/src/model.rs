@@ -645,9 +645,12 @@ pub struct Item {
     /// A spear hafted from a flint flake. It is not the stone-bound spear.
     #[serde(default)]
     pub flint_tip: bool,
-    /// Hide strips lashing a flint tip to the haft. A stone spear leaves this false.
+    /// Hide strips or willow cordage lashing a flint tip to the haft. A stone spear leaves this false.
     #[serde(default)]
     pub bound: bool,
+    /// The lashing was willow cordage. Hide strips leave this false.
+    #[serde(default)]
+    pub bound_willow: bool,
     /// Meat that has been held over a fire. Raw meat leaves this false.
     #[serde(default)]
     pub cooked: bool,
@@ -1618,6 +1621,7 @@ impl World {
                 raw: false,
                 flint_tip: false,
                 bound: false,
+                bound_willow: false,
                 cooked: false,
                 salted: false,
                 smoked: false,
@@ -11469,5 +11473,87 @@ mod willow {
         let after = world.observe(near).unwrap().text;
         assert!(after.contains("raw meat lie"), "{after}");
         assert!(!after.contains("willow snare"), "{after}");
+    }
+
+    #[test]
+    fn willow_cordage_binds_a_flint_spear_when_no_hide_strips_are_held() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let floor = super::cell_id(6, 2).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        world.mint_item(Material::Flake, 0, floor, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, floor, Some(near), Role::Loose);
+        world.mint_item(Material::Cord, 0, floor, Some(near), Role::Loose);
+        world.mint_item(Material::Willow, 0, floor, Some(near), Role::Loose);
+        let prefer = world.step(&[intent("prefer", near, Attempt::Haft)]);
+        let hide =
+            "You haft the flint flake and a dry branch into a spear. The tip is bound with hide.";
+        assert_eq!(prefer.results[0].message, hide);
+        assert!(world.loose_ids(near, Material::Cord).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Willow).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a flint tip bound with hide, not yet fire-hardened"));
+        let hide_spear = world.loose_ids(near, Material::Spear)[0];
+        world.items.remove(&hide_spear);
+
+        world.mint_item(Material::Flake, 0, floor, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, floor, Some(near), Role::Loose);
+        let haft = world.step(&[intent("haft", near, Attempt::Haft)]);
+        let yours =
+            "You haft the flint flake and a dry branch into a spear. The tip is bound with willow cordage.";
+        let witnessed =
+            "Near hafts the flint flake and a dry branch into a spear. The tip is bound with willow cordage.";
+        assert_eq!(haft.results[0].message, yours);
+        assert!(world.loose_ids(near, Material::Willow).is_empty());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && !event.text.contains("hafts the flint") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("willow cordage")));
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains(
+                "a spear with a flint tip bound with willow cordage, not yet fire-hardened"
+            ),
+            "{here}"
+        );
+        let examined = world.examine(near, super::ExamineTarget::Spear);
+        assert!(
+            examined.contains(
+                "A spear with a flint tip bound with willow cordage, not yet fire-hardened, is carried by you"
+            ),
+            "{examined}"
+        );
+
+        world.mint_item(Material::Flake, 0, floor, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, floor, Some(near), Role::Loose);
+        let bare = world.step(&[intent("bare", near, Attempt::Haft)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You haft the flint flake and a dry branch into a spear."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("You haft the flint") }));
     }
 }

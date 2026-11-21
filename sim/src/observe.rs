@@ -3696,11 +3696,13 @@ impl World {
     }
 
     fn flint_tip_words(&self, spear: &crate::model::Item) -> &'static str {
-        match (spear.hardened, spear.bound) {
-            (true, true) => "a fire-hardened flint tip bound with hide",
-            (true, false) => "a fire-hardened flint tip",
-            (false, true) => "a flint tip bound with hide, not yet fire-hardened",
-            (false, false) => "a flint tip, not yet fire-hardened",
+        match (spear.hardened, spear.bound, spear.bound_willow) {
+            (true, true, true) => "a fire-hardened flint tip bound with willow cordage",
+            (true, true, false) => "a fire-hardened flint tip bound with hide",
+            (true, false, _) => "a fire-hardened flint tip",
+            (false, true, true) => "a flint tip bound with willow cordage, not yet fire-hardened",
+            (false, true, false) => "a flint tip bound with hide, not yet fire-hardened",
+            (false, false, _) => "a flint tip, not yet fire-hardened",
         }
     }
 
@@ -8217,6 +8219,7 @@ impl World {
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
+                    && self.haft_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -9492,6 +9495,8 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} hafts "))?;
         if rest != "the flint flake and a dry branch into a spear."
             && rest != "the flint flake and a dry branch into a spear. The tip is bound with hide."
+            && rest
+                != "the flint flake and a dry branch into a spear. The tip is bound with willow cordage."
         {
             return None;
         }
@@ -9933,9 +9938,6 @@ impl World {
             return line;
         }
         if let Some(line) = self.rest_for_these_eyes(viewer, event) {
-            return line;
-        }
-        if let Some(line) = self.haft_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.dry_for_these_eyes(viewer, event) {

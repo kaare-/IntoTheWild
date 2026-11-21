@@ -9516,7 +9516,7 @@ fn hide_strips_bind_the_flint_tip_when_the_spear_is_hafted() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours));
     assert!(world
         .observe(west)
         .unwrap()
@@ -9584,7 +9584,7 @@ fn a_flint_flake_and_a_dry_branch_haft_into_a_spear() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("haft"))
         .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+    assert!(yours.is_empty(), "{yours:?}");
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()

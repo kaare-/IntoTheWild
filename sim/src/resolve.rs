@@ -4444,18 +4444,31 @@ impl World {
                 .loose_ids(intent.actor_id, Material::Cord)
                 .first()
                 .copied();
+            let willow = if strips.is_none() {
+                self.loose_ids(intent.actor_id, Material::Willow)
+                    .first()
+                    .copied()
+            } else {
+                None
+            };
             self.items.remove(&flake);
             self.items.remove(&branch);
             if let Some(strips) = strips {
                 self.items.remove(&strips);
             }
+            if let Some(willow) = willow {
+                self.items.remove(&willow);
+            }
             let id = self.mint_item(Material::Spear, 0, cell, Some(intent.actor_id), Role::Loose);
             if let Some(spear) = self.items.get_mut(&id) {
                 spear.flint_tip = true;
-                spear.bound = strips.is_some();
+                spear.bound = strips.is_some() || willow.is_some();
+                spear.bound_willow = willow.is_some();
             }
             let rest = if strips.is_some() {
                 "the flint flake and a dry branch into a spear. The tip is bound with hide."
+            } else if willow.is_some() {
+                "the flint flake and a dry branch into a spear. The tip is bound with willow cordage."
             } else {
                 "the flint flake and a dry branch into a spear."
             };
