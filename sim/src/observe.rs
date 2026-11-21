@@ -9845,8 +9845,9 @@ impl World {
         Some(format!("You hear a splash to the {way}."))
     }
 
-    /// A fox slipping away, heard from out of sight. Someone who can see the
-    /// cell it left keeps that sentence. Past hearing, nothing is delivered.
+    /// A fox slipping away, or one returning to the floor, heard from out of
+    /// sight. Someone who can see the cell keeps that sentence. Past hearing,
+    /// nothing is delivered.
     fn fox_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
         let cell = self.fox_slip_cell(event)?;
         if chebyshev(origin, cell) <= self.tuning.sight {
@@ -9868,7 +9869,8 @@ impl World {
     }
 
     fn fox_slip_cell(&self, event: &crate::model::Event) -> Option<CellId> {
-        if !event.text.contains("slips away") {
+        if !event.text.contains("slips away") && event.text != "A fox is on the valley floor again."
+        {
             return None;
         }
         event.affected_cells.first().copied()

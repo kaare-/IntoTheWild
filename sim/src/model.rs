@@ -816,6 +816,8 @@ pub enum Wake {
     DeerReturn,
     /// An otter is in the brook again after the last one was brought down.
     OtterReturn,
+    /// A fox is on the dry floor again after the last one was brought down.
+    FoxReturn,
     /// The otter swims one step along the brook when nobody is beside it.
     Otter,
     /// The fox trots one step on the dry floor when nobody is beside it.
@@ -864,6 +866,9 @@ pub(crate) const OTTER_ROUTE: [(i32, i32); 6] = [(0, 1), (1, 1), (1, 2), (0, 2),
 pub struct Fox {
     pub cell: CellId,
     pub route_at: usize,
+    /// It just returned. The trot on this tick waits.
+    #[serde(default)]
+    pub held: bool,
 }
 
 /// A short run on the dry floor at the south-east. Orthogonal.
@@ -1130,6 +1135,9 @@ pub struct World {
     /// When an otter is in the brook again. Look names no live otter until then.
     #[serde(default)]
     pub(crate) otter_returns_at: Option<u64>,
+    /// When a fox is on the dry floor again. Look names no live fox until then.
+    #[serde(default)]
+    pub(crate) fox_returns_at: Option<u64>,
     /// The next deer's id. The first deer is 1.
     #[serde(default = "default_next_deer_id")]
     pub(crate) next_deer_id: u32,
@@ -1208,6 +1216,7 @@ impl World {
             fox: Some(Fox {
                 cell: cell_id(5, 4).unwrap(),
                 route_at: 0,
+                held: false,
             }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
@@ -1263,6 +1272,7 @@ impl World {
             mushroom_returns_at: BTreeMap::new(),
             deer_returns_at: None,
             otter_returns_at: None,
+            fox_returns_at: None,
             next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
             schedule: Vec::new(),
@@ -2086,6 +2096,18 @@ impl World {
         let at = self.time.saturating_add(self.tuning.deer_ticks);
         self.otter_returns_at = Some(at);
         self.schedule(at, Wake::OtterReturn);
+    }
+
+    /// The fox is down. Another is on the dry floor after the same wait as the
+    /// otter. A carcass still lying where it fell does not move that tick.
+    /// A wake that finds a fox already standing does not add a second one.
+    pub(crate) fn arm_fox_return(&mut self) {
+        if self.fox.is_some() || self.fox_returns_at.is_some() {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.deer_ticks);
+        self.fox_returns_at = Some(at);
+        self.schedule(at, Wake::FoxReturn);
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -12397,6 +12419,158 @@ mod fox_hunt {
             .events
             .iter()
             .all(|event| !event.text.contains("fox")));
+    }
+
+    #[test]
+    fn a_fox_is_on_the_dry_floor_again_after_the_same_wait_as_the_otter() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let deer = world.deer.as_mut().unwrap();
+        deer.cell = super::cell_id(2, 0).unwrap();
+        let near = world.spawn_at("Near", "n", 5, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        flint_spear(&mut world, near);
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the fox down with the flint spear."
+        );
+        assert!(world.fox_cell().is_none());
+        assert_eq!(world.fox_returns_at, Some(world.tuning.deer_ticks));
+        assert_eq!(world.tuning.deer_ticks, 24);
+        let ticks = world.tuning.deer_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world.fox_cell().is_none());
+        let waiting = world.observe(near).unwrap().text;
+        assert!(
+            !waiting.contains("A fox is on the valley floor"),
+            "{waiting}"
+        );
+        assert!(waiting.contains("A fox carcass lies here."), "{waiting}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "A fox is on the valley floor again." }));
+        world.step(&[]);
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert!(world.fox_returns_at.is_none());
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("A fox is on the valley floor here."),
+            "{}",
+            back.text
+        );
+        assert!(
+            back.text.contains("A fox carcass lies here."),
+            "{}",
+            back.text
+        );
+        let arrived = "A fox is on the valley floor again.";
+        let near_again: Vec<_> = back
+            .events
+            .iter()
+            .filter(|event| event.text == arrived)
+            .collect();
+        assert_eq!(near_again.len(), 1);
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("A fox is on the valley floor to the south and east."),
+            "{}",
+            seen_back.text
+        );
+        assert_eq!(
+            seen_back
+                .events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+        assert!(seen_back
+            .events
+            .iter()
+            .all(|event| !event.text.starts_with("You hear a fox")));
+        let heard_back = world.observe(heard).unwrap();
+        assert!(!heard_back.text.contains("A fox is on the valley floor"));
+        assert_eq!(
+            heard_back
+                .events
+                .iter()
+                .filter(|event| event.text == "You hear a fox to the south.")
+                .count(),
+            1
+        );
+        assert!(heard_back.events.iter().all(|event| event.text != arrived));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("A fox is on the valley floor"));
+        world.step(&[]);
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert_eq!(
+            world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+
+        let again = world.step(&[intent("again", near, Attempt::Hunt)]);
+        assert_eq!(
+            again.results[0].message,
+            "You bring the fox down with the flint spear."
+        );
+        assert!(world.fox_cell().is_none());
+        let second = world.fox_returns_at.unwrap();
+        assert_eq!(second, world.time + world.tuning.deer_ticks - 1);
+        while world.time < second {
+            world.step(&[]);
+        }
+        assert!(world.fox_cell().is_none());
+        world.step(&[]);
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        let off = world.step(&[intent("off", near, Attempt::Move(super::Dir::West))]);
+        assert_eq!(off.results[0].message, "You walk west.");
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        let onto = world.step(&[intent("onto", near, Attempt::Move(super::Dir::East))]);
+        assert_eq!(onto.results[0].message, "You walk east.");
+        assert!(!onto.results[0].message.contains("fox"));
+        assert_eq!(world.fox_cell(), Some((6, 4)));
+        let slipped = world.observe(near).unwrap();
+        assert!(slipped
+            .events
+            .iter()
+            .any(|event| event.text == "A fox slips away to the east."));
+        assert!(
+            slipped
+                .text
+                .contains("A fox is on the valley floor to the east."),
+            "{}",
+            slipped.text
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "A fox slips away to the east."));
     }
 
     #[test]

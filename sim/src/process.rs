@@ -59,6 +59,7 @@ impl World {
                 Wake::MushroomReturn(cell) => self.return_mushrooms(cell),
                 Wake::DeerReturn => self.return_deer(),
                 Wake::OtterReturn => self.return_otter(),
+                Wake::FoxReturn => self.return_fox(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
             }
@@ -610,6 +611,41 @@ impl World {
         });
         self.emit(
             "An otter is in the brook again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The same wait as the otter. A fox is on the dry floor again, at the
+    /// start of its route, and it does not trot on this tick. Someone who can
+    /// see that cell reads the sentence. Someone out of sight but within
+    /// hearing hears a fox that way. Past hearing, nothing.
+    fn return_fox(&mut self) {
+        let Some(at) = self.fox_returns_at else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.fox_returns_at = None;
+        if self.fox.is_some() {
+            return;
+        }
+        let (x, y) = FOX_ROUTE[0];
+        let Some(cell) = cell_id(x, y) else {
+            return;
+        };
+        self.fox = Some(crate::model::Fox {
+            cell,
+            route_at: 0,
+            held: true,
+        });
+        self.emit(
+            "A fox is on the valley floor again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
@@ -1417,6 +1453,12 @@ impl World {
         let Some(fox) = self.fox.clone() else {
             return;
         };
+        if fox.held {
+            if let Some(fox) = self.fox.as_mut() {
+                fox.held = false;
+            }
+            return;
+        }
         if self
             .actors
             .values()
