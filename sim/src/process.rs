@@ -1067,6 +1067,14 @@ impl World {
                 if item.hardened {
                     continue;
                 }
+                if item.wooden_tip {
+                    if !at_fire && item.firing_ready_at.is_some() {
+                        if let Some(spear) = self.items.get_mut(&id) {
+                            spear.firing_ready_at = None;
+                        }
+                    }
+                    continue;
+                }
                 if at_fire {
                     if item.firing_ready_at.is_none() {
                         let ready = self.time.saturating_add(self.tuning.spear_ticks);
@@ -1121,6 +1129,8 @@ impl World {
                 "harden",
                 "the flint tip of the spear in the fire.",
             )
+        } else if item.wooden_tip {
+            format!("The wooden point of {name}'s spear hardens.")
         } else {
             format!("The point of {name}'s spear hardens.")
         };

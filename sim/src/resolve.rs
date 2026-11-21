@@ -69,6 +69,8 @@ impl World {
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
         let mut hafts = Vec::new();
+        let mut points = Vec::new();
+        let mut hardens = Vec::new();
         let mut hunts = Vec::new();
         let mut butchers = Vec::new();
         let mut cuts = Vec::new();
@@ -185,6 +187,8 @@ impl World {
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
                         Attempt::Haft => hafts.push(intent),
+                        Attempt::PointSpear => points.push(intent),
+                        Attempt::HardenSpear => hardens.push(intent),
                         Attempt::Hunt => hunts.push(intent),
                         Attempt::Butcher => butchers.push(intent),
                         Attempt::Cut => cuts.push(intent),
@@ -323,6 +327,8 @@ impl World {
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
         self.apply_hafts(hafts, &mut results);
+        self.apply_points(points, &mut results);
+        self.apply_hardens(hardens, &mut results);
         self.apply_hunts(hunts, &mut results);
         self.apply_butchers(butchers, &mut results);
         self.apply_cuts(cuts, &mut results);
@@ -546,6 +552,52 @@ impl World {
                         WetBranch::Dry => Err("The branch is already dry.".into()),
                         WetBranch::None => Err("You have no branch to dry.".into()),
                     }
+                }
+            }
+            Attempt::PointSpear => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Branch).is_empty() {
+                    Err("You have no branch to point.".into())
+                } else if self.dry_loose_ids(actor.id, Material::Branch).is_empty() {
+                    Err("The branch is too damp to point.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::HardenSpear => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self
+                    .loose_ids(actor.id, Material::Spear)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+                {
+                    Err("The flint tip is already better than a wooden point.".into())
+                } else if self.wooden_spear(actor.id).is_none() {
+                    Err("You have no wooden spear to harden.".into())
+                } else if self
+                    .item(self.wooden_spear(actor.id).unwrap())
+                    .is_some_and(|spear| spear.hardened)
+                {
+                    Err("The wooden point is already hardened.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self
+                    .item(self.wooden_spear(actor.id).unwrap())
+                    .is_some_and(|spear| spear.firing_ready_at.is_some())
+                {
+                    Err("The wooden point is already hardening.".into())
+                } else {
+                    Ok(true)
                 }
             }
             Attempt::Haft => {
@@ -979,15 +1031,7 @@ impl World {
                         Err("The deer is not close enough to hunt.".into())
                     }
                 } else if !self.loose_ids(actor.id, Material::Spear).is_empty() {
-                    if self
-                        .loose_ids(actor.id, Material::Spear)
-                        .iter()
-                        .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
-                    {
-                        Err("The flint tip is not fire-hardened.".into())
-                    } else {
-                        Err("The spear's point is not hardened.".into())
-                    }
+                    Err(self.unhardened_spear_line(actor.id).into())
                 } else if self.loose_ids(actor.id, Material::Bow).is_empty() {
                     Err("You are not carrying a spear.".into())
                 } else if self.loose_ids(actor.id, Material::Flake).is_empty() {
@@ -4637,10 +4681,183 @@ impl World {
         }
     }
 
+    fn wooden_spear(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        self.loose_ids(actor, Material::Spear)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|spear| spear.wooden_tip))
+    }
+
+    fn unhardened_spear_line(&self, actor: crate::model::ActorId) -> &'static str {
+        if self
+            .loose_ids(actor, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+        {
+            "The flint tip is not fire-hardened."
+        } else if self.wooden_spear(actor).is_some() {
+            "The wooden point is not hardened."
+        } else {
+            "The spear's point is not hardened."
+        }
+    }
+
+    fn apply_points(&mut self, points: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in points {
+            let Some(branch) = self
+                .dry_loose_ids(intent.actor_id, Material::Branch)
+                .first()
+                .copied()
+            else {
+                let message = if self.loose_ids(intent.actor_id, Material::Branch).is_empty() {
+                    "You have no branch to point."
+                } else {
+                    "The branch is too damp to point."
+                };
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
+                continue;
+            };
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.items.remove(&branch);
+            let id = self.mint_item(Material::Spear, 0, cell, Some(intent.actor_id), Role::Loose);
+            if let Some(spear) = self.items.get_mut(&id) {
+                spear.wooden_tip = true;
+            }
+            let name = self.name_of(intent.actor_id);
+            let rest = "a dry branch into a wooden spear.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "point", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "point", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_hardens(&mut self, hardens: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in hardens {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self
+                .loose_ids(actor.id, Material::Spear)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+            {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The flint tip is already better than a wooden point.",
+                    results,
+                );
+                continue;
+            }
+            let Some(id) = self.wooden_spear(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no wooden spear to harden.",
+                    results,
+                );
+                continue;
+            };
+            if self.item(id).is_some_and(|spear| spear.hardened) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The wooden point is already hardened.",
+                    results,
+                );
+                continue;
+            }
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            if self
+                .item(id)
+                .is_some_and(|spear| spear.firing_ready_at.is_some())
+            {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The wooden point is already hardening.",
+                    results,
+                );
+                continue;
+            }
+            let ready = self.time.saturating_add(self.tuning.spear_ticks);
+            if let Some(spear) = self.items.get_mut(&id) {
+                spear.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, crate::model::Wake::HardenSpear(id));
+            let name = self.name_of(actor.id);
+            let rest = "the wooden point in the fire.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "hold", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You hold the wooden point in the fire. It is not hard yet.",
+                results,
+            );
+        }
+    }
+
     fn spear_can_hunt(&self, actor: crate::model::ActorId) -> bool {
         self.loose_ids(actor, Material::Spear)
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
+    }
+
+    /// A flint or stone point reaches the next cell. A wooden point does not.
+    fn spear_reaches_next(&self, actor: crate::model::ActorId) -> bool {
+        self.loose_ids(actor, Material::Spear).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|spear| spear.hardened && !spear.wooden_tip)
+        })
+    }
+
+    /// Any hardened spear reaches the animal's own cell. Only a flint or
+    /// stone point reaches the next cell.
+    fn spear_in_reach(&self, actor: crate::model::ActorId, dist: i32) -> bool {
+        if dist == 0 {
+            self.spear_can_hunt(actor)
+        } else if dist == 1 {
+            self.spear_reaches_next(actor)
+        } else {
+            false
+        }
     }
 
     /// A bow and a sharp flint flake, and the deer is still inside sight.
@@ -4700,8 +4917,7 @@ impl World {
             .wolf_standing()
             .map(|wolf| crate::model::chebyshev(person.cell, wolf));
         let wolf_in_reach = wolf_dist.is_some_and(|far| {
-            (self.spear_can_hunt(actor) && far <= 1)
-                || (self.bow_in_hand(actor) && far <= self.tuning.sight)
+            self.spear_in_reach(actor, far) || (self.bow_in_hand(actor) && far <= self.tuning.sight)
         });
         if wolf_in_reach {
             return false;
@@ -4728,7 +4944,7 @@ impl World {
             self.bring_down_otter(intent, otter.cell, None, results);
             return true;
         }
-        if self.spear_can_hunt(actor.id) && dist == 1 {
+        if self.spear_reaches_next(actor.id) && dist == 1 {
             self.contest_the_otter(intent, actor, &otter, results);
             return true;
         }
@@ -4773,8 +4989,7 @@ impl World {
             .wolf_standing()
             .map(|wolf| crate::model::chebyshev(person.cell, wolf));
         let wolf_in_reach = wolf_dist.is_some_and(|far| {
-            (self.spear_can_hunt(actor) && far <= 1)
-                || (self.bow_in_hand(actor) && far <= self.tuning.sight)
+            self.spear_in_reach(actor, far) || (self.bow_in_hand(actor) && far <= self.tuning.sight)
         });
         if wolf_in_reach {
             return false;
@@ -4801,7 +5016,7 @@ impl World {
             self.bring_down_fox(intent, fox.cell, None, results);
             return true;
         }
-        if self.spear_can_hunt(actor.id) && dist == 1 {
+        if self.spear_reaches_next(actor.id) && dist == 1 {
             self.contest_the_fox(intent, actor, &fox, results);
             return true;
         }
@@ -5204,7 +5419,7 @@ impl World {
             self.bring_down_wolf(intent, cell, None, results);
             return true;
         }
-        if self.spear_can_hunt(actor.id) && dist == 1 {
+        if self.spear_reaches_next(actor.id) && dist == 1 {
             self.contest_the_wolf(intent, actor, cell, results);
             return true;
         }
@@ -5374,14 +5589,8 @@ impl World {
                 }
                 let message = if self.loose_ids(actor.id, Material::Spear).is_empty() {
                     "You are not carrying a spear."
-                } else if self
-                    .loose_ids(actor.id, Material::Spear)
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
-                {
-                    "The flint tip is not fire-hardened."
                 } else {
-                    "The spear's point is not hardened."
+                    self.unhardened_spear_line(actor.id)
                 };
                 self.finish(intent.command_id, actor.id, false, message, results);
                 continue;
@@ -5450,6 +5659,16 @@ impl World {
             }
             if dist == 0 {
                 self.bring_down(&intent, deer.cell, None, results);
+                continue;
+            }
+            if !self.spear_reaches_next(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The deer is not close enough to hunt.",
+                    results,
+                );
                 continue;
             }
             let (x, y) = crate::model::cell_xy(deer.cell);

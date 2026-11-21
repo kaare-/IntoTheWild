@@ -384,6 +384,10 @@ pub enum Attempt {
     BindSpear,
     Knap,
     Haft,
+    /// A dry branch pointed into a wooden spear. No flint and no stone.
+    PointSpear,
+    /// Hold that wooden point in a burning fire until it hardens.
+    HardenSpear,
     Hunt,
     Butcher,
     Wear,
@@ -460,6 +464,8 @@ impl Attempt {
                 | Attempt::BindSpear
                 | Attempt::Knap
                 | Attempt::Haft
+                | Attempt::PointSpear
+                | Attempt::HardenSpear
                 | Attempt::Hunt
                 | Attempt::Butcher
                 | Attempt::Wear
@@ -645,6 +651,9 @@ pub struct Item {
     /// A spear hafted from a flint flake. It is not the stone-bound spear.
     #[serde(default)]
     pub flint_tip: bool,
+    /// A dry branch pointed into a spear. No stone and no flint.
+    #[serde(default)]
+    pub wooden_tip: bool,
     /// Hide strips or willow cordage lashing a flint tip to the haft. A stone spear leaves this false.
     #[serde(default)]
     pub bound: bool,
@@ -1694,6 +1703,7 @@ impl World {
                 hardened: false,
                 raw: false,
                 flint_tip: false,
+                wooden_tip: false,
                 bound: false,
                 bound_willow: false,
                 cooked: false,
@@ -13192,5 +13202,159 @@ mod otter_hunt {
             .events
             .iter()
             .all(|event| !event.text.contains("bone")));
+    }
+}
+
+#[cfg(test)]
+mod wooden_spear {
+    use super::*;
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_dry_branch_points_into_a_wooden_spear_and_the_fire_hardens_it() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let none = world.step(&[intent("none", near, Attempt::PointSpear)]);
+        assert_eq!(none.results[0].message, "You have no branch to point.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no branch to point."));
+        world.step(&[intent("branch", near, Attempt::Gather(Material::Branch))]);
+        let pointed = world.step(&[intent("point", near, Attempt::PointSpear)]);
+        assert_eq!(
+            pointed.results[0].message,
+            "You point a dry branch into a wooden spear."
+        );
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("a wooden spear with a green point"), "{arms}");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You point a dry branch into a wooden spear."
+                && event.text != "Near points a dry branch into a wooden spear."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near points a dry branch into a wooden spear." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("wooden spear")));
+        let green = world.step(&[intent("green", near, Attempt::Hunt)]);
+        assert_eq!(
+            green.results[0].message,
+            "The wooden point is not hardened."
+        );
+        let cold = world.step(&[intent("cold", near, Attempt::HardenSpear)]);
+        assert_eq!(cold.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here." }));
+        world.step(&[intent("light", near, Attempt::Light)]);
+        let held = world.step(&[intent("hold", near, Attempt::HardenSpear)]);
+        assert_eq!(
+            held.results[0].message,
+            "You hold the wooden point in the fire. It is not hard yet."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hold the wooden point") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near holds the wooden point in the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("wooden point")));
+        let waiting = world.observe(near).unwrap().text;
+        assert!(
+            waiting.contains("The wooden point of your spear is hardening in the fire."),
+            "{waiting}"
+        );
+        let again = world.step(&[intent("again", near, Attempt::HardenSpear)]);
+        assert_eq!(
+            again.results[0].message,
+            "The wooden point is already hardening."
+        );
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        let hard = world.observe(near).unwrap();
+        assert!(
+            hard.text
+                .contains("a wooden spear with a fire-hardened point"),
+            "{}",
+            hard.text
+        );
+        assert!(hard
+            .events
+            .iter()
+            .any(|event| event.text == "The wooden point of your spear hardens."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The wooden point of Near's spear hardens." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("wooden point")));
+        let examined = world.examine(near, ExamineTarget::Spear);
+        assert!(
+            examined.contains("A wooden spear with a fire-hardened point is carried by you"),
+            "{examined}"
+        );
+        let done = world.step(&[intent("done", near, Attempt::HardenSpear)]);
+        assert_eq!(
+            done.results[0].message,
+            "The wooden point is already hardened."
+        );
+        world.fox = None;
+        world.otter = None;
+        world.wolf_cell = None;
+        let here = world.actor(near).unwrap().cell;
+        let (x, y) = cell_xy(here);
+        let next = cell_id(x, y + 1).unwrap();
+        world.deer.as_mut().unwrap().cell = next;
+        let aside = world.step(&[intent("aside", near, Attempt::Hunt)]);
+        assert_eq!(
+            aside.results[0].message,
+            "The deer is not close enough to hunt."
+        );
+        world.deer.as_mut().unwrap().cell = here;
+        let down = world.step(&[intent("down", near, Attempt::Hunt)]);
+        assert_eq!(
+            down.results[0].message,
+            "You bring the deer down. A carcass lies where it stood."
+        );
     }
 }

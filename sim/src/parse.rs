@@ -14,6 +14,8 @@ set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
 haft                         a carried flint flake and a dry branch into a spear; hide strips bind the tip when carried, otherwise willow cordage. Hold it at a fire
+point branch                 a carried dry branch into a wooden spear. The point is still green. No flint and no stone
+harden spear                 that wooden point, held in a burning fire. It is weaker than a flint spear. The fire is not used up
 craft bow                    a dry branch and hide strips or willow cordage, from the arms if you carry them, or lying in this cell. Hide strips are spent when both are here. The bow stays in the arms.
 make bow                     the same bow
 dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
@@ -378,6 +380,26 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "haft" if rest.is_empty() || rest == "spear" || rest == "flake" || rest == "flint" => {
             Ok(Attempt::Haft)
         }
+        "point"
+            if rest.is_empty()
+                || rest == "branch"
+                || rest == "spear"
+                || rest == "a branch"
+                || rest == "the branch" =>
+        {
+            Ok(Attempt::PointSpear)
+        }
+        "carve" if rest == "spear" || rest == "wooden spear" => Ok(Attempt::PointSpear),
+        "harden"
+            if rest.is_empty()
+                || rest == "spear"
+                || rest == "point"
+                || rest == "the point"
+                || rest == "wooden spear" =>
+        {
+            Ok(Attempt::HardenSpear)
+        }
+        "fire" if rest == "harden" || rest == "harden spear" => Ok(Attempt::HardenSpear),
         "fish" if rest.is_empty() || rest == "spear" => Ok(Attempt::Fish),
         "fish"
             if rest == "with hook"
