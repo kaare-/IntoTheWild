@@ -534,13 +534,13 @@ impl World {
         } else if self.morning() && self.raining {
             "Morning is on the valley. Rain is falling on the valley."
         } else if self.morning() {
-            "Morning is on the valley."
+            "Morning is on the valley. The sky is clear."
         } else if self.raining {
             "Rain is falling on the valley."
         } else if self.time + 2 >= self.tuning.rain_starts_at {
             "The light is going. The air smells like rain."
         } else {
-            "The valley is still dry. Evening is coming."
+            "The valley is still dry. The sky is clear. Evening is coming."
         }
     }
 
@@ -3000,6 +3000,11 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
+        if actor.sunburn >= self.tuning.burned_at {
+            parts.push("The sun burns. It hurts.".into());
+        } else if actor.sunburn >= self.tuning.pink_at {
+            parts.push("The sun is hot on your skin.".into());
+        }
         if self.wearing_hide(actor_id) {
             let sewn = self
                 .loose_ids(actor_id, Material::Hide)
@@ -3120,10 +3125,9 @@ impl World {
             self.body_word(actor.stings_until, actor.illness),
             self.energy_word(actor.energy)
         ) + &format!(
-            " They are {}. They are {}. Their skin is {}. Their skin is {}.",
+            " They are {}. They are {}. Their skin is {}.",
             self.cold_word(actor.cold),
             self.wind_on(actor_id),
-            self.sun_word(actor.sunburn),
             self.skin_cover(actor.mud, actor.ochre)
         ) + &self.spear_clause(actor_id)
             + &self.carcass_clause(actor_id)

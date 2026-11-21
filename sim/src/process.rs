@@ -1337,7 +1337,8 @@ impl World {
             } else if wearing {
                 cold_gain /= 2;
             }
-            let mut sun_gain = if raining {
+            // Rain and night hide the sun. Open day sky is what burns.
+            let mut sun_gain = if raining || self.night() {
                 0
             } else {
                 ((u64::from(sun_base) * u64::from(exposure)) / 1000) as u32
@@ -1424,10 +1425,12 @@ impl World {
                     None,
                 );
             }
+            // The crossing is said once, to that body, without their name.
+            // Look keeps the same words from the sunburn itself.
             let sun_line = if sun_before < burned_at && sun_after >= burned_at {
-                Some(format!("{name}'s skin is burned."))
+                Some("Your skin is burned. The sun burns. It hurts.".to_string())
             } else if sun_before < pink_at && sun_after >= pink_at {
-                Some(format!("{name}'s skin is pink."))
+                Some("Your skin is pink. The sun is hot on your skin.".to_string())
             } else {
                 None
             };

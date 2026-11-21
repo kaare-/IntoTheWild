@@ -195,7 +195,7 @@ illness_recovery = 0.05
 # A fire in the cell still warms instead of taking the night cold.
 # A dry bark roof is a little. One smear of mud leaves a quarter of the sun.
 # Mud flakes off each tick. Rain in the open washes it faster. The sun does
-# not burn while rain is falling.
+# not burn while rain is falling, or at night. A clear day does.
 cold_per_tick = 0.04
 chilly_at = 0.25
 cold_at = 0.60
