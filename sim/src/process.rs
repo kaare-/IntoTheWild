@@ -1122,6 +1122,62 @@ impl World {
         (time - self.tuning.night_at) % cycle >= self.tuning.night_len
     }
 
+    /// Standing on a burning fire dries clothes the way it warms the body.
+    /// One step of `fire_warmth` each tick. A tick that stays in the same
+    /// word is silent. Crossing into damp, and then into dry, each say it
+    /// once, and only to that person. The last of the damp does not stop
+    /// on the brook word. `dry clothes` still owns its own wait.
+    pub(crate) fn ease_clothes_at_fire(&mut self) {
+        let step = self.tuning.fire_warmth;
+        if step == 0 {
+            return;
+        }
+        let damp_at = self.tuning.damp_at;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some(actor) = self.actor(id) else {
+                continue;
+            };
+            if actor.clothes_dry_at.is_some() || actor.wetness == 0 {
+                continue;
+            }
+            let cell = actor.cell;
+            if self.fire_at(cell).is_none() {
+                continue;
+            }
+            let before = actor.wetness;
+            let mut after = before.saturating_sub(step);
+            if before >= damp_at && after < damp_at {
+                after = 0;
+            }
+            if after == before {
+                continue;
+            }
+            let word_before = self.clothes_word(before);
+            let word_after = self.clothes_word(after);
+            if let Some(person) = self.actors.get_mut(&id) {
+                person.wetness = after;
+            }
+            if word_before == word_after {
+                continue;
+            }
+            let text = if after == 0 {
+                "Your clothes are dry.".to_string()
+            } else {
+                format!("Your clothes are {word_after}.")
+            };
+            self.emit(
+                text,
+                Scope::Personal(id),
+                vec![id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
+    }
+
     /// A drying wait ends when the person steps off the fire. The clothes
     /// stay as wet as they were. Standing still at the fire lets the wait finish.
     pub(crate) fn tend_clothes(&mut self) {
@@ -2185,6 +2241,7 @@ impl World {
                 );
             }
         }
+        self.ease_clothes_at_fire();
         self.wash_open_ochre_marks();
         self.wash_open_charcoal_marks();
     }

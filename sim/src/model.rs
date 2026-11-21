@@ -9137,6 +9137,78 @@ mod dry_clothes {
             .count();
         assert_eq!(still, already);
     }
+
+    #[test]
+    fn soaked_clothes_dry_a_step_at_a_time_on_a_fire() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let open = world.spawn_at("Open", "o", 4, 3).unwrap();
+        world.actors.get_mut(&near).unwrap().wetness = 1000;
+        world.actors.get_mut(&open).unwrap().wetness = 1000;
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_fire(cell, 0);
+        let mut damp = 0;
+        let mut dry = 0;
+        let mut noted = Vec::new();
+        let mut words = Vec::new();
+        for _ in 0..8 {
+            world.step(&[]);
+            let look = world.observe(near).unwrap();
+            words.push(look.self_info.wetness.clone());
+            for event in &look.events {
+                if noted.contains(&event.id) {
+                    continue;
+                }
+                noted.push(event.id);
+                if event.text == "Your clothes are damp." {
+                    damp += 1;
+                }
+                if event.text == "Your clothes are dry." {
+                    dry += 1;
+                }
+            }
+            assert!(look
+                .events
+                .iter()
+                .all(|event| event.text != "Near's clothes are damp."
+                    && event.text != "Near's clothes are dry."));
+            assert!(!look.text.contains("drying by the fire"), "{}", look.text);
+        }
+        assert_eq!(damp, 1, "{words:?}");
+        assert_eq!(dry, 1, "{words:?}");
+        assert!(words.contains(&"soaked".to_string()), "{words:?}");
+        assert!(words.contains(&"damp".to_string()), "{words:?}");
+        assert_eq!(words.last().map(String::as_str), Some("dry"), "{words:?}");
+        assert!(!words.contains(&"wet".to_string()), "{words:?}");
+        let body = world.examine(seen, ExamineTarget::Person("Near".into()));
+        assert!(body.contains("Their clothes are dry."), "{body}");
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            event.text != "Your clothes are damp." && event.text != "Your clothes are dry."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != "Your clothes are damp." && event.text != "Your clothes are dry."
+        }));
+        assert_eq!(world.observe(open).unwrap().self_info.wetness, "soaked");
+        let before = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == "Your clothes are dry.")
+            .count();
+        world.step(&[]);
+        world.step(&[]);
+        let after = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == "Your clothes are dry.")
+            .count();
+        assert_eq!(after, before);
+    }
 }
 
 #[cfg(test)]
