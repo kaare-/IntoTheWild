@@ -2758,6 +2758,21 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
     }
 
+    pub(crate) fn carrying_fox_hide(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.fox))
+    }
+
+    /// A sewn fox hide worn on the body. It takes the open wind down to a
+    /// little, and the cold stays at a deer cloak's cut. Rain still soaks it.
+    pub(crate) fn wearing_fox_cloak(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| hide.worn && hide.sewn && hide.fox)
+        })
+    }
+
     /// A sewn otter hide worn on the body. Rain and the brook wet it less
     /// than a deer cloak, and that wet cold is cut again.
     pub(crate) fn wearing_otter_cloak(&self, actor: ActorId) -> bool {
@@ -2777,12 +2792,15 @@ impl World {
         }
     }
 
-    /// The wind a body feels. A wolf cloak, or a reed mat underfoot, takes the
-    /// open wind down to a little. Carrying the mat does not.
+    /// The wind a body feels. A wolf cloak, a fox cloak, or a reed mat
+    /// underfoot takes the open wind down to a little. Carrying the mat
+    /// does not. A fox cloak does not cut the cold further than a deer cloak.
     pub(crate) fn wind_on(&self, actor: ActorId) -> &'static str {
         let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
         if self.wind_at(cell) == "in the wind"
-            && (self.wearing_wolf_cloak(actor) || self.reed_mat_here(cell))
+            && (self.wearing_wolf_cloak(actor)
+                || self.wearing_fox_cloak(actor)
+                || self.reed_mat_here(cell))
         {
             "in a little wind"
         } else {
@@ -12166,6 +12184,219 @@ mod fox_hunt {
             .any(|event| { event.text == "Near gathers a fox hide." }));
         let body = world.examine(near, super::ExamineTarget::Hide);
         assert!(body.contains("A fox hide is carried by you"), "{body}");
+    }
+
+    #[test]
+    fn a_fox_hide_sews_into_a_cloak_that_breaks_the_wind() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let wolf = world.spawn_at("Wolf", "w", 4, 3).unwrap();
+        world.fox = None;
+        let cell = world.actor(near).unwrap().cell;
+        let hide = world.mint_item(Material::Hide, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&hide).unwrap().fox = true;
+        let awl = world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&awl).unwrap().bone = true;
+        let deer_hide = world.mint_item(Material::Hide, 0, cell, Some(seen), Role::Loose);
+        world.items.get_mut(&deer_hide).unwrap().sewn = true;
+        world.items.get_mut(&deer_hide).unwrap().worn = true;
+        let wolf_hide = world.mint_item(Material::Hide, 0, cell, Some(wolf), Role::Loose);
+        world.items.get_mut(&wolf_hide).unwrap().wolf = true;
+        world.items.get_mut(&wolf_hide).unwrap().sewn = true;
+        world.items.get_mut(&wolf_hide).unwrap().worn = true;
+
+        let early = world.step(&[intent("sew", near, Attempt::Sew)]);
+        assert_eq!(early.results[0].message, "The fox hide is not pierced.");
+        assert!(!early.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The fox hide is not pierced."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
+
+        let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
+        assert_eq!(
+            pierced.results[0].message,
+            "You pierce the fox hide with the bone awl. It is ready to sew."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("pierce") && !event.text.contains("fox hide") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near pierces the fox hide with the bone awl. It is ready to sew."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox") && !event.text.contains("pierce")));
+
+        let sewn = world.step(&[intent("sew-cloak", near, Attempt::Sew)]);
+        assert_eq!(
+            sewn.results[0].message,
+            "You sew the pierced fox hide into a cloak."
+        );
+        let again = world.step(&[intent("again", near, Attempt::Sew)]);
+        assert_eq!(again.results[0].message, "The fox hide is already a cloak.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The fox hide is already a cloak."));
+        let carried = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            carried.contains(
+                "A sewn fox-hide cloak is carried by you, in the open. It breaks the wind."
+            ),
+            "{carried}"
+        );
+        let wore = world.step(&[intent("wear", near, Attempt::Wear)]);
+        assert_eq!(wore.results[0].message, "You wear the sewn fox-hide cloak.");
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("The sewn fox-hide cloak is on you. It breaks the wind."),
+            "{look}"
+        );
+        assert!(look.contains("a sewn fox-hide cloak"), "{look}");
+        assert!(look.contains("You are in a little wind."), "{look}");
+        let held = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            held.contains("A sewn fox-hide cloak is on you, in the open. It breaks the wind."),
+            "{held}"
+        );
+        let seen_hide = world.examine(seen, super::ExamineTarget::Hide);
+        assert!(
+            seen_hide
+                .contains("A sewn fox-hide cloak is on Near, in the open. It breaks the wind."),
+            "{seen_hide}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sews the pierced fox hide into a cloak." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near wears the sewn fox-hide cloak." }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("sewn fox-hide") && !event.text.contains("pierced fox")
+        }));
+        let quiet_events: Vec<_> = world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect();
+        assert!(
+            quiet_events.iter().all(|text| !text.contains("fox")),
+            "{quiet_events:?}"
+        );
+
+        for id in [near, seen, quiet, wolf] {
+            let person = world.actors.get_mut(&id).unwrap();
+            person.cold = 0;
+            person.warmth = 0;
+            person.warm_from_fire = false;
+            person.wetness = 0;
+            person.cell = cell;
+        }
+        for _ in 0..8 {
+            world.step(&[]);
+        }
+        let fox_body = world.observe(near).unwrap();
+        let deer_body = world.observe(seen).unwrap();
+        let bare_body = world.observe(quiet).unwrap();
+        let wolf_body = world.observe(wolf).unwrap();
+        assert!(
+            fox_body.text.contains("You are in a little wind."),
+            "{}",
+            fox_body.text
+        );
+        assert!(
+            deer_body.text.contains("You are in the wind."),
+            "{}",
+            deer_body.text
+        );
+        assert!(
+            wolf_body.text.contains("You are in a little wind."),
+            "{}",
+            wolf_body.text
+        );
+        assert!(
+            bare_body.text.contains("You are in the wind."),
+            "{}",
+            bare_body.text
+        );
+        let fox_cold = world.actor(near).unwrap().cold;
+        let deer_cold = world.actor(seen).unwrap().cold;
+        let wolf_cold = world.actor(wolf).unwrap().cold;
+        let bare_cold = world.actor(quiet).unwrap().cold;
+        assert_eq!(fox_cold, deer_cold, "fox {fox_cold} deer {deer_cold}");
+        assert!(wolf_cold < fox_cold && fox_cold < bare_cold);
+
+        world.actors.get_mut(&near).unwrap().wetness = 0;
+        world.actors.get_mut(&seen).unwrap().wetness = 0;
+        world.time = world.tuning.rain_starts_at;
+        world.step(&[]);
+        world.step(&[]);
+        let fox_rain = world.actor(near).unwrap().wetness;
+        let deer_rain = world.actor(seen).unwrap().wetness;
+        assert!(fox_rain > 0, "{fox_rain}");
+        assert_eq!(fox_rain, deer_rain, "fox {fox_rain} deer {deer_rain}");
+
+        world.actors.get_mut(&quiet).unwrap().cell = super::cell_id(0, 4).unwrap();
+        let off = world.step(&[intent("remove", near, Attempt::Remove)]);
+        assert_eq!(
+            off.results[0].message,
+            "You remove the sewn fox-hide cloak. The wind reaches you again."
+        );
+        let bare_wind = world.observe(near).unwrap();
+        assert!(
+            bare_wind.text.contains("You are in the wind."),
+            "{}",
+            bare_wind.text
+        );
+        assert!(bare_wind.events.iter().all(|event| {
+            !event.text.contains("removes the sewn fox-hide")
+                && !event.text.contains("The wind reaches you again.")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near removes the sewn fox-hide cloak." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fox")));
     }
 
     #[test]

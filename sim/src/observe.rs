@@ -3692,9 +3692,13 @@ impl World {
             let otter_sewn = worn(|hide| hide.otter && hide.sewn);
             let otter_pierced = worn(|hide| hide.otter && hide.pierced && !hide.sewn);
             let otter_plain = worn(|hide| hide.otter && !hide.sewn && !hide.pierced);
+            let fox_sewn = worn(|hide| hide.fox && hide.sewn);
+            let fox_pierced = worn(|hide| hide.fox && hide.pierced && !hide.sewn);
             let fox_plain = worn(|hide| hide.fox && !hide.sewn && !hide.pierced);
             if otter_sewn {
                 parts.push("The sewn otter-hide cloak is on you.".into());
+            } else if fox_sewn {
+                parts.push("The sewn fox-hide cloak is on you. It breaks the wind.".into());
             } else if sewn {
                 parts.push(if wolf {
                     "The sewn wolf-hide cloak is on you.".into()
@@ -3703,6 +3707,8 @@ impl World {
                 });
             } else if otter_pierced {
                 parts.push("The pierced otter hide is on you. It is ready to sew.".into());
+            } else if fox_pierced {
+                parts.push("The pierced fox hide is on you. It is ready to sew.".into());
             } else if pierced {
                 parts.push(if wolf {
                     "The pierced wolf hide is on you. It is ready to sew.".into()
@@ -6246,25 +6252,94 @@ impl World {
         lines
     }
 
-    fn fox_hide_here(&self, ids: &[ItemId]) -> Vec<String> {
-        let fox = ids
+    fn fox_hide_stage(&self, ids: &[ItemId]) -> Option<(bool, bool)> {
+        let fox: Vec<_> = ids
             .iter()
-            .any(|id| self.item(*id).is_some_and(|hide| hide.fox));
-        if fox {
-            vec!["A fox hide lies here.".into()]
+            .copied()
+            .filter(|id| self.item(*id).is_some_and(|hide| hide.fox))
+            .collect();
+        if fox.is_empty() {
+            return None;
+        }
+        let sewn = fox
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = fox
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        Some((sewn, pierced))
+    }
+
+    fn fox_hide_here(&self, ids: &[ItemId]) -> Vec<String> {
+        let Some((sewn, pierced)) = self.fox_hide_stage(ids) else {
+            return Vec::new();
+        };
+        if sewn {
+            vec!["A sewn fox-hide cloak lies here. It breaks the wind.".into()]
+        } else if pierced {
+            vec!["A pierced fox hide lies here. It is ready to sew.".into()]
         } else {
-            Vec::new()
+            vec!["A fox hide lies here.".into()]
         }
     }
 
     fn fox_hide_compass(&self, ids: &[ItemId]) -> Vec<String> {
-        let fox = ids
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|hide| hide.fox));
-        if fox {
-            vec!["a fox hide".into()]
+        let Some((sewn, pierced)) = self.fox_hide_stage(ids) else {
+            return Vec::new();
+        };
+        if sewn {
+            vec!["a sewn fox-hide cloak".into()]
+        } else if pierced {
+            vec!["a pierced fox hide".into()]
         } else {
-            Vec::new()
+            vec!["a fox hide".into()]
+        }
+    }
+
+    fn fox_hide_ground_line(&self, ids: &[ItemId], place: &str) -> Option<String> {
+        let Some((sewn, pierced)) = self.fox_hide_stage(ids) else {
+            return None;
+        };
+        if sewn {
+            Some(format!(
+                "A sewn fox-hide cloak lies {place}. It breaks the wind."
+            ))
+        } else if pierced {
+            Some(format!(
+                "A pierced fox hide lies {place}. It is ready to sew."
+            ))
+        } else {
+            Some(format!("A fox hide lies {place}."))
+        }
+    }
+
+    fn fox_hide_held_line(&self, hides: &[ItemId], who: &str, cover: &str) -> Option<String> {
+        let Some((sewn, pierced)) = self.fox_hide_stage(hides) else {
+            return None;
+        };
+        let worn = hides
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.fox && hide.worn));
+        if sewn && worn {
+            Some(format!(
+                "A sewn fox-hide cloak is on {who}, {cover}. It breaks the wind."
+            ))
+        } else if sewn {
+            Some(format!(
+                "A sewn fox-hide cloak is carried by {who}, {cover}. It breaks the wind."
+            ))
+        } else if pierced && worn {
+            Some(format!(
+                "A pierced fox hide is on {who}, {cover}. It is ready to sew."
+            ))
+        } else if pierced {
+            Some(format!(
+                "A pierced fox hide is carried by {who}, {cover}. It is ready to sew."
+            ))
+        } else if worn {
+            Some(format!("A fox hide is on {who}, {cover}."))
+        } else {
+            Some(format!("A fox hide is carried by {who}, {cover}."))
         }
     }
 
@@ -6446,11 +6521,8 @@ impl World {
             if let Some(line) = self.otter_hide_ground_line(&ids, &place) {
                 lines.push(line);
             }
-            if ids
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.fox))
-            {
-                lines.push(format!("A fox hide lies {place}."));
+            if let Some(line) = self.fox_hide_ground_line(&ids, &place) {
+                lines.push(line);
             }
         }
         for other in self.visible_actor_ids(viewer) {
@@ -6531,18 +6603,8 @@ impl World {
             if let Some(line) = self.otter_hide_held_line(&hides, &who, &cover) {
                 lines.push(line);
             }
-            if hides
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|hide| hide.fox))
-            {
-                let worn = hides
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|hide| hide.fox && hide.worn));
-                if worn {
-                    lines.push(format!("A fox hide is on {who}, {cover}."));
-                } else {
-                    lines.push(format!("A fox hide is carried by {who}, {cover}."));
-                }
+            if let Some(line) = self.fox_hide_held_line(&hides, &who, &cover) {
+                lines.push(line);
             }
         }
         if lines.is_empty() {
@@ -8589,6 +8651,7 @@ impl World {
                     && self.otter_butcher_for_these_eyes(viewer, event).is_none()
                     && self.fox_butcher_for_these_eyes(viewer, event).is_none()
                     && self.otter_cloak_for_these_eyes(viewer, event).is_none()
+                    && self.fox_cloak_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
@@ -10256,6 +10319,44 @@ impl World {
             format!("{name} wears the otter hide."),
             format!("{name} removes the sewn otter-hide cloak."),
             format!("{name} removes the otter hide."),
+        ];
+        if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// A fox hide pierced, sewn, worn, or taken off. The person who did it
+    /// already read the sentence as the command result. A refusal stays with them.
+    fn fox_cloak_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let failures = [
+            "The fox hide is not pierced.",
+            "The fox hide is already pierced.",
+            "The fox hide is already a cloak.",
+            "You are not wearing a fox hide.",
+            "You are not carrying a fox hide.",
+            "You need a copper awl and a fox hide.",
+        ];
+        if failures.iter().any(|line| line == &event.text) {
+            return Some(event.text.clone());
+        }
+        let name = self.name_of(viewer);
+        let lines = [
+            format!("{name} pierces the fox hide with the copper awl. It is ready to sew."),
+            format!("{name} pierces the fox hide with the bone awl. It is ready to sew."),
+            format!("{name} sews the pierced fox hide into a cloak."),
+            format!("{name} wears the sewn fox-hide cloak."),
+            format!("{name} wears the fox hide."),
+            format!("{name} removes the sewn fox-hide cloak."),
+            format!("{name} removes the fox hide."),
         ];
         if lines.iter().any(|line| line == &event.text) {
             Some(event.text.clone())

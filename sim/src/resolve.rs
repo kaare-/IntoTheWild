@@ -619,6 +619,7 @@ impl World {
                             "You are not wearing a deer hide.",
                             "You are not wearing a wolf hide.",
                             "You are not wearing an otter hide.",
+                            "You are not wearing a fox hide.",
                         )
                         .into())
                 } else {
@@ -1161,6 +1162,7 @@ impl World {
                             "The deer hide is already pierced.",
                             "The wolf hide is already pierced.",
                             "The otter hide is already pierced.",
+                            "The fox hide is already pierced.",
                         )
                         .into())
                 } else {
@@ -1210,6 +1212,7 @@ impl World {
                             "The deer hide is already a cloak.",
                             "The wolf hide is already a cloak.",
                             "The otter hide is already a cloak.",
+                            "The fox hide is already a cloak.",
                         )
                         .into())
                 } else {
@@ -1219,6 +1222,7 @@ impl World {
                             "The deer hide is not pierced.",
                             "The wolf hide is not pierced.",
                             "The otter hide is not pierced.",
+                            "The fox hide is not pierced.",
                         )
                         .into())
                 }
@@ -5537,7 +5541,8 @@ impl World {
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
             let wolf = self.item(id).is_some_and(|hide| hide.wolf);
             let otter = self.item(id).is_some_and(|hide| hide.otter);
-            let rest = worn_phrase(wolf, otter, sewn);
+            let fox = self.item(id).is_some_and(|hide| hide.fox);
+            let rest = worn_phrase(wolf, otter, fox, sewn);
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = true;
             }
@@ -5584,7 +5589,8 @@ impl World {
             let sewn = self.item(id).is_some_and(|hide| hide.sewn);
             let wolf = self.item(id).is_some_and(|hide| hide.wolf);
             let otter = self.item(id).is_some_and(|hide| hide.otter);
-            let rest = worn_phrase(wolf, otter, sewn);
+            let fox = self.item(id).is_some_and(|hide| hide.fox);
+            let rest = worn_phrase(wolf, otter, fox, sewn);
             if let Some(hide) = self.items.get_mut(&id) {
                 hide.worn = false;
             }
@@ -8053,19 +8059,23 @@ impl World {
                     "You need a copper awl and a deer hide.",
                     "You need a copper awl and a wolf hide.",
                     "You need a copper awl and an otter hide.",
+                    "You need a copper awl and a fox hide.",
                 );
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
             let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
             let otter = self.item(hide).is_some_and(|hide| hide.otter);
-            let rest = match (otter, wolf, bone_awl) {
-                (true, _, true) => "the otter hide with the bone awl. It is ready to sew.",
-                (true, _, false) => "the otter hide with the copper awl. It is ready to sew.",
-                (false, true, true) => "the wolf hide with the bone awl. It is ready to sew.",
-                (false, true, false) => "the wolf hide with the copper awl. It is ready to sew.",
-                (false, false, true) => "the deer hide with the bone awl. It is ready to sew.",
-                (false, false, false) => "the deer hide with the copper awl. It is ready to sew.",
+            let fox = self.item(hide).is_some_and(|hide| hide.fox);
+            let rest = match (otter, fox, wolf, bone_awl) {
+                (true, _, _, true) => "the otter hide with the bone awl. It is ready to sew.",
+                (true, _, _, false) => "the otter hide with the copper awl. It is ready to sew.",
+                (_, true, _, true) => "the fox hide with the bone awl. It is ready to sew.",
+                (_, true, _, false) => "the fox hide with the copper awl. It is ready to sew.",
+                (_, _, true, true) => "the wolf hide with the bone awl. It is ready to sew.",
+                (_, _, true, false) => "the wolf hide with the copper awl. It is ready to sew.",
+                (_, _, _, true) => "the deer hide with the bone awl. It is ready to sew.",
+                (_, _, _, false) => "the deer hide with the copper awl. It is ready to sew.",
             };
             if let Some(item) = self.items.get_mut(&hide) {
                 item.pierced = true;
@@ -8106,14 +8116,18 @@ impl World {
                     "The deer hide is not pierced.",
                     "The wolf hide is not pierced.",
                     "The otter hide is not pierced.",
+                    "The fox hide is not pierced.",
                 );
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
             let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
             let otter = self.item(hide).is_some_and(|hide| hide.otter);
+            let fox = self.item(hide).is_some_and(|hide| hide.fox);
             let rest = if otter {
                 "the pierced otter hide into a cloak."
+            } else if fox {
+                "the pierced fox hide into a cloak."
             } else if wolf {
                 "the pierced wolf hide into a cloak."
             } else {
@@ -9366,29 +9380,34 @@ fn boil_actor_rest(in_pot: bool) -> &'static str {
     }
 }
 
-fn worn_phrase(wolf: bool, otter: bool, sewn: bool) -> &'static str {
-    match (otter, wolf, sewn) {
-        (true, _, true) => "the sewn otter-hide cloak.",
-        (true, _, false) => "the otter hide.",
-        (false, true, true) => "the sewn wolf-hide cloak.",
-        (false, true, false) => "the wolf hide.",
-        (false, false, true) => "the sewn deer-hide cloak.",
-        (false, false, false) => "the deer hide.",
+fn worn_phrase(wolf: bool, otter: bool, fox: bool, sewn: bool) -> &'static str {
+    match (otter, fox, wolf, sewn) {
+        (true, _, _, true) => "the sewn otter-hide cloak.",
+        (true, _, _, false) => "the otter hide.",
+        (_, true, _, true) => "the sewn fox-hide cloak.",
+        (_, true, _, false) => "the fox hide.",
+        (_, _, true, true) => "the sewn wolf-hide cloak.",
+        (_, _, true, false) => "the wolf hide.",
+        (_, _, _, true) => "the sewn deer-hide cloak.",
+        (_, _, _, false) => "the deer hide.",
     }
 }
 
 impl World {
-    /// Name the hide the person is holding. An otter hide wins over a wolf
-    /// hide, and a wolf hide over a deer hide.
+    /// Name the hide the person is holding. An otter hide wins over a fox
+    /// hide, a fox hide over a wolf hide, and a wolf hide over a deer hide.
     fn hide_line<'a>(
         &self,
         actor: ActorId,
         deer: &'a str,
         wolf: &'a str,
         otter: &'a str,
+        fox: &'a str,
     ) -> &'a str {
         if self.carrying_otter_hide(actor) {
             otter
+        } else if self.carrying_fox_hide(actor) {
+            fox
         } else if self.carrying_wolf_hide(actor) {
             wolf
         } else {
@@ -9402,6 +9421,7 @@ impl World {
             deer,
             "You are not carrying a wolf hide.",
             "You are not carrying an otter hide.",
+            "You are not carrying a fox hide.",
         )
     }
 }

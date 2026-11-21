@@ -99,8 +99,8 @@ smelt iron                   a carried lump of iron ore; a small fire refuses it
 feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hot enough for iron. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
-pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way
-sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off
+pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way. A fox hide uses a copper awl or a bone awl the same way
+sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off. A pierced fox hide sews into a cloak that breaks the wind and cuts the cold the way a deer cloak does
 rest|sleep                   under the rock, a lean-to, or on a reed mat, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
@@ -435,8 +435,10 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "deer hide"
                 || rest == "wolf hide"
                 || rest == "otter hide"
+                || rest == "fox hide"
                 || rest == "wolf cloak"
                 || rest == "otter cloak"
+                || rest == "fox cloak"
                 || rest == "cloak" =>
         {
             Ok(Attempt::Wear)
@@ -447,8 +449,10 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "deer hide"
                 || rest == "wolf hide"
                 || rest == "otter hide"
+                || rest == "fox hide"
                 || rest == "wolf cloak"
                 || rest == "otter cloak"
+                || rest == "fox cloak"
                 || rest == "cloak" =>
         {
             Ok(Attempt::Remove)
@@ -493,7 +497,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "hide"
                 || rest == "deer hide"
                 || rest == "wolf hide"
-                || rest == "otter hide" =>
+                || rest == "otter hide"
+                || rest == "fox hide" =>
         {
             Ok(Attempt::Pierce)
         }
@@ -503,9 +508,11 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "deer hide"
                 || rest == "wolf hide"
                 || rest == "otter hide"
+                || rest == "fox hide"
                 || rest == "cloak"
                 || rest == "wolf cloak"
-                || rest == "otter cloak" =>
+                || rest == "otter cloak"
+                || rest == "fox cloak" =>
         {
             Ok(Attempt::Sew)
         }
@@ -571,9 +578,8 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "meat" | "raw meat" | "cooked meat" => Ok(Material::Meat),
         "fish" | "raw fish" | "cooked fish" => Ok(Material::Fish),
         "brand" | "ember" | "burning brand" => Ok(Material::Brand),
-        "hide" | "deer hide" | "wolf hide" | "otter hide" | "wolf cloak" | "otter cloak" => {
-            Ok(Material::Hide)
-        }
+        "hide" | "deer hide" | "wolf hide" | "otter hide" | "fox hide" | "wolf cloak"
+        | "otter cloak" | "fox cloak" => Ok(Material::Hide),
         "basket" | "bark basket" => Ok(Material::Basket),
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
@@ -642,9 +648,8 @@ fn parse_target(text: &str) -> ExamineTarget {
         "bowl" => ExamineTarget::Bowl,
         "spear" | "spears" => ExamineTarget::Spear,
         "carcass" | "deer carcass" | "wolf carcass" => ExamineTarget::Carcass,
-        "hide" | "deer hide" | "wolf hide" | "otter hide" | "wolf cloak" | "otter cloak" => {
-            ExamineTarget::Hide
-        }
+        "hide" | "deer hide" | "wolf hide" | "otter hide" | "fox hide" | "wolf cloak"
+        | "otter cloak" | "fox cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" => ExamineTarget::Cord,
         "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,
         "meat" | "raw meat" | "cooked meat" | "salted meat" | "smoked meat" => ExamineTarget::Meat,
