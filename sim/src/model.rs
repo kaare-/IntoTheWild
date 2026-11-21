@@ -11130,8 +11130,10 @@ mod pine_resin {
             .unwrap()
             .events
             .iter()
-            .any(|event| {
-                event.text == "You light a fire with the bark and the branch from the arms."
+            .all(|event| {
+                event.text != "You light a fire with the bark and the branch from the arms."
+                    && event.text
+                        != "Else lights a fire with the bark and the branch from the arms."
             }));
     }
 }

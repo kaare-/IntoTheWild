@@ -8076,7 +8076,7 @@ impl World {
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
                     && self.canoe_for_these_eyes(viewer, event).is_none()
-                    && self.resin_light_for_these_eyes(viewer, event).is_none()
+                    && self.light_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
@@ -9745,8 +9745,9 @@ impl World {
         }
     }
 
-    /// A successful light, filled for the person who set it.
-    /// Anyone else keeps the stored sentence.
+    /// A successful light, bark or pine resin, with or without a brand.
+    /// The lighter already has the reply, so it does not sit in their events.
+    /// Anyone else keeps the stored third-person sentence.
     fn light_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
@@ -9756,39 +9757,7 @@ impl World {
         if !rest.starts_with("a fire with ") || !rest.ends_with('.') {
             return None;
         }
-        Some(crate::model::spoken_act(None, "light", rest))
-    }
-
-    /// Pine resin spent as tinder. The lighter already has the reply.
-    /// Bark lights stay in the event list, rewritten to the first person.
-    fn resin_light_for_these_eyes(
-        &self,
-        viewer: ActorId,
-        event: &crate::model::Event,
-    ) -> Option<String> {
-        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
-            return None;
-        }
-        let name = self.name_of(viewer);
-        let text = event.text.as_str();
-        if text
-            == format!("{name} lights a fire with the pine resin and the branch from the arms.")
-            || text
-                == format!(
-                    "{name} lights a fire with the pine resin from the arms and a dry branch from the pile at the feet."
-                )
-            || text
-                == format!(
-                    "{name} lights a fire with the burning brand and the pine resin and the branch from the arms."
-                )
-            || text
-                == format!(
-                    "{name} lights a fire with the burning brand and the pine resin from the arms and a dry branch from the pile at the feet."
-                )
-        {
-            return Some(text.to_string());
-        }
-        None
+        Some(event.text.clone())
     }
 
     /// An event keeps the weather of its own tick. The wood is named, not counted.
@@ -9920,9 +9889,6 @@ impl World {
             return line;
         }
         if let Some(line) = self.wash_for_these_eyes(viewer, event) {
-            return line;
-        }
-        if let Some(line) = self.light_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.boil_for_these_eyes(viewer, event) {

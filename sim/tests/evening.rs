@@ -445,10 +445,11 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     assert_eq!(lit.self_info.hunger, "hungry", "bark is tinder, not a meal");
     assert!(lit.map.contains('@') && lit.map.contains('*'));
     assert!(lit.text.contains("A small fire burns here."));
-    assert!(lit.events.iter().any(|event| {
-        event
+    assert!(lit.events.iter().all(|event| {
+        !event
             .text
             .contains("You light a fire with bark and a dry branch from the pile at the feet")
+            && !event.text.contains("lights a fire")
     }));
     assert_eq!(world.material_tally(Material::Bark), bark - 1);
     assert_eq!(
@@ -1299,7 +1300,7 @@ fn lighting_a_fire_is_one_sentence_for_each_pair_of_eyes() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("light"))
         .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+    assert!(yours.is_empty(), "{yours:?}");
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
@@ -5344,8 +5345,9 @@ fn a_fire_spends_carried_fuel_before_the_pile_at_the_feet() {
         "You light a fire with the bark and the branch from the arms."
     );
     let seen = world.observe(near).unwrap();
-    assert!(seen.events.iter().any(|event| {
-        event.text == "You light a fire with the bark and the branch from the arms."
+    assert!(seen.events.iter().all(|event| {
+        event.text != "You light a fire with the bark and the branch from the arms."
+            && !event.text.contains("lights a fire")
     }));
     assert!(seen.text.contains("A small fire burns here."));
     assert_eq!(pile_at(&world, near, 6, 1), (1, 2, 1));
@@ -8867,7 +8869,7 @@ fn a_brand_lights_a_second_fire_then_burns_out() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == planted_line));
+        .all(|event| event.text != planted_line && !event.text.contains("lights a fire")));
     assert!(world
         .observe(west)
         .unwrap()
