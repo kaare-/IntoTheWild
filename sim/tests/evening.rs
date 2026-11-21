@@ -1616,16 +1616,18 @@ fn a_deer_walks_without_a_command_eats_berries_and_leaves_hoofprints() {
     );
     assert_eq!(
         eats.iter()
-            .filter(|text| *text == "A deer eats the last handful of berries.")
+            .filter(|text| {
+                *text == "A deer eats from the pile and leaves a handful of berries."
+            })
             .count(),
         1
     );
-    assert!(near
-        .observe(sera)
-        .unwrap()
-        .events
+    assert!(eats
         .iter()
-        .any(|event| event.text == "A deer eats the last handful of berries."));
+        .all(|text| *text != "A deer eats the last handful of berries."));
+    assert!(near.observe(sera).unwrap().events.iter().any(|event| {
+        event.text == "A deer eats from the pile and leaves a handful of berries."
+    }));
     assert!(near
         .observe(otto)
         .unwrap()
@@ -6762,9 +6764,10 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(world.hoofprints_at(3, 3));
     let last = world.examine(near, ExamineTarget::Wood);
     assert!(
-        last.contains("A deer is eating the berries here. The last handful is gone."),
+        last.contains("A deer ate from the pile. A handful of berries is left."),
         "{last}"
     );
+    assert!(!last.contains("The last handful is gone."), "{last}");
     assert!(!last.contains("these branches"), "{last}");
     let last_look = world.observe(near).unwrap();
     assert!(

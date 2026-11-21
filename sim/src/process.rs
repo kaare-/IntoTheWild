@@ -1312,7 +1312,10 @@ impl World {
                     self.mint_item(Material::Berry, 0, cell, None, Role::Loose);
                 }
             }
-            let text = if last {
+            let leaves = last && !self.ground_ids(cell, Material::Berry).is_empty();
+            let text = if leaves {
+                "A deer eats from the pile and leaves a handful of berries."
+            } else if last {
                 "A deer eats the last handful of berries."
             } else {
                 "A deer eats a handful of berries."

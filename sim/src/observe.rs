@@ -8217,7 +8217,9 @@ impl World {
                 event.time < tick
                     && event.affected_cells.contains(&cell)
                     && (event.text == "A deer eats a handful of berries."
-                        || event.text == "A deer eats the last handful of berries.")
+                        || event.text == "A deer eats the last handful of berries."
+                        || event.text
+                            == "A deer eats from the pile and leaves a handful of berries.")
             })
             .count()
     }
@@ -8234,7 +8236,9 @@ impl World {
             if event.time != tick || !event.affected_cells.contains(&cell) {
                 continue;
             }
-            if event.text == "A deer eats the last handful of berries." {
+            if event.text == "A deer eats the last handful of berries."
+                || event.text == "A deer eats from the pile and leaves a handful of berries."
+            {
                 ate = true;
                 last = true;
             } else if event.text == "A deer eats a handful of berries." {
@@ -8247,6 +8251,13 @@ impl World {
     fn deer_on_this_wood(&self, origin: CellId, cell: CellId) -> &'static str {
         if !self.deer.as_ref().is_some_and(|deer| deer.cell == cell) {
             return "";
+        }
+        if self.leftover_handful(cell) {
+            return if origin == cell {
+                " A deer ate from the pile. A handful of berries is left."
+            } else {
+                " A deer ate from the pile there. A handful of berries is left."
+            };
         }
         match self.deer_meal_this_tick(cell) {
             Some(true) if origin == cell => {
