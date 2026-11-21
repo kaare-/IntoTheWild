@@ -12049,6 +12049,12 @@ mod hare {
             look.text
         );
         assert!(
+            look.text
+                .contains("Set a snare with the willow cordage south of the brook."),
+            "{}",
+            look.text
+        );
+        assert!(
             look.text.contains("South and west: valley floor, a hare.") || look.map.contains('r'),
             "text {}\nmap {}",
             look.text,
@@ -12056,7 +12062,9 @@ mod hare {
         );
         assert!(look.map.contains('r'), "{}", look.map);
         assert!(!world.observe(heard).unwrap().text.contains("hare"));
+        assert!(!world.observe(heard).unwrap().text.contains("Set a snare"));
         assert!(!world.observe(quiet).unwrap().text.contains("hare"));
+        assert!(!world.observe(quiet).unwrap().text.contains("Set a snare"));
 
         let beside = world.spawn_at("Beside", "b", 2, 3).unwrap();
         let south = world.observe(beside).unwrap().text;

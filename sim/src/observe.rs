@@ -294,6 +294,7 @@ impl World {
             }
             if let Some(hare) = self.seen_hare(actor_id) {
                 lines.push(hare);
+                lines.push("Set a snare with the willow cordage south of the brook.".into());
             }
             if self
                 .seen_wolf_tracks(actor_id)
@@ -320,6 +321,7 @@ impl World {
             }
             if let Some(hare) = self.seen_hare(actor_id) {
                 lines.push(hare);
+                lines.push("Set a snare with the willow cordage south of the brook.".into());
             }
             if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
                 lines.push(tracks);
