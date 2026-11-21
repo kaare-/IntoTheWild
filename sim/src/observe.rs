@@ -217,6 +217,7 @@ impl World {
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
+            ExamineTarget::Hook => self.examine_hook(actor_id),
             ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Mat => self.examine_mat(actor_id),
             ExamineTarget::Canoe => self.examine_canoe(actor_id),
@@ -370,6 +371,9 @@ impl World {
             }
             if let Some(bone) = self.seen_bone(actor_id) {
                 lines.push(bone);
+            }
+            if let Some(hook) = self.seen_hook(actor_id) {
+                lines.push(hook);
             }
             if let Some(salt) = self.seen_salt(actor_id) {
                 lines.push(salt);
@@ -1085,6 +1089,9 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty() {
             parts.push("A bone lies here.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Hook).is_empty() {
+            parts.push("A bone fish hook lies here.".into());
         }
         if self.ochre_marks.contains(&actor.cell) {
             let surface = if self.cell(actor.cell).rock {
@@ -2391,6 +2398,62 @@ impl World {
         }
     }
 
+    fn examine_hook(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::Hook).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!(
+                    "A bone fish hook lies {place}. It is carved from a bone."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bone fish hooks lie {place}. Each is carved from a bone.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Hook).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A bone fish hook is carried by {who} {cover}. It is carved from a bone."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bone fish hooks are carried by {who} {cover}. Each is carved from a bone.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no bone fish hook from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// The rock's dry branches were taken and have not lain there again.
     fn branch_bare(&self, cell: crate::model::CellId) -> bool {
         self.branch_returns_at.contains_key(&cell)
@@ -2522,6 +2585,37 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|awl| awl.bone))
             {
                 lines.push(format!("A bone awl lies {place}. It can pierce hide."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A bone fish hook on a cell this person can see but is not standing on.
+    fn seen_hook(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || self.ground_ids(cell, Material::Hook).is_empty() {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("under the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            let count = self.ground_ids(cell, Material::Hook).len() as u32;
+            if count == 1 {
+                lines.push(format!("A bone fish hook lies {place}."));
+            } else {
+                lines.push(format!(
+                    "{} bone fish hooks lie {place}.",
+                    capitalize(&count_word(count))
+                ));
             }
         }
         if lines.is_empty() {
@@ -2997,6 +3091,10 @@ impl World {
             }
         } else if item.material == "bone" && item.count == 1 {
             "a bone".into()
+        } else if item.material == "fish hook" && item.count == 1 {
+            "a bone fish hook".into()
+        } else if item.material == "fish hook" {
+            format!("{} bone fish hooks", count_word(item.count))
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -3731,6 +3829,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Bone).is_empty() {
             bits.push("a bone".into());
+        }
+        if !self.ground_ids(dest, Material::Hook).is_empty() {
+            bits.push("a bone fish hook".into());
         }
         if self.ochre_marks.contains(&dest) {
             bits.push("a red ochre mark".into());
@@ -6825,6 +6926,7 @@ impl World {
                 Material::Canoe => "dugout canoe",
                 Material::PaleBerry => "pale berries",
                 Material::Paddle => "wooden paddle",
+                Material::Hook => "bone fish hook",
             };
             format!("You see no {name} from here.")
         } else {
@@ -9118,6 +9220,8 @@ impl World {
             && rest != "a bone into a bone awl with the flint flake."
             && rest != "a dry branch into a wooden paddle with the iron knife."
             && rest != "a dry branch into a wooden paddle with the flint flake."
+            && rest != "a bone into a bone fish hook with the iron knife."
+            && rest != "a bone into a bone fish hook with the flint flake."
         {
             return None;
         }
@@ -10091,6 +10195,9 @@ impl World {
         {
             actions.push("carve paddle".into());
         }
+        if self.has_bone(actor_id) && self.hook_tool_rest(actor_id).is_some() {
+            actions.push("carve hook".into());
+        }
         if self.has_salt(actor_id) && self.raw_portion_to_salt(actor_id).is_some() {
             actions.push("salt meat".into());
         }
@@ -10636,6 +10743,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Canoe, _) => "dugout canoe",
         (Material::Paddle, true) => "wooden paddle",
         (Material::Paddle, false) => "wooden paddles",
+        (Material::Hook, true) => "bone fish hook",
+        (Material::Hook, false) => "bone fish hooks",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

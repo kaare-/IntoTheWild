@@ -723,6 +723,7 @@ impl Tuning {
             Material::Canoe => 0,
             Material::PaleBerry => self.berry_rain,
             Material::Paddle => 0,
+            Material::Hook => 0,
         }
     }
 }

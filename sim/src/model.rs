@@ -115,6 +115,8 @@ pub enum Material {
     PaleBerry,
     /// Carved from a dry branch. Bare hands can still paddle; holding this names it.
     Paddle,
+    /// Carved from a bone. Catching a fish with it is a later slice.
+    Hook,
 }
 
 impl Material {
@@ -162,6 +164,7 @@ impl Material {
             Material::Canoe => "dugout canoe",
             Material::PaleBerry => "pale berry",
             Material::Paddle => "paddle",
+            Material::Hook => "fish hook",
         }
     }
 
@@ -209,6 +212,7 @@ impl Material {
             Material::Canoe => "dugout canoe",
             Material::PaleBerry => "handful of pale berries",
             Material::Paddle => "wooden paddle",
+            Material::Hook => "bone fish hook",
         }
     }
 
@@ -343,6 +347,7 @@ pub enum ExamineTarget {
     Canoe,
     PaleBerries,
     Paddle,
+    Hook,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -417,6 +422,7 @@ pub enum Attempt {
     Disembark,
     Beach,
     CarvePaddle,
+    CarveHook,
 }
 
 impl Attempt {
@@ -488,6 +494,7 @@ impl Attempt {
                 | Attempt::Disembark
                 | Attempt::Beach
                 | Attempt::CarvePaddle
+                | Attempt::CarveHook
         )
     }
 }
@@ -9715,5 +9722,306 @@ mod carve_paddle {
             .unwrap()
             .text
             .contains("a wooden paddle"));
+    }
+}
+
+#[cfg(test)]
+mod carve_hook {
+    use super::{Attempt, CellId, Dir, ExamineTarget, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn at(x: i32, y: i32) -> CellId {
+        super::cell_id(x, y).unwrap()
+    }
+
+    fn say(world: &mut World, id: &str, actor: u32, attempt: Attempt) -> String {
+        world.step(&[intent(id, actor, attempt)]).results[0]
+            .message
+            .clone()
+    }
+
+    #[test]
+    fn a_bone_and_a_flake_or_knife_become_a_fish_hook() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = at(4, 3);
+        assert_eq!(
+            crate::parse::parse_attempt("carve hook").unwrap(),
+            Attempt::CarveHook
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("carve a fish hook").unwrap(),
+            Attempt::CarveHook
+        );
+
+        let bare = say(&mut world, "bare", near, Attempt::CarveHook);
+        assert_eq!(bare, "You have no bone to carve.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You have no bone to carve."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You have no bone to carve." }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("hook") && !event.text.contains("bone to carve")
+        }));
+
+        world.mint_item(Material::Bone, 0, cell, None, super::Role::Loose);
+        let no_tool = say(&mut world, "tool", near, Attempt::CarveHook);
+        assert_eq!(
+            no_tool,
+            "You need a flint flake or an iron knife to carve a hook."
+        );
+        assert_eq!(world.ground_ids(cell, Material::Bone).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("to carve a hook") }));
+
+        world.mint_item(Material::Flake, 0, cell, Some(near), super::Role::Loose);
+        let carved = say(&mut world, "carve", near, Attempt::CarveHook);
+        assert_eq!(
+            carved,
+            "You carve a bone into a bone fish hook with the flint flake."
+        );
+        assert_eq!(world.ground_ids(cell, Material::Bone).len(), 0);
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Hook).len(), 1);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains("a bone fish hook"), "{}", look.text);
+        assert!(look.text.contains("a sharp flint flake"), "{}", look.text);
+        assert!(look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near carves")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near carves a bone into a bone fish hook with the flint flake."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hook") && !event.text.contains("carves") }));
+        let examined = world.examine(near, ExamineTarget::Hook);
+        assert!(
+            examined.contains("A bone fish hook is carried by you"),
+            "{examined}"
+        );
+        assert!(examined.contains("carved from a bone"), "{examined}");
+        let seen_exam = world.examine(seen, ExamineTarget::Hook);
+        assert!(
+            seen_exam.contains("A bone fish hook is carried by Near"),
+            "{seen_exam}"
+        );
+
+        let dropped = say(&mut world, "drop", near, Attempt::Drop(Material::Hook));
+        assert_eq!(
+            dropped,
+            "You drop a bone fish hook. It is in contact with the ground."
+        );
+        let lying = world.observe(near).unwrap();
+        assert!(
+            lying.text.contains("A bone fish hook lies here."),
+            "{}",
+            lying.text
+        );
+
+        world.mint_item(Material::Knife, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Bone, 0, cell, Some(near), super::Role::Loose);
+        let with_knife = say(&mut world, "knife", near, Attempt::CarveHook);
+        assert_eq!(
+            with_knife,
+            "You carve a bone into a bone fish hook with the iron knife."
+        );
+        assert_eq!(world.loose_ids(near, Material::Knife).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Bone).len(), 0);
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near carves a bone into a bone fish hook with the iron knife."
+        }));
+    }
+
+    #[test]
+    fn a_butchered_bone_and_an_iron_knife_carve_a_hook_under_the_rock() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 3, 3).unwrap();
+        assert_eq!(
+            say(&mut world, "none", near, Attempt::CarveHook),
+            "You have no bone to carve."
+        );
+        for n in 0..3 {
+            let message = say(
+                &mut world,
+                &format!("n{n}"),
+                near,
+                Attempt::Move(Dir::North),
+            );
+            assert_eq!(message, "You walk north.");
+        }
+        assert_eq!(
+            say(&mut world, "east", near, Attempt::Move(Dir::East)),
+            "You walk east."
+        );
+        assert_eq!(world.actor_cell(near), Some((5, 0)));
+        assert_eq!(
+            say(&mut world, "ore", near, Attempt::Gather(Material::IronOre)),
+            "You gather a lump of iron ore."
+        );
+        for i in 0..3 {
+            let message = say(&mut world, &format!("w{i}"), near, Attempt::Move(Dir::West));
+            assert_eq!(message, "You walk west.");
+        }
+        assert_eq!(world.actor_cell(near), Some((2, 0)));
+        assert_eq!(
+            say(&mut world, "stone", near, Attempt::Gather(Material::Stone)),
+            "You gather a stone."
+        );
+        for i in 0..4 {
+            let message = say(&mut world, &format!("e{i}"), near, Attempt::Move(Dir::East));
+            assert_eq!(message, "You walk east.");
+        }
+        assert_eq!(
+            say(&mut world, "south", near, Attempt::Move(Dir::South)),
+            "You walk south, under the rock overhang, out of the wind."
+        );
+        assert_eq!(world.actor_cell(near), Some((6, 1)));
+        assert_eq!(
+            say(&mut world, "bark", near, Attempt::Gather(Material::Bark)),
+            "You gather a sheet of bark."
+        );
+        assert_eq!(
+            say(
+                &mut world,
+                "tinder",
+                near,
+                Attempt::Gather(Material::Branch)
+            ),
+            "You gather a branch."
+        );
+        assert_eq!(
+            say(&mut world, "light", near, Attempt::Light),
+            "You light a fire with the bark and the branch from the arms."
+        );
+        assert_eq!(
+            say(&mut world, "haft", near, Attempt::Gather(Material::Branch)),
+            "You gather a branch."
+        );
+        assert_eq!(
+            say(&mut world, "bind", near, Attempt::BindSpear),
+            "You bind a stone and a branch into a spear."
+        );
+        assert_eq!(
+            say(&mut world, "feed", near, Attempt::Feed),
+            "You feed a dry branch into the fire. It burns hotter."
+        );
+        assert_eq!(
+            say(&mut world, "smelt", near, Attempt::SmeltIron),
+            "You set a lump of iron ore by the fire. It leaves your arms. It is not iron yet."
+        );
+        let mut bloom = 0;
+        while !world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A bloom of iron lies here.")
+        {
+            world.step(&[]);
+            bloom += 1;
+            assert!(bloom < 8, "the ore should become a bloom");
+        }
+        assert_eq!(
+            say(&mut world, "bloom", near, Attempt::Gather(Material::Iron)),
+            "You gather a bloom of iron."
+        );
+        assert_eq!(
+            say(&mut world, "hammer", near, Attempt::HammerIron),
+            "You hammer the bloom of iron into an iron knife at the fire."
+        );
+        let mut waits = 0;
+        while !world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a spear with a hardened point")
+        {
+            world.step(&[]);
+            waits += 1;
+            assert!(waits < 8, "the point should harden under the rock");
+        }
+        let mut found = 0;
+        while world.deer_cell() != Some((6, 1)) {
+            world.step(&[]);
+            found += 1;
+            assert!(
+                found < 24,
+                "deer at {:?} after the knife is in hand",
+                world.deer_cell()
+            );
+        }
+        assert_eq!(
+            say(&mut world, "hunt", near, Attempt::Hunt),
+            "You bring the deer down. A carcass lies where it stood."
+        );
+        assert_eq!(
+            say(&mut world, "butcher", near, Attempt::Butcher),
+            "You butcher the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A bone lies here."));
+        let carved = say(&mut world, "hook", near, Attempt::CarveHook);
+        assert_eq!(
+            carved,
+            "You carve a bone into a bone fish hook with the iron knife."
+        );
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains("a bone fish hook"), "{}", look.text);
+        assert!(look.text.contains("an iron knife"), "{}", look.text);
+        assert!(!look.text.contains("A bone lies here."), "{}", look.text);
+        assert!(look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near carves")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near carves a bone into a bone fish hook with the iron knife."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("fish hook") && !event.text.contains("Near carves")
+        }));
+        let dropped = say(&mut world, "drop", near, Attempt::Drop(Material::Hook));
+        assert_eq!(
+            dropped,
+            "You drop a bone fish hook. It is in contact with the ground."
+        );
+        let seen_look = world.observe(seen).unwrap();
+        assert!(
+            seen_look
+                .text
+                .contains("A bone fish hook lies under the rock to the north and east."),
+            "{}",
+            seen_look.text
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("hook"));
     }
 }
