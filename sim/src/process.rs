@@ -1554,6 +1554,69 @@ impl World {
         best.map(|(index, cell, _)| (index, cell))
     }
 
+    /// Someone stepped close to the hare, or onto it. It bolts to a dry
+    /// neighbor farther from them. The step already has its own reply, so
+    /// this bolt is only the event.
+    pub(crate) fn frighten_hare(&mut self, origin: CellId, dest: CellId) {
+        let Some(hare) = self.hare.clone() else {
+            return;
+        };
+        if chebyshev(dest, hare.cell) > 1 {
+            return;
+        }
+        if chebyshev(origin, hare.cell) <= 1 && dest != hare.cell {
+            return;
+        }
+        let away_from = if dest == hare.cell { origin } else { dest };
+        let Some(next) = self.hare_away(hare.cell, dest, away_from) else {
+            return;
+        };
+        if next == hare.cell {
+            return;
+        }
+        let dir = step_dir(hare.cell, next);
+        let from = hare.cell;
+        self.emit(
+            format!("A hare startles and bolts to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(hare) = self.hare.as_mut() {
+            hare.cell = next;
+        }
+    }
+
+    /// A dry floor neighbor, not the person and not the cell they stepped to
+    /// when that cell is not the hare's own. Farther from `away_from` wins.
+    fn hare_away(&self, from: CellId, person: CellId, away_from: CellId) -> Option<CellId> {
+        let (x, y) = cell_xy(from);
+        let mut best: Option<(CellId, i32)> = None;
+        for (dx, dy) in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+            let Some(cell) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if cell == person {
+                continue;
+            }
+            let place = self.cell(cell);
+            if place.region != Region::Floor || place.rock {
+                continue;
+            }
+            if self.actors.values().any(|actor| actor.cell == cell) {
+                continue;
+            }
+            let away = chebyshev(away_from, cell);
+            if best.is_none_or(|(_, far)| away > far) {
+                best = Some((cell, away));
+            }
+        }
+        best.map(|(cell, _)| cell)
+    }
+
     fn apply_thirst(&mut self) {
         self.schedule(self.time + 1, Wake::Thirst);
         let gain = self.tuning.thirst_per_tick;

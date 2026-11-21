@@ -23,7 +23,8 @@ g iron ore     I bloom of iron
 K iron knife   i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
-d deer    x fox  \" tracks
+d deer    x fox    r hare
+\" tracks
 R rock roof    H bark roof
 f unfinished frame
 ~ brook    = still water
@@ -291,6 +292,9 @@ impl World {
             if let Some(fox) = self.seen_fox(actor_id) {
                 lines.push(fox);
             }
+            if let Some(hare) = self.seen_hare(actor_id) {
+                lines.push(hare);
+            }
             if self
                 .seen_wolf_tracks(actor_id)
                 .is_some_and(|tracks| tracks.contains("Wolf tracks mark the ground here."))
@@ -313,6 +317,9 @@ impl World {
             }
             if let Some(fox) = self.seen_fox(actor_id) {
                 lines.push(fox);
+            }
+            if let Some(hare) = self.seen_hare(actor_id) {
+                lines.push(hare);
             }
             if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
                 lines.push(tracks);
@@ -1389,6 +1396,25 @@ impl World {
         } else {
             let way = self.relative(origin, fox.cell);
             Some(format!("A fox is on the valley floor to the {way}."))
+        }
+    }
+
+    /// A hare on one dry cell of the valley floor. Past sight, nothing.
+    /// At night, with no fire nearby, only a hare underfoot is named.
+    fn seen_hare(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let hare = self.hare.as_ref()?;
+        if self.dark_for(viewer) && hare.cell != origin {
+            return None;
+        }
+        if !self.visible_cell_ids(viewer).contains(&hare.cell) {
+            return None;
+        }
+        if hare.cell == origin {
+            Some("A hare is on the valley floor here.".into())
+        } else {
+            let way = self.relative(origin, hare.cell);
+            Some(format!("A hare is on the valley floor to the {way}."))
         }
     }
 
@@ -4432,6 +4458,9 @@ impl World {
         }
         if self.fox.as_ref().is_some_and(|fox| fox.cell == dest) {
             bits.push("a fox".into());
+        }
+        if self.hare.as_ref().is_some_and(|hare| hare.cell == dest) {
+            bits.push("a hare".into());
         }
         if self.fire_at(dest).is_some() {
             bits.push("a fire".into());
@@ -8354,6 +8383,9 @@ impl World {
         if self.fox.as_ref().is_some_and(|fox| fox.cell == cell) {
             marks.push('x');
         }
+        if self.hare.as_ref().is_some_and(|hare| hare.cell == cell) {
+            marks.push('r');
+        }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {
                 item.material == Material::Log && item.cell == cell && item.carrier.is_none()
@@ -10017,6 +10049,35 @@ impl World {
         Some(format!("You hear a fox to the {way}."))
     }
 
+    /// A hare bolting, heard from out of sight. Someone who can see the cell
+    /// keeps that sentence. Past hearing, nothing is delivered.
+    fn hare_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
+        let cell = self.hare_bolt_cell(event)?;
+        if chebyshev(origin, cell) <= self.tuning.sight {
+            return None;
+        }
+        if chebyshev(origin, cell) > self.tuning.hearing {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear a hare to the {way}."))
+    }
+
+    fn hears_a_hare(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.hare_bolt_cell(event) else {
+            return false;
+        };
+        chebyshev(origin, cell) > self.tuning.sight
+            && chebyshev(origin, cell) <= self.tuning.hearing
+    }
+
+    fn hare_bolt_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !event.text.contains("startles and bolts") {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     fn hears_a_fox(&self, origin: CellId, event: &crate::model::Event) -> bool {
         let Some(cell) = self.fox_slip_cell(event) else {
             return false;
@@ -10806,6 +10867,9 @@ impl World {
         if let Some(line) = self.fox_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.hare_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.walk_for_these_eyes(viewer, event) {
             return line;
         }
@@ -11054,6 +11118,7 @@ impl World {
                     || self.hears_a_branch_break(origin, event)
                     || self.hears_a_splash(origin, event)
                     || self.hears_a_fox(origin, event)
+                    || self.hears_a_hare(origin, event)
                     || self.hears_footsteps(origin, event)
             }
         }

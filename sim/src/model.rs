@@ -883,6 +883,12 @@ pub struct Fox {
 /// A short run on the dry floor at the south-east. Orthogonal.
 pub(crate) const FOX_ROUTE: [(i32, i32); 2] = [(5, 4), (6, 4)];
 
+/// One hare. It keeps to one dry cell on the valley floor, south of the trail.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hare {
+    pub cell: CellId,
+}
+
 /// Trail the deer already uses, then a detour to the berries under the rock
 /// and back. Orthogonal, so each step is one direction.
 pub(crate) const DEER_ROUTE: [(i32, i32); 12] = [
@@ -972,6 +978,9 @@ pub struct World {
     /// A fox on the dry valley floor. Old valleys have none.
     #[serde(default)]
     pub(crate) fox: Option<Fox>,
+    /// A hare on one dry cell of the valley floor. Old valleys have none.
+    #[serde(default)]
+    pub(crate) hare: Option<Hare>,
     /// Cells the deer has left. The marks stay; decay is not in this valley.
     #[serde(default)]
     pub(crate) tracks: BTreeSet<CellId>,
@@ -1226,6 +1235,9 @@ impl World {
                 cell: cell_id(5, 4).unwrap(),
                 route_at: 0,
                 held: false,
+            }),
+            hare: Some(Hare {
+                cell: cell_id(2, 4).unwrap(),
             }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
@@ -1557,6 +1569,10 @@ impl World {
 
     pub fn fox_cell(&self) -> Option<(i32, i32)> {
         self.fox.as_ref().map(|fox| cell_xy(fox.cell))
+    }
+
+    pub fn hare_cell(&self) -> Option<(i32, i32)> {
+        self.hare.as_ref().map(|hare| cell_xy(hare.cell))
     }
 
     pub fn hoofprints_at(&self, x: i32, y: i32) -> bool {
@@ -11971,6 +11987,92 @@ mod fox {
         assert!(
             look.contains("A fox is on the valley floor to the south and east."),
             "{look}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod hare {
+    use super::{Attempt, Dir, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_hare_on_the_dry_floor_is_named_and_bolts_when_someone_comes_close() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        let look = world.observe(near).unwrap();
+        assert!(
+            look.text
+                .contains("A hare is on the valley floor to the south and west."),
+            "{}",
+            look.text
+        );
+        assert!(
+            look.text.contains("South and west: valley floor, a hare.") || look.map.contains('r'),
+            "text {}\nmap {}",
+            look.text,
+            look.map
+        );
+        assert!(look.map.contains('r'), "{}", look.map);
+        assert!(!world.observe(heard).unwrap().text.contains("hare"));
+        assert!(!world.observe(quiet).unwrap().text.contains("hare"));
+
+        let beside = world.spawn_at("Beside", "b", 2, 3).unwrap();
+        let south = world.observe(beside).unwrap().text;
+        assert!(
+            south.contains("A hare is on the valley floor to the south.")
+                && south.contains("a hare"),
+            "{south}"
+        );
+
+        let step = world.step(&[intent("west", near, Attempt::Move(Dir::West))]);
+        assert_eq!(step.results[0].message, "You walk west.");
+        assert!(!step.results[0].message.contains("hare"));
+        assert_eq!(world.hare_cell(), Some((1, 4)));
+        let yours: Vec<_> = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("hare"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(
+            yours,
+            vec!["A hare startles and bolts to the west.".to_string()]
+        );
+        let ears: Vec<_> = world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("hare"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(
+            ears,
+            vec!["You hear a hare to the south and west.".to_string()]
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
+        let after = world.observe(near).unwrap().text;
+        assert!(
+            after.contains("A hare is on the valley floor to the south and west."),
+            "{after}"
         );
     }
 }
