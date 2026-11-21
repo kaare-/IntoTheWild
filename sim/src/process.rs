@@ -2,8 +2,8 @@
 //! including when nobody has sent a command.
 
 use crate::model::{
-    cell_id, cell_xy, ActorId, CellId, ConstructionId, Dir, EventId, FireId, ItemId, Material,
-    Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE,
+    cell_id, cell_xy, chebyshev, ActorId, CellId, ConstructionId, Dir, EventId, FireId, ItemId,
+    Material, Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE, OTTER_ROUTE,
 };
 
 impl World {
@@ -28,6 +28,7 @@ impl World {
                 Wake::Work(id) => self.complete_work(id),
                 Wake::Fire(id) => self.burn_down(id),
                 Wake::Deer => self.apply_deer(),
+                Wake::Otter => self.apply_otter(),
                 Wake::Season => self.apply_season(),
                 Wake::Rot => self.apply_rot(),
                 Wake::Harden(id) => self.harden_clay(id),
@@ -1272,6 +1273,98 @@ impl World {
             deer.route_at = next_at;
             deer.last_event = Some(id);
         }
+    }
+
+    /// One step along the brook when nobody is beside the otter.
+    /// A person who has just stepped close already sent it off.
+    fn apply_otter(&mut self) {
+        self.schedule(self.time + 4, Wake::Otter);
+        let Some(otter) = self.otter.clone() else {
+            return;
+        };
+        if self
+            .actors
+            .values()
+            .any(|person| chebyshev(person.cell, otter.cell) <= 1)
+        {
+            return;
+        }
+        let next_at = (otter.route_at + 1) % OTTER_ROUTE.len();
+        let (nx, ny) = OTTER_ROUTE[next_at];
+        let Some(dest) = cell_id(nx, ny) else {
+            return;
+        };
+        if self.actors.values().any(|person| person.cell == dest) {
+            return;
+        }
+        let dir = step_dir(otter.cell, dest);
+        let origin = otter.cell;
+        self.emit(
+            format!("An otter swims {}.", dir.word()),
+            Scope::Cell(dest),
+            vec![],
+            vec![origin, dest],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(otter) = self.otter.as_mut() {
+            otter.cell = dest;
+            otter.route_at = next_at;
+        }
+    }
+
+    /// Someone stepped closer. The otter leaves along the brook, away from them.
+    /// The step they took already has its own reply, so this splash is only the event.
+    pub(crate) fn frighten_otter(&mut self, _origin: CellId, dest: CellId) {
+        let Some(otter) = self.otter.clone() else {
+            return;
+        };
+        if dest != otter.cell {
+            return;
+        }
+        let Some((next_at, next)) = self.otter_away(otter.route_at, dest) else {
+            return;
+        };
+        if next == otter.cell {
+            return;
+        }
+        let dir = step_dir(otter.cell, next);
+        let from = otter.cell;
+        self.emit(
+            format!("An otter splashes away to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(otter) = self.otter.as_mut() {
+            otter.cell = next;
+            otter.route_at = next_at;
+        }
+    }
+
+    /// The route neighbor farther from the person. Their own cell is not a landing.
+    fn otter_away(&self, route_at: usize, person: CellId) -> Option<(usize, CellId)> {
+        let len = OTTER_ROUTE.len();
+        let mut best: Option<(usize, CellId, i32)> = None;
+        for step in [1isize, -1] {
+            let index = (route_at as isize + step).rem_euclid(len as isize) as usize;
+            let (x, y) = OTTER_ROUTE[index];
+            let cell = cell_id(x, y)?;
+            if cell == person {
+                continue;
+            }
+            let away = chebyshev(person, cell);
+            let replace = best.is_none_or(|(_, _, far)| away > far)
+                || (best.is_some_and(|(_, _, far)| away == far) && step > 0);
+            if replace {
+                best = Some((index, cell, away));
+            }
+        }
+        best.map(|(index, cell, _)| (index, cell))
     }
 
     fn apply_thirst(&mut self) {

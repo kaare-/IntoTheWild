@@ -285,6 +285,9 @@ impl World {
             {
                 lines.push("A wolf stands here.".into());
             }
+            if let Some(otter) = self.seen_otter(actor_id) {
+                lines.push(otter);
+            }
             if self
                 .seen_wolf_tracks(actor_id)
                 .is_some_and(|tracks| tracks.contains("Wolf tracks mark the ground here."))
@@ -301,6 +304,9 @@ impl World {
             }
             if let Some(wolf) = self.seen_wolf(actor_id) {
                 lines.push(wolf);
+            }
+            if let Some(otter) = self.seen_otter(actor_id) {
+                lines.push(otter);
             }
             if let Some(tracks) = self.seen_wolf_tracks(actor_id) {
                 lines.push(tracks);
@@ -1312,6 +1318,34 @@ impl World {
             None
         } else {
             Some(lines.join(" "))
+        }
+    }
+
+    /// An otter on the brook, or on the bank beside it. Past sight, nothing.
+    /// At night, with no fire nearby, only an otter underfoot is named.
+    fn seen_otter(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let otter = self.otter.as_ref()?;
+        if self.dark_for(viewer) && otter.cell != origin {
+            return None;
+        }
+        if !self.visible_cell_ids(viewer).contains(&otter.cell) {
+            return None;
+        }
+        let brook = self.cell(otter.cell).region == crate::model::Region::Brook;
+        if otter.cell == origin {
+            if brook {
+                Some("An otter is in the brook here.".into())
+            } else {
+                Some("An otter is on the bank here.".into())
+            }
+        } else {
+            let way = self.relative(origin, otter.cell);
+            if brook {
+                Some(format!("An otter is in the brook to the {way}."))
+            } else {
+                Some(format!("An otter is on the bank to the {way}."))
+            }
         }
     }
 
@@ -4242,6 +4276,9 @@ impl World {
         }
         if self.tracks.contains(&dest) {
             bits.push("hoofprints".into());
+        }
+        if self.otter.as_ref().is_some_and(|otter| otter.cell == dest) {
+            bits.push("an otter".into());
         }
         if self.fire_at(dest).is_some() {
             bits.push("a fire".into());
@@ -9455,7 +9492,8 @@ impl World {
             || event
                 .text
                 .contains(" catches a fish from the brook with the bone fish hook.")
-            || event.text == "The fishing net catches a fish.";
+            || event.text == "The fishing net catches a fish."
+            || event.text.starts_with("An otter splashes away");
         if !splash {
             return None;
         }

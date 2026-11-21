@@ -808,6 +808,8 @@ pub enum Wake {
     MushroomReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
+    /// The otter swims one step along the brook when nobody is beside it.
+    Otter,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
     Stings,
     /// Wet clothes on this person dry at the fire they are standing by.
@@ -833,6 +835,16 @@ pub struct Deer {
     #[serde(default)]
     pub held: bool,
 }
+
+/// One otter. It keeps to the brook and the bank beside it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Otter {
+    pub cell: CellId,
+    pub route_at: usize,
+}
+
+/// A short loop on the brook and the dry bank beside it. Orthogonal.
+pub(crate) const OTTER_ROUTE: [(i32, i32); 6] = [(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3)];
 
 /// Trail the deer already uses, then a detour to the berries under the rock
 /// and back. Orthogonal, so each step is one direction.
@@ -917,6 +929,9 @@ pub struct World {
     pub(crate) fires: BTreeMap<FireId, Fire>,
     #[serde(default)]
     pub(crate) deer: Option<Deer>,
+    /// An otter on the brook, or on the bank beside it. Old valleys have none.
+    #[serde(default)]
+    pub(crate) otter: Option<Otter>,
     /// Cells the deer has left. The marks stay; decay is not in this valley.
     #[serde(default)]
     pub(crate) tracks: BTreeSet<CellId>,
@@ -1156,6 +1171,10 @@ impl World {
                 last_event: None,
                 held: false,
             }),
+            otter: Some(Otter {
+                cell: cell_id(1, 1).unwrap(),
+                route_at: 1,
+            }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
             deer_ate_berries: BTreeSet::new(),
@@ -1226,6 +1245,7 @@ impl World {
         world.schedule(0, Wake::Energy);
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
+        world.schedule(4, Wake::Otter);
         let rock = cell_id(6, 1).unwrap();
         world.add_pile(rock, Material::Branch, 4, 0);
         world.branch_beds.insert(rock);
@@ -1474,6 +1494,10 @@ impl World {
 
     pub fn deer_cell(&self) -> Option<(i32, i32)> {
         self.deer.as_ref().map(|deer| cell_xy(deer.cell))
+    }
+
+    pub fn otter_cell(&self) -> Option<(i32, i32)> {
+        self.otter.as_ref().map(|otter| cell_xy(otter.cell))
     }
 
     pub fn hoofprints_at(&self, x: i32, y: i32) -> bool {
@@ -11639,5 +11663,97 @@ mod willow {
             .events
             .iter()
             .all(|event| { !event.text.contains("You haft the flint") }));
+    }
+}
+
+#[cfg(test)]
+mod otter {
+    use super::{Attempt, Dir, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn an_otter_on_the_brook_is_named_in_sight_and_splashes_away() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("An otter is in the brook to the north and west."),
+            "{from_seen}"
+        );
+        assert!(
+            !world.observe(near).unwrap().text.contains("otter"),
+            "{}",
+            world.observe(near).unwrap().text
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("otter"));
+
+        world.step(&[intent("west", seen, Attempt::Move(Dir::West))]);
+        world.step(&[intent("west-2", seen, Attempt::Move(Dir::West))]);
+        world.step(&[intent("north", seen, Attempt::Move(Dir::North))]);
+        let step = world.step(&[intent("onto", seen, Attempt::Move(Dir::North))]);
+        assert_eq!(step.results[0].message, "You wade north.");
+        assert!(!step.results[0].message.contains("otter"));
+        assert_eq!(world.otter_cell(), Some((1, 2)));
+        let yours: Vec<_> = world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("otter") || event.text.contains("splash"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(
+            yours,
+            vec!["An otter splashes away to the south.".to_string()]
+        );
+        let heard: Vec<_> = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("splash") || event.text.contains("otter"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(
+            heard,
+            vec!["You hear a splash to the north and west.".to_string()]
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter") && !event.text.contains("splash")));
+        let after = world.observe(seen).unwrap().text;
+        assert!(
+            after.contains("An otter is in the brook to the south."),
+            "{after}"
+        );
+        let beside = world.observe(seen).unwrap().text;
+        assert!(
+            beside.contains("an otter") || after.contains("An otter"),
+            "{beside}"
+        );
+
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        assert_eq!(world.otter_cell(), Some((1, 2)));
+
+        let mut alone = World::valley(crate::tuning::Tuning::evening(), 1);
+        for _ in 0..5 {
+            alone.step(&[]);
+        }
+        assert_eq!(alone.otter_cell(), Some((1, 2)));
     }
 }
