@@ -1582,12 +1582,14 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.floating_canoe_near(actor.cell).is_none() {
-                    Err("There is no dugout canoe here.".into())
-                } else if self.beach_bank(actor.id).is_none() {
-                    Err("There is no bank here.".into())
+                } else if self.floating_canoe_near(actor.cell).is_some() {
+                    if self.beach_bank(actor.id).is_none() {
+                        Err("There is no bank here.".into())
+                    } else {
+                        Ok(true)
+                    }
                 } else {
-                    Ok(true)
+                    Err(self.beach_miss(actor.id).into())
                 }
             }
             Attempt::PutFish => {
@@ -2507,7 +2509,7 @@ impl World {
                     intent.command_id,
                     actor.id,
                     false,
-                    "There is no dugout canoe here.",
+                    self.beach_miss(actor.id),
                     results,
                 );
                 continue;

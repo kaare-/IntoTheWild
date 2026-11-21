@@ -2155,6 +2155,21 @@ impl World {
         self.bank_beside(water)
     }
 
+    /// Why `beach` cannot haul. A dugout already lying on this cell is not missing.
+    pub(crate) fn beach_miss(&self, actor: ActorId) -> &'static str {
+        let Some(person) = self.actor(actor) else {
+            return "There is no dugout canoe here.";
+        };
+        if self
+            .canoe_at(person.cell)
+            .is_some_and(|id| !self.canoe_floats(id))
+        {
+            "The canoe is already on land."
+        } else {
+            "There is no dugout canoe here."
+        }
+    }
+
     /// A floating dugout on this cell or the next.
     pub(crate) fn floating_canoe_near(&self, cell: CellId) -> Option<ItemId> {
         self.items.values().find_map(|item| {
@@ -5887,7 +5902,31 @@ mod dugout {
         );
         assert!(!far_look.text.contains("floats in the brook"));
         let again = world.step(&[intent("again", near, Attempt::Beach)]);
-        assert_eq!(again.results[0].message, "There is no dugout canoe here.");
+        assert_eq!(again.results[0].message, "The canoe is already on land.");
+        let told = world.observe(near).unwrap();
+        assert!(
+            told.text.contains("A dugout canoe lies here."),
+            "{}",
+            told.text
+        );
+        assert!(told
+            .events
+            .iter()
+            .any(|event| event.text == "The canoe is already on land."));
+        assert!(told.events.iter().all(|event| {
+            event.text != "You beach the dugout canoe."
+                && event.text != "Near beaches the dugout canoe."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The canoe is already on land." }));
+        let away = world.step(&[intent("away", near, Attempt::Move(Dir::East))]);
+        assert!(away.results[0].success, "{}", away.results[0].message);
+        let missing = world.step(&[intent("none", near, Attempt::Beach)]);
+        assert_eq!(missing.results[0].message, "There is no dugout canoe here.");
         assert!(world
             .observe(seen)
             .unwrap()
