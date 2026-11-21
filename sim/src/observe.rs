@@ -9981,6 +9981,7 @@ impl World {
             "deer hide",
             "wolf hide",
             "otter hide",
+            "bone",
             "drink of water",
             "flint nodule",
             "lump of ochre",

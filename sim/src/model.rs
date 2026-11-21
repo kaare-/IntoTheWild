@@ -12291,4 +12291,54 @@ mod otter_hunt {
         world.step(&[]);
         assert_eq!(world.otter_cell(), Some((0, 1)));
     }
+
+    #[test]
+    fn a_bone_on_the_ground_is_gathered() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let none = world.step(&[intent("none", near, Attempt::Gather(Material::Bone))]);
+        assert_eq!(none.results[0].message, "There is no bone here to gather.");
+        assert!(!none.results[0].success);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no bone here to gather."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no bone here to gather."));
+        world.mint_item(Material::Bone, 0, cell, None, Role::Loose);
+        let before = world.observe(near).unwrap().text;
+        assert!(before.contains("A bone lies here."), "{before}");
+        assert!(!before.contains("You have a bone"), "{before}");
+        let taken = world.step(&[intent("bone", near, Attempt::Gather(Material::Bone))]);
+        assert_eq!(taken.results[0].message, "You gather a bone.");
+        assert!(world.ground_ids(cell, Material::Bone).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Bone).len(), 1);
+        let after = world.observe(near).unwrap().text;
+        assert!(!after.contains("A bone lies here."), "{after}");
+        assert!(after.contains("a bone"), "{after}");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You gather a bone." && event.text != "Near gathers a bone."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a bone." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("bone")));
+    }
 }

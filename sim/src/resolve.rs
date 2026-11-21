@@ -1511,6 +1511,7 @@ impl World {
                             | Material::Hook
                             | Material::Resin
                             | Material::Willow
+                            | Material::Bone
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(if *material == Material::BitterBerry {
