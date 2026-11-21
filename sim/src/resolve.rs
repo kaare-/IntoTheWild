@@ -8617,7 +8617,7 @@ impl World {
                 );
                 continue;
             }
-            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            let ready = self.time.saturating_add(self.copper_smelt_wait(cell));
             if let Some(item) = self.items.get_mut(&id) {
                 item.carrier = None;
                 item.cell = cell;
@@ -8641,6 +8641,17 @@ impl World {
                 "You set a lump of copper ore by the fire. It leaves your arms. It is not metal yet.",
                 results,
             );
+        }
+    }
+
+    /// A hot charcoal fire smelts copper in half the clay wait, and at least one tick.
+    /// A plain fire still takes the full wait. The bead is the same either way.
+    fn copper_smelt_wait(&self, cell: crate::model::CellId) -> u64 {
+        let ticks = self.tuning.clay_ticks;
+        if self.fire_at(cell).is_some_and(|fire| fire.charcoal) {
+            (ticks / 2).max(1)
+        } else {
+            ticks
         }
     }
 

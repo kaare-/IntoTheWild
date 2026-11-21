@@ -1152,9 +1152,15 @@ impl World {
         }
         let smelting = self.copper_smelting_count(actor.cell);
         if smelting == 1 {
-            parts.push("A lump of copper ore is smelting in the fire.".into());
+            parts.push(format!(
+                "A lump of copper ore is smelting in {}.",
+                self.copper_smelt_fire(actor.cell)
+            ));
         } else if smelting > 1 {
-            parts.push("Lumps of copper ore are smelting in the fire.".into());
+            parts.push(format!(
+                "Lumps of copper ore are smelting in {}.",
+                self.copper_smelt_fire(actor.cell)
+            ));
         }
         if !self.ground_ids(actor.cell, Material::Copper).is_empty() {
             parts.push("A copper bead lies here. It is metal from the fire.".into());
@@ -4072,6 +4078,15 @@ impl World {
                     .is_some_and(|item| item.shaped && item.firing_ready_at.is_some())
             })
             .count()
+    }
+
+    /// A hot charcoal fire is named. A plain fire stays "the fire".
+    fn copper_smelt_fire(&self, cell: CellId) -> &'static str {
+        if self.fire_at(cell).is_some_and(|fire| fire.charcoal) {
+            "the hot charcoal fire"
+        } else {
+            "the fire"
+        }
     }
 
     fn copper_smelting_count(&self, cell: CellId) -> usize {
@@ -7312,11 +7327,12 @@ impl World {
                 }
             }
             if smelting > 0 {
+                let fire = self.copper_smelt_fire(cell);
                 if origin == cell {
-                    lines.push("A lump of copper ore is smelting in the fire.".into());
+                    lines.push(format!("A lump of copper ore is smelting in {fire}."));
                 } else {
                     lines.push(format!(
-                        "A lump of copper ore is smelting in the fire {}.",
+                        "A lump of copper ore is smelting in {fire} {}.",
                         self.place_phrase(origin, cell)
                     ));
                 }

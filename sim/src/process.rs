@@ -842,8 +842,9 @@ impl World {
     }
 
     /// A lump set by a fire becomes metal if that fire is still burning.
-    /// Copper becomes a bead in a small fire. Iron becomes a bloom only when
-    /// the fire was fed an extra dry branch and is still hot. The same wait as clay.
+    /// Copper becomes a bead in a small fire, and in half that wait when the
+    /// fire is a hot charcoal fire. Iron becomes a bloom only when the fire
+    /// was fed an extra dry branch and is still hot. The plain wait is clay's.
     fn finish_smelt(&mut self, id: ItemId) {
         let Some(item) = self.item(id).cloned() else {
             return;

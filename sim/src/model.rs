@@ -14844,4 +14844,112 @@ mod charcoal_bank {
             .text
             .contains("A small fire burns here."));
     }
+
+    #[test]
+    fn a_hot_charcoal_fire_smelts_copper_in_half_the_wait() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 2);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let refused = world.step(&[intent("none", near, Attempt::Smelt)]);
+        assert_eq!(
+            refused.results[0].message,
+            "You are not carrying copper ore."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You are not carrying copper ore."));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You are not carrying copper ore." }));
+        }
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Charcoal, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("lit", near, Attempt::Light)]);
+        assert!(world.fire_at(cell).unwrap().charcoal);
+        world.mint_item(Material::CopperOre, 0, cell, Some(near), Role::Loose);
+        let set = world.step(&[intent("smelt", near, Attempt::Smelt)]);
+        let yours =
+            "You set a lump of copper ore by the fire. It leaves your arms. It is not metal yet.";
+        let witnessed = "Near sets a lump of copper ore by the fire. It leaves their arms.";
+        assert_eq!(set.results[0].message, yours);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != yours && event.text != witnessed && !event.text.contains("not metal yet")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("copper")));
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A lump of copper ore is smelting in the hot charcoal fire."),
+            "{here}"
+        );
+        assert!(!here.contains("is smelting in the fire."), "{here}");
+        let named = world.examine(near, ExamineTarget::CopperOre);
+        assert!(
+            named.contains("A lump of copper ore is smelting in the hot charcoal fire."),
+            "{named}"
+        );
+        let set_at = world.sim_time();
+        world.step(&[]);
+        assert_eq!(world.material_tally(Material::Copper), 0);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A lump of copper ore is smelting in the hot charcoal fire."));
+        world.step(&[]);
+        assert_eq!(world.sim_time(), set_at + 2);
+        assert_eq!(world.material_tally(Material::Copper), 1);
+        assert!(!world.observe(near).unwrap().text.contains("is smelting"));
+        let bead = "The copper ore smelts into a bead.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == bead));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == bead));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != bead));
+        world.step(&[intent("bead", near, Attempt::Gather(Material::Copper))]);
+        let hammered = world.step(&[intent("awl", near, Attempt::Hammer)]);
+        let hammer_yours = "You hammer the copper bead into a copper awl at the fire.";
+        let hammer_seen = "Near hammers the copper bead into a copper awl at the fire.";
+        assert_eq!(hammered.results[0].message, hammer_yours);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == hammer_seen));
+        assert!(world.observe(near).unwrap().text.contains("a copper awl"));
+    }
 }

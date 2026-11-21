@@ -97,7 +97,7 @@ smear mud                    mud on skin against the sun
 smear ochre                  red ochre on the skin, a mark unlike mud
 mark                         a carried lump of ochre leaves a red mark on this ground. A lump of charcoal leaves a black mark instead, and is used up. With neither, you have nothing to mark with
 mark rock                    the same mark on the rock, when you stand under it. Rain washes an open mark and leaves one under the rock
-smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead
+smelt                        a carried lump of copper ore at a burning fire; after the same wait as clay, a copper bead. A hot charcoal fire does it in half that wait. Look says the ore is smelting in the hot charcoal fire
 smelt iron                   a carried lump of iron ore; a small fire refuses it, and a fire fed an extra dry branch yields a bloom of iron
 feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hot enough for iron. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
