@@ -1363,7 +1363,18 @@ impl World {
             } else {
                 (cold_before + cold_gain).min(1000)
             };
-            let sun_after = (sun_before + sun_gain).min(1000);
+            // A clear day in the open does not ease a burn. Shade and the
+            // night do, one sun-tick at a time. A rest spends more of those.
+            let sheltered = exposure == 0 || self.lean_tos.contains(&cell);
+            let ease = if self.night() || sheltered {
+                sun_base
+            } else {
+                0
+            };
+            let sun_after = sun_before
+                .saturating_add(sun_gain)
+                .saturating_sub(ease)
+                .min(1000);
             let warmth_after = if on_fire {
                 hold
             } else {
@@ -1439,6 +1450,25 @@ impl World {
             if let Some(text) = sun_line {
                 self.emit(
                     text,
+                    Scope::Personal(id),
+                    vec![id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+            }
+            // Crossing back down is private too, and it does not say the name.
+            let fade = if sun_before >= burned_at && sun_after < burned_at {
+                Some("The burn settles.")
+            } else if sun_before >= pink_at && sun_after < pink_at {
+                Some("The pink fades.")
+            } else {
+                None
+            };
+            if let Some(text) = fade {
+                self.emit(
+                    text.to_string(),
                     Scope::Personal(id),
                     vec![id],
                     vec![cell],
@@ -1565,6 +1595,47 @@ impl World {
         let ids: Vec<ActorId> = self.actors.keys().copied().collect();
         for id in ids {
             self.ease_illness(id, loss);
+        }
+    }
+
+    /// Take sunburn off one body. Crossing out of burned, then out of pink,
+    /// is private. Nobody else is on that scope.
+    pub(crate) fn ease_sunburn(&mut self, id: ActorId, loss: u32) {
+        if loss == 0 {
+            return;
+        }
+        let pink_at = self.tuning.pink_at;
+        let burned_at = self.tuning.burned_at;
+        let settled = {
+            let Some(actor) = self.actors.get_mut(&id) else {
+                return;
+            };
+            let before = actor.sunburn;
+            if before == 0 {
+                return;
+            }
+            let after = before.saturating_sub(loss);
+            actor.sunburn = after;
+            let mut lines = Vec::new();
+            if before >= burned_at && after < burned_at {
+                lines.push("The burn settles.");
+            }
+            if before >= pink_at && after < pink_at {
+                lines.push("The pink fades.");
+            }
+            (actor.cell, lines)
+        };
+        let (cell, lines) = settled;
+        for text in lines {
+            self.emit(
+                text.to_string(),
+                Scope::Personal(id),
+                vec![id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
         }
     }
 

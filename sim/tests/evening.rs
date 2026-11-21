@@ -3768,6 +3768,126 @@ fn clear_day_sun_hurts_bare_skin_and_stays_on_that_body() {
 }
 
 #[test]
+fn shade_and_rest_ease_a_sunburn_and_the_open_sky_does_not() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+    let shade = world.spawn_at("Shade", "h", 6, 1).unwrap();
+    while world.observe(near).unwrap().self_info.sunburn != "burned" {
+        assert!(!world.is_raining());
+        world.step(&[]);
+        assert!(
+            world.sim_time() < 16,
+            "the burn should arrive before the rain"
+        );
+    }
+    assert_eq!(world.observe(seen).unwrap().self_info.sunburn, "burned");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Your skin is burned."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("The sun burns. It hurts."));
+    for (id, dir) in [
+        ("n", Dir::North),
+        ("n2", Dir::North),
+        ("e", Dir::East),
+        ("e2", Dir::East),
+    ] {
+        let walked = world.step(&[cmd(id, near, Attempt::Move(dir))]);
+        assert!(walked.results[0].success, "{}", walked.results[0].message);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let mut rests = 0;
+    while world.observe(near).unwrap().self_info.sunburn != "unburned" {
+        let rested = world.step(&[cmd(&format!("r{rests}"), near, Attempt::Rest)]);
+        assert!(
+            rested.results[0]
+                .message
+                .starts_with("You rest under the rock."),
+            "{}",
+            rested.results[0].message
+        );
+        rests += 1;
+        assert!(rests < 8, "shade rest should ease the burn");
+    }
+    assert!(rests < 6, "rests {rests}");
+    let eased = world.observe(near).unwrap();
+    assert_eq!(eased.self_info.sunburn, "unburned");
+    assert!(eased.text.contains("Your skin is unburned."));
+    assert!(!eased.text.contains("The sun burns"));
+    assert!(!eased.text.contains("The sun is hot"));
+    assert!(eased
+        .events
+        .iter()
+        .any(|event| event.text == "The burn settles."));
+    assert!(eased
+        .events
+        .iter()
+        .any(|event| event.text == "The pink fades."));
+    assert!(eased
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Near's skin")));
+    assert_ne!(world.observe(seen).unwrap().self_info.sunburn, "unburned");
+    assert_eq!(world.observe(shade).unwrap().self_info.sunburn, "unburned");
+    assert!(world
+        .observe(shade)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The burn settles." && event.text != "The pink fades."));
+    assert!(world
+        .observe(shade)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near rests under the rock."));
+}
+
+#[test]
+fn a_night_in_the_open_settles_a_burn_and_nobody_else_hears_it() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let shade = world.spawn_at("Shade", "h", 6, 1).unwrap();
+    while world.sim_time() < 72 {
+        world.step(&[]);
+    }
+    assert_eq!(world.observe(near).unwrap().self_info.sunburn, "burned");
+    assert_eq!(world.observe(shade).unwrap().self_info.sunburn, "unburned");
+    while world.sim_time() < 80 {
+        world.step(&[]);
+    }
+    let eased = world.observe(near).unwrap();
+    assert_eq!(eased.self_info.sunburn, "pink");
+    assert!(eased.text.contains("Your skin is pink."));
+    assert!(eased.text.contains("The sun is hot on your skin."));
+    assert!(!eased.text.contains("The sun burns"));
+    let settled: Vec<_> = eased
+        .events
+        .iter()
+        .filter(|event| event.text == "The burn settles.")
+        .collect();
+    assert_eq!(settled.len(), 1);
+    assert!(settled[0].time >= 72 && settled[0].time < 80);
+    assert!(eased
+        .events
+        .iter()
+        .all(|event| event.text != "The pink fades."));
+    assert_eq!(world.observe(shade).unwrap().self_info.sunburn, "unburned");
+    assert!(world
+        .observe(shade)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The burn settles." && event.text != "The pink fades."));
+}
+
+#[test]
 fn rain_washes_open_mud_and_leaves_the_rock() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();

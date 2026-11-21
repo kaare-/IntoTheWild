@@ -4605,6 +4605,8 @@ impl World {
             // rock, a lean-to, or a reed mat, and that rest hurries a stomach.
             let hurried = self.tuning.illness_recovery.saturating_mul(5);
             self.ease_illness(intent.actor_id, hurried);
+            let shade = self.tuning.sun_per_tick.saturating_mul(5);
+            self.ease_sunburn(intent.actor_id, shade);
             let under_rock = self.cell(actor.cell).rock;
             let place = if under_rock {
                 " under the rock"
