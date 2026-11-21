@@ -388,6 +388,9 @@ impl World {
             if let Some(open) = self.seen_open_pool(actor_id) {
                 lines.push(open);
             }
+            if let Some(thawed) = self.seen_thawed_pool(actor_id) {
+                lines.push(thawed);
+            }
             if let Some(smoke) = self.seen_smoke(actor_id) {
                 lines.push(smoke);
             }
@@ -562,7 +565,7 @@ impl World {
         (self.time - self.tuning.night_at) % cycle < self.tuning.night_len
     }
 
-    fn morning(&self) -> bool {
+    pub(crate) fn morning(&self) -> bool {
         self.time >= self.tuning.night_at && !self.night()
     }
 
@@ -649,9 +652,11 @@ impl World {
         }
         if cell.still && cell.region != crate::model::Region::Brook {
             if self.still_frozen(actor.cell) {
-                parts.push("The still water is frozen.".into());
-            } else if self.time >= self.tuning.chill_at && self.fire_at(actor.cell).is_some() {
+                parts.push("The still water is frozen. Ice covers it.".into());
+            } else if self.still_would_freeze(actor.cell) {
                 parts.push("The fire is keeping the still water from freezing.".into());
+            } else if self.time >= self.tuning.chill_at {
+                parts.push("The day has thawed the still water.".into());
             } else {
                 parts.push("Still water lies here. It is not the brook.".into());
             }
@@ -1200,7 +1205,7 @@ impl World {
                 continue;
             }
             lines.push(format!(
-                "The still water to the {} is frozen.",
+                "The still water to the {} is frozen. Ice covers it.",
                 self.relative(origin, cell)
             ));
         }
@@ -1311,8 +1316,37 @@ impl World {
         }
     }
 
-    /// A fire on still water in sight, after the chill. The person standing
-    /// on it already has the place line. Before the fire, this stays quiet.
+    /// Still water the day has thawed. The person standing on it already
+    /// has the place line. A fire that is keeping the pool open is not this.
+    fn seen_thawed_pool(&self, viewer: ActorId) -> Option<String> {
+        if self.time < self.tuning.chill_at {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || self.still_frozen(cell) || self.still_would_freeze(cell) {
+                continue;
+            }
+            let place = self.cell(cell);
+            if !place.still || place.region == crate::model::Region::Brook {
+                continue;
+            }
+            lines.push(format!(
+                "The still water to the {} has thawed.",
+                self.relative(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A fire on still water in sight, while the cold would freeze it. The
+    /// person standing on it already has the place line. Before the fire,
+    /// and once the day has thawed the pool, this stays quiet.
     fn seen_open_pool(&self, viewer: ActorId) -> Option<String> {
         if self.time < self.tuning.chill_at {
             return None;
@@ -1320,7 +1354,7 @@ impl World {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || self.fire_at(cell).is_none() {
+            if cell == origin || !self.still_would_freeze(cell) || self.fire_at(cell).is_none() {
                 continue;
             }
             let place = self.cell(cell);
@@ -6814,12 +6848,17 @@ impl World {
                 ));
             } else if place.still && self.still_frozen(cell) {
                 lines.push(format!(
-                    "Still water {} is frozen. A fire on it would keep it open.",
+                    "Still water {} is frozen. Ice covers it. A fire on it would keep it open.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if place.still && self.still_would_freeze(cell) {
+                lines.push(format!(
+                    "Still water {} is open because a fire is on it. Drinking it turns your stomach almost every time.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still && self.time >= self.tuning.chill_at {
                 lines.push(format!(
-                    "Still water {} is open because a fire is on it. Drinking it turns your stomach almost every time.",
+                    "Still water {} has thawed. The day warmed it. Drinking it turns your stomach almost every time.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still {

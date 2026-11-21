@@ -32,7 +32,7 @@ beach                        a floating dugout, onto the bank beside it. If you 
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
-drink                        raw water where you stand; still water freezes
+drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat

@@ -2845,6 +2845,132 @@ fn far_reads_the_fire_keeping_the_pool_open() {
 }
 
 #[test]
+fn the_day_thaws_the_still_pool_and_night_freezes_it_again() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let open = world.observe(near).unwrap().text;
+    assert!(
+        open.contains("Still water lies here. It is not the brook."),
+        "{open}"
+    );
+    assert!(!open.contains("Ice covers"), "{open}");
+    assert!(!world.observe(far).unwrap().text.contains("frozen"));
+    while world.sim_time() < 12 {
+        world.step(&[]);
+    }
+    let iced = world.observe(near).unwrap().text;
+    assert!(
+        iced.contains("The still water is frozen. Ice covers it."),
+        "{iced}"
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .text
+        .contains("The still water to the north and west is frozen. Ice covers it."));
+    assert!(!world.observe(west).unwrap().text.contains("frozen"));
+    assert!(!world.observe(west).unwrap().text.contains("Ice covers"));
+    let drink = world.step(&[cmd("ice", near, Attempt::Drink)]);
+    assert_eq!(drink.results[0].message, "The still water is frozen.");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen."));
+    let off = world.step(&[cmd("off", near, Attempt::Move(Dir::East))]);
+    assert_eq!(off.results[0].message, "You walk east.");
+    let back = world.step(&[cmd("back", near, Attempt::Move(Dir::West))]);
+    assert_eq!(back.results[0].message, "You walk west across the ice.");
+    assert_eq!(world.actor_cell(near), Some((2, 1)));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("Near walks west across the ice.") }));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near walks west across the ice."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("across the ice")));
+    let wade = world.step(&[cmd("brook", near, Attempt::Move(Dir::West))]);
+    assert_eq!(wade.results[0].message, "You wade west.");
+    let brook = world.observe(near).unwrap().text;
+    assert!(brook.contains("The water here is raw."), "{brook}");
+    assert!(!brook.contains("The still water is frozen."), "{brook}");
+    assert!(
+        brook.contains("The still water to the east is frozen. Ice covers it."),
+        "{brook}"
+    );
+    let running = world.step(&[cmd("running", near, Attempt::Drink)]);
+    assert!(
+        running.results[0]
+            .message
+            .starts_with("You drink from the brook."),
+        "{}",
+        running.results[0].message
+    );
+    let onto = world.step(&[cmd("onto", near, Attempt::Move(Dir::East))]);
+    assert_eq!(onto.results[0].message, "You walk east across the ice.");
+    while world.sim_time() < 80 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 80);
+    let thawed = world.observe(near).unwrap().text;
+    assert!(
+        thawed.contains("The day has thawed the still water."),
+        "{thawed}"
+    );
+    assert!(!thawed.contains("Ice covers"), "{thawed}");
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .text
+        .contains("The still water to the north and west has thawed."));
+    assert!(!world.observe(west).unwrap().text.contains("thawed"));
+    let again = world.step(&[cmd("thaw", near, Attempt::Drink)]);
+    assert!(
+        again.results[0]
+            .message
+            .starts_with("You drink the still water."),
+        "{}",
+        again.results[0].message
+    );
+    while world.sim_time() < 96 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 96);
+    let night = world.observe(near).unwrap().text;
+    assert!(
+        night.contains("The still water is frozen. Ice covers it."),
+        "{night}"
+    );
+    let hidden = world.observe(far).unwrap().text;
+    assert!(
+        hidden.contains("The dark hides what lies farther off."),
+        "{hidden}"
+    );
+    assert!(!hidden.contains("is frozen"), "{hidden}");
+    assert!(!world.observe(west).unwrap().text.contains("frozen"));
+}
+
+#[test]
 fn eat_bark_is_refused_and_the_sheet_still_lights() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 6, 1).unwrap();

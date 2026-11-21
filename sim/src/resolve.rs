@@ -2123,6 +2123,7 @@ impl World {
                 self.frighten_wolf(origin, dest);
             }
             let brook = self.cell(dest).region == Region::Brook;
+            let ice = self.still_frozen(dest);
             if brook {
                 if let Some(actor) = self.actors.get_mut(&intent.actor_id) {
                     actor.wetness = (actor.wetness + self.tuning.wade).min(1000);
@@ -2143,7 +2144,9 @@ impl World {
             } else {
                 "out from under the rock overhang, into the wind"
             };
-            let text = if brook {
+            let text = if ice {
+                format!("{name} walks {word} across the ice.", word = dir.word())
+            } else if brook {
                 format!("{name} wades {word}.", word = dir.word())
             } else if entered_overhang {
                 format!(
@@ -2164,7 +2167,9 @@ impl World {
                 vec![],
                 None,
             );
-            let mut message = if brook {
+            let mut message = if ice {
+                format!("You walk {} across the ice.", dir.word())
+            } else if brook {
                 format!("You wade {}.", dir.word())
             } else if entered_overhang {
                 format!(

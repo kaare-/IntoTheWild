@@ -2363,13 +2363,18 @@ impl World {
         self.cell(cell).region == Region::Brook || self.cell(cell).still
     }
 
-    /// Still water freezes once the evening has chilled. The brook keeps
-    /// running. A fire on the pool keeps it open.
-    pub(crate) fn still_frozen(&self, cell: CellId) -> bool {
+    /// Still water freezes once the evening has chilled, and again each night.
+    /// The day after dawn thaws it. The brook keeps running. A fire on the
+    /// pool keeps it open while the cold would otherwise freeze it.
+    pub(crate) fn still_would_freeze(&self, cell: CellId) -> bool {
         self.time >= self.tuning.chill_at
             && self.cell(cell).still
             && self.cell(cell).region != Region::Brook
-            && self.fire_at(cell).is_none()
+            && !self.morning()
+    }
+
+    pub(crate) fn still_frozen(&self, cell: CellId) -> bool {
+        self.still_would_freeze(cell) && self.fire_at(cell).is_none()
     }
 
     pub(crate) fn has_brush(&self, cell: CellId) -> bool {
