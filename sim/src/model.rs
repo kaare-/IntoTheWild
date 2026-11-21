@@ -398,6 +398,8 @@ pub enum Attempt {
     CarveCanoe,
     Launch,
     Board,
+    Paddle(Option<Dir>),
+    Disembark,
 }
 
 impl Attempt {
@@ -463,6 +465,8 @@ impl Attempt {
                 | Attempt::CarveCanoe
                 | Attempt::Launch
                 | Attempt::Board
+                | Attempt::Paddle(_)
+                | Attempt::Disembark
         )
     }
 }
@@ -2083,6 +2087,57 @@ impl World {
             }
         }
         None
+    }
+
+    /// The next brook cell in that direction, if the canoe can go there.
+    pub(crate) fn brook_step(&self, cell: CellId, dir: Dir) -> Option<CellId> {
+        let (x, y) = cell_xy(cell);
+        let (dx, dy) = dir.delta();
+        let next = cell_id(x + dx, y + dy)?;
+        (self.cell(next).region == Region::Brook).then_some(next)
+    }
+
+    /// Which way a bare or named paddle can go. The bank and the map edge refuse.
+    pub(crate) fn paddle_way(&self, cell: CellId, dir: Option<Dir>) -> Result<Dir, &'static str> {
+        if let Some(dir) = dir {
+            if self.brook_step(cell, dir).is_some() {
+                return Ok(dir);
+            }
+            let (x, y) = cell_xy(cell);
+            let (dx, dy) = dir.delta();
+            return if cell_id(x + dx, y + dy).is_none() {
+                Err("There is nowhere to paddle.")
+            } else {
+                Err("The canoe stays in the brook.")
+            };
+        }
+        for way in [Dir::North, Dir::South, Dir::East, Dir::West] {
+            if self.brook_step(cell, way).is_some() {
+                return Ok(way);
+            }
+        }
+        Err("The canoe has nowhere to go.")
+    }
+
+    /// A cell beside this brook that is not flowing water. Dry ground comes first.
+    pub(crate) fn bank_beside(&self, cell: CellId) -> Option<CellId> {
+        let (x, y) = cell_xy(cell);
+        let mut dry = Vec::new();
+        let mut other = Vec::new();
+        for (dx, dy) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.cell(next).region == Region::Brook {
+                continue;
+            }
+            if self.cell(next).still {
+                other.push(next);
+            } else {
+                dry.push(next);
+            }
+        }
+        dry.into_iter().next().or_else(|| other.into_iter().next())
     }
 
     /// A floating dugout on this cell or the next.
@@ -5288,7 +5343,7 @@ mod ochre_arms {
 
 #[cfg(test)]
 mod dugout {
-    use super::{Attempt, Dir, ExamineTarget, Material, Role, World};
+    use super::{cell_id, cell_xy, Attempt, Dir, ExamineTarget, Material, Role, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
         super::Intent {
@@ -5463,6 +5518,115 @@ mod dugout {
         assert!(!far.text.contains("charred"));
         assert_eq!(world.material_tally(Material::Canoe), 1);
         assert_eq!(world.material_tally(Material::Log), 0);
+    }
+
+    #[test]
+    fn paddling_stays_in_the_brook_and_disembark_steps_onto_the_bank() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        world.mint_item(
+            Material::Canoe,
+            0,
+            cell_id(1, 2).unwrap(),
+            None,
+            Role::Loose,
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("paddle").unwrap(),
+            Attempt::Paddle(None)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("paddle north").unwrap(),
+            Attempt::Paddle(Some(Dir::North))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("leave canoe").unwrap(),
+            Attempt::Disembark
+        );
+        let boarded = world.step(&[intent("board", near, Attempt::Board)]);
+        assert_eq!(boarded.results[0].message, "You board the dugout canoe.");
+        let walked = world.step(&[intent("walk", near, Attempt::Move(Dir::North))]);
+        assert_eq!(
+            walked.results[0].message,
+            "You are aboard the canoe. Disembark first."
+        );
+        assert!(!walked.results[0].success);
+        assert_eq!(world.actor_cell(near), Some((1, 2)));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Disembark") }));
+        let paddled = world.step(&[intent("paddle", near, Attempt::Paddle(None))]);
+        assert_eq!(
+            paddled.results[0].message,
+            "You paddle the dugout canoe north."
+        );
+        assert_eq!(world.actor_cell(near), Some((1, 1)));
+        let boat = world
+            .items
+            .values()
+            .find(|item| item.material == Material::Canoe)
+            .unwrap();
+        assert_eq!(cell_xy(boat.cell), (1, 1));
+        assert!(world.aboard.contains_key(&near));
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains("You are aboard the dugout canoe."));
+        assert!(look.events.iter().all(|event| {
+            event.text != "You paddle the dugout canoe north."
+                && event.text != "Near paddles the dugout canoe north."
+        }));
+        let witness = world.observe(seen).unwrap();
+        assert!(witness
+            .events
+            .iter()
+            .any(|event| event.text == "Near paddles the dugout canoe north."));
+        assert!(
+            witness
+                .text
+                .contains("A dugout canoe floats in the brook to the north and west."),
+            "{}",
+            witness.text
+        );
+        let banked = world.step(&[intent("east", near, Attempt::Paddle(Some(Dir::East)))]);
+        assert_eq!(banked.results[0].message, "The canoe stays in the brook.");
+        assert_eq!(world.actor_cell(near), Some((1, 1)));
+        let left = world.step(&[intent("leave", near, Attempt::Disembark)]);
+        assert_eq!(left.results[0].message, "You leave the dugout canoe.");
+        assert_eq!(world.actor_cell(near), Some((1, 0)));
+        assert!(!world.aboard.contains_key(&near));
+        let boat = world
+            .items
+            .values()
+            .find(|item| item.material == Material::Canoe)
+            .unwrap();
+        assert_eq!(cell_xy(boat.cell), (1, 1));
+        let ashore = world.observe(near).unwrap();
+        assert!(
+            ashore
+                .text
+                .contains("A dugout canoe floats in the brook to the south."),
+            "{}",
+            ashore.text
+        );
+        assert!(!ashore.text.contains("You are aboard"));
+        assert!(ashore.events.iter().all(|event| {
+            event.text != "You leave the dugout canoe."
+                && event.text != "Near leaves the dugout canoe."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near leaves the dugout canoe."));
+        let far = world.observe(quiet).unwrap();
+        assert!(far.events.iter().all(|event| {
+            !event.text.contains("paddle") && !event.text.contains("leaves the dugout")
+        }));
     }
 }
 

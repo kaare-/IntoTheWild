@@ -8195,6 +8195,11 @@ impl World {
             || text == format!("{name} drags the dugout canoe south.")
             || text == format!("{name} drags the dugout canoe east.")
             || text == format!("{name} drags the dugout canoe west.")
+            || text == format!("{name} paddles the dugout canoe north.")
+            || text == format!("{name} paddles the dugout canoe south.")
+            || text == format!("{name} paddles the dugout canoe east.")
+            || text == format!("{name} paddles the dugout canoe west.")
+            || text == format!("{name} leaves the dugout canoe.")
         {
             return Some(text.to_string());
         }

@@ -26,6 +26,8 @@ hollow log                   the heavy log, at a fire on this cell. The fire cha
 carve canoe                  a charred heavy log, with a flint flake or an iron knife. The tool is not used up. A dugout canoe lies here
 launch                       a dugout canoe on the bank, into the brook beside you
 board                        a dugout canoe floating in the brook here or on the next cell
+paddle [n|s|e|w]             while aboard, move the dugout along the brook. You move with it. A bare paddle picks a brook cell. The bank refuses
+disembark                    leave the dugout onto the bank. leave canoe is the same. Walking off without this refuses
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
@@ -186,6 +188,12 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Launch)
         }
         "board" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => Ok(Attempt::Board),
+        "paddle" if rest.is_empty() => Ok(Attempt::Paddle(None)),
+        "paddle" => parse_dir(rest).map(|dir| Attempt::Paddle(Some(dir))),
+        "disembark" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => {
+            Ok(Attempt::Disembark)
+        }
+        "leave" if rest == "canoe" || rest == "the canoe" => Ok(Attempt::Disembark),
         "release" | "ungrab" => Ok(Attempt::Release),
         "let" if rest == "go" => Ok(Attempt::Release),
         "interrupt" | "stop" => Ok(Attempt::Interrupt),

@@ -89,6 +89,8 @@ impl World {
         let mut carves_canoe = Vec::new();
         let mut launches = Vec::new();
         let mut boards = Vec::new();
+        let mut paddles = Vec::new();
+        let mut disembarks = Vec::new();
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
@@ -164,6 +166,8 @@ impl World {
                         Attempt::CarveCanoe => carves_canoe.push(intent),
                         Attempt::Launch => launches.push(intent),
                         Attempt::Board => boards.push(intent),
+                        Attempt::Paddle(_) => paddles.push(intent),
+                        Attempt::Disembark => disembarks.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
@@ -284,6 +288,8 @@ impl World {
         self.apply_canoe_carves(carves_canoe, &mut results);
         self.apply_launches(launches, &mut results);
         self.apply_boards(boards, &mut results);
+        self.apply_paddles(paddles, &mut results);
+        self.apply_disembarks(disembarks, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
@@ -1214,6 +1220,13 @@ impl World {
             _ if busy => Err("You are in the middle of something.".into()),
             _ if body_taken => Err("You already committed to something else this window.".into()),
             Attempt::Move(dir) => {
+                if self
+                    .aboard
+                    .get(&actor.id)
+                    .is_some_and(|id| self.canoe_floats(*id))
+                {
+                    return Err("You are aboard the canoe. Disembark first.".into());
+                }
                 if gripping {
                     return Err("Your hands are on the log.".into());
                 }
@@ -1521,6 +1534,40 @@ impl World {
                     Err("You are already aboard the canoe.".into())
                 } else if self.floating_canoe_near(actor.cell).is_none() {
                     Err("There is no canoe here to board.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Paddle(dir) => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if self
+                    .aboard
+                    .get(&actor.id)
+                    .is_none_or(|id| !self.canoe_floats(*id))
+                {
+                    Err("You are not aboard a canoe.".into())
+                } else if let Err(message) = self.paddle_way(actor.cell, *dir) {
+                    Err(message.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Disembark => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if self
+                    .aboard
+                    .get(&actor.id)
+                    .is_none_or(|id| !self.canoe_floats(*id))
+                {
+                    Err("You are not aboard a canoe.".into())
+                } else if self.bank_beside(actor.cell).is_none() {
+                    Err("There is no bank here.".into())
                 } else {
                     Ok(true)
                 }
@@ -2306,6 +2353,126 @@ impl World {
                 actor.id,
                 true,
                 "You board the dugout canoe.",
+                results,
+            );
+        }
+    }
+
+    /// The dugout and everyone aboard it move one brook cell.
+    fn apply_paddles(&mut self, paddles: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in paddles {
+            let Attempt::Paddle(asked) = intent.attempt else {
+                continue;
+            };
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(canoe) = self
+                .aboard
+                .get(&actor.id)
+                .copied()
+                .filter(|id| self.canoe_floats(*id))
+            else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not aboard a canoe.",
+                    results,
+                );
+                continue;
+            };
+            let Ok(dir) = self.paddle_way(actor.cell, asked) else {
+                let message = self.paddle_way(actor.cell, asked).unwrap_err();
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            let Some(dest) = self.brook_step(actor.cell, dir) else {
+                continue;
+            };
+            let origin = actor.cell;
+            if let Some(boat) = self.items.get_mut(&canoe) {
+                boat.cell = dest;
+            }
+            let riders: Vec<_> = self
+                .aboard
+                .iter()
+                .filter(|(_, id)| **id == canoe)
+                .map(|(who, _)| *who)
+                .collect();
+            for rider in &riders {
+                self.move_actor(*rider, dest);
+                self.aboard.insert(*rider, canoe);
+            }
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} paddles the dugout canoe {word}.", word = dir.word()),
+                Scope::Cell(dest),
+                vec![actor.id],
+                vec![origin, dest],
+                vec![canoe],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                format!("You paddle the dugout canoe {}.", dir.word()),
+                results,
+            );
+        }
+    }
+
+    /// Step out of the dugout onto the bank. The canoe stays in the brook.
+    fn apply_disembarks(&mut self, disembarks: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in disembarks {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(canoe) = self
+                .aboard
+                .get(&actor.id)
+                .copied()
+                .filter(|id| self.canoe_floats(*id))
+            else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not aboard a canoe.",
+                    results,
+                );
+                continue;
+            };
+            let Some(bank) = self.bank_beside(actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no bank here.",
+                    results,
+                );
+                continue;
+            };
+            let origin = actor.cell;
+            self.move_actor(actor.id, bank);
+            self.aboard.remove(&actor.id);
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} leaves the dugout canoe."),
+                Scope::Cell(origin),
+                vec![actor.id],
+                vec![origin, bank],
+                vec![canoe],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You leave the dugout canoe.",
                 results,
             );
         }
