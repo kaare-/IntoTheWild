@@ -85,6 +85,10 @@ impl World {
         let mut snares = Vec::new();
         let mut set_nets = Vec::new();
         let mut set_mats = Vec::new();
+        let mut hollows = Vec::new();
+        let mut carves_canoe = Vec::new();
+        let mut launches = Vec::new();
+        let mut boards = Vec::new();
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
@@ -156,6 +160,10 @@ impl World {
                         Attempt::WeaveNet => nets.push(intent),
                         Attempt::WeaveMat => mats.push(intent),
                         Attempt::SetMat => set_mats.push(intent),
+                        Attempt::HollowLog => hollows.push(intent),
+                        Attempt::CarveCanoe => carves_canoe.push(intent),
+                        Attempt::Launch => launches.push(intent),
+                        Attempt::Board => boards.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
@@ -272,6 +280,10 @@ impl World {
         self.apply_nets(nets, &mut results);
         self.apply_mats(mats, &mut results);
         self.apply_set_mats(set_mats, &mut results);
+        self.apply_hollows(hollows, &mut results);
+        self.apply_canoe_carves(carves_canoe, &mut results);
+        self.apply_launches(launches, &mut results);
+        self.apply_boards(boards, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
@@ -1292,6 +1304,26 @@ impl World {
                 }
             }
             Attempt::Drag(_) => {
+                if self.gripping(actor.id).is_none() && self.canoe_at(actor.cell).is_some() {
+                    let Some(dir) = attempt_dir(attempt) else {
+                        return Err("Name a direction.".into());
+                    };
+                    if self
+                        .canoe_at(actor.cell)
+                        .is_some_and(|id| self.canoe_floats(id))
+                    {
+                        return Err("The canoe is already in the brook.".into());
+                    }
+                    let (x, y) = cell_xy(actor.cell);
+                    let (dx, dy) = dir.delta();
+                    let Some(dest) = cell_id(x + dx, y + dy) else {
+                        return Err("There is nowhere to drag the canoe.".into());
+                    };
+                    if self.cell(dest).region == Region::Brook {
+                        return Err("Launch the canoe from the bank.".into());
+                    }
+                    return Ok(true);
+                }
                 let Some(item_id) = self.gripping(actor.id) else {
                     return Err("You are not holding the log.".into());
                 };
@@ -1417,6 +1449,81 @@ impl World {
                     return Err("A reed mat is already set here.".into());
                 }
                 Ok(true)
+            }
+            Attempt::HollowLog => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.canoe_at(actor.cell).is_some() {
+                    Err("The log is already a canoe.".into())
+                } else if !self.log_at(actor.cell) {
+                    Err("There is no heavy log here.".into())
+                } else if self.log_charred_at(actor.cell) {
+                    Err("The heavy log is already charred.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarveCanoe => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Let go of the log first.".into())
+                } else if self.canoe_at(actor.cell).is_some() {
+                    Err("The canoe is already carved.".into())
+                } else if !self.log_charred_at(actor.cell) {
+                    Err("The heavy log is not charred.".into())
+                } else if !self.has_carve_tool(actor.id) {
+                    Err("You need a flint flake or an iron knife to carve the canoe.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Launch => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.canoe_at(actor.cell).is_none() {
+                    Err("There is no dugout canoe here.".into())
+                } else if self
+                    .canoe_at(actor.cell)
+                    .is_some_and(|id| self.canoe_floats(id))
+                {
+                    Err("The canoe is already in the brook.".into())
+                } else if self.brook_neighbor(actor.cell).is_none() {
+                    Err("The brook is not beside you.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Board => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self
+                    .aboard
+                    .get(&actor.id)
+                    .is_some_and(|id| self.canoe_floats(*id))
+                {
+                    Err("You are already aboard the canoe.".into())
+                } else if self.floating_canoe_near(actor.cell).is_none() {
+                    Err("There is no canoe here to board.".into())
+                } else {
+                    Ok(true)
+                }
             }
             Attempt::PutFish => {
                 if gripping {
@@ -1767,7 +1874,11 @@ impl World {
         let item_id = if let Some(id) = existed {
             id
         } else if let Some(moisture) = self.take_from_pile(cell, Material::Log, 1) {
-            self.mint_item(Material::Log, moisture, cell, None, Role::Loose)
+            let id = self.mint_item(Material::Log, moisture, cell, None, Role::Loose);
+            if self.charred_logs.remove(&cell) {
+                self.charred_items.insert(id);
+            }
+            id
         } else {
             for intent in grabs {
                 self.finish(
@@ -1936,6 +2047,345 @@ impl World {
         }
     }
 
+    /// The fire chars the heavy log. The fire is not used up. Look names the char.
+    fn apply_hollows(&mut self, hollows: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in hollows {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.canoe_at(actor.cell).is_some() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The log is already a canoe.",
+                    results,
+                );
+                continue;
+            }
+            if !self.log_at(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no heavy log here.",
+                    results,
+                );
+                continue;
+            }
+            if self.log_charred_at(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The heavy log is already charred.",
+                    results,
+                );
+                continue;
+            }
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            if let Some(id) = self
+                .log_item()
+                .filter(|log| log.cell == actor.cell)
+                .map(|log| log.id)
+            {
+                self.charred_items.insert(id);
+            } else {
+                self.charred_logs.insert(actor.cell);
+            }
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} hollows the heavy log with the fire."),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You hollow the heavy log with the fire.",
+                results,
+            );
+        }
+    }
+
+    /// A flint flake or an iron knife cuts the charred log into a dugout. The tool stays.
+    fn apply_canoe_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.canoe_at(actor.cell).is_some() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The canoe is already carved.",
+                    results,
+                );
+                continue;
+            }
+            if !self.log_charred_at(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The heavy log is not charred.",
+                    results,
+                );
+                continue;
+            }
+            if !self.has_carve_tool(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve the canoe.",
+                    results,
+                );
+                continue;
+            }
+            if self.gripping(actor.id).is_some() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "Let go of the log first.",
+                    results,
+                );
+                continue;
+            }
+            if let Some(id) = self
+                .log_item()
+                .filter(|log| log.cell == actor.cell && log.carrier.is_none())
+                .map(|log| log.id)
+            {
+                self.items.remove(&id);
+                self.charred_items.remove(&id);
+            } else if self.take_from_pile(actor.cell, Material::Log, 1).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no heavy log here.",
+                    results,
+                );
+                continue;
+            }
+            self.charred_logs.remove(&actor.cell);
+            let id = self.mint_item(Material::Canoe, 0, actor.cell, None, Role::Loose);
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} carves the charred log into a dugout canoe."),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You carve the charred log into a dugout canoe.",
+                results,
+            );
+        }
+    }
+
+    /// The dugout on this bank slides into the brook beside it. The person stays on the bank.
+    fn apply_launches(&mut self, launches: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in launches {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.canoe_at(actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no dugout canoe here.",
+                    results,
+                );
+                continue;
+            };
+            if self.canoe_floats(id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The canoe is already in the brook.",
+                    results,
+                );
+                continue;
+            }
+            let Some(brook) = self.brook_neighbor(actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The brook is not beside you.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(canoe) = self.items.get_mut(&id) {
+                canoe.cell = brook;
+            }
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} launches the dugout canoe into the brook."),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell, brook],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You launch the dugout canoe into the brook.",
+                results,
+            );
+        }
+    }
+
+    /// Step into a floating dugout on this cell or the next. The brook still wets you.
+    fn apply_boards(&mut self, boards: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in boards {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.floating_canoe_near(actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no canoe here to board.",
+                    results,
+                );
+                continue;
+            };
+            let dest = self.item(id).map(|canoe| canoe.cell).unwrap_or(actor.cell);
+            let from_bank = actor.cell != dest;
+            self.move_actor(actor.id, dest);
+            if from_bank && self.cell(dest).region == Region::Brook {
+                if let Some(person) = self.actors.get_mut(&actor.id) {
+                    person.wetness = (person.wetness + self.tuning.wade).min(1000);
+                }
+            }
+            self.aboard.insert(actor.id, id);
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} boards the dugout canoe."),
+                Scope::Cell(dest),
+                vec![actor.id],
+                vec![dest],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You board the dugout canoe.",
+                results,
+            );
+        }
+    }
+
+    /// One person hauls a dugout one cell. It does not enter the brook; launch does that.
+    fn apply_canoe_drags(&mut self, drags: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in drags {
+            let Attempt::Drag(dir) = intent.attempt else {
+                continue;
+            };
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.canoe_at(actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no dugout canoe here.",
+                    results,
+                );
+                continue;
+            };
+            if self.canoe_floats(id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The canoe is already in the brook.",
+                    results,
+                );
+                continue;
+            }
+            let (x, y) = cell_xy(actor.cell);
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is nowhere to drag the canoe.",
+                    results,
+                );
+                continue;
+            };
+            if self.cell(dest).region == Region::Brook {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "Launch the canoe from the bank.",
+                    results,
+                );
+                continue;
+            }
+            if let Some(canoe) = self.items.get_mut(&id) {
+                canoe.cell = dest;
+            }
+            self.move_actor(actor.id, dest);
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} drags the dugout canoe {}.", dir.word()),
+                Scope::Cell(dest),
+                vec![actor.id],
+                vec![actor.cell, dest],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                format!("You drag the dugout canoe {}.", dir.word()),
+                results,
+            );
+        }
+    }
+
     fn apply_drags(
         &mut self,
         drags: Vec<Intent>,
@@ -1947,7 +2397,21 @@ impl World {
         results: &mut Vec<CommandResult>,
     ) {
         let mut by_dir: BTreeMap<Dir, Vec<Intent>> = BTreeMap::new();
+        let mut canoe_drags = Vec::new();
+        let mut log_drags = Vec::new();
         for intent in drags {
+            let on_canoe = self
+                .actor(intent.actor_id)
+                .and_then(|person| self.canoe_at(person.cell))
+                .is_some();
+            if on_canoe && self.gripping(intent.actor_id).is_none() {
+                canoe_drags.push(intent);
+            } else {
+                log_drags.push(intent);
+            }
+        }
+        self.apply_canoe_drags(canoe_drags, results);
+        for intent in log_drags {
             let Attempt::Drag(dir) = intent.attempt else {
                 continue;
             };

@@ -720,6 +720,7 @@ impl Tuning {
             Material::Bow => 0,
             Material::Net => 0,
             Material::Mat => 0,
+            Material::Canoe => 0,
         }
     }
 }

@@ -21,7 +21,11 @@ dry clothes                  wet, damp, or soaked clothes at a burning fire. You
 wait by the fire             the same wait for wet clothes
 take brand                   a burning brand from a fire already burning here; the fire stays lit. It goes out in the rain, or after a short wait.
 grab                         take hold of the heavy log
-drag n|s|e|w                 pull; one person cannot move it
+drag n|s|e|w                 pull; one person cannot move the heavy log. A dugout canoe moves for one person, but not into the brook
+hollow log                   the heavy log, at a fire on this cell. The fire chars it and is not used up
+carve canoe                  a charred heavy log, with a flint flake or an iron knife. The tool is not used up. A dugout canoe lies here
+launch                       a dugout canoe on the bank, into the brook beside you
+board                        a dugout canoe floating in the brook here or on the next cell
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
@@ -172,6 +176,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drop" => parse_material(rest).map(Attempt::Drop),
         "grab" | "grip" => Ok(Attempt::Grab),
         "drag" | "pull" => parse_dir(rest).map(Attempt::Drag),
+        "hollow" if rest == "log" || rest == "the log" => Ok(Attempt::HollowLog),
+        "carve"
+            if rest == "canoe" || rest == "a canoe" || rest == "the canoe" || rest == "dugout" =>
+        {
+            Ok(Attempt::CarveCanoe)
+        }
+        "launch" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => {
+            Ok(Attempt::Launch)
+        }
+        "board" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => Ok(Attempt::Board),
         "release" | "ungrab" => Ok(Attempt::Release),
         "let" if rest == "go" => Ok(Attempt::Release),
         "interrupt" | "stop" => Ok(Attempt::Interrupt),
@@ -443,6 +457,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
         "net" | "fishing net" | "a fishing net" => Ok(Material::Net),
         "mat" | "reed mat" | "a reed mat" => Ok(Material::Mat),
+        "canoe" | "dugout" | "dugout canoe" => Ok(Material::Canoe),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, poison berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
@@ -512,6 +527,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
         "net" | "fishing net" | "a fishing net" => ExamineTarget::Net,
         "mat" | "reed mat" | "a reed mat" => ExamineTarget::Mat,
+        "canoe" | "dugout" | "dugout canoe" => ExamineTarget::Canoe,
         "bone" => ExamineTarget::Bone,
         "salt" | "salt crust" => ExamineTarget::Salt,
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,

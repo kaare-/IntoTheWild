@@ -217,6 +217,7 @@ impl World {
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Mat => self.examine_mat(actor_id),
+            ExamineTarget::Canoe => self.examine_canoe(actor_id),
             ExamineTarget::Hide => self.examine_hide(actor_id),
             ExamineTarget::Cord => self.examine_cord(actor_id),
             ExamineTarget::Fire => self.examine_fire(actor_id),
@@ -342,6 +343,9 @@ impl World {
             }
             if let Some(mat) = self.seen_mat(actor_id) {
                 lines.push(mat);
+            }
+            if let Some(canoe) = self.seen_canoe(actor_id) {
+                lines.push(canoe);
             }
             if let Some(lean_to) = self.seen_lean_to(actor_id) {
                 lines.push(lean_to);
@@ -867,7 +871,36 @@ impl World {
                 item.material == Material::Log && item.cell == actor.cell && item.carrier.is_none()
             })
         {
-            parts.push("The heavy log lies here.".into());
+            if self.log_charred_at(actor.cell) {
+                parts.push("The heavy log lies here. The fire has charred it.".into());
+            } else {
+                parts.push("The heavy log lies here.".into());
+            }
+        }
+        if let Some(id) = self.canoe_at(actor.cell) {
+            if self.canoe_floats(id) {
+                parts.push("A dugout canoe floats here in the brook.".into());
+            } else {
+                parts.push("A dugout canoe lies here.".into());
+            }
+            let riders: Vec<_> = self
+                .aboard
+                .iter()
+                .filter(|(actor_id, canoe)| **canoe == id && **actor_id != actor.id)
+                .map(|(actor_id, _)| self.name_of(*actor_id))
+                .collect();
+            if riders.len() == 1 {
+                parts.push(format!("{} is aboard it.", riders[0]));
+            } else if riders.len() > 1 {
+                parts.push(format!("{} are aboard it.", riders.join(" and ")));
+            }
+        }
+        if self
+            .aboard
+            .get(&actor.id)
+            .is_some_and(|id| self.canoe_floats(*id))
+        {
+            parts.push("You are aboard the dugout canoe.".into());
         }
         let water_here = self.pile_count(actor.cell, Material::Water)
             + self.ground_ids(actor.cell, Material::Water).len() as u32;
@@ -1543,6 +1576,41 @@ impl World {
                     self.relative(origin, cell)
                 ));
             }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A dugout in sight, other than the one under the looker's feet.
+    fn seen_canoe(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let Some(id) = self.canoe_at(cell) else {
+                continue;
+            };
+            let place = self.relative(origin, cell);
+            let line = if self.canoe_floats(id) {
+                format!("A dugout canoe floats in the brook to the {place}.")
+            } else {
+                format!("A dugout canoe lies to the {place}.")
+            };
+            lines.push(line);
+        }
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.log_charred_at(cell) {
+                continue;
+            }
+            lines.push(format!(
+                "The heavy log to the {} is charred.",
+                self.relative(origin, cell)
+            ));
         }
         if lines.is_empty() {
             None
@@ -3386,6 +3454,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Mat).is_empty() {
             bits.push("a reed mat".into());
+        }
+        if self.canoe_at(dest).is_some() {
+            bits.push("a dugout canoe".into());
         }
         if self.pile_count(dest, Material::Stone) > 0
             || !self.ground_ids(dest, Material::Stone).is_empty()
@@ -6418,6 +6489,7 @@ impl World {
                 Material::Reed => "reeds",
                 Material::Net => "fishing net",
                 Material::Mat => "reed mat",
+                Material::Canoe => "dugout canoe",
             };
             format!("You see no {name} from here.")
         } else {
@@ -6441,8 +6513,13 @@ impl World {
                     if holders.len() == 1 { "is" } else { "are" }
                 )
             };
+            let charred = if self.charred_items.contains(&item.id) {
+                " The fire has charred it. It can be carved into a canoe."
+            } else {
+                ""
+            };
             return format!(
-                "The heavy log is in contact with the ground {}. It is {}. {held} {}",
+                "The heavy log is in contact with the ground {}. It is {}. {held} {}{charred}",
                 self.place_phrase(origin, item.cell),
                 self.condition_word(item.moisture),
                 self.rain_reaches_phrase(item.cell)
@@ -6450,8 +6527,13 @@ impl World {
         }
         for cell in self.visible_cell_ids(viewer) {
             if self.pile_count(cell, Material::Log) > 0 {
+                let charred = if self.charred_logs.contains(&cell) {
+                    " The fire has charred it. It can be carved into a canoe."
+                } else {
+                    ""
+                };
                 return format!(
-                    "A heavy log lies in contact with the ground {}. It has not been lifted. It is {}. {}",
+                    "A heavy log lies in contact with the ground {}. It has not been lifted. It is {}. {}{charred}",
                     self.place_phrase(origin, cell),
                     self.condition_word(self.pile_moisture(cell, Material::Log)),
                     self.rain_reaches_phrase(cell)
@@ -7392,6 +7474,7 @@ impl World {
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
+                    && self.canoe_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
@@ -8065,6 +8148,57 @@ impl World {
         } else {
             lines.join("\n")
         }
+    }
+
+    fn examine_canoe(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let Some(id) = self.canoe_at(cell) else {
+                continue;
+            };
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if self.canoe_floats(id) {
+                lines.push(format!(
+                    "A dugout canoe floats in the brook {place}. It was hollowed from the heavy log."
+                ));
+            } else {
+                lines.push(format!(
+                    "A dugout canoe lies {place}. It was hollowed from the heavy log."
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no dugout canoe from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    /// Hollowing, carving, hauling, launching, or boarding the dugout.
+    /// The person who did it already has the reply.
+    fn canoe_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        if text == format!("{name} hollows the heavy log with the fire.")
+            || text == format!("{name} carves the charred log into a dugout canoe.")
+            || text == format!("{name} launches the dugout canoe into the brook.")
+            || text == format!("{name} boards the dugout canoe.")
+            || text == format!("{name} drags the dugout canoe north.")
+            || text == format!("{name} drags the dugout canoe south.")
+            || text == format!("{name} drags the dugout canoe east.")
+            || text == format!("{name} drags the dugout canoe west.")
+        {
+            return Some(text.to_string());
+        }
+        None
     }
 
     /// A reed mat woven, set, dropped, or rested on. The person who did it
@@ -10004,6 +10138,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Net, false) => "fishing nets",
         (Material::Mat, true) => "reed mat",
         (Material::Mat, false) => "reed mats",
+        (Material::Canoe, _) => "dugout canoe",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

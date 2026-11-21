@@ -109,6 +109,7 @@ pub enum Material {
     Bow,
     Net,
     Mat,
+    Canoe,
 }
 
 impl Material {
@@ -153,6 +154,7 @@ impl Material {
             Material::Bow => "bow",
             Material::Net => "net",
             Material::Mat => "reed mat",
+            Material::Canoe => "dugout canoe",
         }
     }
 
@@ -197,6 +199,7 @@ impl Material {
             Material::Bow => "bow",
             Material::Net => "fishing net",
             Material::Mat => "reed mat",
+            Material::Canoe => "dugout canoe",
         }
     }
 
@@ -326,6 +329,7 @@ pub enum ExamineTarget {
     Bow,
     Net,
     Mat,
+    Canoe,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,6 +394,10 @@ pub enum Attempt {
     WeaveNet,
     WeaveMat,
     SetMat,
+    HollowLog,
+    CarveCanoe,
+    Launch,
+    Board,
 }
 
 impl Attempt {
@@ -451,6 +459,10 @@ impl Attempt {
                 | Attempt::WeaveNet
                 | Attempt::WeaveMat
                 | Attempt::SetMat
+                | Attempt::HollowLog
+                | Attempt::CarveCanoe
+                | Attempt::Launch
+                | Attempt::Board
         )
     }
 }
@@ -856,6 +868,15 @@ pub struct World {
     /// When that set net catches a fish. Absent once it has caught, or was gathered.
     #[serde(default)]
     pub(crate) net_catches_at: BTreeMap<CellId, u64>,
+    /// The heavy-log pile on this cell has been charred by a fire.
+    #[serde(default)]
+    pub(crate) charred_logs: BTreeSet<CellId>,
+    /// A lifted heavy log that a fire has charred.
+    #[serde(default)]
+    pub(crate) charred_items: BTreeSet<ItemId>,
+    /// Who is aboard which dugout canoe.
+    #[serde(default)]
+    pub(crate) aboard: BTreeMap<ActorId, ItemId>,
     /// A brook cell stays quiet until this sim time after a fish is taken there.
     /// Banks that touch that cell fish the same stretch.
     #[serde(default)]
@@ -1047,6 +1068,9 @@ impl World {
             snares: BTreeMap::new(),
             set_nets: BTreeSet::new(),
             net_catches_at: BTreeMap::new(),
+            charred_logs: BTreeSet::new(),
+            charred_items: BTreeSet::new(),
+            aboard: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
             wolf_tracks: BTreeMap::new(),
@@ -2020,6 +2044,58 @@ impl World {
         self.items.values().find(|i| i.material == Material::Log)
     }
 
+    /// The heavy log on this cell, pile or lifted piece, and whether a fire has charred it.
+    pub(crate) fn log_charred_at(&self, cell: CellId) -> bool {
+        if self.charred_logs.contains(&cell) && self.pile_count(cell, Material::Log) > 0 {
+            return true;
+        }
+        self.items.values().any(|item| {
+            item.cell == cell
+                && item.carrier.is_none()
+                && item.material == Material::Log
+                && self.charred_items.contains(&item.id)
+        })
+    }
+
+    pub(crate) fn canoe_at(&self, cell: CellId) -> Option<ItemId> {
+        self.items.values().find_map(|item| {
+            (item.cell == cell && item.carrier.is_none() && item.material == Material::Canoe)
+                .then_some(item.id)
+        })
+    }
+
+    /// A dugout in the flowing brook, not one still on the bank.
+    pub(crate) fn canoe_floats(&self, id: ItemId) -> bool {
+        self.item(id).is_some_and(|canoe| {
+            canoe.material == Material::Canoe && self.cell(canoe.cell).region == Region::Brook
+        })
+    }
+
+    /// The brook cell beside this bank, preferring west, then north, south, and east.
+    pub(crate) fn brook_neighbor(&self, cell: CellId) -> Option<CellId> {
+        let (x, y) = cell_xy(cell);
+        for (dx, dy) in [(-1, 0), (0, -1), (0, 1), (1, 0)] {
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.cell(next).region == Region::Brook {
+                return Some(next);
+            }
+        }
+        None
+    }
+
+    /// A floating dugout on this cell or the next.
+    pub(crate) fn floating_canoe_near(&self, cell: CellId) -> Option<ItemId> {
+        self.items.values().find_map(|item| {
+            (item.material == Material::Canoe
+                && item.carrier.is_none()
+                && self.cell(item.cell).region == Region::Brook
+                && chebyshev(cell, item.cell) <= 1)
+                .then_some(item.id)
+        })
+    }
+
     pub(crate) fn construction_at(&self, cell: CellId) -> Option<&Construction> {
         self.constructions.values().find(|c| c.cell == cell)
     }
@@ -2608,6 +2684,14 @@ impl World {
     pub(crate) fn move_actor(&mut self, actor: ActorId, dest: CellId) {
         if let Some(person) = self.actors.get_mut(&actor) {
             person.cell = dest;
+        }
+        if let Some(canoe) = self.aboard.get(&actor).copied() {
+            let still = self
+                .item(canoe)
+                .is_some_and(|boat| boat.cell == dest && boat.material == Material::Canoe);
+            if !still {
+                self.aboard.remove(&actor);
+            }
         }
         let carried: Vec<ItemId> = self
             .items
@@ -5199,6 +5283,186 @@ mod ochre_arms {
             world.examine(quiet, ExamineTarget::Ochre),
             "You see no ochre from here."
         );
+    }
+}
+
+#[cfg(test)]
+mod dugout {
+    use super::{Attempt, Dir, ExamineTarget, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_heavy_log_at_the_floor_becomes_a_canoe_that_floats() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text.contains("The heavy log lies here."),
+            "{}",
+            here.text
+        );
+        assert_eq!(world.actor_cell(near), Some((3, 2)));
+        let cold = world.step(&[intent("cold", near, Attempt::HollowLog)]);
+        assert_eq!(cold.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fire burning")));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        let hollow = world.step(&[intent("hollow", near, Attempt::HollowLog)]);
+        assert_eq!(
+            hollow.results[0].message,
+            "You hollow the heavy log with the fire."
+        );
+        let charred = world.observe(near).unwrap();
+        assert!(charred.events.iter().all(|event| {
+            event.text != "You hollow the heavy log with the fire."
+                && event.text != "Near hollows the heavy log with the fire."
+        }));
+        assert!(
+            charred
+                .text
+                .contains("The heavy log lies here. The fire has charred it."),
+            "{}",
+            charred.text
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near hollows the heavy log with the fire." }));
+        assert!(
+            world
+                .observe(seen)
+                .unwrap()
+                .text
+                .contains("The heavy log to the north and east is charred."),
+            "{}",
+            world.observe(seen).unwrap().text
+        );
+        let bare = world.step(&[intent("bare", near, Attempt::CarveCanoe)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You need a flint flake or an iron knife to carve the canoe."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("flint flake")));
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let carved = world.step(&[intent("carve", near, Attempt::CarveCanoe)]);
+        assert_eq!(
+            carved.results[0].message,
+            "You carve the charred log into a dugout canoe."
+        );
+        let dugout = world.observe(near).unwrap();
+        assert!(dugout.events.iter().all(|event| {
+            event.text != "You carve the charred log into a dugout canoe."
+                && event.text != "Near carves the charred log into a dugout canoe."
+        }));
+        assert!(
+            dugout.text.contains("A dugout canoe lies here."),
+            "{}",
+            dugout.text
+        );
+        assert!(!dugout.text.contains("The heavy log"), "{}", dugout.text);
+        assert_eq!(
+            world.examine(near, ExamineTarget::Canoe),
+            "A dugout canoe lies here. It was hollowed from the heavy log."
+        );
+        let hauled = world.step(&[intent("haul", near, Attempt::Drag(Dir::West))]);
+        assert_eq!(hauled.results[0].message, "You drag the dugout canoe west.");
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("You drag the dugout canoe")
+                && !event.text.contains("Near drags the dugout canoe")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near drags the dugout canoe west." }));
+        let water = world.step(&[intent("water", near, Attempt::Drag(Dir::West))]);
+        assert_eq!(water.results[0].message, "Launch the canoe from the bank.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("from the bank")));
+        let launched = world.step(&[intent("launch", near, Attempt::Launch)]);
+        assert_eq!(
+            launched.results[0].message,
+            "You launch the dugout canoe into the brook."
+        );
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        let bank = world.observe(near).unwrap();
+        assert!(bank.events.iter().all(|event| {
+            !event.text.contains("You launch") && !event.text.contains("Near launches")
+        }));
+        assert!(
+            world
+                .observe(seen)
+                .unwrap()
+                .text
+                .contains("A dugout canoe floats in the brook to the north and west."),
+            "{}",
+            world.observe(seen).unwrap().text
+        );
+        let boarded = world.step(&[intent("board", near, Attempt::Board)]);
+        assert_eq!(boarded.results[0].message, "You board the dugout canoe.");
+        assert_eq!(world.actor_cell(near), Some((1, 2)));
+        let afloat = world.observe(near).unwrap();
+        assert!(
+            afloat
+                .text
+                .contains("A dugout canoe floats here in the brook."),
+            "{}",
+            afloat.text
+        );
+        assert!(
+            afloat.text.contains("You are aboard the dugout canoe."),
+            "{}",
+            afloat.text
+        );
+        assert!(afloat.events.iter().all(|event| {
+            !event.text.contains("You board") && !event.text.contains("Near boards")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near boards the dugout canoe."));
+        let far = world.observe(quiet).unwrap();
+        assert!(far.events.iter().all(|event| {
+            !event.text.contains("canoe")
+                && !event.text.contains("hollow")
+                && !event.text.contains("charred")
+        }));
+        assert!(!far.text.contains("canoe"));
+        assert!(!far.text.contains("charred"));
+        assert_eq!(world.material_tally(Material::Canoe), 1);
+        assert_eq!(world.material_tally(Material::Log), 0);
     }
 }
 
