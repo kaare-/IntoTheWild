@@ -5643,6 +5643,137 @@ mod dugout {
             !event.text.contains("paddle") && !event.text.contains("leaves the dugout")
         }));
     }
+
+    #[test]
+    fn a_spear_from_the_dugout_takes_a_fish_and_the_bank_still_does() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 4, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let bank = world.spawn_at("Bank", "b", 2, 1).unwrap();
+        world.mint_item(
+            Material::Canoe,
+            0,
+            cell_id(1, 2).unwrap(),
+            None,
+            Role::Loose,
+        );
+        let spear = world.mint_item(
+            Material::Spear,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            Role::Loose,
+        );
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        let boarded = world.step(&[intent("board", near, Attempt::Board)]);
+        assert_eq!(boarded.results[0].message, "You board the dugout canoe.");
+        assert!(world.aboard.contains_key(&near));
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Spear))]);
+        let bare = world.step(&[intent("bare", near, Attempt::Fish)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(!bare.results[0].success);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("not carrying a spear") }));
+        world.step(&[intent("spear", near, Attempt::Gather(Material::Spear))]);
+        let dry = world.spawn_at("Dry", "d", 4, 0).unwrap();
+        let inland = world.step(&[intent("inland", dry, Attempt::Fish)]);
+        assert_eq!(inland.results[0].message, "The brook is not here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("brook is not here") }));
+        assert_eq!(
+            crate::parse::parse_attempt("spear fish").unwrap(),
+            Attempt::Fish
+        );
+        let cast = world.step(&[intent("fish", near, Attempt::Fish)]);
+        assert_eq!(cast.results[0].message, "You spear a fish from the brook.");
+        assert_eq!(world.actor_cell(near), Some((1, 2)));
+        assert!(world.aboard.contains_key(&near));
+        let actor = world.observe(near).unwrap();
+        assert!(actor
+            .events
+            .iter()
+            .any(|event| event.text == "You spear a fish from the brook."));
+        assert!(actor
+            .events
+            .iter()
+            .all(|event| event.text != "Near spears a fish from the brook."
+                && !event.text.contains("splash")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near spears a fish from the brook."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("splash") }));
+        assert!(world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You hear a splash to the north and west."));
+        assert!(world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("spears a fish") }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("fish") && !event.text.contains("splash") }));
+        let again = world.step(&[intent("again", near, Attempt::Fish)]);
+        assert_eq!(
+            again.results[0].message,
+            "The fish are gone from this stretch of the brook."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("fish are gone") }));
+        let other = world.mint_item(
+            Material::Spear,
+            0,
+            world.actor(bank).unwrap().cell,
+            Some(bank),
+            Role::Loose,
+        );
+        {
+            let point = world.items.get_mut(&other).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        assert!(!world.aboard.contains_key(&bank));
+        let from_bank = world.step(&[intent("bank", bank, Attempt::Fish)]);
+        assert_eq!(
+            from_bank.results[0].message,
+            "You spear a fish from the brook."
+        );
+        assert_eq!(world.actor_cell(bank), Some((2, 1)));
+        assert_eq!(world.material_tally(Material::Fish), 2);
+    }
 }
 
 #[cfg(test)]
