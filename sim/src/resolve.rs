@@ -1074,7 +1074,10 @@ impl World {
                             if self.has_material_at_hand(actor.id, Material::BitterBerry) {
                                 Ok(true)
                             } else {
-                                Err("There are no poison berries here to eat.".into())
+                                Err(format!(
+                                    "There are no {} here to eat.",
+                                    self.bitter_kind(actor.id)
+                                ))
                             }
                         }
                         Material::Berry => {
@@ -1351,7 +1354,14 @@ impl World {
                             | Material::Mat
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
-                    return Err(format!("There is no {} here to gather.", material.word()));
+                    return Err(if *material == Material::BitterBerry {
+                        format!(
+                            "There are no {} here to gather.",
+                            self.bitter_kind(actor.id)
+                        )
+                    } else {
+                        format!("There is no {} here to gather.", material.word())
+                    });
                 }
                 if self.carry_count(actor.id) >= self.tuning.carry_slots
                     && !self.gather_overflows_into_basket(actor.id, *material)
@@ -1362,7 +1372,11 @@ impl World {
             }
             Attempt::Drop(material) => {
                 if self.loose_ids(actor.id, *material).is_empty() {
-                    Err(format!("You are not carrying a loose {}.", material.word()))
+                    Err(if *material == Material::BitterBerry {
+                        format!("You are not carrying loose {}.", self.bitter_kind(actor.id))
+                    } else {
+                        format!("You are not carrying a loose {}.", material.word())
+                    })
                 } else {
                     Ok(true)
                 }
@@ -1780,7 +1794,14 @@ impl World {
                             intent.command_id,
                             intent.actor_id,
                             false,
-                            format!("There is no {} here to gather.", material.word()),
+                            if material == Material::BitterBerry {
+                                format!(
+                                    "There are no {} here to gather.",
+                                    self.bitter_kind(intent.actor_id)
+                                )
+                            } else {
+                                format!("There is no {} here to gather.", material.word())
+                            },
                             results,
                         );
                         continue;
@@ -1862,13 +1883,11 @@ impl World {
                         vec![],
                         draw,
                     );
-                    self.finish(
-                        intent.command_id,
-                        intent.actor_id,
-                        true,
-                        crate::model::spoken_act(None, "gather", &rest),
-                        results,
-                    );
+                    let mut reply = crate::model::spoken_act(None, "gather", &rest);
+                    if material == Material::BitterBerry && self.bitter_known(intent.actor_id) {
+                        reply = reply.replace("dark berries", "poison berries");
+                    }
+                    self.finish(intent.command_id, intent.actor_id, true, reply, results);
                 } else if noun == "wolf hide" {
                     self.finish(
                         intent.command_id,
@@ -1911,7 +1930,14 @@ impl World {
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    format!("You are not carrying a loose {}.", material.word()),
+                    if material == Material::BitterBerry {
+                        format!(
+                            "You are not carrying loose {}.",
+                            self.bitter_kind(intent.actor_id)
+                        )
+                    } else {
+                        format!("You are not carrying a loose {}.", material.word())
+                    },
                     results,
                 );
                 continue;
@@ -1965,22 +1991,20 @@ impl World {
                 vec![],
                 None,
             );
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                true,
-                if material == Material::Cord {
-                    "You drop hide strips. They are in contact with the ground.".to_string()
-                } else if material == Material::Egg {
-                    "You drop the eggs. They are in contact with the ground.".to_string()
-                } else {
-                    format!(
-                        "You drop {} {noun}. It is in contact with the ground.",
-                        material.article()
-                    )
-                },
-                results,
-            );
+            let mut reply = if material == Material::Cord {
+                "You drop hide strips. They are in contact with the ground.".to_string()
+            } else if material == Material::Egg {
+                "You drop the eggs. They are in contact with the ground.".to_string()
+            } else {
+                format!(
+                    "You drop {} {noun}. It is in contact with the ground.",
+                    material.article()
+                )
+            };
+            if material == Material::BitterBerry && self.bitter_known(intent.actor_id) {
+                reply = reply.replace("dark berries", "poison berries");
+            }
+            self.finish(intent.command_id, intent.actor_id, true, reply, results);
         }
     }
 
@@ -2972,7 +2996,8 @@ impl World {
                 return Some("The fish has spoiled.".into());
             }
             if self.has_material_at_hand(actor, Material::BitterBerry) {
-                return Some("Cooking does not make poison berries food.".into());
+                let kind = self.bitter_kind(actor);
+                return Some(format!("Cooking does not make {kind} food."));
             }
             return Some("There is nothing here to cook.".into());
         }
@@ -7224,7 +7249,10 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "There are no poison berries here to eat.",
+                format!(
+                    "There are no {} here to eat.",
+                    self.bitter_kind(intent.actor_id)
+                ),
                 results,
             );
             return;
@@ -7234,7 +7262,10 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "There are no poison berries here to eat.",
+                format!(
+                    "There are no {} here to eat.",
+                    self.bitter_kind(intent.actor_id)
+                ),
                 results,
             );
             return;
@@ -7254,7 +7285,7 @@ impl World {
             .unwrap_or(0);
         let name = self.name_of(intent.actor_id);
         let eaten = self.emit(
-            format!("{name} eats a handful of poison berries."),
+            format!("{name} eats a handful of dark berries."),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],

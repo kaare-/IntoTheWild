@@ -14,7 +14,7 @@ n flint nodule
 W wet wood     b bark
 B wet bark     * fire
 y berries      Y wet berries
-m mushrooms    q poison berries
+m mushrooms    q dark berries
 k pot          u water
 s stone         c clay
 o ochre        C copper ore   e copper bead
@@ -392,7 +392,7 @@ impl World {
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
-            lines.push(self.adjacent_line(actor.cell, dir));
+            lines.push(self.adjacent_line(actor_id, actor.cell, dir));
         }
         if let Some(ate) = self.deer_on_the_named_floor_ate(actor.cell) {
             lines.push(ate);
@@ -450,7 +450,10 @@ impl World {
             if self.pile_count(cell, Material::BitterBerry) > 0
                 && self.pile_moisture(cell, Material::BitterBerry) >= self.tuning.soaked_at
             {
-                lines.push(format!("The poison berries to the {way} are soaked."));
+                lines.push(format!(
+                    "The {} to the {way} are soaked.",
+                    self.bitter_kind(viewer)
+                ));
             }
             if self.pile_count(cell, Material::Berry) > 0
                 && self.pile_moisture(cell, Material::Berry) >= self.tuning.soaked_at
@@ -762,12 +765,16 @@ impl World {
                 ""
             };
             parts.push(format!(
-                "Poison berries lie here, {}.{}",
+                "{} lie here, {}.{}",
+                self.bitter_kind_cap(actor_id),
                 self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry)),
                 known
             ));
         } else if self.berry_patch_bare(actor.cell, Material::BitterBerry) {
-            parts.push("The poison berries that were here are gone.".into());
+            parts.push(format!(
+                "The {} that were here are gone.",
+                self.bitter_kind(actor_id)
+            ));
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0 {
             parts.push(format!(
@@ -1310,7 +1317,10 @@ impl World {
             }
             let way = self.relative(origin, cell);
             if self.berry_patch_bare(cell, Material::BitterBerry) {
-                lines.push(format!("The poison berries to the {way} are gone."));
+                lines.push(format!(
+                    "The {} to the {way} are gone.",
+                    self.bitter_kind(viewer)
+                ));
             } else if self.berry_patch_bare(cell, Material::Berry)
                 && !self.deer_ate_berries.contains(&cell)
             {
@@ -2905,11 +2915,12 @@ impl World {
                 )
             }
         } else if item.material == "poison berry" {
+            let kind = self.bitter_kind(actor_id);
             if item.count == 1 {
-                format!("a {} handful of poison berries", item.condition)
+                format!("a {} handful of {kind}", item.condition)
             } else {
                 format!(
-                    "{} {} handfuls of poison berries",
+                    "{} {} handfuls of {kind}",
                     count_word(item.count),
                     item.condition
                 )
@@ -3359,8 +3370,8 @@ impl World {
         ))
     }
 
-    fn adjacent_line(&self, origin: CellId, dir: Dir) -> String {
-        let line = self.adjacent_detail(origin, dir);
+    fn adjacent_line(&self, viewer: ActorId, origin: CellId, dir: Dir) -> String {
+        let line = self.adjacent_detail(viewer, origin, dir);
         if !self.dark_from(origin) || line.ends_with("the valley ends.") {
             return line;
         }
@@ -3370,7 +3381,7 @@ impl World {
         )
     }
 
-    fn adjacent_detail(&self, origin: CellId, dir: Dir) -> String {
+    fn adjacent_detail(&self, viewer: ActorId, origin: CellId, dir: Dir) -> String {
         let (x, y) = cell_xy(origin);
         let (dx, dy) = dir.delta();
         let Some(dest) = cell_id(x + dx, y + dy) else {
@@ -3451,7 +3462,7 @@ impl World {
             bits.push("berries".into());
         }
         if self.pile_count(dest, Material::BitterBerry) > 0 {
-            bits.push("poison berries".into());
+            bits.push(self.bitter_kind(viewer).into());
         }
         if self.pile_count(dest, Material::Mushroom) > 0 {
             bits.push("mushrooms".into());
@@ -3680,12 +3691,12 @@ impl World {
                 "{}: hoofprints mark the outside floor. {name} is the next square {side} of that floor.",
                 capitalize(dir.word())
             );
-            if let Some(past) = self.person_on_the_berries_off_this_floor(origin, dest) {
+            if let Some(past) = self.person_on_the_berries_off_this_floor(viewer, origin, dest) {
                 line.push_str(&past);
             }
             return line;
         }
-        if let Some(line) = self.outside_floor_after_the_wood_is_gone(origin, dir, dest) {
+        if let Some(line) = self.outside_floor_after_the_wood_is_gone(viewer, origin, dir, dest) {
             return line;
         }
         let line = format!("{}: {}.", capitalize(dir.word()), bits.join(", "));
@@ -3993,6 +4004,7 @@ impl World {
     /// Step is not named on the berries unless Step is standing there.
     fn outside_floor_after_the_wood_is_gone(
         &self,
+        viewer: ActorId,
         origin: CellId,
         dir: Dir,
         dest: CellId,
@@ -4033,7 +4045,7 @@ impl World {
         if let Some(name) = self.name_standing_on(origin, dest) {
             line.push_str(&format!(" {name} stands on that floor."));
         }
-        if let Some(past) = self.person_on_the_berries_off_this_floor(origin, dest) {
+        if let Some(past) = self.person_on_the_berries_off_this_floor(viewer, origin, dest) {
             line.push_str(&past);
         }
         Some(line)
@@ -4091,6 +4103,7 @@ impl World {
     /// "That floor" stays the outside floor. The deer is not named here.
     fn person_on_the_berries_off_this_floor(
         &self,
+        viewer: ActorId,
         origin: CellId,
         floor: CellId,
     ) -> Option<String> {
@@ -4109,8 +4122,9 @@ impl World {
             };
             let way = orthogonal_step(floor, cell)?;
             found.push(format!(
-                " {} of that floor, {name} stands on the poison berries.",
-                capitalize(way)
+                " {} of that floor, {name} stands on the {}.",
+                capitalize(way),
+                self.bitter_kind(viewer)
             ));
         }
         if found.len() != 1 {
@@ -4570,7 +4584,8 @@ impl World {
         let name = self.other_name_on(viewer, berries)?;
         let cover = self.cover_phrase(berries);
         Some(format!(
-            "{name} stands {cover}, on the poison berries north of the west floor."
+            "{name} stands {cover}, on the {} north of the west floor.",
+            self.bitter_kind(viewer)
         ))
     }
 
@@ -6195,8 +6210,68 @@ impl World {
         lines
     }
 
-    fn bitter_known(&self, viewer: ActorId) -> bool {
+    pub(crate) fn bitter_known(&self, viewer: ActorId) -> bool {
         self.actor(viewer).is_some_and(|actor| actor.tasted_bitter)
+    }
+
+    /// The patch's name for this person. Taste is what turns it to poison.
+    pub(crate) fn bitter_kind(&self, viewer: ActorId) -> &'static str {
+        if self.bitter_known(viewer) {
+            "poison berries"
+        } else {
+            "dark berries"
+        }
+    }
+
+    fn bitter_kind_cap(&self, viewer: ActorId) -> &'static str {
+        if self.bitter_known(viewer) {
+            "Poison berries"
+        } else {
+            "Dark berries"
+        }
+    }
+
+    fn food_kind_for(&self, viewer: ActorId, material: Material) -> (&'static str, &'static str) {
+        if material == Material::BitterBerry {
+            (self.bitter_kind(viewer), "are")
+        } else {
+            food_kind(material)
+        }
+    }
+
+    fn pile_noun_for(&self, viewer: ActorId, material: Material, count: u32) -> String {
+        if material == Material::BitterBerry {
+            let kind = self.bitter_kind(viewer);
+            if count == 1 {
+                format!("handful of {kind}")
+            } else {
+                format!("handfuls of {kind}")
+            }
+        } else {
+            pile_noun(material, count).into()
+        }
+    }
+
+    fn carried_berry_phrase(
+        &self,
+        viewer: ActorId,
+        material: Material,
+        count: u32,
+        condition: &str,
+    ) -> String {
+        if material == Material::BitterBerry {
+            let kind = self.bitter_kind(viewer);
+            if count == 1 {
+                format!("A {condition} handful of {kind}")
+            } else {
+                format!(
+                    "{} {condition} handfuls of {kind}",
+                    capitalize(&count_word(count))
+                )
+            }
+        } else {
+            carried_food_phrase(material, count, condition)
+        }
     }
 
     /// Bitter berries keep their answer until this person has tasted them.
@@ -6220,7 +6295,10 @@ impl World {
                     format!("to the {}", self.relative(origin, cell))
                 };
                 if material == Material::BitterBerry {
-                    lines.push(format!("The poison berries that were {way} are gone."));
+                    lines.push(format!(
+                        "The {} that were {way} are gone.",
+                        self.bitter_kind(viewer)
+                    ));
                 } else if !self.deer_ate_berries.contains(&cell) {
                     lines.push(format!("The berries that were {way} are gone."));
                 }
@@ -6270,7 +6348,7 @@ impl World {
                     } else {
                         ""
                     };
-                    let (kind, verb) = food_kind(material);
+                    let (kind, verb) = self.food_kind_for(viewer, material);
                     let head = if count == 1 {
                         format!(
                             "A handful of berries is in contact with the ground {}",
@@ -6279,7 +6357,7 @@ impl World {
                     } else {
                         format!(
                             "A pile of {count} {} is in contact with the ground {}",
-                            pile_noun(material, count),
+                            self.pile_noun_for(viewer, material, count),
                             self.place_phrase(origin, cell)
                         )
                     };
@@ -6292,8 +6370,8 @@ impl World {
                         self.food_clause_for(viewer, material)
                     ));
                 } else if material == Material::Branch {
-                    let noun = pile_noun(material, count);
-                    let (kind, verb) = food_kind(material);
+                    let noun = self.pile_noun_for(viewer, material, count);
+                    let (kind, verb) = self.food_kind_for(viewer, material);
                     lines.push(format!(
                         "A pile of {count} {noun} is in contact with the ground {}{}. The {kind} {verb} {}. {}{}{}{}{}",
                         self.mark_place(origin, cell),
@@ -6306,8 +6384,8 @@ impl World {
                         self.deer_on_this_wood(origin, cell)
                     ));
                 } else {
-                    let noun = pile_noun(material, count);
-                    let (kind, verb) = food_kind(material);
+                    let noun = self.pile_noun_for(viewer, material, count);
+                    let (kind, verb) = self.food_kind_for(viewer, material);
                     lines.push(format!(
                         "A pile of {count} {noun} is in contact with the ground {}. The {kind} {verb} {}. {}{}{}{}",
                         self.place_phrase(origin, cell),
@@ -6367,7 +6445,7 @@ impl World {
                     lines.push(format!(
                         "{} loose {} {} in contact with the ground {}{}. {}{}{}{}{}{wait}",
                         loose.len(),
-                        pile_noun(material, loose.len() as u32),
+                        self.pile_noun_for(viewer, material, loose.len() as u32),
                         if loose.len() == 1 { "is" } else { "are" },
                         self.mark_place(origin, cell),
                         self.hoofprints_on_wood(origin, cell),
@@ -6381,7 +6459,7 @@ impl World {
                     lines.push(format!(
                         "{} loose {} {} in contact with the ground {}. {}{}{}{}",
                         loose.len(),
-                        pile_noun(material, loose.len() as u32),
+                        self.pile_noun_for(viewer, material, loose.len() as u32),
                         if loose.len() == 1 { "is" } else { "are" },
                         self.place_phrase(origin, cell),
                         self.condition_sentence(worst, cell),
@@ -6491,8 +6569,12 @@ impl World {
                     ));
                 }
             } else if matches!(material, Material::Berry | Material::BitterBerry) {
-                let phrase =
-                    carried_food_phrase(material, ids.len() as u32, self.condition_word(moisture));
+                let phrase = self.carried_berry_phrase(
+                    viewer,
+                    material,
+                    ids.len() as u32,
+                    self.condition_word(moisture),
+                );
                 lines.push(format!(
                     "{phrase} {} carried by {who}, {}.{}",
                     if ids.len() == 1 { "is" } else { "are" },
@@ -6503,7 +6585,7 @@ impl World {
                 lines.push(format!(
                     "{} {} {} carried by {who}, {}. {}{}",
                     ids.len(),
-                    pile_noun(material, ids.len() as u32),
+                    self.pile_noun_for(viewer, material, ids.len() as u32),
                     if ids.len() == 1 { "is" } else { "are" },
                     self.cover_phrase(cell),
                     self.condition_word(moisture),
@@ -6528,7 +6610,7 @@ impl World {
                 Material::Bark => "bark",
                 Material::Log => "log",
                 Material::Berry => "berries",
-                Material::BitterBerry => "poison berries",
+                Material::BitterBerry => self.bitter_kind(viewer),
                 Material::Mud => "mud",
                 Material::Mushroom => "mushrooms",
                 Material::Pot => "pot",
@@ -8948,6 +9030,7 @@ impl World {
             "handful of berries",
             "mushroom",
             "handful of poison berries",
+            "handful of dark berries",
             "pot",
             "stone",
             "lump of clay",
@@ -9316,7 +9399,16 @@ impl World {
                 }
             }
         }
-        event.text.clone()
+        self.bitter_heard(viewer, event.text.clone())
+    }
+
+    /// A stored line says "dark berries". Someone who has tasted them hears the name.
+    fn bitter_heard(&self, viewer: ActorId, text: String) -> String {
+        if self.bitter_known(viewer) {
+            text.replace("dark berries", "poison berries")
+        } else {
+            text
+        }
     }
 
     fn split_boil_coda(text: &str) -> (&str, &str) {
@@ -9446,7 +9538,7 @@ impl World {
             "examine log".into(),
             "examine frame".into(),
             "examine berries".into(),
-            "examine poison berries".into(),
+            format!("examine {}", self.bitter_kind(actor_id)),
             "examine mud".into(),
             "examine mushrooms".into(),
             "examine pot".into(),
@@ -9594,7 +9686,7 @@ impl World {
         if self.pile_count(actor.cell, Material::BitterBerry) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
-            actions.push("gather poison berries".into());
+            actions.push(format!("gather {}", self.bitter_kind(actor_id)));
         }
         if self.pile_count(actor.cell, Material::Mushroom) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
@@ -9868,7 +9960,7 @@ impl World {
             actions.push("drop water".into());
         }
         if !self.loose_ids(actor_id, Material::BitterBerry).is_empty() {
-            actions.push("drop poison berries".into());
+            actions.push(format!("drop {}", self.bitter_kind(actor_id)));
         }
         if !self.loose_ids(actor_id, Material::Mushroom).is_empty() {
             actions.push("drop mushrooms".into());

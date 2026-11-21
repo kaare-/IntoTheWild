@@ -166,7 +166,7 @@ impl Material {
             Material::Berry => "handful of berries",
             Material::Water => "drink of water",
             Material::Mushroom => "mushroom",
-            Material::BitterBerry => "handful of poison berries",
+            Material::BitterBerry => "handful of dark berries",
             Material::Pot => "pot",
             Material::Mud => "handful of mud",
             Material::Stone => "stone",
@@ -206,7 +206,7 @@ impl Material {
     pub fn cooked_phrase(self) -> &'static str {
         match self {
             Material::Mushroom => "a mushroom",
-            Material::BitterBerry => "a handful of poison berries",
+            Material::BitterBerry => "a handful of dark berries",
             Material::Berry => "a handful of berries",
             Material::Carcass => "the carcass",
             _ => "some food",
@@ -9035,25 +9035,24 @@ mod berry_return {
         let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
         let here = world.observe(near).unwrap().text;
-        assert!(here.contains("Poison berries lie here"), "{here}");
-        assert!(world.observe(seen).unwrap().text.contains("poison berries"));
+        assert!(here.contains("Dark berries lie here"), "{here}");
+        assert!(!here.contains("poison"), "{here}");
+        assert!(world.observe(seen).unwrap().text.contains("dark berries"));
+        assert!(!world.observe(seen).unwrap().text.contains("poison"));
         empty_patch(&mut world, near, Material::BitterBerry);
         let gone = world.observe(near).unwrap().text;
         assert!(
-            gone.contains("The poison berries that were here are gone."),
+            gone.contains("The dark berries that were here are gone."),
             "{gone}"
         );
-        assert!(!gone.contains("Poison berries lie here"), "{gone}");
+        assert!(!gone.contains("Dark berries lie here"), "{gone}");
         let south = world.observe(seen).unwrap().text;
         assert!(
-            south.contains("The poison berries to the north are gone."),
+            south.contains("The dark berries to the north are gone."),
             "{south}"
         );
-        assert!(!world
-            .observe(quiet)
-            .unwrap()
-            .text
-            .contains("poison berries"));
+        assert!(!world.observe(quiet).unwrap().text.contains("dark berries"));
+        assert!(!world.observe(quiet).unwrap().text.contains("poison"));
         let ticks = world.tuning.berry_ticks;
         for _ in 0..ticks - 1 {
             world.step(&[]);
@@ -9062,20 +9061,21 @@ mod berry_return {
             .observe(near)
             .unwrap()
             .text
-            .contains("The poison berries that were here are gone."));
+            .contains("The dark berries that were here are gone."));
         world.step(&[]);
-        let back = "Poison berries lie here again.";
+        let back = "Dark berries lie here again.";
         let again = world.observe(near).unwrap();
         assert!(
-            again.text.contains("Poison berries lie here"),
+            again.text.contains("Dark berries lie here"),
             "{}",
             again.text
         );
+        assert!(!again.text.contains("poison"), "{}", again.text);
         assert!(!again.text.contains("are gone"), "{}", again.text);
         assert!(again.events.iter().any(|event| event.text == back));
         let seen_back = world.observe(seen).unwrap();
         assert!(
-            seen_back.text.contains("poison berries"),
+            seen_back.text.contains("dark berries"),
             "{}",
             seen_back.text
         );
@@ -9087,11 +9087,8 @@ mod berry_return {
             .events
             .iter()
             .all(|event| event.text != back));
-        assert!(!world
-            .observe(quiet)
-            .unwrap()
-            .text
-            .contains("poison berries"));
+        assert!(!world.observe(quiet).unwrap().text.contains("dark berries"));
+        assert!(!world.observe(quiet).unwrap().text.contains("poison"));
         let second = world.step(&[intent(
             "second",
             near,
@@ -9099,7 +9096,7 @@ mod berry_return {
         )]);
         assert_eq!(
             second.results[0].message,
-            "You gather a handful of poison berries."
+            "You gather a handful of dark berries."
         );
         assert_eq!(
             world.pile_count(world.actor(near).unwrap().cell, Material::BitterBerry),

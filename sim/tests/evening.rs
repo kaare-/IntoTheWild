@@ -1759,7 +1759,7 @@ fn open_berries_soak_when_the_wet_season_arrives_and_the_rock_stays_dry() {
     assert!(rock.contains("The sweet berries are dry."), "{rock}");
     assert!(rock.contains("Rain does not reach it."), "{rock}");
     let open = world.examine(near, ExamineTarget::BitterBerries);
-    assert!(open.contains("The poison berries are dry."), "{open}");
+    assert!(open.contains("The dark berries are dry."), "{open}");
 
     while world.sim_time() < 18 {
         world.step(&[]);
@@ -1789,15 +1789,15 @@ fn open_berries_soak_when_the_wet_season_arrives_and_the_rock_stays_dry() {
     let west_look = world.observe(west).unwrap().text;
     assert!(near_look.contains("The rain is heavier on the wood this season."));
     assert!(
-        near_look.contains("The poison berries to the north are soaked."),
+        near_look.contains("The dark berries to the north are soaked."),
         "{near_look}"
     );
     assert!(
-        far_look.contains("The poison berries to the north and east are soaked."),
+        far_look.contains("The dark berries to the north and east are soaked."),
         "{far_look}"
     );
     assert!(
-        west_look.contains("The poison berries to the north and west are soaked."),
+        west_look.contains("The dark berries to the north and west are soaked."),
         "{west_look}"
     );
     assert!(!near_look.contains("The berries to the"));
@@ -3053,7 +3053,8 @@ fn cooking_does_not_make_poison_berries_food() {
     let west = world.spawn_at("West", "w", 5, 1).unwrap();
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let examined = world.examine(near, ExamineTarget::BitterBerries);
-    assert!(!examined.contains("poisonous"), "{examined}");
+    assert!(examined.contains("dark berries"), "{examined}");
+    assert!(!examined.contains("poison"), "{examined}");
     assert!(!examined.contains("bitter"), "{examined}");
     assert!(
         !examined.contains("Cooking does not make them food."),
@@ -3078,13 +3079,13 @@ fn cooking_does_not_make_poison_berries_food() {
     assert!(!cooked.results[0].success);
     assert_eq!(
         cooked.results[0].message,
-        "Cooking does not make poison berries food."
+        "Cooking does not make dark berries food."
     );
     assert_eq!(world.material_tally(Material::BitterBerry), 2);
     let after = world.observe(near).unwrap().self_info;
     assert_eq!(after.illness, "well");
     assert_eq!(after.hunger, before.hunger);
-    let refusal = "Cooking does not make poison berries food.";
+    let refusal = "Cooking does not make dark berries food.";
     assert!(world
         .observe(near)
         .unwrap()
@@ -3105,6 +3106,7 @@ fn cooking_does_not_make_poison_berries_food() {
         "You eat a handful of poison berries. They taste bitter. Your stomach turns."
     );
     let after_eat = world.observe(near).unwrap();
+    assert!(after_eat.text.contains("Poison berries lie here"));
     assert!(after_eat.text.contains("They taste bitter."));
     assert!(after_eat.text.contains("They are poisonous."));
     assert!(after_eat
@@ -3119,7 +3121,8 @@ fn cooking_does_not_make_poison_berries_food() {
     assert!(known.contains("They taste bitter."), "{known}");
     assert!(known.contains("They are poisonous."), "{known}");
     let hidden = world.examine(west, ExamineTarget::BitterBerries);
-    assert!(!hidden.contains("poisonous"), "{hidden}");
+    assert!(hidden.contains("dark berries"), "{hidden}");
+    assert!(!hidden.contains("poison"), "{hidden}");
     assert!(!hidden.contains("bitter"), "{hidden}");
     assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
     assert_eq!(world.observe(near).unwrap().self_info.hunger, before.hunger);
@@ -3129,13 +3132,13 @@ fn cooking_does_not_make_poison_berries_food() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "Near eats a handful of poison berries."));
+        .any(|event| event.text == "Near eats a handful of dark berries."));
     assert!(world
         .observe(far)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "Near eats a handful of poison berries."));
+        .any(|event| event.text == "Near eats a handful of dark berries."));
     assert!(world
         .observe(west)
         .unwrap()
@@ -3543,7 +3546,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         west_before,
-        "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Step stands on the poison berries."
+        "West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Step stands on the dark berries."
     );
     let plain = world.step(&[cmd("out", step, Attempt::Move(Dir::East))]);
     assert_eq!(plain.results[0].message, "You walk east.");
@@ -3774,7 +3777,7 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     let refused = cook.observe(sera).unwrap();
     assert!(refused.events.iter().any(|event| event
         .text
-        .contains("Cooking does not make poison berries food.")));
+        .contains("Cooking does not make dark berries food.")));
     assert_eq!(cook.material_tally(Material::BitterBerry), 2);
     assert!(matches!(
         parse_attempt("eat bark").unwrap(),
@@ -5659,7 +5662,7 @@ fn deer_stands_on_the_trail_already_there() {
     let at_fourteen = world.observe(far).unwrap();
     assert!(at_fourteen
         .text
-        .contains("Step stands in the open, on the poison berries north of the west floor."));
+        .contains("Step stands in the open, on the dark berries north of the west floor."));
     assert!(!at_fourteen.text.contains("Near"), "{}", at_fourteen.text);
     assert!(
         !at_fourteen.text.contains("rock overhang"),
@@ -5771,7 +5774,7 @@ fn deer_stands_on_the_trail_already_there() {
     assert!(!far_place.contains("Step"), "{far_place}");
     assert!(far_look
         .text
-        .contains("Step stands in the open, on the poison berries north of the west floor."));
+        .contains("Step stands in the open, on the dark berries north of the west floor."));
     let from_step_later = world.observe(step).unwrap();
     assert!(from_step_later.text.contains(
         "A deer stands in the open, on the deer trail west of the south floor. Far stands on that trail."
@@ -6755,7 +6758,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_place,
-        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry."
+        "You are on the valley floor, in the open. The outside floor is the next square east. Dark berries lie here, dry."
     );
     assert!(aside_place.starts_with("You are on the valley floor, in the open."));
     assert!(!aside_place.contains("rock"), "{aside_place}");
@@ -7261,7 +7264,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(
         unseen
             .text
-            .contains("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Aside stands on the poison berries."),
+            .contains("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Aside stands on the dark berries."),
         "{}",
         unseen.text
     );
@@ -7275,7 +7278,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_place_later,
-        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry."
+        "You are on the valley floor, in the open. The outside floor is the next square east. Dark berries lie here, dry."
     );
     assert!(
         aside_place_later.starts_with("You are on the valley floor, in the open."),
@@ -7385,7 +7388,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     let west_gone = unseen
         .text
-        .find("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Aside stands on the poison berries.")
+        .find("West: hoofprints mark the outside floor. The rotting wood is the next square south of that floor. West of that floor, Aside stands on the dark berries.")
         .expect(&unseen.text);
     assert!(west_gone < prints_gone, "{}", unseen.text);
     assert!(!unseen.text.contains("as well as here"), "{}", unseen.text);

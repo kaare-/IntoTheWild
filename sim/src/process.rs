@@ -282,7 +282,7 @@ impl World {
         self.spent_berries.remove(&cell);
         self.deer_ate_berries.remove(&cell);
         let text = if patch.material == Material::BitterBerry {
-            "Poison berries lie here again."
+            "Dark berries lie here again."
         } else {
             "Berries lie here again."
         };
