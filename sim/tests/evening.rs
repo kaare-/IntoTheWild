@@ -12280,7 +12280,7 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| { event.text != yours && event.text != seen_hit }));
     assert!(world
         .observe(far)
         .unwrap()
@@ -12358,6 +12358,12 @@ fn a_bloom_of_iron_hammers_into_a_knife_with_a_stone() {
     let seen = "Near hammers the bloom of iron into an iron knife with a stone.";
     let hit = world.step(&[cmd("hammer", near, Attempt::HammerIron)]);
     assert_eq!(hit.results[0].message, yours);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { event.text != yours && event.text != seen }));
     assert!(world
         .observe(far)
         .unwrap()
