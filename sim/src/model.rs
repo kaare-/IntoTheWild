@@ -11847,19 +11847,47 @@ mod otter_hunt {
         let left = world.step(&[intent("butcher", near, Attempt::Butcher)]);
         assert_eq!(
             left.results[0].message,
-            "The otter carcass is not ready to butcher."
+            "You butcher the otter carcass into a portion of raw meat, an otter hide, and a bone."
         );
+        assert!(left.results[0].success);
+        let cut = world.observe(near).unwrap();
+        assert!(
+            cut.text.contains("A portion of raw meat lies here."),
+            "{}",
+            cut.text
+        );
+        assert!(
+            cut.text.contains("An otter hide lies here."),
+            "{}",
+            cut.text
+        );
+        assert!(cut.text.contains("A bone lies here."), "{}", cut.text);
+        assert!(!cut.text.contains("An otter carcass"), "{}", cut.text);
+        assert!(!cut.text.contains("deer hide"), "{}", cut.text);
+        assert!(cut
+            .events
+            .iter()
+            .all(|event| !event.text.contains("butcher")));
+        let butchered =
+            "Near butchers the otter carcass into a portion of raw meat, an otter hide, and a bone.";
         assert!(world
-            .observe(near)
+            .observe(seen)
             .unwrap()
             .events
             .iter()
-            .all(|event| event.text != "The otter carcass is not ready to butcher."));
+            .any(|event| event.text == butchered));
         assert!(world
-            .observe(near)
+            .observe(quiet)
             .unwrap()
-            .text
-            .contains("An otter carcass"));
+            .events
+            .iter()
+            .all(|event| !event.text.contains("butcher") && !event.text.contains("otter hide")));
+        let floor = world.actor(near).unwrap().cell;
+        assert_eq!(world.ground_ids(floor, Material::Meat).len(), 1);
+        assert!(world
+            .ground_ids(floor, Material::Hide)
+            .iter()
+            .any(|id| world.item(*id).is_some_and(|hide| hide.otter && !hide.wolf)));
 
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         park_the_deer(&mut world);
@@ -11953,5 +11981,55 @@ mod otter_hunt {
             .events
             .iter()
             .all(|event| !event.text.contains("otter") && !event.text.contains("splash")));
+    }
+
+    #[test]
+    fn a_knife_is_named_when_both_tools_butcher_the_otter() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 2).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let carcass = world.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        world.items.get_mut(&carcass).unwrap().otter = true;
+        flint_spear(&mut world, near);
+        world.mint_item(Material::Knife, 0, cell, Some(near), Role::Loose);
+        let both = world.step(&[intent("both", near, Attempt::Butcher)]);
+        assert_eq!(
+            both.results[0].message,
+            "You butcher the otter carcass with the iron knife into a portion of raw meat, an otter hide, and a bone."
+        );
+        assert_eq!(world.loose_ids(near, Material::Knife).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Spear).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("butcher")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near butchers the otter carcass with the iron knife into a portion of raw meat, an otter hide, and a bone."
+        }));
+        let bare = world.step(&[intent("again", near, Attempt::Butcher)]);
+        assert_eq!(
+            bare.results[0].message,
+            "There is no carcass here to butcher."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no carcass here to butcher."));
+        let taken = world.step(&[intent("hide", near, Attempt::Gather(Material::Hide))]);
+        assert_eq!(taken.results[0].message, "You gather an otter hide.");
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("an otter hide"), "{arms}");
+        assert!(!arms.contains("deer hide"), "{arms}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("You gather an otter hide.")));
     }
 }

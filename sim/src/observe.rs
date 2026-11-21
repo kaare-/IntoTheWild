@@ -3347,9 +3347,23 @@ impl World {
                 .loose_ids(actor_id, Material::Hide)
                 .first()
                 .and_then(|id| self.item(*id));
+            let otter = hide.is_some_and(|hide| hide.otter);
             let wolf = hide.is_some_and(|hide| hide.wolf);
-            let kind = if wolf { "wolf" } else { "deer" };
-            let cloak = if wolf { "wolf-hide" } else { "deer-hide" };
+            let kind = if otter {
+                "otter"
+            } else if wolf {
+                "wolf"
+            } else {
+                "deer"
+            };
+            let cloak = if otter {
+                "otter-hide"
+            } else if wolf {
+                "wolf-hide"
+            } else {
+                "deer-hide"
+            };
+            let article = if otter { "an" } else { "a" };
             match (
                 hide.is_some_and(|hide| hide.worn),
                 hide.is_some_and(|hide| hide.pierced),
@@ -3359,10 +3373,10 @@ impl World {
                     format!("a sewn {cloak} cloak on you")
                 }
                 (_, _, true) => format!("a sewn {cloak} cloak"),
-                (true, true, _) => format!("a pierced {kind} hide on you (ready to sew)"),
-                (false, true, _) => format!("a pierced {kind} hide (ready to sew)"),
-                (true, false, _) => format!("a {kind} hide on you"),
-                (false, false, _) => format!("a {kind} hide"),
+                (true, true, _) => format!("{article} pierced {kind} hide on you (ready to sew)"),
+                (false, true, _) => format!("{article} pierced {kind} hide (ready to sew)"),
+                (true, false, _) => format!("{article} {kind} hide on you"),
+                (false, false, _) => format!("{article} {kind} hide"),
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
@@ -6121,7 +6135,10 @@ impl World {
         let mine: Vec<_> = ids
             .iter()
             .copied()
-            .filter(|id| self.item(*id).is_some_and(|hide| hide.wolf == wolf))
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|hide| hide.wolf == wolf && !hide.otter)
+            })
             .collect();
         if mine.is_empty() {
             return None;
@@ -6153,6 +6170,12 @@ impl World {
                 lines.push(format!("A {kind} hide lies here."));
             }
         }
+        if ids
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
+        {
+            lines.push("An otter hide lies here.".into());
+        }
         lines
     }
 
@@ -6171,6 +6194,12 @@ impl World {
             } else {
                 bits.push(format!("a {kind} hide"));
             }
+        }
+        if ids
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
+        {
+            bits.push("an otter hide".into());
         }
         bits
     }
@@ -6212,6 +6241,12 @@ impl World {
                     lines.push(format!("A deer hide lies {place}."));
                 }
             }
+            if ids
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
+            {
+                lines.push(format!("An otter hide lies {place}."));
+            }
         }
         for other in self.visible_actor_ids(viewer) {
             let hides = self.loose_ids(other, Material::Hide);
@@ -6229,7 +6264,10 @@ impl World {
                 let mine: Vec<_> = hides
                     .iter()
                     .copied()
-                    .filter(|id| self.item(*id).is_some_and(|hide| hide.wolf == wolf))
+                    .filter(|id| {
+                        self.item(*id)
+                            .is_some_and(|hide| hide.wolf == wolf && !hide.otter)
+                    })
                     .collect();
                 if mine.is_empty() {
                     continue;
@@ -6283,6 +6321,19 @@ impl World {
                     ));
                 } else {
                     lines.push(format!("A deer hide is carried by {who}, {cover}."));
+                }
+            }
+            if hides
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|hide| hide.otter))
+            {
+                let worn = hides
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|hide| hide.otter && hide.worn));
+                if worn {
+                    lines.push(format!("An otter hide is on {who}, {cover}."));
+                } else {
+                    lines.push(format!("An otter hide is carried by {who}, {cover}."));
                 }
             }
         }
@@ -8323,6 +8374,7 @@ impl World {
                     && self.scare_for_these_eyes(viewer, event).is_none()
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.otter_butcher_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
@@ -9828,6 +9880,7 @@ impl World {
             "carcass",
             "deer hide",
             "wolf hide",
+            "otter hide",
             "drink of water",
             "flint nodule",
             "lump of ochre",
@@ -10015,6 +10068,29 @@ impl World {
             && (text.ends_with(&format!("{name}'s flint spear does not land."))
                 || text.ends_with(&format!("{name}'s spear does not land.")));
         if brings || misses || bolts {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// An otter carcass cut up, filled for the person who cut it.
+    /// That person already read the sentence as the command result.
+    fn otter_butcher_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        if text
+            == format!("{name} butchers the otter carcass with the iron knife into a portion of raw meat, an otter hide, and a bone.")
+            || text
+                == format!("{name} butchers the otter carcass into a portion of raw meat, an otter hide, and a bone.")
+        {
             Some(event.text.clone())
         } else {
             None

@@ -1929,11 +1929,16 @@ impl World {
                 .map(|intent| intent.actor_id)
                 .collect();
             claims.sort_by_key(|intent| intent.actor_id);
+            let first_hide = self
+                .ground_ids(cell, Material::Hide)
+                .first()
+                .and_then(|id| self.item(*id).cloned());
             let noun = if material == Material::Hide
-                && self
-                    .ground_ids(cell, Material::Hide)
-                    .first()
-                    .is_some_and(|id| self.item(*id).is_some_and(|hide| hide.wolf))
+                && first_hide.as_ref().is_some_and(|hide| hide.otter)
+            {
+                "otter hide"
+            } else if material == Material::Hide
+                && first_hide.as_ref().is_some_and(|hide| hide.wolf)
             {
                 "wolf hide"
             } else {
@@ -1997,6 +2002,8 @@ impl World {
                         "a honeycomb.".to_string()
                     } else if material == Material::Honey {
                         "a honeycomb. The bees sting.".to_string()
+                    } else if noun == "otter hide" {
+                        format!("an otter hide{from}.")
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -5337,48 +5344,59 @@ impl World {
                 continue;
             }
             let carcasses = self.ground_ids(actor.cell, Material::Carcass);
-            let Some(carcass) = carcasses
+            let otter = carcasses
                 .iter()
                 .copied()
-                .find(|id| self.item(*id).is_some_and(|carcass| !carcass.otter))
-            else {
-                let message = if carcasses
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|carcass| carcass.otter))
-                {
-                    "The otter carcass is not ready to butcher."
-                } else {
-                    "There is no carcass here to butcher."
-                };
-                self.finish(intent.command_id, actor.id, false, message, results);
+                .find(|id| self.item(*id).is_some_and(|carcass| carcass.otter));
+            let other = carcasses
+                .iter()
+                .copied()
+                .find(|id| self.item(*id).is_some_and(|carcass| !carcass.otter));
+            let Some(carcass) = other.or(otter) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no carcass here to butcher.",
+                    results,
+                );
                 continue;
             };
+            let otter = self.item(carcass).is_some_and(|carcass| carcass.otter);
             let wolf = self.item(carcass).is_some_and(|carcass| carcass.wolf);
             self.items.remove(&carcass);
             let mut ids = Vec::new();
-            for _ in 0..3 {
+            let portions = if otter { 1 } else { 3 };
+            for _ in 0..portions {
                 ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
             }
             let hide = self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose);
-            if wolf {
-                if let Some(item) = self.items.get_mut(&hide) {
-                    item.wolf = true;
-                }
+            if let Some(item) = self.items.get_mut(&hide) {
+                item.wolf = wolf && !otter;
+                item.otter = otter;
             }
             ids.push(hide);
             ids.push(self.mint_item(Material::Bone, 0, actor.cell, None, Role::Loose));
             let name = self.name_of(actor.id);
-            let rest = match (wolf, with_knife) {
-                (true, true) => {
-                    "the wolf carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+            let rest = if otter && with_knife {
+                "the otter carcass with the iron knife into a portion of raw meat, an otter hide, and a bone."
+            } else if otter {
+                "the otter carcass into a portion of raw meat, an otter hide, and a bone."
+            } else {
+                match (wolf, with_knife) {
+                    (true, true) => {
+                        "the wolf carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+                    }
+                    (true, false) => {
+                        "the wolf carcass into three portions of raw meat, a hide, and a bone."
+                    }
+                    (false, true) => {
+                        "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+                    }
+                    (false, false) => {
+                        "the carcass into three portions of raw meat, a hide, and a bone."
+                    }
                 }
-                (true, false) => {
-                    "the wolf carcass into three portions of raw meat, a hide, and a bone."
-                }
-                (false, true) => {
-                    "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
-                }
-                (false, false) => "the carcass into three portions of raw meat, a hide, and a bone.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "butcher", rest),
