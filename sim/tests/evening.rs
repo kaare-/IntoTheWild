@@ -11445,10 +11445,14 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         Attempt::SetSnare
     ));
     let no_strips = world.step(&[cmd("no-strips", near, Attempt::SetSnare)]);
-    assert_eq!(
-        no_strips.results[0].message,
-        "You have no hide strips to set a snare."
-    );
+    let refused = "You have no hide strips or willow cordage to set a snare.";
+    assert_eq!(no_strips.results[0].message, refused);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != refused));
     assert!(world
         .observe(far)
         .unwrap()

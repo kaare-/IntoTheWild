@@ -11519,22 +11519,20 @@ mod willow {
             "{examined}"
         );
         let none = world.step(&[intent("none", quiet, Attempt::SetSnare)]);
-        assert_eq!(
-            none.results[0].message,
-            "You have no hide strips to set a snare."
-        );
+        let refused = "You have no hide strips or willow cordage to set a snare.";
+        assert_eq!(none.results[0].message, refused);
         assert!(world
             .observe(quiet)
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "You have no hide strips to set a snare." }));
+            .all(|event| event.text != refused));
         assert!(world
             .observe(near)
             .unwrap()
             .events
             .iter()
-            .all(|event| { event.text != "You have no hide strips to set a snare." }));
+            .all(|event| event.text != refused));
         for _ in 0..world.tuning.snare_ticks {
             world.step(&[]);
         }

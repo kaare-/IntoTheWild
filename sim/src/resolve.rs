@@ -139,12 +139,17 @@ impl World {
                     // A light refusal is the reply only. Bark, resin, rain,
                     // and a fire already burning stay with the person who tried.
                     let light_refusal = matches!(intent.attempt, Attempt::Light);
+                    // No line for a snare is the reply only. A snare already
+                    // set in the cell still sits in the actor's event list.
+                    let snare_line_refusal = matches!(intent.attempt, Attempt::SetSnare)
+                        && message == "You have no hide strips or willow cordage to set a snare.";
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
                             && message != BARK_REFUSAL
                             && !hook_refusal
-                            && !light_refusal;
+                            && !light_refusal
+                            && !snare_line_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -795,7 +800,7 @@ impl World {
                 } else if self.snares.contains_key(&actor.cell) {
                     Err("A snare is already set here.".into())
                 } else if !self.has_snare_line(actor.id) {
-                    Err("You have no hide strips to set a snare.".into())
+                    Err("You have no hide strips or willow cordage to set a snare.".into())
                 } else {
                     Ok(true)
                 }
@@ -5927,7 +5932,7 @@ impl World {
                     intent.command_id,
                     actor.id,
                     false,
-                    "You have no hide strips to set a snare.",
+                    "You have no hide strips or willow cordage to set a snare.",
                     results,
                 );
                 continue;
