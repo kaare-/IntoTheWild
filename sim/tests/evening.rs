@@ -2959,9 +2959,9 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     assert!(world
         .examine(nils, ExamineTarget::Mushrooms)
         .contains("Raw mushrooms do not feed you."));
-    assert!(world
-        .examine(linde, ExamineTarget::BitterBerries)
-        .contains("They are poisonous."));
+    let bitter = world.examine(linde, ExamineTarget::BitterBerries);
+    assert!(!bitter.contains("poisonous"), "{bitter}");
+    assert!(!bitter.contains("bitter"), "{bitter}");
     assert_eq!(world.sim_time(), 0);
 
     world.step(&[cmd("raw-mushroom", nils, Attempt::Eat(Material::Mushroom))]);
@@ -3053,9 +3053,10 @@ fn cooking_does_not_make_poison_berries_food() {
     let west = world.spawn_at("West", "w", 5, 1).unwrap();
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let examined = world.examine(near, ExamineTarget::BitterBerries);
-    assert!(examined.contains("They are poisonous."), "{examined}");
+    assert!(!examined.contains("poisonous"), "{examined}");
+    assert!(!examined.contains("bitter"), "{examined}");
     assert!(
-        examined.contains("Cooking does not make them food."),
+        !examined.contains("Cooking does not make them food."),
         "{examined}"
     );
     world.step(&[cmd("pick", near, Attempt::Gather(Material::BitterBerry))]);
@@ -3101,8 +3102,25 @@ fn cooking_does_not_make_poison_berries_food() {
     let eaten = world.step(&[cmd("eat", near, Attempt::Eat(Material::BitterBerry))]);
     assert_eq!(
         eaten.results[0].message,
-        "You eat a handful of poison berries. Your stomach turns."
+        "You eat a handful of poison berries. They taste bitter. Your stomach turns."
     );
+    let after_eat = world.observe(near).unwrap();
+    assert!(after_eat.text.contains("They taste bitter."));
+    assert!(after_eat.text.contains("They are poisonous."));
+    assert!(after_eat
+        .events
+        .iter()
+        .any(|event| event.text == "Your stomach turns."));
+    assert!(after_eat
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Near's stomach")));
+    let known = world.examine(near, ExamineTarget::BitterBerries);
+    assert!(known.contains("They taste bitter."), "{known}");
+    assert!(known.contains("They are poisonous."), "{known}");
+    let hidden = world.examine(west, ExamineTarget::BitterBerries);
+    assert!(!hidden.contains("poisonous"), "{hidden}");
+    assert!(!hidden.contains("bitter"), "{hidden}");
     assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
     assert_eq!(world.observe(near).unwrap().self_info.hunger, before.hunger);
     assert_eq!(world.material_tally(Material::BitterBerry), 1);
@@ -6737,7 +6755,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_place,
-        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry. They are poisonous."
+        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry."
     );
     assert!(aside_place.starts_with("You are on the valley floor, in the open."));
     assert!(!aside_place.contains("rock"), "{aside_place}");
@@ -6745,7 +6763,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         !aside_place.starts_with("You stand on the outside floor"),
         "{aside_place}"
     );
-    assert!(aside_place.contains("They are poisonous."), "{aside_place}");
+    assert!(!aside_place.contains("poisonous"), "{aside_place}");
     let aside_east = from_west
         .text
         .lines()
@@ -7257,14 +7275,14 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_place_later,
-        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry. They are poisonous."
+        "You are on the valley floor, in the open. The outside floor is the next square east. Poison berries lie here, dry."
     );
     assert!(
         aside_place_later.starts_with("You are on the valley floor, in the open."),
         "{aside_place_later}"
     );
     assert!(
-        aside_place_later.contains("They are poisonous."),
+        !aside_place_later.contains("poisonous"),
         "{aside_place_later}"
     );
     assert!(!aside_place_later.contains("rock"), "{aside_place_later}");

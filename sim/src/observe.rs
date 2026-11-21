@@ -756,9 +756,15 @@ impl World {
             }
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
+            let known = if self.bitter_known(actor_id) {
+                " They taste bitter. They are poisonous."
+            } else {
+                ""
+            };
             parts.push(format!(
-                "Poison berries lie here, {}. They are poisonous.",
-                self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry))
+                "Poison berries lie here, {}.{}",
+                self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry)),
+                known
             ));
         } else if self.berry_patch_bare(actor.cell, Material::BitterBerry) {
             parts.push("The poison berries that were here are gone.".into());
@@ -6189,6 +6195,19 @@ impl World {
         lines
     }
 
+    fn bitter_known(&self, viewer: ActorId) -> bool {
+        self.actor(viewer).is_some_and(|actor| actor.tasted_bitter)
+    }
+
+    /// Bitter berries keep their answer until this person has tasted them.
+    fn food_clause_for(&self, viewer: ActorId, material: Material) -> &'static str {
+        if material == Material::BitterBerry && self.bitter_known(viewer) {
+            " They taste bitter. They are poisonous."
+        } else {
+            food_clause(material)
+        }
+    }
+
     fn examine_material(&self, viewer: ActorId, material: Material) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -6229,7 +6248,7 @@ impl World {
                         self.place_phrase(origin, cell),
                         self.condition_word(self.pile_moisture(cell, material)),
                         self.rain_reaches_phrase(cell),
-                        food_clause(material)
+                        self.food_clause_for(viewer, material)
                     ));
                 } else if material == Material::Bark && count == 1 {
                     lines.push(format!(
@@ -6270,7 +6289,7 @@ impl World {
                         self.rain_reaches_phrase(cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material)
+                        self.food_clause_for(viewer, material)
                     ));
                 } else if material == Material::Branch {
                     let noun = pile_noun(material, count);
@@ -6283,7 +6302,7 @@ impl World {
                         self.rain_reaches_phrase(cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material),
+                        self.food_clause_for(viewer, material),
                         self.deer_on_this_wood(origin, cell)
                     ));
                 } else {
@@ -6296,7 +6315,7 @@ impl World {
                         self.rain_reaches_phrase(cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material)
+                        self.food_clause_for(viewer, material)
                     ));
                 }
             }
@@ -6319,7 +6338,7 @@ impl World {
                         self.place_phrase(origin, cell),
                         self.condition_word(worst),
                         self.rain_reaches_phrase(cell),
-                        food_clause(material)
+                        self.food_clause_for(viewer, material)
                     ));
                 } else if material == Material::Bark && loose.len() == 1 {
                     lines.push(format!(
@@ -6355,7 +6374,7 @@ impl World {
                         self.condition_sentence(worst, cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material),
+                        self.food_clause_for(viewer, material),
                         self.deer_on_this_wood(origin, cell)
                     ));
                 } else {
@@ -6368,7 +6387,7 @@ impl World {
                         self.condition_sentence(worst, cell),
                         self.heavier_rain_clause(cell, material),
                         self.rotting_clause(cell, material),
-                        food_clause(material)
+                        self.food_clause_for(viewer, material)
                     ));
                 }
             }
@@ -6445,7 +6464,7 @@ impl World {
                         "{phrase} {} carried by {who}, {}.{}",
                         if ids.len() == 1 { "is" } else { "are" },
                         self.cover_phrase(cell),
-                        food_clause(material)
+                        self.food_clause_for(viewer, material)
                     ));
                 }
             } else if material == Material::Branch {
@@ -6478,7 +6497,7 @@ impl World {
                     "{phrase} {} carried by {who}, {}.{}",
                     if ids.len() == 1 { "is" } else { "are" },
                     self.cover_phrase(cell),
-                    food_clause(material)
+                    self.food_clause_for(viewer, material)
                 ));
             } else {
                 lines.push(format!(
@@ -6488,7 +6507,7 @@ impl World {
                     if ids.len() == 1 { "is" } else { "are" },
                     self.cover_phrase(cell),
                     self.condition_word(moisture),
-                    food_clause(material)
+                    self.food_clause_for(viewer, material)
                 ));
             }
         }
@@ -10342,7 +10361,7 @@ fn food_kind(material: Material) -> (&'static str, &'static str) {
 fn food_clause(material: Material) -> &'static str {
     match material {
         Material::Berry => " They are good to eat raw.",
-        Material::BitterBerry => " They are poisonous. Cooking does not make them food.",
+        Material::BitterBerry => "",
         Material::Mud => " It can be smeared on skin against the sun.",
         Material::Mushroom => " They must be cooked. Raw mushrooms do not feed you.",
         Material::Pot => " It can boil water over a fire.",

@@ -564,6 +564,10 @@ pub struct Actor {
     /// Stepping off the fire clears it. The clothes stay as wet as they were.
     #[serde(default)]
     pub clothes_dry_at: Option<u64>,
+    /// This person has eaten the bitter berries. Look may then say so.
+    /// Someone who has not tasted them does not get that sentence.
+    #[serde(default)]
+    pub tasted_bitter: bool,
     pub busy: Option<WorkId>,
 }
 
@@ -1260,6 +1264,7 @@ impl World {
                 ochre: 0,
                 stings_until: None,
                 clothes_dry_at: None,
+                tasted_bitter: false,
                 busy: None,
             },
         );

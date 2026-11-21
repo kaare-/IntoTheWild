@@ -7246,6 +7246,7 @@ impl World {
         let illness_after = (illness_before + self.tuning.illness_hit).min(1000);
         if let Some(person) = self.actors.get_mut(&intent.actor_id) {
             person.illness = illness_after;
+            person.tasted_bitter = true;
         }
         let cell = self
             .actor(intent.actor_id)
@@ -7263,8 +7264,10 @@ impl World {
         );
         let turned = illness_before < self.tuning.ill_at && illness_after >= self.tuning.ill_at;
         if turned {
+            // The sickness is this body's. The name is not said back,
+            // and nobody else is on the personal scope.
             self.emit(
-                format!("{name}'s stomach turns."),
+                "Your stomach turns.".to_string(),
                 Scope::Personal(intent.actor_id),
                 vec![intent.actor_id],
                 vec![cell],
@@ -7274,9 +7277,9 @@ impl World {
             );
         }
         let message = if turned {
-            "You eat a handful of poison berries. Your stomach turns."
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
         } else {
-            "You eat a handful of poison berries. You are still ill."
+            "You eat a handful of poison berries. They taste bitter. You are still ill."
         };
         self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
