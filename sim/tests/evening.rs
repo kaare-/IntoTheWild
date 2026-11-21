@@ -12838,10 +12838,9 @@ fn a_splash_is_heard_one_cell_past_sight() {
     assert_eq!(cast.results[0].message, yours);
     let actor = world.observe(near).unwrap();
     assert!(actor.events.iter().any(|event| event.text == yours));
-    assert!(actor
-        .events
-        .iter()
-        .all(|event| !event.text.contains("splash")));
+    assert!(actor.events.iter().all(|event| {
+        event.text.starts_with("A beaver splashes away") || !event.text.contains("splash")
+    }));
     let eyes = world.observe(seen).unwrap();
     assert!(eyes.events.iter().any(|event| event.text == seen_line));
     assert!(eyes

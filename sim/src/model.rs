@@ -847,6 +847,8 @@ pub enum Wake {
     HareReturn,
     /// The otter swims one step along the brook when nobody is beside it.
     Otter,
+    /// A beaver returns to its brook cell when that water is clear.
+    Beaver,
     /// The fox trots one step on the dry floor when nobody is beside it.
     Fox,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
@@ -889,6 +891,20 @@ pub struct Otter {
 
 /// A short loop on the brook and the dry bank beside it. Orthogonal.
 pub(crate) const OTTER_ROUTE: [(i32, i32); 6] = [(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3)];
+
+/// One beaver. It keeps to the south brook, and the bank south of that water
+/// when someone steps onto it. It does not share a cell with the otter.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Beaver {
+    pub cell: CellId,
+    /// It just slipped aside. The return on this tick waits.
+    #[serde(default)]
+    pub held: bool,
+}
+
+/// The brook cell a beaver keeps, and the dry bank it dives to.
+pub(crate) const BEAVER_HOME: (i32, i32) = (0, 3);
+pub(crate) const BEAVER_BANK: (i32, i32) = (0, 4);
 
 /// One fox. It keeps to the dry valley floor, not the brook.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1004,6 +1020,9 @@ pub struct World {
     /// A hare on one dry cell of the valley floor. Old valleys have none.
     #[serde(default)]
     pub(crate) hare: Option<Hare>,
+    /// A beaver on the south brook, or the bank it dived to. Old valleys have none.
+    #[serde(default)]
+    pub(crate) beaver: Option<Beaver>,
     /// Cells the deer has left. The marks stay; decay is not in this valley.
     #[serde(default)]
     pub(crate) tracks: BTreeSet<CellId>,
@@ -1269,6 +1288,10 @@ impl World {
             hare: Some(Hare {
                 cell: cell_id(HARE_HOME.0, HARE_HOME.1).unwrap(),
             }),
+            beaver: Some(Beaver {
+                cell: cell_id(BEAVER_HOME.0, BEAVER_HOME.1).unwrap(),
+                held: false,
+            }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
             deer_ate_berries: BTreeSet::new(),
@@ -1344,6 +1367,7 @@ impl World {
         world.schedule(0, Wake::Weather);
         world.schedule(0, Wake::Deer);
         world.schedule(4, Wake::Otter);
+        world.schedule(6, Wake::Beaver);
         world.schedule(4, Wake::Fox);
         let rock = cell_id(6, 1).unwrap();
         world.add_pile(rock, Material::Branch, 4, 0);
@@ -1597,6 +1621,10 @@ impl World {
 
     pub fn otter_cell(&self) -> Option<(i32, i32)> {
         self.otter.as_ref().map(|otter| cell_xy(otter.cell))
+    }
+
+    pub fn beaver_cell(&self) -> Option<(i32, i32)> {
+        self.beaver.as_ref().map(|beaver| cell_xy(beaver.cell))
     }
 
     pub fn fox_cell(&self) -> Option<(i32, i32)> {
@@ -12106,6 +12134,118 @@ mod otter {
             alone.step(&[]);
         }
         assert_eq!(alone.otter_cell(), Some((1, 2)));
+    }
+}
+
+#[cfg(test)]
+mod beaver {
+    use super::{Attempt, Dir, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_beaver_on_the_south_brook_is_named_and_splashes_to_the_bank() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        let seen = world.spawn_at("Seen", "s", 2, 3).unwrap();
+        let near = world.spawn_at("Near", "n", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let from_seen = world.observe(seen).unwrap();
+        assert!(
+            from_seen
+                .text
+                .contains("A beaver is in the brook to the west."),
+            "{}",
+            from_seen.text
+        );
+        assert!(from_seen.map.contains("~z"), "{}", from_seen.map);
+        assert!(
+            from_seen.legend.contains("z beaver"),
+            "{}",
+            from_seen.legend
+        );
+        assert!(!world.observe(near).unwrap().text.contains("beaver"));
+        assert!(!world.observe(quiet).unwrap().text.contains("beaver"));
+
+        let closer = world.step(&[intent("west", seen, Attempt::Move(Dir::West))]);
+        assert_eq!(closer.results[0].message, "You walk west.");
+        assert!(!closer.results[0].message.contains("beaver"));
+        let beside = world.observe(seen).unwrap().text;
+        assert!(
+            beside.contains("A beaver is in the brook to the west."),
+            "{beside}"
+        );
+        assert!(beside.contains("a beaver"), "{beside}");
+
+        let step = world.step(&[intent("onto", seen, Attempt::Move(Dir::West))]);
+        assert_eq!(step.results[0].message, "You wade west.");
+        assert!(!step.results[0].message.contains("beaver"));
+        assert_eq!(world.beaver_cell(), Some((0, 4)));
+        let yours: Vec<_> = world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("beaver") || event.text.contains("splash"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(
+            yours,
+            vec!["A beaver splashes away to the south.".to_string()]
+        );
+        let heard: Vec<_> = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("splash") || event.text.contains("beaver"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(heard, vec!["You hear a splash to the west.".to_string()]);
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("beaver") && !event.text.contains("splash") }));
+        let after = world.observe(seen).unwrap().text;
+        assert!(
+            after.contains("A beaver is on the bank to the south."),
+            "{after}"
+        );
+        assert!(
+            world.observe(seen).unwrap().map.contains(".z")
+                || world.observe(seen).unwrap().map.contains("~z"),
+            "{}",
+            world.observe(seen).unwrap().map
+        );
+
+        world.step(&[intent("off", seen, Attempt::Move(Dir::East))]);
+        let mut back = 0;
+        while world.beaver_cell() != Some((0, 3)) && back < 12 {
+            world.step(&[]);
+            back += 1;
+        }
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "A beaver swims north." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("beaver") && !event.text.contains("swims") }));
     }
 }
 

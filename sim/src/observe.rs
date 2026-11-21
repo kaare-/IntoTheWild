@@ -23,7 +23,7 @@ g iron ore     I bloom of iron
 K iron knife   i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
-d deer    x fox    r hare
+d deer    x fox    r hare    z beaver
 \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -290,6 +290,9 @@ impl World {
             if let Some(otter) = self.seen_otter(actor_id) {
                 lines.push(otter);
             }
+            if let Some(beaver) = self.seen_beaver(actor_id) {
+                lines.push(beaver);
+            }
             if let Some(fox) = self.seen_fox(actor_id) {
                 lines.push(fox);
             }
@@ -316,6 +319,9 @@ impl World {
             }
             if let Some(otter) = self.seen_otter(actor_id) {
                 lines.push(otter);
+            }
+            if let Some(beaver) = self.seen_beaver(actor_id) {
+                lines.push(beaver);
             }
             if let Some(fox) = self.seen_fox(actor_id) {
                 lines.push(fox);
@@ -1418,6 +1424,34 @@ impl World {
                 Some(format!("An otter is in the brook to the {way}."))
             } else {
                 Some(format!("An otter is on the bank to the {way}."))
+            }
+        }
+    }
+
+    /// A beaver on the south brook, or on the bank it dived to. Past sight, nothing.
+    /// At night, with no fire nearby, only a beaver underfoot is named.
+    fn seen_beaver(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let beaver = self.beaver.as_ref()?;
+        if self.dark_for(viewer) && beaver.cell != origin {
+            return None;
+        }
+        if !self.visible_cell_ids(viewer).contains(&beaver.cell) {
+            return None;
+        }
+        let brook = self.cell(beaver.cell).region == crate::model::Region::Brook;
+        if beaver.cell == origin {
+            if brook {
+                Some("A beaver is in the brook here.".into())
+            } else {
+                Some("A beaver is on the bank here.".into())
+            }
+        } else {
+            let way = self.relative(origin, beaver.cell);
+            if brook {
+                Some(format!("A beaver is in the brook to the {way}."))
+            } else {
+                Some(format!("A beaver is on the bank to the {way}."))
             }
         }
     }
@@ -4568,6 +4602,13 @@ impl World {
         }
         if self.otter.as_ref().is_some_and(|otter| otter.cell == dest) {
             bits.push("an otter".into());
+        }
+        if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| beaver.cell == dest)
+        {
+            bits.push("a beaver".into());
         }
         if self.fox.as_ref().is_some_and(|fox| fox.cell == dest) {
             bits.push("a fox".into());
@@ -8646,6 +8687,13 @@ impl World {
         }
         if self.hare.as_ref().is_some_and(|hare| hare.cell == cell) {
             marks.push('r');
+        }
+        if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| beaver.cell == cell)
+        {
+            marks.push('z');
         }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {

@@ -3,8 +3,8 @@
 
 use crate::model::{
     cell_id, cell_xy, chebyshev, ActorId, CellId, ConstructionId, Dir, EventId, FireId, ItemId,
-    Material, Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE, FOX_ROUTE,
-    HARE_HOME, OTTER_ROUTE,
+    Material, Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, BEAVER_BANK, BEAVER_HOME,
+    DEER_ROUTE, FOX_ROUTE, HARE_HOME, OTTER_ROUTE,
 };
 
 impl World {
@@ -30,6 +30,7 @@ impl World {
                 Wake::Fire(id) => self.burn_down(id),
                 Wake::Deer => self.apply_deer(),
                 Wake::Otter => self.apply_otter(),
+                Wake::Beaver => self.apply_beaver(),
                 Wake::Fox => self.apply_fox(),
                 Wake::Season => self.apply_season(),
                 Wake::Rot => self.apply_rot(),
@@ -1441,6 +1442,20 @@ impl World {
         if self.actors.values().any(|person| person.cell == dest) {
             return;
         }
+        if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| beaver.cell == dest)
+        {
+            self.yield_beaver(dest);
+        }
+        if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| beaver.cell == dest)
+        {
+            return;
+        }
         let dir = step_dir(otter.cell, dest);
         let origin = otter.cell;
         self.emit(
@@ -1509,6 +1524,108 @@ impl World {
             }
         }
         best.map(|(index, cell, _)| (index, cell))
+    }
+
+    /// Back to the south brook when that water is empty. A dive already moved
+    /// it this tick, so the return waits. It does not step onto the otter.
+    fn apply_beaver(&mut self) {
+        self.schedule(self.time + 4, Wake::Beaver);
+        let Some(beaver) = self.beaver.clone() else {
+            return;
+        };
+        if beaver.held {
+            if let Some(beaver) = self.beaver.as_mut() {
+                beaver.held = false;
+            }
+            return;
+        }
+        let Some(home) = cell_id(BEAVER_HOME.0, BEAVER_HOME.1) else {
+            return;
+        };
+        if beaver.cell == home {
+            return;
+        }
+        if self.actors.values().any(|person| person.cell == home) {
+            return;
+        }
+        if self.otter.as_ref().is_some_and(|otter| otter.cell == home) {
+            return;
+        }
+        let dir = step_dir(beaver.cell, home);
+        let origin = beaver.cell;
+        self.emit(
+            format!("A beaver swims {}.", dir.word()),
+            Scope::Cell(home),
+            vec![],
+            vec![origin, home],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(beaver) = self.beaver.as_mut() {
+            beaver.cell = home;
+        }
+    }
+
+    /// Someone stepped onto the beaver. It dives to the bank south of its brook.
+    /// The step they took already has its own reply, so this splash is only the event.
+    pub(crate) fn frighten_beaver(&mut self, _origin: CellId, dest: CellId) {
+        let Some(beaver) = self.beaver.clone() else {
+            return;
+        };
+        if dest != beaver.cell {
+            return;
+        }
+        self.yield_beaver(dest);
+    }
+
+    /// Off the cell something else is taking, onto the other of home and bank.
+    /// No splash when that landing is taken by a person or the otter.
+    fn yield_beaver(&mut self, taken: CellId) {
+        let Some(beaver) = self.beaver.clone() else {
+            return;
+        };
+        if beaver.cell != taken {
+            return;
+        }
+        let Some(next) = self.beaver_aside(beaver.cell) else {
+            return;
+        };
+        if next == beaver.cell {
+            return;
+        }
+        if self.actors.values().any(|person| person.cell == next) {
+            return;
+        }
+        if self.otter.as_ref().is_some_and(|otter| otter.cell == next) {
+            return;
+        }
+        let dir = step_dir(beaver.cell, next);
+        let from = beaver.cell;
+        self.emit(
+            format!("A beaver splashes away to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(beaver) = self.beaver.as_mut() {
+            beaver.cell = next;
+            beaver.held = true;
+        }
+    }
+
+    /// The other of the brook cell and the bank south of it.
+    fn beaver_aside(&self, from: CellId) -> Option<CellId> {
+        let home = cell_id(BEAVER_HOME.0, BEAVER_HOME.1)?;
+        let bank = cell_id(BEAVER_BANK.0, BEAVER_BANK.1)?;
+        if from == home {
+            Some(bank)
+        } else {
+            Some(home)
+        }
     }
 
     /// One step on the dry floor when nobody is beside the fox.

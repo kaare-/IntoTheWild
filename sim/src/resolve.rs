@@ -2481,6 +2481,7 @@ impl World {
                 self.frighten_wolf(origin, dest);
             }
             self.frighten_otter(origin, dest);
+            self.frighten_beaver(origin, dest);
             self.frighten_fox(origin, dest);
             self.frighten_hare(origin, dest);
             let brook = self.cell(dest).region == Region::Brook;
