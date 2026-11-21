@@ -14173,11 +14173,19 @@ fn reeds_thatch_a_lean_to_and_put_the_body_out_of_the_wind() {
         .text
         .contains("You are in the wind."));
     assert!(!world.observe(near).unwrap().text.contains("little wind"));
+    assert_eq!(parse_attempt("cover lean-to").unwrap(), Attempt::Thatch);
+    assert_eq!(parse_attempt("cover fire").unwrap(), Attempt::Bank);
     let bare = world.step(&[cmd("none", near, Attempt::Thatch)]);
     assert_eq!(
         bare.results[0].message,
         "There is no lean-to here to thatch."
     );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| { event.text == "There is no lean-to here to thatch." }));
     assert!(world
         .observe(seen)
         .unwrap()
@@ -14276,10 +14284,10 @@ fn reeds_thatch_a_lean_to_and_put_the_body_out_of_the_wind() {
     );
     assert_eq!(world.material_tally(Material::Reed), 3);
     let here = world.observe(near).unwrap();
-    assert!(here
-        .events
-        .iter()
-        .any(|event| event.text == "You thatch the lean-to with reeds."));
+    assert!(here.events.iter().all(|event| {
+        event.text != "You thatch the lean-to with reeds."
+            && event.text != "Near thatches the lean-to with reeds."
+    }));
     assert!(
         here.text.contains("A thatched lean-to stands here."),
         "{}",

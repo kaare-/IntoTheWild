@@ -9275,6 +9275,7 @@ impl World {
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
                     && self.haft_for_these_eyes(viewer, event).is_none()
                     && self.bank_for_these_eyes(viewer, event).is_none()
+                    && self.thatch_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,

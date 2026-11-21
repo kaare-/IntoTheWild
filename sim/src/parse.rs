@@ -56,7 +56,7 @@ shape clay                   a lump in your arms or at your feet into an unfired
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
 gather reeds                 a bundle at the brook's edge
-thatch lean-to               a carried bundle of reeds on a lean-to already standing here. You are out of the wind, and the rain does not reach you
+thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
@@ -519,6 +519,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Bank)
         }
         "cover" if rest == "fire" || rest == "the fire" => Ok(Attempt::Bank),
+        "cover"
+            if rest == "lean-to"
+                || rest == "the lean-to"
+                || rest == "leanto"
+                || rest == "a lean-to" =>
+        {
+            Ok(Attempt::Thatch)
+        }
         "hammer" | "forge"
             if rest.is_empty() || rest == "bead" || rest == "copper" || rest == "copper bead" =>
         {
