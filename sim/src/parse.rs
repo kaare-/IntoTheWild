@@ -29,6 +29,7 @@ board                        a dugout canoe floating in the brook here or on the
 paddle [n|s|e|w]             while aboard, move the dugout along the brook. You move with it. A bare paddle picks a brook cell. Holding a wooden paddle names it. The bank refuses
 disembark                    leave the dugout onto the bank. leave canoe is the same. Walking off without this refuses
 beach                        a floating dugout, onto the bank beside it. If you are aboard, you come ashore with it. drag canoe is the same
+seal canoe                   a lump of pine resin on the dugout here, or the one afloat beside you. The lump is spent and the hull is pitched. pitch canoe and waterproof canoe are the same
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
@@ -216,6 +217,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "launch" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => {
             Ok(Attempt::Launch)
+        }
+        "seal" | "pitch" | "waterproof"
+            if rest.is_empty()
+                || rest == "canoe"
+                || rest == "the canoe"
+                || rest == "dugout"
+                || rest == "the dugout" =>
+        {
+            Ok(Attempt::SealCanoe)
         }
         "board" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => Ok(Attempt::Board),
         "paddle" if rest.is_empty() => Ok(Attempt::Paddle(None)),

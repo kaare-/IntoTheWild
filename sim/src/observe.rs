@@ -605,7 +605,12 @@ impl World {
             .filter(|id| self.canoe_floats(*id));
         let mut parts = Vec::new();
         if let Some(id) = aboard {
-            parts.push("You are aboard the dugout canoe in the brook.".into());
+            let hull = if self.canoe_pitched(id) {
+                "pitched dugout canoe"
+            } else {
+                "dugout canoe"
+            };
+            parts.push(format!("You are aboard the {hull} in the brook."));
             let riders: Vec<_> = self
                 .aboard
                 .iter()
@@ -963,10 +968,15 @@ impl World {
         }
         if let Some(id) = self.canoe_at(actor.cell) {
             if aboard != Some(id) {
-                if self.canoe_floats(id) {
-                    parts.push("A dugout canoe floats here in the brook.".into());
+                let hull = if self.canoe_pitched(id) {
+                    "pitched dugout canoe"
                 } else {
-                    parts.push("A dugout canoe lies here.".into());
+                    "dugout canoe"
+                };
+                if self.canoe_floats(id) {
+                    parts.push(format!("A {hull} floats here in the brook."));
+                } else {
+                    parts.push(format!("A {hull} lies here."));
                 }
                 let riders: Vec<_> = self
                     .aboard
@@ -1722,10 +1732,15 @@ impl World {
                 continue;
             };
             let place = self.relative(origin, cell);
-            let line = if self.canoe_floats(id) {
-                format!("A dugout canoe floats in the brook to the {place}.")
+            let hull = if self.canoe_pitched(id) {
+                "pitched dugout canoe"
             } else {
-                format!("A dugout canoe lies to the {place}.")
+                "dugout canoe"
+            };
+            let line = if self.canoe_floats(id) {
+                format!("A {hull} floats in the brook to the {place}.")
+            } else {
+                format!("A {hull} lies to the {place}.")
             };
             lines.push(line);
         }
@@ -3867,8 +3882,12 @@ impl World {
         if !self.ground_ids(dest, Material::Mat).is_empty() {
             bits.push("a reed mat".into());
         }
-        if self.canoe_at(dest).is_some() {
-            bits.push("a dugout canoe".into());
+        if let Some(id) = self.canoe_at(dest) {
+            if self.canoe_pitched(id) {
+                bits.push("a pitched dugout canoe".into());
+            } else {
+                bits.push("a dugout canoe".into());
+            }
         }
         if self.pile_count(dest, Material::Stone) > 0
             || !self.ground_ids(dest, Material::Stone).is_empty()
@@ -8771,13 +8790,23 @@ impl World {
             } else {
                 format!("to the {}", self.relative(origin, cell))
             };
+            let hull = if self.canoe_pitched(id) {
+                "pitched dugout canoe"
+            } else {
+                "dugout canoe"
+            };
+            let seal = if self.canoe_pitched(id) {
+                " Pine resin seals it."
+            } else {
+                ""
+            };
             if self.canoe_floats(id) {
                 lines.push(format!(
-                    "A dugout canoe floats in the brook {place}. It was hollowed from the heavy log."
+                    "A {hull} floats in the brook {place}.{seal} It was hollowed from the heavy log."
                 ));
             } else {
                 lines.push(format!(
-                    "A dugout canoe lies {place}. It was hollowed from the heavy log."
+                    "A {hull} lies {place}.{seal} It was hollowed from the heavy log."
                 ));
             }
         }
@@ -8814,6 +8843,7 @@ impl World {
             || text == format!("{name} paddles the dugout canoe west with the wooden paddle.")
             || text == format!("{name} leaves the dugout canoe.")
             || text == format!("{name} beaches the dugout canoe.")
+            || text == format!("{name} seals the dugout canoe with pine resin.")
         {
             return Some(text.to_string());
         }
@@ -8848,6 +8878,8 @@ impl World {
             "You are not aboard a canoe.",
             "The brook is not beside you.",
             "The log is already a canoe.",
+            "You have no pine resin.",
+            "The canoe is already pitched.",
         ];
         LINES
             .contains(&event.text.as_str())
@@ -10455,6 +10487,13 @@ impl World {
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
             actions.push("gather resin".into());
+        }
+        if !self.loose_ids(actor_id, Material::Resin).is_empty()
+            && self
+                .canoe_to_seal(actor_id)
+                .is_some_and(|id| !self.canoe_pitched(id))
+        {
+            actions.push("seal canoe".into());
         }
         if !self.loose_ids(actor_id, Material::Moss).is_empty() && actor.stings_until.is_some() {
             actions.push("press moss".into());

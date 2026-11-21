@@ -1829,7 +1829,14 @@ impl World {
                 {
                     gain = self.tuning.damp_at.saturating_sub(wetness);
                 }
-                if self.cell(cell).region == Region::Brook {
+                // The brook soaks anyone standing in it, and anyone aboard an
+                // unpitched dugout. Pine resin on the hull keeps that soak off.
+                // Rain from the sky still falls on the person aboard.
+                let pitched = self
+                    .aboard
+                    .get(id)
+                    .is_some_and(|canoe| self.canoe_pitched(*canoe));
+                if self.cell(cell).region == Region::Brook && !pitched {
                     gain += self.tuning.brook_rain;
                 }
                 (*id, gain)

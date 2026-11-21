@@ -93,6 +93,7 @@ impl World {
         let mut hollows = Vec::new();
         let mut carves_canoe = Vec::new();
         let mut launches = Vec::new();
+        let mut seals = Vec::new();
         let mut boards = Vec::new();
         let mut paddles = Vec::new();
         let mut disembarks = Vec::new();
@@ -196,6 +197,7 @@ impl World {
                         Attempt::HollowLog => hollows.push(intent),
                         Attempt::CarveCanoe => carves_canoe.push(intent),
                         Attempt::Launch => launches.push(intent),
+                        Attempt::SealCanoe => seals.push(intent),
                         Attempt::Board => boards.push(intent),
                         Attempt::Paddle(_) => paddles.push(intent),
                         Attempt::Disembark => disembarks.push(intent),
@@ -333,6 +335,7 @@ impl World {
         self.apply_hollows(hollows, &mut results);
         self.apply_canoe_carves(carves_canoe, &mut results);
         self.apply_launches(launches, &mut results);
+        self.apply_seals(seals, &mut results);
         self.apply_boards(boards, &mut results);
         self.apply_paddles(paddles, &mut results);
         self.apply_disembarks(disembarks, &mut results);
@@ -1680,6 +1683,26 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::SealCanoe => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.canoe_to_seal(actor.id).is_none() {
+                    Err("There is no dugout canoe here.".into())
+                } else if self
+                    .canoe_to_seal(actor.id)
+                    .is_some_and(|id| self.canoe_pitched(id))
+                {
+                    Err("The canoe is already pitched.".into())
+                } else if self.loose_ids(actor.id, Material::Resin).is_empty() {
+                    Err("You have no pine resin.".into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::Launch => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -2526,6 +2549,67 @@ impl World {
                 actor.id,
                 true,
                 "You launch the dugout canoe into the brook.",
+                results,
+            );
+        }
+    }
+
+    /// One lump of pine resin, spent on the dugout. Beached, afloat, or aboard.
+    fn apply_seals(&mut self, seals: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in seals {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.canoe_to_seal(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no dugout canoe here.",
+                    results,
+                );
+                continue;
+            };
+            if self.canoe_pitched(id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The canoe is already pitched.",
+                    results,
+                );
+                continue;
+            }
+            let Some(lump) = self.loose_ids(actor.id, Material::Resin).into_iter().next() else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no pine resin.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&lump);
+            if let Some(canoe) = self.items.get_mut(&id) {
+                canoe.pitched = true;
+            }
+            let name = self.name_of(actor.id);
+            let cell = self.item(id).map(|canoe| canoe.cell).unwrap_or(actor.cell);
+            self.emit(
+                format!("{name} seals the dugout canoe with pine resin."),
+                Scope::Cell(cell),
+                vec![actor.id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You seal the dugout canoe with pine resin.",
                 results,
             );
         }

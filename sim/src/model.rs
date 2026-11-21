@@ -430,6 +430,8 @@ pub enum Attempt {
     Beach,
     CarvePaddle,
     CarveHook,
+    /// Spend a lump of pine resin on the dugout here, or the one afloat beside you.
+    SealCanoe,
 }
 
 impl Attempt {
@@ -503,6 +505,7 @@ impl Attempt {
                 | Attempt::Beach
                 | Attempt::CarvePaddle
                 | Attempt::CarveHook
+                | Attempt::SealCanoe
         )
     }
 }
@@ -681,6 +684,10 @@ pub struct Item {
     /// A carcass from the wolf, not the deer. Other materials leave this false.
     #[serde(default)]
     pub wolf: bool,
+    /// Pine resin rubbed into a dugout. Other materials leave this false.
+    /// A pitched canoe does not keep soaking the person aboard it.
+    #[serde(default)]
+    pub pitched: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1599,6 +1606,7 @@ impl World {
                 in_basket: false,
                 bone: false,
                 wolf: false,
+                pitched: false,
             },
         );
         if material == Material::Meat || material == Material::Fish {
@@ -2166,6 +2174,29 @@ impl World {
                 && item.material == Material::Log
                 && self.charred_items.contains(&item.id)
         })
+    }
+
+    /// The dugout on this cell, or the one floating on the next cell.
+    /// A beached canoe, one afloat underfoot, and one you are aboard all count.
+    pub(crate) fn canoe_to_seal(&self, actor: ActorId) -> Option<ItemId> {
+        let person = self.actor(actor)?;
+        if let Some(id) = self.aboard.get(&actor).copied() {
+            if self
+                .item(id)
+                .is_some_and(|canoe| canoe.material == Material::Canoe)
+            {
+                return Some(id);
+            }
+        }
+        if let Some(id) = self.canoe_at(person.cell) {
+            return Some(id);
+        }
+        self.floating_canoe_near(person.cell)
+    }
+
+    pub(crate) fn canoe_pitched(&self, id: ItemId) -> bool {
+        self.item(id)
+            .is_some_and(|canoe| canoe.material == Material::Canoe && canoe.pitched)
     }
 
     pub(crate) fn canoe_at(&self, cell: CellId) -> Option<ItemId> {
@@ -6602,6 +6633,234 @@ mod dugout {
             .events
             .iter()
             .all(|event| { !event.text.contains("beach") && !event.text.contains("canoe") }));
+    }
+
+    #[test]
+    fn pine_resin_pitches_the_dugout_and_the_brook_stays_off_the_rider() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("seal canoe").unwrap(),
+            Attempt::SealCanoe
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("pitch the canoe").unwrap(),
+            Attempt::SealCanoe
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("waterproof dugout").unwrap(),
+            Attempt::SealCanoe
+        );
+        let missing = world.step(&[intent("none", near, Attempt::SealCanoe)]);
+        assert_eq!(missing.results[0].message, "There is no dugout canoe here.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no dugout canoe here." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no dugout canoe here." }));
+        world.mint_item(
+            Material::Canoe,
+            0,
+            cell_id(2, 2).unwrap(),
+            None,
+            Role::Loose,
+        );
+        let bare = world.step(&[intent("bare", near, Attempt::SealCanoe)]);
+        assert_eq!(bare.results[0].message, "You have no pine resin.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no pine resin."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no pine resin."));
+        let before = world.observe(near).unwrap();
+        assert!(
+            before.text.contains("A dugout canoe lies here."),
+            "{}",
+            before.text
+        );
+        assert!(!before.text.contains("pitched"));
+        world.mint_item(
+            Material::Resin,
+            0,
+            cell_id(2, 2).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        world.mint_item(
+            Material::Resin,
+            0,
+            cell_id(2, 2).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .allowed_actions
+            .iter()
+            .any(|action| action == "seal canoe"));
+        let sealed = world.step(&[intent("seal", near, Attempt::SealCanoe)]);
+        assert_eq!(
+            sealed.results[0].message,
+            "You seal the dugout canoe with pine resin."
+        );
+        assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
+        assert!(world
+            .items
+            .values()
+            .any(|item| item.material == Material::Canoe && item.pitched));
+        let after = world.observe(near).unwrap();
+        assert!(
+            after.text.contains("A pitched dugout canoe lies here."),
+            "{}",
+            after.text
+        );
+        assert!(after.events.iter().all(|event| {
+            !event.text.contains("seals the dugout") && !event.text.contains("You seal")
+        }));
+        let examined = world.examine(near, ExamineTarget::Canoe);
+        assert!(
+            examined.contains("A pitched dugout canoe lies here. Pine resin seals it."),
+            "{examined}"
+        );
+        let witness = world.observe(seen).unwrap();
+        assert!(witness
+            .events
+            .iter()
+            .any(|event| event.text == "Near seals the dugout canoe with pine resin."));
+        assert!(
+            witness
+                .text
+                .contains("A pitched dugout canoe lies to the north and west."),
+            "{}",
+            witness.text
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("seals") && !event.text.contains("pitched") }));
+        let again = world.step(&[intent("again", near, Attempt::SealCanoe)]);
+        assert_eq!(again.results[0].message, "The canoe is already pitched.");
+        assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The canoe is already pitched." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The canoe is already pitched." }));
+        let launched = world.step(&[intent("launch", near, Attempt::Launch)]);
+        assert!(
+            launched.results[0].success,
+            "{}",
+            launched.results[0].message
+        );
+        let boarded = world.step(&[intent("board", near, Attempt::Board)]);
+        assert_eq!(boarded.results[0].message, "You board the dugout canoe.");
+        let afloat = world.observe(near).unwrap();
+        assert!(
+            afloat
+                .text
+                .contains("You are aboard the pitched dugout canoe in the brook."),
+            "{}",
+            afloat.text
+        );
+        let ashore = world.step(&[intent("ashore", near, Attempt::Beach)]);
+        assert!(ashore.results[0].success, "{}", ashore.results[0].message);
+        if let Some(boat) = world
+            .items
+            .values_mut()
+            .find(|item| item.material == Material::Canoe)
+        {
+            boat.pitched = false;
+        }
+        let relaunched = world.step(&[intent("relaunch", near, Attempt::Launch)]);
+        assert!(
+            relaunched.results[0].success,
+            "{}",
+            relaunched.results[0].message
+        );
+        let back = world.step(&[intent("back", near, Attempt::Board)]);
+        assert_eq!(back.results[0].message, "You board the dugout canoe.");
+        let open = world.observe(near).unwrap();
+        assert!(
+            open.text
+                .contains("You are aboard the dugout canoe in the brook."),
+            "{}",
+            open.text
+        );
+        assert!(!open.text.contains("pitched"));
+        let aboard = world.step(&[intent("aboard", near, Attempt::SealCanoe)]);
+        assert_eq!(
+            aboard.results[0].message,
+            "You seal the dugout canoe with pine resin."
+        );
+        assert!(world.loose_ids(near, Material::Resin).is_empty());
+        let sealed_aboard = world.observe(near).unwrap();
+        assert!(
+            sealed_aboard
+                .text
+                .contains("You are aboard the pitched dugout canoe in the brook."),
+            "{}",
+            sealed_aboard.text
+        );
+        assert!(sealed_aboard.events.iter().all(|event| {
+            !event.text.contains("seals the dugout") && !event.text.contains("You seal")
+        }));
+        let wade = world.spawn_at("Wade", "w", 0, 2).unwrap();
+        if let Some(actor) = world.actors.get_mut(&near) {
+            actor.wetness = 0;
+        }
+        if let Some(actor) = world.actors.get_mut(&wade) {
+            actor.wetness = 0;
+        }
+        while world.time < 16 {
+            world.step(&[]);
+        }
+        if let Some(actor) = world.actors.get_mut(&near) {
+            actor.wetness = 0;
+        }
+        if let Some(actor) = world.actors.get_mut(&wade) {
+            actor.wetness = 0;
+        }
+        world.step(&[]);
+        world.step(&[]);
+        let rider = world.actor(near).unwrap().wetness;
+        let soaked = world.actor(wade).unwrap().wetness;
+        assert!(soaked > rider, "pitched rider {rider}, brook body {soaked}");
+        assert_eq!(soaked - rider, world.tuning.brook_rain * 2);
+        assert!(world.raining);
+        let rider_look = world.observe(near).unwrap();
+        assert!(
+            rider_look
+                .text
+                .contains("You are aboard the pitched dugout canoe in the brook."),
+            "{}",
+            rider_look.text
+        );
     }
 }
 
