@@ -7924,6 +7924,7 @@ impl World {
                     && self.canoe_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
+                    && self.hook_fish_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -8771,6 +8772,23 @@ impl World {
         Some(crate::model::spoken_act(None, "take", rest))
     }
 
+    /// A fish taken with a bone hook. The fisher already has this as the reply.
+    fn hook_fish_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} catches "))?;
+        if rest != "a fish from the brook with the bone fish hook. The hide strips are spent." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "catch", rest))
+    }
+
     /// A bark basket woven from a sheet of bark, filled for the weaver.
     fn weave_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -8941,17 +8959,11 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        if let Some(rest) = event.text.strip_prefix(&format!("{name} spears ")) {
-            if rest == "a fish from the brook." {
-                return Some(crate::model::spoken_act(None, "spear", rest));
-            }
+        let rest = event.text.strip_prefix(&format!("{name} spears "))?;
+        if rest != "a fish from the brook." {
+            return None;
         }
-        if let Some(rest) = event.text.strip_prefix(&format!("{name} catches ")) {
-            if rest == "a fish from the brook with the bone fish hook. The hide strips are spent." {
-                return Some(crate::model::spoken_act(None, "catch", rest));
-            }
-        }
-        None
+        Some(crate::model::spoken_act(None, "spear", rest))
     }
 
     /// The walk. The walker already has this as the reply, so the event
