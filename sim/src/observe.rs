@@ -8657,6 +8657,8 @@ impl World {
                     && self.mat_for_these_eyes(viewer, event).is_none()
                     && self.canoe_for_these_eyes(viewer, event).is_none()
                     && self.light_for_these_eyes(viewer, event).is_none()
+                    && self.fire_pot_for_these_eyes(viewer, event).is_none()
+                    && self.boil_reply_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
@@ -9569,7 +9571,9 @@ impl World {
         Some(crate::model::spoken_act(None, "shape", rest))
     }
 
-    /// An unfired pot set by a fire, filled for the person who set it.
+    /// An unfired pot set by a fire. The person who set it already has this
+    /// as the reply, so the event list does not repeat it. A witness keeps
+    /// the stored line.
     fn fire_pot_for_these_eyes(
         &self,
         viewer: ActorId,
@@ -10259,6 +10263,22 @@ impl World {
             return None;
         }
         event.affected_cells.first().copied()
+    }
+
+    /// A successful boil, filled for the person who drank it.
+    /// The stored sentence names them and keeps the thirst words on the end.
+    /// Anyone else hears the act without that private ending.
+    /// The person who boiled already has the reply, so `recent_events`
+    /// drops it. A witness keeps the act.
+    fn boil_reply_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.first().copied() != Some(viewer) {
+            return None;
+        }
+        self.boil_for_these_eyes(viewer, event)
     }
 
     /// A successful boil, filled for the person who drank it.

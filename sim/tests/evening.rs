@@ -1068,8 +1068,8 @@ fn boiled_water_eases_thirst_and_does_not_sicken() {
     let boiled = world.observe(sera).unwrap();
     assert_eq!(boiled.self_info.illness, "well");
     assert_eq!(boiled.self_info.thirst, "not thirsty");
-    assert!(boiled.events.iter().any(|event| {
-        event.text == "You boil the drink in the pot over the fire and drink it. The thirst eases."
+    assert!(boiled.events.iter().all(|event| {
+        !event.text.contains("You boil") && !event.text.contains("boils the drink")
     }));
     assert!(boiled
         .events
@@ -1143,18 +1143,12 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         boiled.results[0].message,
         "You boil the drink in the pot over the fire and drink it."
     );
-    let boil_event = world
+    assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .find(|event| event.text.contains("boil"))
-        .map(|event| event.text.clone())
-        .unwrap_or_default();
-    assert_eq!(
-        boil_event,
-        "You boil the drink in the pot over the fire and drink it."
-    );
+        .all(|event| !event.text.contains("boil")));
     assert!(world
         .material_items(Material::Pot)
         .iter()
@@ -1190,15 +1184,12 @@ fn boiling_a_drink_is_one_sentence_for_each_pair_of_eyes() {
     let sentence = "You boil the drink in the pot over the fire and drink it.";
     let witnessed = "Near boils the drink in the pot over the fire and drinks it.";
     assert_eq!(boiled.results[0].message, sentence);
-    let yours: Vec<_> = world
+    assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .map(|event| event.text.clone())
-        .filter(|text| text.contains("boil"))
-        .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+        .all(|event| !event.text.contains("boil")));
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
@@ -5023,14 +5014,13 @@ fn an_unfired_pot_hardens_in_the_fire_and_boils() {
         set.results[0].message,
         "You set the unfired pot by the fire. It leaves your arms. It is not hard yet."
     );
-    let yours = "You set the unfired pot by the fire. It leaves your arms.";
     let seen = "Near sets the unfired pot by the fire. It leaves their arms.";
     assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| !event.text.contains("unfired pot")));
     assert!(world
         .observe(far)
         .unwrap()
