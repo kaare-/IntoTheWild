@@ -12409,6 +12409,226 @@ mod hare {
     }
 
     #[test]
+    fn a_spear_or_a_bow_brings_the_hare_down() {
+        use super::contest_hash;
+        assert!(matches!(
+            crate::parse::parse_attempt("hunt hare").unwrap(),
+            Attempt::Hunt
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        world.deer = None;
+        world.fox = None;
+        world.otter = None;
+        let near = world.spawn_at("Near", "n", 2, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Hunt)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You are not carrying a spear." }));
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            !event.text.contains("spear") && event.text != bare.results[0].message
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != bare.results[0].message));
+        let cell = world.actor(near).unwrap().cell;
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&spear).unwrap().flint_tip = true;
+        let soft = world.step(&[intent("soft", near, Attempt::Hunt)]);
+        assert_eq!(
+            soft.results[0].message,
+            "The flint tip is not fire-hardened."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != soft.results[0].message));
+        world.items.get_mut(&spear).unwrap().hardened = true;
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        let yours = "You bring the hare down with the flint spear.";
+        let witnessed = "Near brings the hare down with the flint spear.";
+        assert_eq!(shot.results[0].message, yours);
+        assert!(world.hare_cell().is_none());
+        assert_eq!(
+            world.hare_returns_at,
+            Some(world.time + world.tuning.deer_ticks - 1)
+        );
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text.contains("A hare carcass lies here."),
+            "{}",
+            here.text
+        );
+        assert!(here
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != witnessed));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
+        let cut = world.step(&[intent("cut", near, Attempt::Butcher)]);
+        assert_eq!(
+            cut.results[0].message,
+            "You butcher the hare carcass into a portion of raw meat, a hare hide, and a bone."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != cut.results[0].message));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near butchers the hare carcass into a portion of raw meat, a hare hide, and a bone."
+        }));
+
+        let mut beside = World::valley(crate::tuning::Tuning::evening(), 1);
+        beside.deer = None;
+        beside.fox = None;
+        beside.otter = None;
+        let hunter = beside.spawn_at("Near", "n", 3, 4).unwrap();
+        let witness = beside.spawn_at("Seen", "s", 4, 3).unwrap();
+        let ears = beside.spawn_at("Heard", "h", 5, 4).unwrap();
+        let far = beside.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let wood = beside.mint_item(
+            Material::Spear,
+            0,
+            beside.actor(hunter).unwrap().cell,
+            Some(hunter),
+            Role::Loose,
+        );
+        {
+            let point = beside.items.get_mut(&wood).unwrap();
+            point.wooden_tip = true;
+            point.hardened = true;
+        }
+        let short = beside.step(&[intent("short", hunter, Attempt::Hunt)]);
+        assert_eq!(
+            short.results[0].message,
+            "The hare is not close enough to hunt."
+        );
+        assert!(beside.hare_cell() == Some((2, 4)));
+        assert!(beside
+            .observe(hunter)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == short.results[0].message }));
+        assert!(beside
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != short.results[0].message }));
+        beside.items.remove(&wood);
+        let stone = beside.mint_item(
+            Material::Spear,
+            0,
+            beside.actor(hunter).unwrap().cell,
+            Some(hunter),
+            Role::Loose,
+        );
+        beside.items.get_mut(&stone).unwrap().hardened = true;
+        let subject = "2,4:hare";
+        let mut miss_at = None;
+        for t in 0..40 {
+            if contest_hash(1, t, "hunt", subject, hunter) % 3 != 0 {
+                miss_at = Some(t);
+                break;
+            }
+        }
+        let miss_at = miss_at.unwrap();
+        while beside.time < miss_at {
+            beside.step(&[]);
+        }
+        let miss = beside.step(&[intent("miss", hunter, Attempt::Hunt)]);
+        assert!(
+            miss.results[0].message.contains("bolts"),
+            "{}",
+            miss.results[0].message
+        );
+        assert_ne!(beside.hare_cell(), Some((2, 4)));
+        assert!(beside.observe(hunter).unwrap().events.iter().all(|event| {
+            event.text != miss.results[0].message && !event.text.contains("misses the hare")
+        }));
+        assert!(beside
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text.contains("hare") && event.text.contains("bolts") }));
+        assert!(beside
+            .observe(ears)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You hear a hare to the west." }));
+        assert!(beside
+            .observe(far)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
+
+        let mut aimed = World::valley(crate::tuning::Tuning::evening(), 1);
+        aimed.deer = None;
+        aimed.fox = None;
+        aimed.otter = None;
+        let bow = aimed.spawn_at("Near", "n", 4, 4).unwrap();
+        let saw = aimed.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = aimed.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let stand = aimed.actor(bow).unwrap().cell;
+        aimed.mint_item(Material::Bow, 0, stand, Some(bow), Role::Loose);
+        aimed.mint_item(Material::Flake, 0, stand, Some(bow), Role::Loose);
+        let loosed = aimed.step(&[intent("loosed", bow, Attempt::Hunt)]);
+        assert_eq!(
+            loosed.results[0].message,
+            "You bring the hare down with the bow. The flint flake is spent."
+        );
+        assert!(aimed.loose_ids(bow, Material::Flake).is_empty());
+        assert_eq!(aimed.loose_ids(bow, Material::Bow).len(), 1);
+        assert!(aimed.hare_cell().is_none());
+        assert!(aimed
+            .observe(bow)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != loosed.results[0].message }));
+        assert!(aimed.observe(saw).unwrap().events.iter().any(|event| {
+            event.text == "Near brings the hare down with the bow. The flint flake is spent."
+        }));
+        assert!(aimed
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
+        assert!(aimed
+            .items
+            .values()
+            .any(|item| item.material == Material::Carcass && item.hare));
+    }
+
+    #[test]
     fn a_hare_is_on_the_dry_floor_again_after_the_same_wait_as_the_fox() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 3, 4).unwrap();

@@ -1643,6 +1643,21 @@ impl World {
         }
     }
 
+    /// A missed throw. The hare bolts to a dry neighbor farther from the hunter.
+    /// None when it has nowhere to go.
+    pub(crate) fn bolt_hunted_hare(&mut self, hunter: CellId) -> Option<&'static str> {
+        let hare = self.hare.clone()?;
+        let next = self.hare_away(hare.cell, hunter, hunter)?;
+        if next == hare.cell {
+            return None;
+        }
+        let dir = step_dir(hare.cell, next);
+        if let Some(hare) = self.hare.as_mut() {
+            hare.cell = next;
+        }
+        Some(dir.word())
+    }
+
     /// A dry floor neighbor, not the person and not the cell they stepped to
     /// when that cell is not the hare's own. Farther from `away_from` wins.
     fn hare_away(&self, from: CellId, person: CellId, away_from: CellId) -> Option<CellId> {

@@ -8960,6 +8960,7 @@ impl World {
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_hunt_for_these_eyes(viewer, event).is_none()
                     && self.fox_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.hare_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_butcher_for_these_eyes(viewer, event).is_none()
                     && self.fox_butcher_for_these_eyes(viewer, event).is_none()
                     && self.hare_butcher_for_these_eyes(viewer, event).is_none()
@@ -10298,9 +10299,10 @@ impl World {
     }
 
     fn hare_bolt_cell(&self, event: &crate::model::Event) -> Option<CellId> {
-        if !event.text.contains("startles and bolts")
-            && event.text != "A hare is on the valley floor again."
-        {
+        let bolted = event.text.contains("startles and bolts")
+            || event.text.starts_with("The hare bolts")
+            || (event.text.contains("misses the hare") && event.text.contains("bolts"));
+        if !bolted && event.text != "A hare is on the valley floor again." {
             return None;
         }
         event.affected_cells.first().copied()
@@ -11003,6 +11005,37 @@ impl World {
             || text == format!("{name} misses the fox. It stays.")
             || text == format!("The fox stays. {name}'s flint spear does not land.")
             || text == format!("The fox stays. {name}'s spear does not land.");
+        if brings || misses || bolts || stays {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// A hare brought down, or missed, filled for the hunter.
+    /// That person already read the sentence as the command result.
+    fn hare_hunt_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        let brings = text == format!("{name} brings the hare down with the flint spear.")
+            || text == format!("{name} brings the hare down. A hare carcass lies where it stood.")
+            || text
+                == format!("{name} brings the hare down with the bow. The flint flake is spent.");
+        let misses = text.starts_with(&format!("{name} misses the hare")) && text.contains("bolts");
+        let bolts = text.starts_with("The hare bolts to the ")
+            && (text.ends_with(&format!("{name}'s flint spear does not land."))
+                || text.ends_with(&format!("{name}'s spear does not land.")));
+        let stays = text == format!("{name} misses the hare with the flint spear. It stays.")
+            || text == format!("{name} misses the hare. It stays.")
+            || text == format!("The hare stays. {name}'s flint spear does not land.")
+            || text == format!("The hare stays. {name}'s spear does not land.");
         if brings || misses || bolts || stays {
             Some(event.text.clone())
         } else {

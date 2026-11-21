@@ -1009,6 +1009,10 @@ impl World {
                         .fox
                         .as_ref()
                         .map(|fox| crate::model::chebyshev(actor.cell, fox.cell));
+                    let hare = self
+                        .hare
+                        .as_ref()
+                        .map(|hare| crate::model::chebyshev(actor.cell, hare.cell));
                     let nearer = |dist: i32| {
                         deer.is_none_or(|far| dist < far)
                             && wolf.is_none_or(|far| dist < far)
@@ -1028,6 +1032,18 @@ impl World {
                     let fox_melee = fox.is_some_and(|dist| dist <= 1 && fox_nearer(dist));
                     let fox_shot = self.bow_in_hand(actor.id)
                         && fox.is_some_and(|dist| dist <= self.tuning.sight && fox_nearer(dist));
+                    let hare_nearer = |dist: i32| {
+                        deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                    };
+                    let hare_melee = hare.is_some_and(|dist| {
+                        hare_nearer(dist)
+                            && (dist == 0 || (dist == 1 && self.spear_reaches_next(actor.id)))
+                    });
+                    let hare_shot = self.bow_in_hand(actor.id)
+                        && hare.is_some_and(|dist| dist <= self.tuning.sight && hare_nearer(dist));
                     if wolf_melee
                         || deer.is_some_and(|dist| dist <= 1)
                         || wolf_shot
@@ -1036,8 +1052,12 @@ impl World {
                         || otter_shot
                         || fox_melee
                         || fox_shot
+                        || hare_melee
+                        || hare_shot
                     {
                         Ok(true)
+                    } else if hare.is_some_and(|dist| hare_nearer(dist)) {
+                        Err("The hare is not close enough to hunt.".into())
                     } else if fox.is_some_and(|dist| fox_nearer(dist)) {
                         Err("The fox is not close enough to hunt.".into())
                     } else if otter.is_some_and(|dist| nearer(dist)) {
@@ -1088,8 +1108,26 @@ impl World {
                             && wolf.is_none_or(|far| dist < far)
                             && otter.is_none_or(|far| dist < far)
                     });
-                    if wolf_shot || deer_shot || otter_shot || fox_shot {
+                    let hare = self
+                        .hare
+                        .as_ref()
+                        .map(|hare| crate::model::chebyshev(actor.cell, hare.cell));
+                    let hare_shot = hare.is_some_and(|dist| {
+                        dist <= self.tuning.sight
+                            && deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                    });
+                    if wolf_shot || deer_shot || otter_shot || fox_shot || hare_shot {
                         Ok(true)
+                    } else if hare.is_some_and(|dist| {
+                        deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                    }) {
+                        Err("The hare is not close enough for the bow.".into())
                     } else if self.deer.as_ref().is_none()
                         && fox.is_some_and(|dist| otter.is_none_or(|far| dist < far))
                     {
@@ -4960,6 +4998,13 @@ impl World {
         {
             return false;
         }
+        if self
+            .hare
+            .as_ref()
+            .is_some_and(|hare| crate::model::chebyshev(person.cell, hare.cell) < dist)
+        {
+            return false;
+        }
         // A wolf this weapon can already reach stays the quarry. The otter
         // does not step in front of it.
         let wolf_dist = self
@@ -5031,6 +5076,13 @@ impl World {
         if self
             .wolf_standing()
             .is_some_and(|wolf| dist >= crate::model::chebyshev(person.cell, wolf))
+        {
+            return false;
+        }
+        if self
+            .hare
+            .as_ref()
+            .is_some_and(|hare| crate::model::chebyshev(person.cell, hare.cell) < dist)
         {
             return false;
         }
@@ -5623,6 +5675,247 @@ impl World {
         self.finish(intent.command_id.clone(), actor.id, false, yours, results);
     }
 
+    /// The hare is nearer than the deer, the fox, the otter, and a standing wolf.
+    /// A wolf this weapon can already reach stays the quarry.
+    fn hare_is_nearest(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        let Some(hare) = self.hare.as_ref() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(person.cell, hare.cell);
+        if self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| dist >= crate::model::chebyshev(person.cell, deer.cell))
+        {
+            return false;
+        }
+        if self
+            .fox
+            .as_ref()
+            .is_some_and(|fox| dist >= crate::model::chebyshev(person.cell, fox.cell))
+        {
+            return false;
+        }
+        if self
+            .otter
+            .as_ref()
+            .is_some_and(|otter| dist >= crate::model::chebyshev(person.cell, otter.cell))
+        {
+            return false;
+        }
+        if self
+            .wolf_standing()
+            .is_some_and(|wolf| dist >= crate::model::chebyshev(person.cell, wolf))
+        {
+            return false;
+        }
+        let wolf_dist = self
+            .wolf_standing()
+            .map(|wolf| crate::model::chebyshev(person.cell, wolf));
+        let wolf_in_reach = wolf_dist.is_some_and(|far| {
+            self.spear_in_reach(actor, far) || (self.bow_in_hand(actor) && far <= self.tuning.sight)
+        });
+        if wolf_in_reach {
+            return false;
+        }
+        true
+    }
+
+    /// A spear on the hare's cell or the next, or a bow out to sight,
+    /// and only when the hare is the nearer animal.
+    fn strike_the_hare(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        results: &mut Vec<CommandResult>,
+    ) -> bool {
+        if !self.hare_is_nearest(actor.id) {
+            return false;
+        }
+        let Some(hare) = self.hare.clone() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(actor.cell, hare.cell);
+        if self.spear_can_hunt(actor.id) && dist == 0 {
+            self.bring_down_hare(intent, hare.cell, None, results);
+            return true;
+        }
+        if self.spear_reaches_next(actor.id) && dist == 1 {
+            self.contest_the_hare(intent, actor, hare.cell, results);
+            return true;
+        }
+        if self.bow_in_hand(actor.id) && dist <= self.tuning.sight {
+            self.loose_the_bow_at_the_hare(intent, actor, hare.cell, results);
+            return true;
+        }
+        false
+    }
+
+    fn bring_down_hare(
+        &mut self,
+        intent: &Intent,
+        cell: crate::model::CellId,
+        draw: Option<Draw>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let name = self.name_of(intent.actor_id);
+        let flint = self
+            .loose_ids(intent.actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        self.hare = None;
+        self.arm_hare_return();
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.hare = true;
+        }
+        let (heard, yours) = if flint {
+            let rest = "the hare down with the flint spear.";
+            (
+                crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+                crate::model::spoken_act(None, "bring", rest),
+            )
+        } else {
+            (
+                format!("{name} brings the hare down. A hare carcass lies where it stood."),
+                "You bring the hare down. A hare carcass lies where it stood.".to_string(),
+            )
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            draw,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            intent.actor_id,
+            true,
+            yours,
+            results,
+        );
+    }
+
+    fn loose_the_bow_at_the_hare(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if let Some(flake) = self.loose_ids(actor.id, Material::Flake).first().copied() {
+            self.items.remove(&flake);
+        }
+        self.hare = None;
+        self.arm_hare_return();
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.hare = true;
+        }
+        let name = self.name_of(actor.id);
+        let rest = "the hare down with the bow. The flint flake is spent.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            actor.id,
+            true,
+            crate::model::spoken_act(None, "bring", rest),
+            results,
+        );
+    }
+
+    /// The next cell. One of three, from the same draw the fox uses.
+    /// A miss or a bolt leaves no carcass. The hare bolts to a dry neighbor.
+    fn contest_the_hare(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let (x, y) = crate::model::cell_xy(cell);
+        let subject = format!("{x},{y}:hare");
+        let hash = contest_hash(self.seed, self.time, "hunt", &subject, actor.id);
+        let draw = Some(Draw {
+            tag: "hunt".into(),
+            subject,
+            value: hash,
+        });
+        if hash % 3 == 0 {
+            self.bring_down_hare(intent, cell, draw, results);
+            return;
+        }
+        let way = self.bolt_hunted_hare(actor.cell);
+        let name = self.name_of(actor.id);
+        let flint = self
+            .loose_ids(actor.id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        let (heard, yours) = if hash % 3 == 1 {
+            match (flint, way) {
+                (true, Some(way)) => (
+                    format!("{name} misses the hare with the flint spear. It bolts to the {way}."),
+                    format!("You miss the hare with the flint spear. It bolts to the {way}."),
+                ),
+                (false, Some(way)) => (
+                    format!("{name} misses the hare. It bolts to the {way}."),
+                    format!("You miss the hare. It bolts to the {way}."),
+                ),
+                (true, None) => (
+                    format!("{name} misses the hare with the flint spear. It stays."),
+                    "You miss the hare with the flint spear. It stays.".to_string(),
+                ),
+                (false, None) => (
+                    format!("{name} misses the hare. It stays."),
+                    "You miss the hare. It stays.".to_string(),
+                ),
+            }
+        } else {
+            match (flint, way) {
+                (true, Some(way)) => (
+                    format!("The hare bolts to the {way}. {name}'s flint spear does not land."),
+                    format!("The hare bolts to the {way}. Your flint spear does not land."),
+                ),
+                (false, Some(way)) => (
+                    format!("The hare bolts to the {way}. {name}'s spear does not land."),
+                    format!("The hare bolts to the {way}. Your spear does not land."),
+                ),
+                (true, None) => (
+                    format!("The hare stays. {name}'s flint spear does not land."),
+                    "The hare stays. Your flint spear does not land.".to_string(),
+                ),
+                (false, None) => (
+                    format!("The hare stays. {name}'s spear does not land."),
+                    "The hare stays. Your spear does not land.".to_string(),
+                ),
+            }
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![],
+            vec![],
+            draw,
+        );
+        self.finish(intent.command_id.clone(), actor.id, false, yours, results);
+    }
+
     fn apply_hunts(&mut self, mut hunts: Vec<Intent>, results: &mut Vec<CommandResult>) {
         hunts.sort_by_key(|intent| intent.actor_id);
         for intent in hunts {
@@ -5666,6 +5959,19 @@ impl World {
                     actor.id,
                     false,
                     "The otter is not close enough to hunt.",
+                    results,
+                );
+                continue;
+            }
+            if self.hare_is_nearest(actor.id) {
+                if self.strike_the_hare(&intent, &actor, results) {
+                    continue;
+                }
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The hare is not close enough to hunt.",
                     results,
                 );
                 continue;
@@ -7763,6 +8069,22 @@ impl World {
                     return;
                 }
             }
+        }
+        if self.hare_is_nearest(actor.id) {
+            if let Some(hare) = self.hare.clone() {
+                if crate::model::chebyshev(actor.cell, hare.cell) <= self.tuning.sight {
+                    self.loose_the_bow_at_the_hare(intent, actor, hare.cell, results);
+                    return;
+                }
+            }
+            self.finish(
+                intent.command_id.clone(),
+                actor.id,
+                false,
+                "The hare is not close enough for the bow.",
+                results,
+            );
+            return;
         }
         if self.wolf_before_the_deer(actor.id) {
             if let Some(cell) = self.wolf_standing() {
