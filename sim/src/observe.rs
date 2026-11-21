@@ -8736,6 +8736,7 @@ impl World {
                     && self.boil_reply_for_these_eyes(viewer, event).is_none()
                     && self.point_for_these_eyes(viewer, event).is_none()
                     && self.hold_point_for_these_eyes(viewer, event).is_none()
+                    && self.wooden_deer_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
@@ -9735,6 +9736,31 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "thatch", rest))
+    }
+
+    /// A wooden spear bringing the deer down. The hunter already has the reply,
+    /// so that event does not repeat. Someone who can see the cell keeps
+    /// the stored line. A stone spear is not marked, and keeps its own line.
+    fn wooden_deer_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text != format!("{name} brings the deer down.") {
+            return None;
+        }
+        let wooden = event.affected_items.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|item| item.material == Material::Spear && item.wooden_tip)
+        });
+        if !wooden {
+            return None;
+        }
+        Some("You bring the deer down. A carcass lies where it stood.".into())
     }
 
     /// A flint spear bringing the deer down, filled for the person who struck.

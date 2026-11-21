@@ -13350,11 +13350,45 @@ mod wooden_spear {
             aside.results[0].message,
             "The deer is not close enough to hunt."
         );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The deer is not close enough to hunt." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The deer is not close enough to hunt." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The deer is not close enough to hunt." }));
         world.deer.as_mut().unwrap().cell = here;
         let down = world.step(&[intent("down", near, Attempt::Hunt)]);
         assert_eq!(
             down.results[0].message,
             "You bring the deer down. A carcass lies where it stood."
         );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "Near brings the deer down."
+                && event.text != "You bring the deer down. A carcass lies where it stood."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near brings the deer down." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near brings the deer down." }));
     }
 }

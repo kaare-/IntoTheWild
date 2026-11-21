@@ -4840,6 +4840,23 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
     }
 
+    /// The hardened spear that brought the deer down, when it is only a wooden point.
+    /// A flint or stone point on the same person keeps the older line.
+    fn wooden_kill(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let spears = self.loose_ids(actor, Material::Spear);
+        let other = spears.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|spear| spear.hardened && !spear.wooden_tip)
+        });
+        if other {
+            return None;
+        }
+        spears.into_iter().find(|id| {
+            self.item(*id)
+                .is_some_and(|spear| spear.wooden_tip && spear.hardened)
+        })
+    }
+
     /// A flint or stone point reaches the next cell. A wooden point does not.
     fn spear_reaches_next(&self, actor: crate::model::ActorId) -> bool {
         self.loose_ids(actor, Material::Spear).iter().any(|id| {
@@ -5662,13 +5679,17 @@ impl World {
                 continue;
             }
             if !self.spear_reaches_next(actor.id) {
-                self.finish(
-                    intent.command_id,
-                    actor.id,
-                    false,
-                    "The deer is not close enough to hunt.",
-                    results,
+                let message = "The deer is not close enough to hunt.";
+                self.emit(
+                    message,
+                    Scope::Personal(actor.id),
+                    vec![actor.id],
+                    vec![actor.cell],
+                    vec![],
+                    vec![],
+                    None,
                 );
+                self.finish(intent.command_id, actor.id, false, message, results);
                 continue;
             }
             let (x, y) = crate::model::cell_xy(deer.cell);
@@ -7786,12 +7807,17 @@ impl World {
                 "You bring the deer down. A carcass lies where it stood.".to_string(),
             )
         };
+        let wooden = self.wooden_kill(intent.actor_id);
+        let mut items = vec![id];
+        if let Some(spear) = wooden {
+            items.push(spear);
+        }
         self.emit(
             heard,
             Scope::Cell(deer_cell),
             vec![intent.actor_id],
             vec![deer_cell],
-            vec![id],
+            items,
             vec![],
             draw,
         );
