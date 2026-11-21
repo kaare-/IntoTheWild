@@ -121,12 +121,23 @@ impl World {
             match self.precheck(&actor, &intent.attempt, taken) {
                 Err(message) => {
                     // A smoke refusal is the reply only, and so is a raw
-                    // mushroom. "There is no fire burning here" is also a
-                    // feed, cook, and dry refusal, and those still sit in
-                    // the actor's event list.
+                    // mushroom, and so is a fish-with-hook refusal. "There
+                    // is no fire burning here" is also a feed, cook, and
+                    // dry refusal, and those still sit in the actor's
+                    // event list. A spear or a net that says the brook is
+                    // not here, or that the fish are gone, still does too.
+                    let hook_refusal = matches!(intent.attempt, Attempt::FishHook)
+                        && matches!(
+                            message.as_str(),
+                            "The brook is not here."
+                                | "You are not carrying a bone fish hook."
+                                | "You have no hide strips for a line."
+                                | "The fish are gone from this stretch of the brook."
+                        );
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
-                            && message != RAW_MUSHROOM_REFUSAL;
+                            && message != RAW_MUSHROOM_REFUSAL
+                            && !hook_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {

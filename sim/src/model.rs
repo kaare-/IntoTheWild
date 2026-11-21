@@ -6333,6 +6333,12 @@ mod dugout {
         let inland = world.step(&[intent("inland", dry, Attempt::Fish)]);
         assert_eq!(inland.results[0].message, "The brook is not here.");
         assert!(world
+            .observe(dry)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The brook is not here." }));
+        assert!(world
             .observe(seen)
             .unwrap()
             .events
@@ -10073,6 +10079,12 @@ mod fish_hook {
         );
         assert_eq!(world.loose_ids(dry, Material::Cord).len(), 1);
         assert!(world
+            .observe(dry)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The brook is not here." }));
+        assert!(world
             .observe(seen)
             .unwrap()
             .events
@@ -10083,6 +10095,12 @@ mod fish_hook {
             say(&mut world, "nohook", near, Attempt::FishHook),
             "You are not carrying a bone fish hook."
         );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a bone fish hook." }));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -10101,7 +10119,7 @@ mod fish_hook {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "You have no hide strips for a line." }));
+            .all(|event| { event.text != "You have no hide strips for a line." }));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -10172,7 +10190,7 @@ mod fish_hook {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "The fish are gone from this stretch of the brook." }));
+            .all(|event| { event.text != "The fish are gone from this stretch of the brook." }));
         assert_eq!(world.loose_ids(near, Material::Cord).len(), 1);
         assert_eq!(world.loose_ids(near, Material::Fish).len(), 1);
         assert!(world
@@ -10242,6 +10260,12 @@ mod fish_hook {
             say(&mut world, "dry", near, Attempt::FishHook),
             "The brook is not here."
         );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The brook is not here." }));
         assert_eq!(
             say(&mut world, "cut", near, Attempt::CutHide),
             "You cut the deer hide into strips with the iron knife."
@@ -10274,6 +10298,12 @@ mod fish_hook {
             say(&mut world, "noline", near, Attempt::FishHook),
             "You have no hide strips for a line."
         );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You have no hide strips for a line." }));
         assert_eq!(
             say(&mut world, "drop", near, Attempt::Drop(Material::Hook)),
             "You drop a bone fish hook. It is in contact with the ground."
@@ -10282,6 +10312,12 @@ mod fish_hook {
             say(&mut world, "nohook", near, Attempt::FishHook),
             "You are not carrying a bone fish hook."
         );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a bone fish hook." }));
         assert_eq!(
             say(&mut world, "pickup", near, Attempt::Gather(Material::Hook)),
             "You gather a bone fish hook."
@@ -10344,6 +10380,10 @@ mod fish_hook {
         );
         let again = say(&mut world, "again", near, Attempt::FishHook);
         assert_eq!(again, "The fish are gone from this stretch of the brook.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "The fish are gone from this stretch of the brook."
+                && !event.text.contains("You catch")
+        }));
         let look = world.observe(near).unwrap();
         assert!(look.text.contains("a bone fish hook"), "{}", look.text);
         assert!(look.text.contains("raw fish"), "{}", look.text);
