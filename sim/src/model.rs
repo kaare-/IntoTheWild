@@ -2988,6 +2988,12 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|hide| hide.hare))
     }
 
+    pub(crate) fn carrying_beaver_hide(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.beaver))
+    }
+
     /// A sewn otter hide worn on the body. Rain and the brook wet it less
     /// than a deer cloak, and that wet cold is cut again.
     pub(crate) fn wearing_otter_cloak(&self, actor: ActorId) -> bool {
@@ -2997,10 +3003,25 @@ impl World {
         })
     }
 
-    /// A step into the brook. An otter cloak takes half of that wet.
+    /// A sewn beaver hide worn on the body. Rain and the brook wet it the
+    /// way an otter cloak does. The words are its own.
+    pub(crate) fn wearing_beaver_cloak(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| hide.worn && hide.sewn && hide.beaver)
+        })
+    }
+
+    /// Otter or beaver. Both halve the brook step, the rain on the clothes,
+    /// and the wet cold.
+    pub(crate) fn wearing_water_cloak(&self, actor: ActorId) -> bool {
+        self.wearing_otter_cloak(actor) || self.wearing_beaver_cloak(actor)
+    }
+
+    /// A step into the brook. A water cloak takes half of that wet.
     pub(crate) fn wade_wet(&self, actor: ActorId) -> u32 {
         let wet = self.tuning.wade;
-        if self.wearing_otter_cloak(actor) {
+        if self.wearing_water_cloak(actor) {
             wet / 2
         } else {
             wet
@@ -12402,7 +12423,7 @@ mod beaver {
         )]);
         assert_eq!(taken.results[0].message, "You gather a beaver hide.");
         let wear = beside.step(&[intent("wear", hunter, Attempt::Wear)]);
-        assert_eq!(wear.results[0].message, "The beaver hide is not sewn yet.");
+        assert_eq!(wear.results[0].message, "You wear the beaver hide.");
         let arms = beside.observe(hunter).unwrap().text;
         assert!(arms.contains("a beaver hide"), "{arms}");
         assert!(!arms.contains("cloak"), "{arms}");
@@ -12499,6 +12520,150 @@ mod beaver {
         assert!(here.contains("A portion of raw meat lies here."), "{here}");
         assert!(here.contains("A bone lies here."), "{here}");
         assert_eq!(world.loose_ids(near, super::Material::Knife).len(), 1);
+    }
+
+    #[test]
+    fn a_beaver_hide_sews_into_a_cloak_that_sheds_the_wet() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let hide = world.mint_item(
+            super::Material::Hide,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.items.get_mut(&hide).unwrap().beaver = true;
+        let awl = world.mint_item(
+            super::Material::Awl,
+            0,
+            cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        world.items.get_mut(&awl).unwrap().bone = true;
+
+        let early = world.step(&[intent("sew", near, Attempt::Sew)]);
+        assert_eq!(early.results[0].message, "The beaver hide is not pierced.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The beaver hide is not pierced." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("beaver")));
+
+        let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
+        assert_eq!(
+            pierced.results[0].message,
+            "You pierce the beaver hide with the bone awl. It is ready to sew."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("pierce") && !event.text.contains("beaver hide")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near pierces the beaver hide with the bone awl. It is ready to sew."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("beaver")));
+
+        let sewn = world.step(&[intent("sew-cloak", near, Attempt::Sew)]);
+        assert_eq!(
+            sewn.results[0].message,
+            "You sew the pierced beaver hide into a cloak."
+        );
+        let again = world.step(&[intent("again", near, Attempt::Sew)]);
+        assert_eq!(
+            again.results[0].message,
+            "The beaver hide is already a cloak."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The beaver hide is already a cloak." }));
+        let wore = world.step(&[intent("wear", near, Attempt::Wear)]);
+        assert_eq!(
+            wore.results[0].message,
+            "You wear the sewn beaver-hide cloak."
+        );
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("The sewn beaver-hide cloak is on you. It sheds the rain and the brook."),
+            "{look}"
+        );
+        assert!(look.contains("a sewn beaver-hide cloak"), "{look}");
+        assert!(!look.contains("otter-hide"), "{look}");
+        let held = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            held.contains(
+                "A sewn beaver-hide cloak is on you, in the open. It sheds the rain and the brook."
+            ),
+            "{held}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sews the pierced beaver hide into a cloak." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near wears the sewn beaver-hide cloak." }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("sewn beaver-hide") && !event.text.contains("pierced beaver")
+        }));
+
+        let bare = world.spawn_at("Bare", "b", 1, 3).unwrap();
+        let bank = world.actor(bare).unwrap().cell;
+        world.actors.get_mut(&near).unwrap().cell = bank;
+        world.actors.get_mut(&near).unwrap().wetness = 0;
+        world.actors.get_mut(&near).unwrap().cold = 0;
+        world.actors.get_mut(&bare).unwrap().wetness = 0;
+        world.actors.get_mut(&bare).unwrap().cold = 0;
+        let waded = world.step(&[
+            intent("wade-beaver", near, Attempt::Move(Dir::North)),
+            intent("wade-bare", bare, Attempt::Move(Dir::North)),
+        ]);
+        assert!(
+            waded.results.iter().all(|result| result.success),
+            "{waded:?}"
+        );
+        let cloaked = world.actor(near).unwrap().wetness;
+        let open = world.actor(bare).unwrap().wetness;
+        assert_eq!(open, world.tuning.wade);
+        assert_eq!(cloaked, world.tuning.wade / 2);
+
+        world.actors.get_mut(&near).unwrap().cell = cell;
+        world.actors.get_mut(&bare).unwrap().cell = cell;
+        world.actors.get_mut(&near).unwrap().wetness = 0;
+        world.actors.get_mut(&bare).unwrap().wetness = 0;
+        world.actors.get_mut(&near).unwrap().cold = 0;
+        world.actors.get_mut(&bare).unwrap().cold = 0;
+        world.time = world.tuning.rain_starts_at;
+        world.step(&[]);
+        world.step(&[]);
+        assert!(world.actor(near).unwrap().cold < world.actor(bare).unwrap().cold);
+        assert_eq!(
+            world.actor(near).unwrap().wetness * 2,
+            world.actor(bare).unwrap().wetness
+        );
     }
 }
 

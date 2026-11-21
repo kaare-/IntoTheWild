@@ -1981,7 +1981,7 @@ impl World {
             }
             // An otter cloak is a hide, so the line above already halved the
             // sky. Rain and the brook cut that wet cold once more.
-            if self.wearing_otter_cloak(id)
+            if self.wearing_water_cloak(id)
                 && (self.raining || self.cell(cell).region == Region::Brook)
             {
                 cold_gain /= 2;
@@ -2412,7 +2412,7 @@ impl World {
                 if self.cell(cell).region == Region::Brook && !pitched {
                     gain += self.tuning.brook_rain;
                 }
-                if self.wearing_otter_cloak(*id) {
+                if self.wearing_water_cloak(*id) {
                     gain /= 2;
                 }
                 (*id, gain)
