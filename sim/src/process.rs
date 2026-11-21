@@ -1347,7 +1347,7 @@ impl World {
     }
 
     /// The route neighbor farther from the person. Their own cell is not a landing.
-    fn otter_away(&self, route_at: usize, person: CellId) -> Option<(usize, CellId)> {
+    pub(crate) fn otter_away(&self, route_at: usize, person: CellId) -> Option<(usize, CellId)> {
         let len = OTTER_ROUTE.len();
         let mut best: Option<(usize, CellId, i32)> = None;
         for step in [1isize, -1] {

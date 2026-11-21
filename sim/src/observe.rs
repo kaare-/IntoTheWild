@@ -1204,14 +1204,20 @@ impl World {
         let carcasses = self.ground_ids(actor.cell, Material::Carcass);
         if carcasses
             .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.otter))
+        {
+            parts.push("An otter carcass lies here.".into());
+        }
+        if carcasses
+            .iter()
             .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
         {
             parts.push("A wolf carcass lies here.".into());
         }
-        if carcasses
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|carcass| !carcass.wolf))
-        {
+        if carcasses.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|carcass| !carcass.wolf && !carcass.otter)
+        }) {
             parts.push("A deer carcass lies here.".into());
         }
         if let Some(line) = self.meat_here_line(actor.cell) {
@@ -3322,6 +3328,12 @@ impl World {
             if self
                 .loose_ids(actor_id, Material::Carcass)
                 .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.otter))
+            {
+                "an otter carcass".into()
+            } else if self
+                .loose_ids(actor_id, Material::Carcass)
+                .iter()
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
             {
                 "a wolf carcass".into()
@@ -3757,6 +3769,11 @@ impl World {
         let carried = self.loose_ids(actor_id, Material::Carcass);
         if carried.is_empty() {
             String::new()
+        } else if carried
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.otter))
+        {
+            " They carry an otter carcass.".into()
         } else if carried
             .iter()
             .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
@@ -4219,14 +4236,20 @@ impl World {
         let carcasses = self.ground_ids(dest, Material::Carcass);
         if carcasses
             .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.otter))
+        {
+            bits.push("an otter carcass".into());
+        }
+        if carcasses
+            .iter()
             .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
         {
             bits.push("a wolf carcass".into());
         }
-        if carcasses
-            .iter()
-            .any(|id| self.item(*id).is_some_and(|carcass| !carcass.wolf))
-        {
+        if carcasses.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|carcass| !carcass.wolf && !carcass.otter)
+        }) {
             bits.push("a carcass".into());
         }
         if let Some(bit) = self.meat_compass_bit(dest) {
@@ -5764,13 +5787,16 @@ impl World {
             for id in self.ground_ids(cell, Material::Carcass) {
                 let item = self.item(id);
                 let moisture = item.map(|item| item.moisture).unwrap_or(0);
-                let kind = if item.is_some_and(|carcass| carcass.wolf) {
+                let kind = if item.is_some_and(|carcass| carcass.otter) {
+                    "otter"
+                } else if item.is_some_and(|carcass| carcass.wolf) {
                     "wolf"
                 } else {
                     "deer"
                 };
+                let article = if kind == "otter" { "An" } else { "A" };
                 lines.push(format!(
-                    "A {kind} carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.",
+                    "{article} {kind} carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.",
                     self.place_phrase(origin, cell),
                     self.condition_word(moisture),
                     self.rain_reaches_phrase(cell)
@@ -5787,13 +5813,23 @@ impl World {
                 self.name_of(other)
             };
             let cell = self.actor(other).unwrap().cell;
-            let wolf = self
-                .loose_ids(other, Material::Carcass)
+            let carried = self.loose_ids(other, Material::Carcass);
+            let kind = if carried
                 .iter()
-                .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf));
-            let kind = if wolf { "wolf" } else { "deer" };
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.otter))
+            {
+                "otter"
+            } else if carried
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.wolf))
+            {
+                "wolf"
+            } else {
+                "deer"
+            };
+            let article = if kind == "otter" { "An" } else { "A" };
             lines.push(format!(
-                "A {kind} carcass is carried by {who}, {}. It must be cooked before it feeds you.",
+                "{article} {kind} carcass is carried by {who}, {}. It must be cooked before it feeds you.",
                 self.cover_phrase(cell)
             ));
         }
@@ -8286,6 +8322,7 @@ impl World {
                     && self.bow_hunt_for_these_eyes(viewer, event).is_none()
                     && self.scare_for_these_eyes(viewer, event).is_none()
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.otter_hunt_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
@@ -9493,7 +9530,7 @@ impl World {
                 .text
                 .contains(" catches a fish from the brook with the bone fish hook.")
             || event.text == "The fishing net catches a fish."
-            || event.text.starts_with("An otter splashes away");
+            || event.text.contains("splashes away");
         if !splash {
             return None;
         }
@@ -9949,6 +9986,35 @@ impl World {
             format!("The wolf bolts. {name}'s flint spear does not land."),
         ];
         if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// An otter brought down, or missed, filled for the hunter.
+    /// That person already read the sentence as the command result.
+    fn otter_hunt_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        let brings = text == format!("{name} brings the otter down with the flint spear.")
+            || text
+                == format!("{name} brings the otter down. An otter carcass lies where it stood.")
+            || text
+                == format!("{name} brings the otter down with the bow. The flint flake is spent.");
+        let misses =
+            text.starts_with(&format!("{name} misses the otter")) && text.contains("splashes away");
+        let bolts = text.starts_with("The otter splashes away to the ")
+            && (text.ends_with(&format!("{name}'s flint spear does not land."))
+                || text.ends_with(&format!("{name}'s spear does not land.")));
+        if brings || misses || bolts {
             Some(event.text.clone())
         } else {
             None

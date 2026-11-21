@@ -37,7 +37,7 @@ drink                        raw water where you stand; still water freezes unti
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat
-hunt                         a hardened spear; the deer on your cell or the next, or a wolf while it stands on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer or the wolf comes down. A refusal leaves it. The bow stays.
+hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, or an otter on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, or the otter comes down. A refusal leaves it. The bow stays.
 fish                         a fire-hardened flint spear, or a fishing net, or a bone fish hook with hide strips, in the brook or beside it, and from a dugout on the brook. The spear and the net are not used up. The hide strips are spent as the line. That stretch is quiet for a short wait
 fish with hook               the same cast with a bone fish hook and hide strips in the arms. The hook stays. The strips are spent.
 spear fish                   the same cast with the spear
@@ -400,7 +400,9 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "dry" if rest.is_empty() || rest == "branch" || rest == "wood" || rest == "the branch" => {
             Ok(Attempt::DryBranch)
         }
-        "hunt" if rest.is_empty() || rest == "deer" || rest == "wolf" => Ok(Attempt::Hunt),
+        "hunt" if rest.is_empty() || rest == "deer" || rest == "wolf" || rest == "otter" => {
+            Ok(Attempt::Hunt)
+        }
         "butcher" if rest.is_empty() || rest == "carcass" || rest == "deer" || rest == "wolf" => {
             Ok(Attempt::Butcher)
         }

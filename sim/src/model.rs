@@ -694,6 +694,9 @@ pub struct Item {
     /// A carcass from the wolf, not the deer. Other materials leave this false.
     #[serde(default)]
     pub wolf: bool,
+    /// A carcass from the otter, not the deer or the wolf. Other materials leave this false.
+    #[serde(default)]
+    pub otter: bool,
     /// Pine resin rubbed into a dugout. Other materials leave this false.
     /// A pitched canoe does not keep soaking the person aboard it.
     #[serde(default)]
@@ -1659,6 +1662,7 @@ impl World {
                 in_basket: false,
                 bone: false,
                 wolf: false,
+                otter: false,
                 pitched: false,
             },
         );
@@ -11755,5 +11759,199 @@ mod otter {
             alone.step(&[]);
         }
         assert_eq!(alone.otter_cell(), Some((1, 2)));
+    }
+}
+
+#[cfg(test)]
+mod otter_hunt {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn park_the_deer(world: &mut World) {
+        let deer = world.deer.as_mut().unwrap();
+        deer.cell = super::cell_id(6, 4).unwrap();
+    }
+
+    fn flint_spear(world: &mut World, actor: u32) {
+        let cell = world.actor(actor).unwrap().cell;
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(actor), Role::Loose);
+        let point = world.items.get_mut(&spear).unwrap();
+        point.hardened = true;
+        point.flint_tip = true;
+    }
+
+    #[test]
+    fn a_flint_spear_or_a_bow_brings_the_otter_down() {
+        assert!(matches!(
+            crate::parse::parse_attempt("hunt otter").unwrap(),
+            Attempt::Hunt
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        park_the_deer(&mut world);
+        let near = world.spawn_at("Near", "n", 1, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Hunt)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You are not carrying a spear."));
+        flint_spear(&mut world, near);
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the otter down with the flint spear."
+        );
+        assert!(shot.results[0].success);
+        assert!(world.otter_cell().is_none());
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("An otter carcass lies here."), "{here}");
+        assert!(!here.contains("A deer carcass"), "{here}");
+        assert!(!here.contains("An otter is in the brook"), "{here}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(west.contains("West: brook, an otter carcass"), "{west}");
+        let body = world.examine(near, super::ExamineTarget::Carcass);
+        assert!(
+            body.contains("An otter carcass lies in contact with the ground"),
+            "{body}"
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter")));
+        let heard = "Near brings the otter down with the flint spear.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter")));
+        let left = world.step(&[intent("butcher", near, Attempt::Butcher)]);
+        assert_eq!(
+            left.results[0].message,
+            "The otter carcass is not ready to butcher."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The otter carcass is not ready to butcher."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("An otter carcass"));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        park_the_deer(&mut world);
+        let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bow, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let shot = world.step(&[intent("bow", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the otter down with the bow. The flint flake is spent."
+        );
+        assert!(world.otter_cell().is_none());
+        assert!(world.loose_ids(near, Material::Flake).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near brings the otter down with the bow. The flint flake is spent."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter")));
+        let water = world.observe(seen).unwrap().text;
+        assert!(
+            water.contains("an otter carcass") || water.contains("An otter carcass"),
+            "{water}"
+        );
+    }
+
+    #[test]
+    fn a_spear_from_the_next_cell_can_miss_the_otter() {
+        let mut found = None;
+        for seed in 1..40 {
+            let hash = super::contest_hash(seed, 0, "hunt", "1,1:otter", 1);
+            if hash % 3 == 1 {
+                found = Some(seed);
+                break;
+            }
+        }
+        let seed = found.expect("a miss seed");
+        let mut world = World::valley(crate::tuning::Tuning::evening(), seed);
+        park_the_deer(&mut world);
+        let near = world.spawn_at("Near", "n", 0, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let heard = world.spawn_at("Far", "f", 4, 1).unwrap();
+        flint_spear(&mut world, near);
+        let shot = world.step(&[intent("miss", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You miss the otter with the flint spear. It splashes away to the south."
+        );
+        assert!(!shot.results[0].success);
+        assert_eq!(world.otter_cell(), Some((1, 2)));
+        assert!(world
+            .items
+            .values()
+            .all(|item| item.material != Material::Carcass));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter") && !event.text.contains("splash")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near misses the otter with the flint spear. It splashes away to the south."
+        }));
+        let splash: Vec<_> = world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("splash"))
+            .map(|event| event.text.clone())
+            .collect();
+        assert_eq!(splash, vec!["You hear a splash to the west.".to_string()]);
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("otter") && !event.text.contains("splash")));
     }
 }
