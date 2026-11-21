@@ -11697,7 +11697,12 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
     assert!(caught
         .events
         .iter()
-        .any(|event| event.text == "The snare catches a hare."));
+        .any(|event| event.text == "The snare catches small game."));
+    assert!(caught
+        .events
+        .iter()
+        .all(|event| event.text != "The snare catches a hare."));
+    assert_eq!(world.hare_cell(), Some((2, 4)));
     assert!(
         caught.text.contains("A portion of raw meat lies here."),
         "{}",
@@ -11710,7 +11715,7 @@ fn an_iron_knife_cuts_a_whole_hide_into_strips_and_stays() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "The snare catches a hare."));
+        .any(|event| event.text == "The snare catches small game."));
     let far_meat = world.observe(far).unwrap().text;
     assert!(
         far_meat.contains("A portion of raw meat lies on the valley floor to the south and east."),

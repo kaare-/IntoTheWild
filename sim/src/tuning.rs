@@ -41,7 +41,8 @@ pub struct Tuning {
     /// Shorter than the tracks, so the prints can outlast the wolf.
     #[serde(default = "default_wolf_ticks")]
     pub wolf_ticks: u64,
-    /// Ticks after `set snare` before the snare catches a hare.
+    /// Ticks after `set snare` before it springs. Beside the valley hare
+    /// that is the hare. Farther off it is small game, and the hare stays.
     #[serde(default = "default_snare_ticks")]
     pub snare_ticks: u64,
     /// Ticks after `set net` in the brook before the net catches a fish.

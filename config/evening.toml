@@ -56,9 +56,10 @@ spear_ticks = 4
 # Day has no wolf. Walking closer before the wait ends leaves it gone.
 track_ticks = 4
 wolf_ticks = 2
-# A hide snare set with hide strips catches a hare after this many ticks.
+# A hide snare set with hide strips springs after this many ticks.
 # The strips are spent. The snare is gone. If the valley hare is on this cell
-# or the next, a hare carcass lies there. Otherwise one portion of raw meat lies there.
+# or the next, a hare carcass lies there. Otherwise it catches small game,
+# one portion of raw meat lies there, and the live hare stays.
 snare_ticks = 3
 # A fishing net set in the brook catches a fish after this many ticks.
 # The net stays set until someone gathers it. Someone who cannot see

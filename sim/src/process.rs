@@ -728,7 +728,7 @@ impl World {
     /// The hide snare on this cell has waited out its ticks. It is gone.
     /// If the valley hare is on this cell or the next, that hare is caught
     /// and a hare carcass lies where the snare was. Otherwise one portion of
-    /// raw meat lies there, as before.
+    /// raw meat lies there, and the line names small game. The live hare stays.
     fn spring_snare(&mut self, cell: CellId) {
         let Some(ready) = self.snares.get(&cell).copied() else {
             return;
@@ -753,10 +753,14 @@ impl World {
         } else {
             self.mint_item(Material::Meat, 0, cell, None, Role::Loose)
         };
-        let caught = if willow {
+        let caught = if valley && willow {
             "The willow snare catches a hare."
-        } else {
+        } else if valley {
             "The snare catches a hare."
+        } else if willow {
+            "The willow snare catches small game."
+        } else {
+            "The snare catches small game."
         };
         self.emit(
             caught,

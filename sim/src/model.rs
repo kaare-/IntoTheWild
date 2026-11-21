@@ -12284,7 +12284,8 @@ mod willow {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "The snare catches a hare." }));
+            .any(|event| { event.text == "The snare catches small game." }));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
         assert!(!world.snares.contains_key(&floor));
 
         world.mint_item(Material::Willow, 0, floor, Some(near), Role::Loose);
@@ -12343,13 +12344,14 @@ mod willow {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "The willow snare catches a hare." }));
+            .any(|event| { event.text == "The willow snare catches small game." }));
         assert!(world
             .observe(seen)
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "The willow snare catches a hare." }));
+            .any(|event| { event.text == "The willow snare catches small game." }));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
         assert!(world
             .observe(quiet)
             .unwrap()
