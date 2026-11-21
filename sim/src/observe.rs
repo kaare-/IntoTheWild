@@ -1214,8 +1214,20 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Cord).is_empty() {
             parts.push("Hide strips lie here. They are cordage.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Bow).is_empty() {
-            parts.push("A bow lies here. It is a dry branch bound with hide strips.".into());
+        let bows_here = self.ground_ids(actor.cell, Material::Bow);
+        if !bows_here.is_empty() {
+            let willow = bows_here
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|bow| bow.bound_willow));
+            let hide = bows_here
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|bow| !bow.bound_willow));
+            if hide {
+                parts.push("A bow lies here. It is a dry branch bound with hide strips.".into());
+            }
+            if willow {
+                parts.push("A bow lies here. It is a dry branch bound with willow cordage.".into());
+            }
         }
         if !self.ground_ids(actor.cell, Material::Paddle).is_empty() {
             parts.push("A wooden paddle lies here.".into());
@@ -2517,12 +2529,55 @@ impl World {
         }
     }
 
+    fn bow_counts(&self, ids: &[crate::model::ItemId]) -> (u32, u32) {
+        let willow = ids
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|bow| bow.bound_willow))
+            .count() as u32;
+        (ids.len() as u32 - willow, willow)
+    }
+
+    fn bow_kind_lines(
+        &self,
+        hide: u32,
+        willow: u32,
+        lying: bool,
+        where_clause: &str,
+    ) -> Vec<String> {
+        let mut lines = Vec::new();
+        for (count, binding) in [(hide, "hide strips"), (willow, "willow cordage")] {
+            if count == 0 {
+                continue;
+            }
+            let made = format!("a dry branch bound with {binding}");
+            if lying {
+                if count == 1 {
+                    lines.push(format!("A bow lies {where_clause}. It is {made}."));
+                } else {
+                    lines.push(format!(
+                        "{} bows lie {where_clause}. Each is {made}.",
+                        capitalize(&count_word(count))
+                    ));
+                }
+            } else if count == 1 {
+                lines.push(format!("A bow is carried by {where_clause}. It is {made}."));
+            } else {
+                lines.push(format!(
+                    "{} bows are carried by {where_clause}. Each is {made}.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        lines
+    }
+
     fn examine_bow(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            let count = self.ground_ids(cell, Material::Bow).len() as u32;
-            if count == 0 {
+            let ids = self.ground_ids(cell, Material::Bow);
+            let (hide, willow) = self.bow_counts(&ids);
+            if hide + willow == 0 {
                 continue;
             }
             let place = if origin == cell {
@@ -2530,23 +2585,15 @@ impl World {
             } else {
                 format!("to the {}", self.relative(origin, cell))
             };
-            if count == 1 {
-                lines.push(format!(
-                    "A bow lies {place}. It is a dry branch bound with hide strips."
-                ));
-            } else {
-                lines.push(format!(
-                    "{} bows lie {place}. Each is a dry branch bound with hide strips.",
-                    capitalize(&count_word(count))
-                ));
-            }
+            lines.extend(self.bow_kind_lines(hide, willow, true, &place));
         }
         for actor in self.actors.values() {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            let count = self.loose_ids(actor.id, Material::Bow).len() as u32;
-            if count == 0 {
+            let ids = self.loose_ids(actor.id, Material::Bow);
+            let (hide, willow) = self.bow_counts(&ids);
+            if hide + willow == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -2555,16 +2602,7 @@ impl World {
                 actor.name.as_str()
             };
             let cover = self.cover_phrase(actor.cell);
-            if count == 1 {
-                lines.push(format!(
-                    "A bow is carried by {who} {cover}. It is a dry branch bound with hide strips."
-                ));
-            } else {
-                lines.push(format!(
-                    "{} bows are carried by {who} {cover}. Each is a dry branch bound with hide strips.",
-                    capitalize(&count_word(count))
-                ));
-            }
+            lines.extend(self.bow_kind_lines(hide, willow, false, &format!("{who} {cover}")));
         }
         if lines.is_empty() {
             "You see no bow from here.".into()
@@ -8775,7 +8813,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} crafts "))?;
-        if rest != "a bow from a dry branch and hide strips." {
+        if rest != "a bow from a dry branch and hide strips."
+            && rest != "a bow from a dry branch and willow cordage."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "craft", rest))

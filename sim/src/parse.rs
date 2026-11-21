@@ -14,7 +14,7 @@ set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
 haft                         a carried flint flake and a dry branch into a spear; hide strips bind the tip when carried, otherwise willow cordage. Hold it at a fire
-craft bow                    a dry branch and hide strips, from the arms if you carry them, or lying in this cell. Both are spent. The bow stays in the arms.
+craft bow                    a dry branch and hide strips or willow cordage, from the arms if you carry them, or lying in this cell. Hide strips are spent when both are here. The bow stays in the arms.
 make bow                     the same bow
 dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
 dry clothes                  wet, damp, or soaked clothes at a burning fire. You wait there until they are dry. Leaving the fire stops the wait. The fire is not used up.

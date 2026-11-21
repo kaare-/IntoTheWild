@@ -8156,14 +8156,23 @@ impl World {
             })
     }
 
-    /// Hide strips for the bow. A bundle in the arms is spent before one lying in the cell.
-    fn bow_strips_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+    /// Cordage for the bow. Hide strips are spent before willow, and a bundle
+    /// in the arms is spent before one lying in the cell. `true` means willow.
+    fn bow_line(&self, actor: crate::model::ActorId) -> Option<(crate::model::ItemId, bool)> {
+        let cell = self.bow_cell(actor);
         if let Some(id) = self.loose_ids(actor, Material::Cord).first().copied() {
-            return Some(id);
+            return Some((id, false));
         }
-        self.ground_ids(self.bow_cell(actor), Material::Cord)
+        if let Some(id) = self.ground_ids(cell, Material::Cord).first().copied() {
+            return Some((id, false));
+        }
+        if let Some(id) = self.loose_ids(actor, Material::Willow).first().copied() {
+            return Some((id, true));
+        }
+        self.ground_ids(cell, Material::Willow)
             .first()
             .copied()
+            .map(|id| (id, true))
     }
 
     pub(crate) fn bow_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
@@ -8171,17 +8180,17 @@ impl World {
         let dry = self.bow_branch_id(actor).is_some();
         let any_branch = !self.loose_ids(actor, Material::Branch).is_empty()
             || !self.ground_ids(cell, Material::Branch).is_empty();
-        let strips = self.bow_strips_id(actor).is_some();
-        if dry && strips {
+        let line = self.bow_line(actor).is_some();
+        if dry && line {
             None
-        } else if any_branch && strips {
+        } else if any_branch && line {
             Some("The branch is not dry.")
-        } else if !dry && !strips {
-            Some("You need a dry branch and hide strips.")
+        } else if !dry && !line {
+            Some("You need a dry branch and hide strips or willow cordage.")
         } else if !dry {
             Some("You need a dry branch.")
         } else {
-            Some("You need hide strips.")
+            Some("You need hide strips or willow cordage.")
         }
     }
 
@@ -8201,12 +8210,12 @@ impl World {
                 );
                 continue;
             };
-            let Some(strips) = self.bow_strips_id(intent.actor_id) else {
+            let Some((line, willow)) = self.bow_line(intent.actor_id) else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "You need hide strips.",
+                    "You need hide strips or willow cordage.",
                     results,
                 );
                 continue;
@@ -8216,10 +8225,17 @@ impl World {
                 .map(|actor| actor.cell)
                 .unwrap_or(0);
             self.items.remove(&branch);
-            self.items.remove(&strips);
+            self.items.remove(&line);
             let id = self.mint_item(Material::Bow, 0, cell, Some(intent.actor_id), Role::Loose);
+            if let Some(bow) = self.items.get_mut(&id) {
+                bow.bound_willow = willow;
+            }
             let name = self.name_of(intent.actor_id);
-            let rest = "a bow from a dry branch and hide strips.";
+            let rest = if willow {
+                "a bow from a dry branch and willow cordage."
+            } else {
+                "a bow from a dry branch and hide strips."
+            };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "craft", rest),
                 Scope::Cell(cell),

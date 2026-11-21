@@ -5398,7 +5398,7 @@ mod bow {
         let missing = world.step(&[intent("missing", near, Attempt::CraftBow)]);
         assert_eq!(
             missing.results[0].message,
-            "You need a dry branch and hide strips."
+            "You need a dry branch and hide strips or willow cordage."
         );
         assert!(world
             .observe(seen)
@@ -5554,6 +5554,92 @@ mod bow {
         assert!(world.items.get(&ground_strips).is_none());
         assert_eq!(world.ground_ids(cell, Material::Branch).len(), 1);
         assert_eq!(world.loose_ids(near, Material::Bow).len(), 3);
+    }
+
+    #[test]
+    fn willow_cordage_binds_a_bow_when_no_hide_strips_are_held() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let none = world.step(&[intent("none", near, Attempt::CraftBow)]);
+        assert_eq!(
+            none.results[0].message,
+            "You need hide strips or willow cordage."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You need hide strips or willow cordage."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You need hide strips or willow cordage."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You need hide strips or willow cordage."));
+
+        world.mint_item(Material::Cord, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Willow, 0, cell, Some(near), Role::Loose);
+        let prefer = world.step(&[intent("prefer", near, Attempt::CraftBow)]);
+        assert_eq!(
+            prefer.results[0].message,
+            "You craft a bow from a dry branch and hide strips."
+        );
+        assert!(world.loose_ids(near, Material::Cord).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Willow).len(), 1);
+        let hide = world.examine(near, ExamineTarget::Bow);
+        assert!(
+            hide.contains("It is a dry branch bound with hide strips."),
+            "{hide}"
+        );
+        let hide_bow = world.loose_ids(near, Material::Bow)[0];
+        world.items.remove(&hide_bow);
+
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let crafted = world.step(&[intent("craft", near, Attempt::CraftBow)]);
+        let yours = "You craft a bow from a dry branch and willow cordage.";
+        let witnessed = "Near crafts a bow from a dry branch and willow cordage.";
+        assert_eq!(crafted.results[0].message, yours);
+        assert!(world.loose_ids(near, Material::Willow).is_empty());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && !event.text.contains("crafts a bow") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("willow cordage")));
+        let examined = world.examine(near, ExamineTarget::Bow);
+        assert!(
+            examined.contains("It is a dry branch bound with willow cordage."),
+            "{examined}"
+        );
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Bow))]);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A bow lies here. It is a dry branch bound with willow cordage."),
+            "{here}"
+        );
     }
 }
 
