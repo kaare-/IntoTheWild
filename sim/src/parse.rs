@@ -5,7 +5,7 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 pub fn help_text() -> &'static str {
     "\
 look                         where you are, and the local map
-examine wood|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|bow|self|here|<name>
+examine wood|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|bow|paddle|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk
 gather branch|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|clay|bowl|spear|carcass|meat|hide
@@ -26,7 +26,7 @@ hollow log                   the heavy log, at a fire on this cell. The fire cha
 carve canoe                  a charred heavy log, with a flint flake or an iron knife. The tool is not used up. A dugout canoe lies here
 launch                       a dugout canoe on the bank, into the brook beside you
 board                        a dugout canoe floating in the brook here or on the next cell
-paddle [n|s|e|w]             while aboard, move the dugout along the brook. You move with it. A bare paddle picks a brook cell. The bank refuses
+paddle [n|s|e|w]             while aboard, move the dugout along the brook. You move with it. A bare paddle picks a brook cell. Holding a wooden paddle names it. The bank refuses
 disembark                    leave the dugout onto the bank. leave canoe is the same. Walking off without this refuses
 beach                        a floating dugout, onto the bank beside it. If you are aboard, you come ashore with it. drag canoe is the same
 release                      let go of the log
@@ -43,6 +43,7 @@ butcher                      a carcass at your feet into three portions; a flint
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
 carve awl                    a bone, with a flint flake or an iron knife, into a bone awl. The tool is not used up. The awl can pierce hide.
+carve paddle                 a dry branch, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The wooden paddle stays in the arms. Holding it names the paddle when you paddle. Bare hands still paddle.
 make awl                     the same bone awl
 set snare                    hide strips, from the arms or the ground, into a snare in this cell. After a short wait it catches a hare. The strips are spent.
 set trap                     the same snare
@@ -263,6 +264,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             if rest == "awl" || rest == "an awl" || rest == "bone awl" || rest == "a bone awl" =>
         {
             Ok(Attempt::CarveAwl)
+        }
+        "carve"
+            if rest == "paddle"
+                || rest == "a paddle"
+                || rest == "the paddle"
+                || rest == "wooden paddle"
+                || rest == "a wooden paddle" =>
+        {
+            Ok(Attempt::CarvePaddle)
         }
         "salt" if rest == "meat" || rest == "raw meat" || rest == "the meat" => {
             Ok(Attempt::SaltMeat)
@@ -493,6 +503,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "net" | "fishing net" | "a fishing net" => Ok(Material::Net),
         "mat" | "reed mat" | "a reed mat" => Ok(Material::Mat),
         "canoe" | "dugout" | "dugout canoe" => Ok(Material::Canoe),
+        "paddle" | "wooden paddle" | "a wooden paddle" => Ok(Material::Paddle),
         "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, dark berries, pale berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
@@ -575,6 +586,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
         "moss" => ExamineTarget::Moss,
         "bow" | "a bow" => ExamineTarget::Bow,
+        "paddle" | "wooden paddle" | "a wooden paddle" => ExamineTarget::Paddle,
         "bone awl" => ExamineTarget::Awl,
         "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
         "slope" | "the slope" => ExamineTarget::Slope,

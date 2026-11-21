@@ -113,6 +113,8 @@ pub enum Material {
     /// A handful that does not feed until it is cooked. Not the sweet
     /// berries under the rock, and not the dark berries.
     PaleBerry,
+    /// Carved from a dry branch. Bare hands can still paddle; holding this names it.
+    Paddle,
 }
 
 impl Material {
@@ -159,6 +161,7 @@ impl Material {
             Material::Mat => "reed mat",
             Material::Canoe => "dugout canoe",
             Material::PaleBerry => "pale berry",
+            Material::Paddle => "paddle",
         }
     }
 
@@ -205,6 +208,7 @@ impl Material {
             Material::Mat => "reed mat",
             Material::Canoe => "dugout canoe",
             Material::PaleBerry => "handful of pale berries",
+            Material::Paddle => "wooden paddle",
         }
     }
 
@@ -214,6 +218,7 @@ impl Material {
             Material::BitterBerry => "a handful of dark berries",
             Material::Berry => "a handful of berries",
             Material::PaleBerry => "a handful of pale berries",
+            Material::Paddle => "a wooden paddle",
             Material::Carcass => "the carcass",
             _ => "some food",
         }
@@ -337,6 +342,7 @@ pub enum ExamineTarget {
     Mat,
     Canoe,
     PaleBerries,
+    Paddle,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -410,6 +416,7 @@ pub enum Attempt {
     Paddle(Option<Dir>),
     Disembark,
     Beach,
+    CarvePaddle,
 }
 
 impl Attempt {
@@ -480,6 +487,7 @@ impl Attempt {
                 | Attempt::Paddle(_)
                 | Attempt::Disembark
                 | Attempt::Beach
+                | Attempt::CarvePaddle
         )
     }
 }
@@ -9506,5 +9514,206 @@ mod bark_arms {
             world.examine(seen, ExamineTarget::Bark),
             "Three dry sheets of bark are carried by Near, in the open."
         );
+    }
+}
+
+#[cfg(test)]
+mod carve_paddle {
+    use super::{Attempt, CellId, Dir, ExamineTarget, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn at(x: i32, y: i32) -> CellId {
+        super::cell_id(x, y).unwrap()
+    }
+
+    #[test]
+    fn a_dry_branch_and_a_flake_or_knife_become_a_wooden_paddle() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = at(4, 3);
+        assert_eq!(
+            crate::parse::parse_attempt("carve paddle").unwrap(),
+            Attempt::CarvePaddle
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("carve a paddle").unwrap(),
+            Attempt::CarvePaddle
+        );
+
+        let bare = world.step(&[intent("bare", near, Attempt::CarvePaddle)]);
+        assert_eq!(bare.results[0].message, "You have no dry branch to carve.");
+        assert!(!bare.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You have no dry branch to carve."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no dry branch to carve."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("carve") && !event.text.contains("paddle") }));
+
+        world.mint_item(Material::Branch, 1000, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Flake, 0, cell, Some(near), super::Role::Loose);
+        let wet = world.step(&[intent("wet", near, Attempt::CarvePaddle)]);
+        assert_eq!(wet.results[0].message, "The branch is not dry.");
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Branch).len(), 1);
+
+        world.mint_item(Material::Branch, 0, cell, Some(near), super::Role::Loose);
+        let carved = world.step(&[intent("carve", near, Attempt::CarvePaddle)]);
+        assert_eq!(
+            carved.results[0].message,
+            "You carve a dry branch into a wooden paddle with the flint flake."
+        );
+        assert!(carved.results[0].success);
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Paddle).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Branch).len(), 1);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains("a wooden paddle"), "{}", look.text);
+        assert!(look.text.contains("a sharp flint flake"), "{}", look.text);
+        assert!(look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near carves")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near carves a dry branch into a wooden paddle with the flint flake."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("paddle") && !event.text.contains("carves") }));
+        let examined = world.examine(near, ExamineTarget::Paddle);
+        assert!(
+            examined.contains("A wooden paddle is carried by you"),
+            "{examined}"
+        );
+        assert!(examined.contains("carved from a dry branch"), "{examined}");
+        let seen_exam = world.examine(seen, ExamineTarget::Paddle);
+        assert!(
+            seen_exam.contains("A wooden paddle is carried by Near"),
+            "{seen_exam}"
+        );
+
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Paddle))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop a wooden paddle. It is in contact with the ground."
+        );
+        let lying = world.observe(near).unwrap();
+        assert!(
+            lying.text.contains("A wooden paddle lies here."),
+            "{}",
+            lying.text
+        );
+        assert!(
+            !lying.text.contains("You have a wooden paddle"),
+            "{}",
+            lying.text
+        );
+
+        world.mint_item(Material::Knife, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, None, super::Role::Loose);
+        let with_knife = world.step(&[intent("knife", near, Attempt::CarvePaddle)]);
+        assert_eq!(
+            with_knife.results[0].message,
+            "You carve a dry branch into a wooden paddle with the iron knife."
+        );
+        assert_eq!(world.loose_ids(near, Material::Knife).len(), 1);
+        assert_eq!(world.ground_ids(cell, Material::Branch).len(), 0);
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near carves a dry branch into a wooden paddle with the iron knife."
+        }));
+
+        let shade = world.spawn_at("Shade", "h", 6, 1).unwrap();
+        let rock = at(6, 1);
+        assert_eq!(world.pile_count(rock, Material::Branch), 4);
+        world.mint_item(Material::Flake, 0, rock, Some(shade), super::Role::Loose);
+        let from_pile = world.step(&[intent("pile", shade, Attempt::CarvePaddle)]);
+        assert_eq!(
+            from_pile.results[0].message,
+            "You carve a dry branch into a wooden paddle with the flint flake."
+        );
+        assert!(world.pile_count(rock, Material::Branch) < 4);
+        assert_eq!(world.loose_ids(shade, Material::Paddle).len(), 1);
+        assert!(world
+            .observe(shade)
+            .unwrap()
+            .text
+            .contains("a wooden paddle"));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Shade carves") }));
+    }
+
+    #[test]
+    fn a_held_paddle_is_named_and_bare_hands_still_paddle() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        world.mint_item(Material::Canoe, 0, at(1, 2), None, super::Role::Loose);
+        let boarded = world.step(&[intent("board", near, Attempt::Board)]);
+        assert_eq!(boarded.results[0].message, "You board the dugout canoe.");
+        let bare = world.step(&[intent("bare", near, Attempt::Paddle(Some(Dir::North)))]);
+        assert_eq!(
+            bare.results[0].message,
+            "You paddle the dugout canoe north."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near paddles")));
+        world.mint_item(
+            Material::Paddle,
+            0,
+            at(1, 1),
+            Some(near),
+            super::Role::Loose,
+        );
+        let named = world.step(&[intent("named", near, Attempt::Paddle(Some(Dir::South)))]);
+        assert_eq!(
+            named.results[0].message,
+            "You paddle the dugout canoe south with the wooden paddle."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near paddles")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near paddles the dugout canoe south with the wooden paddle."
+        }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a wooden paddle"));
     }
 }

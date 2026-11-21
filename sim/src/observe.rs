@@ -216,6 +216,7 @@ impl World {
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
+            ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Mat => self.examine_mat(actor_id),
             ExamineTarget::Canoe => self.examine_canoe(actor_id),
@@ -1164,6 +1165,9 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Bow).is_empty() {
             parts.push("A bow lies here. It is a dry branch bound with hide strips.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Paddle).is_empty() {
+            parts.push("A wooden paddle lies here.".into());
         }
         if self.snares.contains_key(&actor.cell) {
             parts.push("A hide snare is set here.".into());
@@ -2331,6 +2335,62 @@ impl World {
         }
     }
 
+    fn examine_paddle(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::Paddle).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!(
+                    "A wooden paddle lies {place}. It is carved from a dry branch."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} wooden paddles lie {place}. Each is carved from a dry branch.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Paddle).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A wooden paddle is carried by {who} {cover}. It is carved from a dry branch."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} wooden paddles are carried by {who} {cover}. Each is carved from a dry branch.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no wooden paddle from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// The rock's dry branches were taken and have not lain there again.
     fn branch_bare(&self, cell: crate::model::CellId) -> bool {
         self.branch_returns_at.contains_key(&cell)
@@ -2896,6 +2956,10 @@ impl World {
             "a bow".into()
         } else if item.material == "bow" {
             format!("{} bows", count_word(item.count))
+        } else if item.material == "paddle" && item.count == 1 {
+            "a wooden paddle".into()
+        } else if item.material == "paddle" {
+            format!("{} wooden paddles", count_word(item.count))
         } else if item.material == "egg" {
             if self
                 .loose_ids(actor_id, Material::Egg)
@@ -3716,6 +3780,9 @@ impl World {
         }
         if !self.ground_ids(dest, Material::Bow).is_empty() {
             bits.push("a bow".into());
+        }
+        if !self.ground_ids(dest, Material::Paddle).is_empty() {
+            bits.push("a wooden paddle".into());
         }
         bits.extend(self.hide_compass_bits(&self.ground_ids(dest, Material::Hide)));
         if self
@@ -6757,6 +6824,7 @@ impl World {
                 Material::Mat => "reed mat",
                 Material::Canoe => "dugout canoe",
                 Material::PaleBerry => "pale berries",
+                Material::Paddle => "wooden paddle",
             };
             format!("You see no {name} from here.")
         } else {
@@ -8502,6 +8570,10 @@ impl World {
             || text == format!("{name} paddles the dugout canoe south.")
             || text == format!("{name} paddles the dugout canoe east.")
             || text == format!("{name} paddles the dugout canoe west.")
+            || text == format!("{name} paddles the dugout canoe north with the wooden paddle.")
+            || text == format!("{name} paddles the dugout canoe south with the wooden paddle.")
+            || text == format!("{name} paddles the dugout canoe east with the wooden paddle.")
+            || text == format!("{name} paddles the dugout canoe west with the wooden paddle.")
             || text == format!("{name} leaves the dugout canoe.")
             || text == format!("{name} beaches the dugout canoe.")
         {
@@ -9044,6 +9116,8 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} carves "))?;
         if rest != "a bone into a bone awl with the iron knife."
             && rest != "a bone into a bone awl with the flint flake."
+            && rest != "a dry branch into a wooden paddle with the iron knife."
+            && rest != "a dry branch into a wooden paddle with the flint flake."
         {
             return None;
         }
@@ -10012,6 +10086,11 @@ impl World {
         if self.has_bone(actor_id) && self.has_carve_tool(actor_id) {
             actions.push("carve awl".into());
         }
+        if self.paddle_branch_refusal(actor_id).is_none()
+            && self.paddle_tool_rest(actor_id).is_some()
+        {
+            actions.push("carve paddle".into());
+        }
         if self.has_salt(actor_id) && self.raw_portion_to_salt(actor_id).is_some() {
             actions.push("salt meat".into());
         }
@@ -10555,6 +10634,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Mat, true) => "reed mat",
         (Material::Mat, false) => "reed mats",
         (Material::Canoe, _) => "dugout canoe",
+        (Material::Paddle, true) => "wooden paddle",
+        (Material::Paddle, false) => "wooden paddles",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

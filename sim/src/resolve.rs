@@ -97,6 +97,7 @@ impl World {
         let mut disembarks = Vec::new();
         let mut beaches = Vec::new();
         let mut carves = Vec::new();
+        let mut paddle_carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smoke_fish = Vec::new();
@@ -189,6 +190,7 @@ impl World {
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
+                        Attempt::CarvePaddle => paddle_carves.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeFish => smoke_fish.push(intent),
@@ -319,6 +321,7 @@ impl World {
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
         self.apply_carves(carves, &mut results);
+        self.apply_paddle_carves(paddle_carves, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smoke_fish(smoke_fish, &mut results);
@@ -681,6 +684,21 @@ impl World {
                     Err("You have no bone to carve.".into())
                 } else if !self.has_carve_tool(actor.id) {
                     Err("You need a flint flake or an iron knife to carve the bone.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarvePaddle => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(message) = self.paddle_branch_refusal(actor.id) {
+                    Err(message.into())
+                } else if self.paddle_tool_rest(actor.id).is_none() {
+                    Err("You need a flint flake or an iron knife to carve a paddle.".into())
                 } else {
                     Ok(true)
                 }
@@ -1372,6 +1390,7 @@ impl World {
                             | Material::Bow
                             | Material::Net
                             | Material::Mat
+                            | Material::Paddle
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(if *material == Material::BitterBerry {
@@ -1763,6 +1782,7 @@ impl World {
                     | Material::Egg
                     | Material::Net
                     | Material::Mat
+                    | Material::Paddle
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -2531,8 +2551,13 @@ impl World {
                 self.aboard.insert(*rider, canoe);
             }
             let name = self.name_of(actor.id);
+            let rest = if self.loose_ids(actor.id, Material::Paddle).is_empty() {
+                format!("the dugout canoe {}.", dir.word())
+            } else {
+                format!("the dugout canoe {} with the wooden paddle.", dir.word())
+            };
             self.emit(
-                format!("{name} paddles the dugout canoe {word}.", word = dir.word()),
+                crate::model::spoken_act(Some(name.as_str()), "paddle", &rest),
                 Scope::Cell(dest),
                 vec![actor.id],
                 vec![origin, dest],
@@ -2544,7 +2569,7 @@ impl World {
                 intent.command_id,
                 actor.id,
                 true,
-                format!("You paddle the dugout canoe {}.", dir.word()),
+                crate::model::spoken_act(None, "paddle", &rest),
                 results,
             );
         }
@@ -5311,6 +5336,123 @@ impl World {
     pub(crate) fn has_carve_tool(&self, actor: crate::model::ActorId) -> bool {
         !self.loose_ids(actor, Material::Knife).is_empty()
             || !self.loose_ids(actor, Material::Flake).is_empty()
+    }
+
+    /// A dry branch in the arms, else one lying here, else one from a dry pile.
+    pub(crate) fn paddle_branch_refusal(
+        &self,
+        actor: crate::model::ActorId,
+    ) -> Option<&'static str> {
+        if self.dry_branch_for_paddle(actor) {
+            None
+        } else if self.any_branch_for_paddle(actor) {
+            Some("The branch is not dry.")
+        } else {
+            Some("You have no dry branch to carve.")
+        }
+    }
+
+    fn dry_branch_for_paddle(&self, actor: crate::model::ActorId) -> bool {
+        if !self.dry_loose_ids(actor, Material::Branch).is_empty() {
+            return true;
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        self.ground_ids(cell, Material::Branch).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|item| self.is_dry(item.moisture))
+        }) || self.dry_pile_count(cell, Material::Branch) > 0
+    }
+
+    fn any_branch_for_paddle(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Branch).is_empty()
+            || !self.ground_ids(cell, Material::Branch).is_empty()
+            || self.pile_count(cell, Material::Branch) > 0
+    }
+
+    /// Knife before flake. Either may be in the arms or lying on this cell. It is not spent.
+    pub(crate) fn paddle_tool_rest(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        let knife = !self.loose_ids(actor, Material::Knife).is_empty()
+            || !self.ground_ids(cell, Material::Knife).is_empty();
+        let flake = !self.loose_ids(actor, Material::Flake).is_empty()
+            || !self.ground_ids(cell, Material::Flake).is_empty();
+        if knife {
+            Some("a dry branch into a wooden paddle with the iron knife.")
+        } else if flake {
+            Some("a dry branch into a wooden paddle with the flint flake.")
+        } else {
+            None
+        }
+    }
+
+    fn take_paddle_branch(&mut self, actor: crate::model::ActorId) -> bool {
+        if self.consume_dry(actor, Material::Branch).is_ok() {
+            return true;
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        let ground = self
+            .ground_ids(cell, Material::Branch)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            });
+        if let Some(id) = ground {
+            self.items.remove(&id);
+            return true;
+        }
+        false
+    }
+
+    fn apply_paddle_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if let Some(message) = self.paddle_branch_refusal(actor.id) {
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            }
+            let Some(rest) = self.paddle_tool_rest(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve a paddle.",
+                    results,
+                );
+                continue;
+            };
+            if !self.take_paddle_branch(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no dry branch to carve.",
+                    results,
+                );
+                continue;
+            }
+            let id = self.mint_item(Material::Paddle, 0, actor.cell, Some(actor.id), Role::Loose);
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
     }
 
     fn take_one_bone(&mut self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
