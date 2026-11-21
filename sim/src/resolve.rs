@@ -4701,6 +4701,7 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
         self.otter = None;
+        self.arm_otter_return();
         let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
         if let Some(carcass) = self.items.get_mut(&id) {
             carcass.otter = true;
@@ -4746,6 +4747,7 @@ impl World {
             self.items.remove(&flake);
         }
         self.otter = None;
+        self.arm_otter_return();
         let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
         if let Some(carcass) = self.items.get_mut(&id) {
             carcass.otter = true;

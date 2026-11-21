@@ -811,6 +811,8 @@ pub enum Wake {
     MushroomReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
+    /// An otter is in the brook again after the last one was brought down.
+    OtterReturn,
     /// The otter swims one step along the brook when nobody is beside it.
     Otter,
     /// Bee stings on a body. Each tick, any sting whose time has come fades.
@@ -844,6 +846,9 @@ pub struct Deer {
 pub struct Otter {
     pub cell: CellId,
     pub route_at: usize,
+    /// It just returned. The swim on this tick waits.
+    #[serde(default)]
+    pub held: bool,
 }
 
 /// A short loop on the brook and the dry bank beside it. Orthogonal.
@@ -1104,6 +1109,9 @@ pub struct World {
     /// When a deer stands on the trail again. Look names no standing deer until then.
     #[serde(default)]
     pub(crate) deer_returns_at: Option<u64>,
+    /// When an otter is in the brook again. Look names no live otter until then.
+    #[serde(default)]
+    pub(crate) otter_returns_at: Option<u64>,
     /// The next deer's id. The first deer is 1.
     #[serde(default = "default_next_deer_id")]
     pub(crate) next_deer_id: u32,
@@ -1177,6 +1185,7 @@ impl World {
             otter: Some(Otter {
                 cell: cell_id(1, 1).unwrap(),
                 route_at: 1,
+                held: false,
             }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
@@ -1231,6 +1240,7 @@ impl World {
             mushroom_patches: BTreeMap::new(),
             mushroom_returns_at: BTreeMap::new(),
             deer_returns_at: None,
+            otter_returns_at: None,
             next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
             schedule: Vec::new(),
@@ -2036,6 +2046,18 @@ impl World {
         let at = self.time.saturating_add(self.tuning.deer_ticks);
         self.deer_returns_at = Some(at);
         self.schedule(at, Wake::DeerReturn);
+    }
+
+    /// The otter is down. Another is in the brook after the same wait as the
+    /// deer. A carcass still lying where it fell does not move that tick.
+    /// A wake that finds an otter already swimming does not add a second one.
+    pub(crate) fn arm_otter_return(&mut self) {
+        if self.otter.is_some() || self.otter_returns_at.is_some() {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.deer_ticks);
+        self.otter_returns_at = Some(at);
+        self.schedule(at, Wake::OtterReturn);
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -11977,6 +11999,7 @@ mod otter_hunt {
         );
         assert!(!shot.results[0].success);
         assert_eq!(world.otter_cell(), Some((1, 2)));
+        assert!(world.otter_returns_at.is_none());
         assert!(world
             .items
             .values()
@@ -12204,5 +12227,68 @@ mod otter_hunt {
             "otter {otter_rain} deer {deer_rain}"
         );
         assert_eq!(otter_rain * 2, deer_rain);
+    }
+
+    #[test]
+    fn an_otter_is_in_the_brook_again_after_the_same_wait_as_the_deer() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        park_the_deer(&mut world);
+        let near = world.spawn_at("Near", "n", 1, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        flint_spear(&mut world, near);
+        let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
+        assert_eq!(
+            shot.results[0].message,
+            "You bring the otter down with the flint spear."
+        );
+        assert!(world.otter_cell().is_none());
+        assert_eq!(world.otter_returns_at, Some(world.tuning.deer_ticks));
+        let ticks = world.tuning.deer_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world.otter_cell().is_none());
+        let waiting = world.observe(near).unwrap().text;
+        assert!(!waiting.contains("An otter is in the brook"), "{waiting}");
+        assert!(waiting.contains("An otter carcass lies here."), "{waiting}");
+        world.step(&[]);
+        assert_eq!(world.otter_cell(), Some((0, 1)));
+        assert!(world.otter_returns_at.is_none());
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("An otter is in the brook to the west."),
+            "{}",
+            back.text
+        );
+        assert!(
+            back.text.contains("An otter carcass lies here."),
+            "{}",
+            back.text
+        );
+        let arrived = "An otter is in the brook again.";
+        assert!(back.events.iter().any(|event| event.text == arrived));
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("An otter is in the brook to the west."),
+            "{}",
+            seen_back.text
+        );
+        assert!(seen_back.events.iter().any(|event| event.text == arrived));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != arrived));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("An otter is in the brook"));
+        world.step(&[]);
+        assert_eq!(world.otter_cell(), Some((0, 1)));
     }
 }

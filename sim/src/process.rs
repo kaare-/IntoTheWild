@@ -56,6 +56,7 @@ impl World {
                 Wake::BerryReturn(cell) => self.return_berries(cell),
                 Wake::MushroomReturn(cell) => self.return_mushrooms(cell),
                 Wake::DeerReturn => self.return_deer(),
+                Wake::OtterReturn => self.return_otter(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
             }
@@ -573,6 +574,40 @@ impl World {
         });
         self.emit(
             "A deer stands in the valley again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The same wait as the deer. An otter is in the brook again, at the
+    /// start of its route, and it does not swim on this tick. Someone who
+    /// cannot see that water hears nothing.
+    fn return_otter(&mut self) {
+        let Some(at) = self.otter_returns_at else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.otter_returns_at = None;
+        if self.otter.is_some() {
+            return;
+        }
+        let (x, y) = OTTER_ROUTE[0];
+        let Some(cell) = cell_id(x, y) else {
+            return;
+        };
+        self.otter = Some(crate::model::Otter {
+            cell,
+            route_at: 0,
+            held: true,
+        });
+        self.emit(
+            "An otter is in the brook again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
@@ -1282,6 +1317,12 @@ impl World {
         let Some(otter) = self.otter.clone() else {
             return;
         };
+        if otter.held {
+            if let Some(otter) = self.otter.as_mut() {
+                otter.held = false;
+            }
+            return;
+        }
         if self
             .actors
             .values()
