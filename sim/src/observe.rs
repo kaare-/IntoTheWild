@@ -8941,11 +8941,17 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        let rest = event.text.strip_prefix(&format!("{name} spears "))?;
-        if rest != "a fish from the brook." {
-            return None;
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} spears ")) {
+            if rest == "a fish from the brook." {
+                return Some(crate::model::spoken_act(None, "spear", rest));
+            }
         }
-        Some(crate::model::spoken_act(None, "spear", rest))
+        if let Some(rest) = event.text.strip_prefix(&format!("{name} catches ")) {
+            if rest == "a fish from the brook with the bone fish hook. The hide strips are spent." {
+                return Some(crate::model::spoken_act(None, "catch", rest));
+            }
+        }
+        None
     }
 
     /// The walk. The walker already has this as the reply, so the event
@@ -9051,6 +9057,9 @@ impl World {
 
     fn splash_cell(&self, event: &crate::model::Event) -> Option<CellId> {
         let splash = event.text.contains(" spears a fish from the brook.")
+            || event
+                .text
+                .contains(" catches a fish from the brook with the bone fish hook.")
             || event.text == "The fishing net catches a fish.";
         if !splash {
             return None;
@@ -10197,6 +10206,17 @@ impl World {
         }
         if self.has_bone(actor_id) && self.hook_tool_rest(actor_id).is_some() {
             actions.push("carve hook".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && self.fishing_water(actor.cell)
+            && !self.loose_ids(actor_id, Material::Hook).is_empty()
+            && !self.loose_ids(actor_id, Material::Cord).is_empty()
+            && !self
+                .brook_stretch(actor.cell)
+                .is_some_and(|stretch| self.brook_is_quiet(stretch))
+        {
+            actions.push("fish with hook".into());
         }
         if self.has_salt(actor_id) && self.raw_portion_to_salt(actor_id).is_some() {
             actions.push("salt meat".into());

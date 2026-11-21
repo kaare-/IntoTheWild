@@ -115,7 +115,7 @@ pub enum Material {
     PaleBerry,
     /// Carved from a dry branch. Bare hands can still paddle; holding this names it.
     Paddle,
-    /// Carved from a bone. Catching a fish with it is a later slice.
+    /// Carved from a bone. With hide strips, it takes a fish from the brook.
     Hook,
 }
 
@@ -396,6 +396,8 @@ pub enum Attempt {
     CutHide,
     DryBranch,
     Fish,
+    /// A bone fish hook and hide strips. The strips are spent as the line.
+    FishHook,
     TakeBrand,
     WeaveBasket,
     PutFish,
@@ -468,6 +470,7 @@ impl Attempt {
                 | Attempt::CutHide
                 | Attempt::DryBranch
                 | Attempt::Fish
+                | Attempt::FishHook
                 | Attempt::TakeBrand
                 | Attempt::WeaveBasket
                 | Attempt::PutFish
@@ -10023,5 +10026,313 @@ mod carve_hook {
             seen_look.text
         );
         assert!(!world.observe(quiet).unwrap().text.contains("hook"));
+    }
+}
+
+#[cfg(test)]
+mod fish_hook {
+    use super::{Attempt, CellId, Intent, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn at(x: i32, y: i32) -> CellId {
+        super::cell_id(x, y).unwrap()
+    }
+
+    fn say(world: &mut World, id: &str, actor: u32, attempt: Attempt) -> String {
+        world.step(&[intent(id, actor, attempt)]).results[0]
+            .message
+            .clone()
+    }
+
+    #[test]
+    fn a_bone_fish_hook_and_hide_strips_take_a_fish_from_the_brook() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let dry = world.spawn_at("Dry", "d", 4, 0).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("fish with hook").unwrap(),
+            Attempt::FishHook
+        );
+        assert_eq!(crate::parse::parse_attempt("fish").unwrap(), Attempt::Fish);
+        let bank = at(2, 2);
+        world.mint_item(Material::Hook, 0, bank, Some(dry), super::Role::Loose);
+        world.mint_item(Material::Cord, 0, bank, Some(dry), super::Role::Loose);
+        assert_eq!(
+            say(&mut world, "inland", dry, Attempt::FishHook),
+            "The brook is not here."
+        );
+        assert_eq!(world.loose_ids(dry, Material::Cord).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("brook is not here") }));
+
+        assert_eq!(
+            say(&mut world, "nohook", near, Attempt::FishHook),
+            "You are not carrying a bone fish hook."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("bone fish hook") }));
+
+        world.mint_item(Material::Hook, 0, bank, Some(near), super::Role::Loose);
+        assert_eq!(
+            say(&mut world, "noline", near, Attempt::FishHook),
+            "You have no hide strips for a line."
+        );
+        assert_eq!(world.loose_ids(near, Material::Hook).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hide strips") }));
+
+        world.mint_item(Material::Cord, 0, bank, Some(near), super::Role::Loose);
+        world.mint_item(Material::Spear, 0, bank, Some(near), super::Role::Loose);
+        assert_eq!(
+            say(&mut world, "stone", near, Attempt::Fish),
+            "You need a fire-hardened flint spear."
+        );
+        assert_eq!(world.loose_ids(near, Material::Cord).len(), 1);
+        let caught = say(&mut world, "hook", near, Attempt::FishHook);
+        assert_eq!(
+            caught,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+        assert_eq!(world.loose_ids(near, Material::Cord).len(), 0);
+        assert_eq!(world.loose_ids(near, Material::Hook).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Fish).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Spear).len(), 1);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains("a bone fish hook"), "{}", look.text);
+        assert!(look.text.contains("raw fish"), "{}", look.text);
+        assert!(look.events.iter().any(|event| {
+            event.text
+                == "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        }));
+        assert!(look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near catches") && !event.text.contains("splash")));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near catches a fish from the brook with the bone fish hook. The hide strips are spent."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("splash")));
+        assert!(world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You hear a splash to the north and west." }));
+        assert!(world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("catches a fish") }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("fish") && !event.text.contains("splash") }));
+
+        world.mint_item(Material::Cord, 0, bank, Some(near), super::Role::Loose);
+        let gone = say(&mut world, "again", near, Attempt::FishHook);
+        assert_eq!(gone, "The fish are gone from this stretch of the brook.");
+        assert_eq!(world.loose_ids(near, Material::Cord).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Fish).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("fish are gone") }));
+
+        let other = world.spawn_at("Other", "o", 0, 3).unwrap();
+        world.mint_item(Material::Hook, 0, at(0, 3), Some(other), super::Role::Loose);
+        world.mint_item(Material::Cord, 0, at(0, 3), Some(other), super::Role::Loose);
+        let bare = say(&mut world, "bare", other, Attempt::Fish);
+        assert_eq!(
+            bare,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+        assert!(world.aboard.is_empty());
+
+        let aboard = world.spawn_at("Aboard", "a", 0, 1).unwrap();
+        world.mint_item(Material::Canoe, 0, at(0, 1), None, super::Role::Loose);
+        world.mint_item(
+            Material::Hook,
+            0,
+            at(0, 1),
+            Some(aboard),
+            super::Role::Loose,
+        );
+        world.mint_item(
+            Material::Cord,
+            0,
+            at(0, 1),
+            Some(aboard),
+            super::Role::Loose,
+        );
+        assert_eq!(
+            say(&mut world, "board", aboard, Attempt::Board),
+            "You board the dugout canoe."
+        );
+        let from_boat = say(&mut world, "boat", aboard, Attempt::FishHook);
+        assert_eq!(
+            from_boat,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+        assert!(world.aboard.contains_key(&aboard));
+        assert_eq!(world.actor_cell(aboard), Some((0, 1)));
+        assert_eq!(world.loose_ids(aboard, Material::Hook).len(), 1);
+        assert_eq!(world.loose_ids(aboard, Material::Fish).len(), 1);
+    }
+
+    #[test]
+    fn from_the_rock_the_hook_reaches_the_brook_bank() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let rock = at(6, 1);
+        world.mint_item(Material::Spear, 0, rock, Some(near), super::Role::Loose);
+        world.mint_item(Material::Knife, 0, rock, Some(near), super::Role::Loose);
+        world.mint_item(Material::Hook, 0, rock, Some(near), super::Role::Loose);
+        world.mint_item(Material::Hide, 0, rock, None, super::Role::Loose);
+        for _ in 0..20 {
+            world.step(&[]);
+        }
+        assert_eq!(
+            say(&mut world, "dry", near, Attempt::FishHook),
+            "The brook is not here."
+        );
+        assert_eq!(
+            say(&mut world, "cut", near, Attempt::CutHide),
+            "You cut the deer hide into strips with the iron knife."
+        );
+        assert_eq!(
+            say(&mut world, "out", near, Attempt::Move(super::Dir::West)),
+            "You walk west, out from under the rock overhang, into the wind and the rain."
+        );
+        for i in 0..2 {
+            assert_eq!(
+                say(
+                    &mut world,
+                    &format!("w{i}"),
+                    near,
+                    Attempt::Move(super::Dir::West)
+                ),
+                "You walk west."
+            );
+        }
+        assert_eq!(
+            say(&mut world, "ice", near, Attempt::Move(super::Dir::West)),
+            "You walk west across the ice."
+        );
+        assert_eq!(
+            say(&mut world, "south", near, Attempt::Move(super::Dir::South)),
+            "You walk south."
+        );
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        assert_eq!(
+            say(&mut world, "noline", near, Attempt::FishHook),
+            "You have no hide strips for a line."
+        );
+        assert_eq!(
+            say(&mut world, "drop", near, Attempt::Drop(Material::Hook)),
+            "You drop a bone fish hook. It is in contact with the ground."
+        );
+        assert_eq!(
+            say(&mut world, "nohook", near, Attempt::FishHook),
+            "You are not carrying a bone fish hook."
+        );
+        assert_eq!(
+            say(&mut world, "pickup", near, Attempt::Gather(Material::Hook)),
+            "You gather a bone fish hook."
+        );
+        assert_eq!(
+            say(&mut world, "back", near, Attempt::Move(super::Dir::North)),
+            "You walk north across the ice."
+        );
+        assert_eq!(
+            say(&mut world, "off", near, Attempt::Move(super::Dir::East)),
+            "You walk east."
+        );
+        for i in 0..2 {
+            assert_eq!(
+                say(
+                    &mut world,
+                    &format!("e{i}"),
+                    near,
+                    Attempt::Move(super::Dir::East)
+                ),
+                "You walk east."
+            );
+        }
+        assert_eq!(
+            say(&mut world, "in", near, Attempt::Move(super::Dir::East)),
+            "You walk east, under the rock overhang, out of the wind and the rain."
+        );
+        assert_eq!(world.actor_cell(near), Some((6, 1)));
+        assert_eq!(
+            say(&mut world, "strips", near, Attempt::Gather(Material::Cord)),
+            "You gather hide strips."
+        );
+        assert_eq!(
+            say(&mut world, "out2", near, Attempt::Move(super::Dir::West)),
+            "You walk west, out from under the rock overhang, into the wind and the rain."
+        );
+        for i in 0..2 {
+            assert_eq!(
+                say(
+                    &mut world,
+                    &format!("w2{i}"),
+                    near,
+                    Attempt::Move(super::Dir::West)
+                ),
+                "You walk west."
+            );
+        }
+        assert_eq!(
+            say(&mut world, "ice2", near, Attempt::Move(super::Dir::West)),
+            "You walk west across the ice."
+        );
+        assert_eq!(
+            say(&mut world, "south2", near, Attempt::Move(super::Dir::South)),
+            "You walk south."
+        );
+        let caught = say(&mut world, "cast", near, Attempt::FishHook);
+        assert_eq!(
+            caught,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+        let again = say(&mut world, "again", near, Attempt::FishHook);
+        assert_eq!(again, "The fish are gone from this stretch of the brook.");
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains("a bone fish hook"), "{}", look.text);
+        assert!(look.text.contains("raw fish"), "{}", look.text);
+        assert!(!look.text.contains("hide strips"), "{}", look.text);
     }
 }

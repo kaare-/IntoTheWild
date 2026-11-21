@@ -37,7 +37,8 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 light fire                   dry bark and a dry branch, from the arms if you carry them
 cook                         heat a mushroom, or cook berries, a carcass, or raw meat
 hunt                         a hardened spear; the deer on your cell or the next, or a wolf while it stands on your cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer or the wolf comes down. A refusal leaves it. The bow stays.
-fish                         a fire-hardened flint spear, or a fishing net, in the brook or beside it, and from a dugout on the brook. Neither is used up. That stretch is quiet for a short wait
+fish                         a fire-hardened flint spear, or a fishing net, or a bone fish hook with hide strips, in the brook or beside it, and from a dugout on the brook. The spear and the net are not used up. The hide strips are spent as the line. That stretch is quiet for a short wait
+fish with hook               the same cast with a bone fish hook and hide strips in the arms. The hook stays. The strips are spent.
 spear fish                   the same cast with the spear
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
@@ -357,6 +358,17 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Haft)
         }
         "fish" if rest.is_empty() || rest == "spear" => Ok(Attempt::Fish),
+        "fish"
+            if rest == "with hook"
+                || rest == "with a hook"
+                || rest == "with the hook"
+                || rest == "hook"
+                || rest == "with a fish hook"
+                || rest == "with the fish hook"
+                || rest == "with fish hook" =>
+        {
+            Ok(Attempt::FishHook)
+        }
         "spear" if rest == "fish" => Ok(Attempt::Fish),
         "dry" if rest == "clothes" || rest == "my clothes" || rest == "the clothes" => {
             Ok(Attempt::DryClothes)

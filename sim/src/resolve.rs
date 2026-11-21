@@ -174,7 +174,7 @@ impl World {
                         Attempt::Remove => removes.push(intent),
                         Attempt::Rest => rests.push(intent),
                         Attempt::DryBranch => dries.push(intent),
-                        Attempt::Fish => fishes.push(intent),
+                        Attempt::Fish | Attempt::FishHook => fishes.push(intent),
                         Attempt::TakeBrand => brands.push(intent),
                         Attempt::WeaveBasket => baskets.push(intent),
                         Attempt::WeaveNet => nets.push(intent),
@@ -472,6 +472,28 @@ impl World {
                     .is_some_and(|stretch| self.brook_is_quiet(stretch))
                 {
                     Err("The fish are gone from this stretch of the brook.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::FishHook => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.fishing_water(actor.cell) {
+                    Err("The brook is not here.".into())
+                } else if self.loose_ids(actor.id, Material::Hook).is_empty() {
+                    Err("You are not carrying a bone fish hook.".into())
+                } else if self
+                    .brook_stretch(actor.cell)
+                    .is_some_and(|stretch| self.brook_is_quiet(stretch))
+                {
+                    Err("The fish are gone from this stretch of the brook.".into())
+                } else if self.loose_ids(actor.id, Material::Cord).is_empty() {
+                    Err("You have no hide strips for a line.".into())
                 } else {
                     Ok(true)
                 }
@@ -3891,8 +3913,9 @@ impl World {
         }
     }
 
-    /// A spear that can take a fish, or a fishing net when no spear is carried.
-    /// A spear that is not ready still refuses. The net does not override it.
+    /// A spear that can take a fish, or a fishing net when no spear is carried,
+    /// or a bone fish hook and hide strips when neither of those is carried.
+    /// A spear that is not ready still refuses. The net and the hook do not override it.
     fn fish_tool_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
         match self.fish_spear_refusal(actor) {
             None => None,
@@ -3901,12 +3924,137 @@ impl World {
             {
                 None
             }
+            Some("You are not carrying a spear.")
+                if !self.loose_ids(actor, Material::Hook).is_empty()
+                    && !self.loose_ids(actor, Material::Cord).is_empty() =>
+            {
+                None
+            }
+            Some("You are not carrying a spear.")
+                if !self.loose_ids(actor, Material::Hook).is_empty() =>
+            {
+                let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+                if self
+                    .brook_stretch(cell)
+                    .is_some_and(|stretch| self.brook_is_quiet(stretch))
+                {
+                    Some("The fish are gone from this stretch of the brook.")
+                } else {
+                    Some("You have no hide strips for a line.")
+                }
+            }
             Some(message) => Some(message),
         }
     }
 
+    fn hook_fish_cast(&self, intent: &Intent) -> bool {
+        if matches!(intent.attempt, Attempt::FishHook) {
+            return true;
+        }
+        self.fish_spear_refusal(intent.actor_id) == Some("You are not carrying a spear.")
+            && self.loose_ids(intent.actor_id, Material::Net).is_empty()
+            && !self.loose_ids(intent.actor_id, Material::Hook).is_empty()
+            && !self.loose_ids(intent.actor_id, Material::Cord).is_empty()
+    }
+
+    /// The hide strips are the line. One bundle is spent. The hook stays.
+    fn apply_hook_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        if !self.fishing_water(cell) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "The brook is not here.",
+                results,
+            );
+            return;
+        }
+        if self.loose_ids(intent.actor_id, Material::Hook).is_empty() {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You are not carrying a bone fish hook.",
+                results,
+            );
+            return;
+        }
+        if self
+            .brook_stretch(cell)
+            .is_some_and(|stretch| self.brook_is_quiet(stretch))
+        {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "The fish are gone from this stretch of the brook.",
+                results,
+            );
+            return;
+        }
+        let Some(strips) = self
+            .loose_ids(intent.actor_id, Material::Cord)
+            .first()
+            .copied()
+        else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You have no hide strips for a line.",
+                results,
+            );
+            return;
+        };
+        self.items.remove(&strips);
+        if let Some(stretch) = self.brook_stretch(cell) {
+            let until = self.time.saturating_add(self.tuning.clay_ticks);
+            self.brook_quiet.insert(stretch, until);
+        }
+        let into_basket = self.carry_count(intent.actor_id) >= self.tuning.carry_slots
+            && self.basket_has_room(intent.actor_id);
+        let carrier = if self.carry_count(intent.actor_id) < self.tuning.carry_slots || into_basket
+        {
+            Some(intent.actor_id)
+        } else {
+            None
+        };
+        let id = self.mint_item(Material::Fish, 0, cell, carrier, Role::Loose);
+        if into_basket {
+            if let Some(fish) = self.items.get_mut(&id) {
+                fish.in_basket = true;
+            }
+        }
+        let name = self.name_of(intent.actor_id);
+        let rest = "a fish from the brook with the bone fish hook. The hide strips are spent.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "catch", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "catch", rest),
+            results,
+        );
+    }
+
     fn apply_fishes(&mut self, fishes: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in fishes {
+            if self.hook_fish_cast(&intent) {
+                self.apply_hook_fish(intent, results);
+                continue;
+            }
             let cell = self
                 .actor(intent.actor_id)
                 .map(|actor| actor.cell)
