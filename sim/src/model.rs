@@ -14945,6 +14945,12 @@ mod charcoal_bank {
         let hammer_seen = "Near hammers the copper bead into a copper awl at the fire.";
         assert_eq!(hammered.results[0].message, hammer_yours);
         assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != hammer_yours && event.text != hammer_seen }));
+        assert!(world
             .observe(seen)
             .unwrap()
             .events

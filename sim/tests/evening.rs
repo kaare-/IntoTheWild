@@ -10986,7 +10986,7 @@ fn carried_copper_ore_smelts_into_a_bead_at_the_fire() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| { event.text != yours && event.text != seen }));
     assert!(world
         .observe(far)
         .unwrap()
@@ -11060,7 +11060,7 @@ fn a_carried_stone_hammers_the_bead_away_from_the_fire() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| { event.text != yours && event.text != seen }));
     assert!(world
         .observe(far)
         .unwrap()

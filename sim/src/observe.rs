@@ -9015,6 +9015,7 @@ impl World {
                     && self.hold_point_for_these_eyes(viewer, event).is_none()
                     && self.wooden_deer_for_these_eyes(viewer, event).is_none()
                     && self.copper_set_for_these_eyes(viewer, event).is_none()
+                    && self.copper_awl_for_these_eyes(viewer, event).is_none()
                     && self.canoe_refusal_for_these_eyes(viewer, event).is_none()
                     && self.alone_pull_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
@@ -10478,9 +10479,10 @@ impl World {
         Some(crate::model::spoken_act(None, "knap", rest))
     }
 
-    /// A bead hammered into an awl, filled for the person who struck it.
-    /// Anyone else keeps the stored sentence.
-    fn hammer_for_these_eyes(
+    /// A copper bead hammered into an awl. The smith already has the reply,
+    /// so the event list does not repeat it. Someone who can see keeps
+    /// the stored third person. An iron hammer still uses the rewrite below.
+    fn copper_awl_for_these_eyes(
         &self,
         viewer: ActorId,
         event: &crate::model::Event,
@@ -10492,7 +10494,26 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} hammers "))?;
         if rest != "the copper bead into a copper awl at the fire."
             && rest != "the copper bead into a copper awl with a stone."
-            && rest != "the bloom of iron into an iron knife at the fire."
+        {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "hammer", rest))
+    }
+
+    /// An iron bloom hammered into a knife, filled for the striker.
+    /// A copper awl is dropped before this rewrite, in the event filter.
+    /// Anyone else keeps the stored sentence.
+    fn hammer_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} hammers "))?;
+        if rest != "the bloom of iron into an iron knife at the fire."
             && rest != "the bloom of iron into an iron knife with a stone."
         {
             return None;
