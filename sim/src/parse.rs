@@ -75,6 +75,7 @@ gather honey                 a honeycomb from the bees' nest in the tree on the 
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
+strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
 press moss                   a carried handful on a sting. The stings clear.
 dress sting                  the same press
 use moss                     the same press
@@ -203,6 +204,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::DressSting)
         }
         "use" if rest == "moss" || rest == "the moss" => Ok(Attempt::DressSting),
+        "strip"
+            if rest == "willow"
+                || rest == "the willow"
+                || rest == "withies"
+                || rest == "cordage"
+                || rest == "willow cordage" =>
+        {
+            Ok(Attempt::Gather(Material::Willow))
+        }
         "gather" | "get" | "take" => parse_material(rest).map(Attempt::Gather),
         "drop" => parse_material(rest).map(Attempt::Drop),
         "grab" | "grip" => Ok(Attempt::Grab),
@@ -530,6 +540,11 @@ fn parse_material(text: &str) -> Result<Material, String> {
         | "lumps of pitch"
         | "lump of pine resin"
         | "lumps of pine resin" => Ok(Material::Resin),
+        "willow"
+        | "willow cordage"
+        | "bundle of willow cordage"
+        | "withies"
+        | "cordage" => Ok(Material::Willow),
         "bow" | "a bow" => Ok(Material::Bow),
         "clay" => Ok(Material::Clay),
         "bowl" => Ok(Material::Bowl),
@@ -547,7 +562,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "canoe" | "dugout" | "dugout canoe" => Ok(Material::Canoe),
         "paddle" | "wooden paddle" | "a wooden paddle" => Ok(Material::Paddle),
         "hook" | "fish hook" | "a fish hook" | "bone hook" | "bone fish hook" => Ok(Material::Hook),
-        "strips" | "hide strips" | "cord" | "cordage" => Ok(Material::Cord),
+        "strips" | "hide strips" | "cord" => Ok(Material::Cord),
         _ => Err(
             "Name a material: branch, bark, berries, dark berries, pale berries, mushrooms, pot, mud, water, stone, flint, ochre, iron ore, bloom of iron, iron knife, copper ore, copper bead, awl, clay, bowl, spear, carcass, meat, hide, strips, or log."
                 .into(),
@@ -608,7 +623,8 @@ fn parse_target(text: &str) -> ExamineTarget {
         "spear" | "spears" => ExamineTarget::Spear,
         "carcass" | "deer carcass" | "wolf carcass" => ExamineTarget::Carcass,
         "hide" | "deer hide" | "wolf hide" | "wolf cloak" => ExamineTarget::Hide,
-        "strips" | "hide strips" | "cord" | "cordage" => ExamineTarget::Cord,
+        "strips" | "hide strips" | "cord" => ExamineTarget::Cord,
+        "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,
         "meat" | "raw meat" | "cooked meat" | "salted meat" | "smoked meat" => ExamineTarget::Meat,
         "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,
         "brand" | "ember" | "burning brand" => ExamineTarget::Brand,

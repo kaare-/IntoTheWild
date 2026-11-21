@@ -517,7 +517,7 @@ impl World {
                     .is_some_and(|stretch| self.brook_is_quiet(stretch))
                 {
                     Err("The fish are gone from this stretch of the brook.".into())
-                } else if self.loose_ids(actor.id, Material::Cord).is_empty() {
+                } else if self.fishing_line(actor.id).is_none() {
                     Err("You have no hide strips for a line.".into())
                 } else {
                     Ok(true)
@@ -1466,6 +1466,7 @@ impl World {
                             | Material::Paddle
                             | Material::Hook
                             | Material::Resin
+                            | Material::Willow
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     return Err(if *material == Material::BitterBerry {
@@ -1879,6 +1880,7 @@ impl World {
                     | Material::Mat
                     | Material::Paddle
                     | Material::Hook
+                    | Material::Willow
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -1990,6 +1992,9 @@ impl World {
                     }
                     if material == Material::Resin {
                         self.arm_resin_stand(cell);
+                    }
+                    if material == Material::Willow {
+                        self.arm_willow_stand(cell);
                     }
                     if material == Material::Flint {
                         self.arm_flint_bed(cell);
@@ -4097,7 +4102,7 @@ impl World {
             }
             Some("You are not carrying a spear.")
                 if !self.loose_ids(actor, Material::Hook).is_empty()
-                    && !self.loose_ids(actor, Material::Cord).is_empty() =>
+                    && self.fishing_line(actor).is_some() =>
             {
                 None
             }
@@ -4125,10 +4130,25 @@ impl World {
         self.fish_spear_refusal(intent.actor_id) == Some("You are not carrying a spear.")
             && self.loose_ids(intent.actor_id, Material::Net).is_empty()
             && !self.loose_ids(intent.actor_id, Material::Hook).is_empty()
-            && !self.loose_ids(intent.actor_id, Material::Cord).is_empty()
+            && self.fishing_line(intent.actor_id).is_some()
     }
 
-    /// The hide strips are the line. One bundle is spent. The hook stays.
+    /// Hide strips if the arms hold them, otherwise a bundle of willow cordage.
+    /// The hook stays. One bundle of line is spent.
+    fn fishing_line(
+        &self,
+        actor: crate::model::ActorId,
+    ) -> Option<(crate::model::ItemId, &'static str)> {
+        if let Some(id) = self.loose_ids(actor, Material::Cord).first().copied() {
+            return Some((id, "The hide strips are spent."));
+        }
+        if let Some(id) = self.loose_ids(actor, Material::Willow).first().copied() {
+            return Some((id, "The willow cordage is spent."));
+        }
+        None
+    }
+
+    /// The line is spent. The hook stays.
     fn apply_hook_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
         let cell = self
             .actor(intent.actor_id)
@@ -4167,11 +4187,7 @@ impl World {
             );
             return;
         }
-        let Some(strips) = self
-            .loose_ids(intent.actor_id, Material::Cord)
-            .first()
-            .copied()
-        else {
+        let Some((line, spent)) = self.fishing_line(intent.actor_id) else {
             self.finish(
                 intent.command_id,
                 intent.actor_id,
@@ -4181,7 +4197,7 @@ impl World {
             );
             return;
         };
-        self.items.remove(&strips);
+        self.items.remove(&line);
         if let Some(stretch) = self.brook_stretch(cell) {
             let until = self.time.saturating_add(self.tuning.clay_ticks);
             self.brook_quiet.insert(stretch, until);
@@ -4201,9 +4217,9 @@ impl World {
             }
         }
         let name = self.name_of(intent.actor_id);
-        let rest = "a fish from the brook with the bone fish hook. The hide strips are spent.";
+        let rest = format!("a fish from the brook with the bone fish hook. {spent}");
         self.emit(
-            crate::model::spoken_act(Some(name.as_str()), "catch", rest),
+            crate::model::spoken_act(Some(name.as_str()), "catch", &rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -4215,7 +4231,7 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            crate::model::spoken_act(None, "catch", rest),
+            crate::model::spoken_act(None, "catch", &rest),
             results,
         );
     }

@@ -216,6 +216,7 @@ impl World {
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Resin => self.examine_resin(actor_id),
+            ExamineTarget::Willow => self.examine_willow(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
@@ -390,6 +391,9 @@ impl World {
             }
             if let Some(resin) = self.seen_resin(actor_id) {
                 lines.push(resin);
+            }
+            if let Some(willow) = self.seen_willow(actor_id) {
+                lines.push(willow);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -1063,6 +1067,18 @@ impl World {
             parts.push("A lump of pitch lies here. It is pine resin.".into());
         } else if self.resin_bare(actor.cell) {
             parts.push("The pine here has no resin.".into());
+        }
+        let willow_here = self.pile_count(actor.cell, Material::Willow)
+            + self.ground_ids(actor.cell, Material::Willow).len() as u32;
+        if willow_here > 1 {
+            parts.push(
+                "Bundles of willow cordage hang here. They are withies from a willow.".into(),
+            );
+        } else if willow_here == 1 {
+            parts
+                .push("A bundle of willow cordage hangs here. It is withies from a willow.".into());
+        } else if self.willow_bare(actor.cell) {
+            parts.push("The willow here has no withies.".into());
         }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
@@ -2410,6 +2426,93 @@ impl World {
         }
     }
 
+    /// Cordage on a willow this person can see but is not standing on.
+    fn seen_willow(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            let count = self.pile_count(cell, Material::Willow)
+                + self.ground_ids(cell, Material::Willow).len() as u32;
+            if count > 1 {
+                lines.push(format!(
+                    "Willow cordage hangs to the {way}. It is withies from a willow."
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A bundle of willow cordage hangs to the {way}. It is withies from a willow."
+                ));
+            } else if self.willow_bare(cell) {
+                lines.push(format!("The willow to the {way} has no withies."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_willow(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::Willow)
+                + self.ground_ids(cell, Material::Willow).len() as u32;
+            if count == 0 && !self.willow_bare(cell) {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if count > 1 {
+                lines.push(format!(
+                    "Bundles of willow cordage hang {place}. They are withies from a willow."
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A bundle of willow cordage hangs {place}. It is withies from a willow."
+                ));
+            } else if cell == origin {
+                lines.push("The willow here has no withies.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The willow to the {way} has no withies."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Willow).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A bundle of willow cordage is carried by {who} {cover}. It is withies from a willow."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bundles of willow cordage are carried by {who} {cover}. They are withies from a willow.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no willow from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     fn examine_bow(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -2684,6 +2787,13 @@ impl World {
         self.resin_returns_at.contains_key(&cell)
             && self.pile_count(cell, Material::Resin) == 0
             && self.ground_ids(cell, Material::Resin).is_empty()
+    }
+
+    /// The willow was stripped bare and cordage has not hung there again.
+    fn willow_bare(&self, cell: crate::model::CellId) -> bool {
+        self.willow_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Willow) == 0
+            && self.ground_ids(cell, Material::Willow).is_empty()
     }
 
     /// The salt lick on this cell was gathered and has not formed again.
@@ -3173,6 +3283,10 @@ impl World {
             "a lump of pine resin".into()
         } else if item.material == "resin" {
             format!("{} lumps of pine resin", count_word(item.count))
+        } else if item.material == "willow" && item.count == 1 {
+            "a bundle of willow cordage".into()
+        } else if item.material == "willow" {
+            format!("{} bundles of willow cordage", count_word(item.count))
         } else if item.material == "net" && item.count == 1 {
             "a fishing net".into()
         } else if item.material == "net" {
@@ -3936,6 +4050,13 @@ impl World {
             bits.push("pine resin".into());
         } else if self.resin_bare(dest) {
             bits.push("a bare pine".into());
+        }
+        if self.pile_count(dest, Material::Willow) > 0
+            || !self.ground_ids(dest, Material::Willow).is_empty()
+        {
+            bits.push("willow cordage".into());
+        } else if self.willow_bare(dest) {
+            bits.push("a bare willow".into());
         }
         if self.pile_count(dest, Material::IronOre) > 0
             || self.ground_ids(dest, Material::IronOre).len() > self.iron_smelting_count(dest)
@@ -7066,6 +7187,7 @@ impl World {
                 Material::Egg => "eggs",
                 Material::Moss => "moss",
                 Material::Resin => "resin",
+                Material::Willow => "willow",
                 Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
@@ -8951,7 +9073,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} catches "))?;
-        if rest != "a fish from the brook with the bone fish hook. The hide strips are spent." {
+        if rest != "a fish from the brook with the bone fish hook. The hide strips are spent."
+            && rest != "a fish from the brook with the bone fish hook. The willow cordage is spent."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "catch", rest))
@@ -9586,6 +9710,7 @@ impl World {
             "the eggs",
             "handful of moss",
             "lump of pine resin",
+            "bundle of willow cordage",
             "fishing net",
             "reed mat",
         ];
@@ -10487,6 +10612,12 @@ impl World {
         {
             actions.push("gather resin".into());
         }
+        if (self.pile_count(actor.cell, Material::Willow) > 0
+            || !self.ground_ids(actor.cell, Material::Willow).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("strip willow".into());
+        }
         if !self.loose_ids(actor_id, Material::Resin).is_empty()
             && self
                 .canoe_to_seal(actor_id)
@@ -10987,6 +11118,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Moss, _) => "handful of moss",
         (Material::Resin, true) => "lump of pine resin",
         (Material::Resin, false) => "lumps of pine resin",
+        (Material::Willow, true) => "bundle of willow cordage",
+        (Material::Willow, false) => "bundles of willow cordage",
         (Material::Bow, true) => "bow",
         (Material::Bow, false) => "bows",
         (Material::Net, true) => "fishing net",

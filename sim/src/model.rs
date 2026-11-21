@@ -119,6 +119,10 @@ pub enum Material {
     Hook,
     /// Pitch from the pine on the dry floor south of the trail.
     Resin,
+    /// Withies from the willow on the dry bank south of the brook.
+    /// A bundle is cordage. A bone fish hook spends it as the line
+    /// when the arms hold no hide strips.
+    Willow,
 }
 
 impl Material {
@@ -168,6 +172,7 @@ impl Material {
             Material::Paddle => "paddle",
             Material::Hook => "fish hook",
             Material::Resin => "resin",
+            Material::Willow => "willow",
         }
     }
 
@@ -217,6 +222,7 @@ impl Material {
             Material::Paddle => "wooden paddle",
             Material::Hook => "bone fish hook",
             Material::Resin => "lump of pine resin",
+            Material::Willow => "bundle of willow cordage",
         }
     }
 
@@ -353,6 +359,7 @@ pub enum ExamineTarget {
     Paddle,
     Hook,
     Resin,
+    Willow,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -774,6 +781,8 @@ pub enum Wake {
     MossReturn(CellId),
     /// Pitch lumps lie under the pine on this cell again.
     ResinReturn(CellId),
+    /// Willow cordage hangs on this bank again.
+    WillowReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
     /// A lump of ochre lies on this slope cell again.
@@ -998,6 +1007,12 @@ pub struct World {
     /// When a bare pine has pitch again. Look says the pine has no resin until then.
     #[serde(default)]
     pub(crate) resin_returns_at: BTreeMap<CellId, u64>,
+    /// The willow on the dry bank south of the brook. Bare once the last bundle is taken.
+    #[serde(default)]
+    pub(crate) willow_stands: BTreeSet<CellId>,
+    /// When a bare willow has withies again. Look says the willow has none until then.
+    #[serde(default)]
+    pub(crate) willow_returns_at: BTreeMap<CellId, u64>,
     /// Slope cells where a flint nodule lies again after it is taken.
     #[serde(default)]
     pub(crate) flint_beds: BTreeSet<CellId>,
@@ -1164,6 +1179,8 @@ impl World {
             moss_returns_at: BTreeMap::new(),
             resin_stands: BTreeSet::new(),
             resin_returns_at: BTreeMap::new(),
+            willow_stands: BTreeSet::new(),
+            willow_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
@@ -1274,6 +1291,10 @@ impl World {
         let pine = cell_id(2, 4).unwrap();
         world.add_pile(pine, Material::Resin, 2, 0);
         world.resin_stands.insert(pine);
+        // A willow on the dry bank south of the brook. Two bundles of cordage.
+        let willow = cell_id(0, 4).unwrap();
+        world.add_pile(willow, Material::Willow, 2, 0);
+        world.willow_stands.insert(willow);
         world.normalize();
         world
     }
@@ -1714,6 +1735,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.resin_ticks);
         self.resin_returns_at.insert(cell, at);
         self.schedule(at, Wake::ResinReturn(cell));
+    }
+
+    /// The willow is bare. Withies return `willow_ticks` after this step.
+    /// A wake that finds cordage already there does not add a second stand.
+    pub(crate) fn arm_willow_stand(&mut self, cell: CellId) {
+        if !self.willow_stands.contains(&cell) || self.willow_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Willow) > 0
+            || !self.ground_ids(cell, Material::Willow).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.willow_ticks);
+        self.willow_returns_at.insert(cell, at);
+        self.schedule(at, Wake::WillowReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -11135,5 +11172,193 @@ mod pine_resin {
                     && event.text
                         != "Else lights a fire with the bark and the branch from the arms."
             }));
+    }
+}
+
+#[cfg(test)]
+mod willow {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn the_willow_south_of_the_brook_gives_cordage_and_it_lines_a_hook() {
+        assert!(matches!(
+            crate::parse::parse_attempt("strip willow").unwrap(),
+            Attempt::Gather(Material::Willow)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather cordage").unwrap(),
+            Attempt::Gather(Material::Willow)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather hide strips").unwrap(),
+            Attempt::Gather(Material::Cord)
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let bank = super::cell_id(0, 4).unwrap();
+        assert_eq!(world.pile_count(bank, Material::Willow), 2);
+        let near = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("Bundles of willow cordage hang here. They are withies from a willow."),
+            "{here}"
+        );
+        assert!(
+            here.contains("North: brook"),
+            "the bank is the dry cell south of the brook: {here}"
+        );
+        let from_bank = world.observe(seen).unwrap().text;
+        assert!(
+            from_bank.contains(
+                "Willow cordage hangs to the south and west. It is withies from a willow."
+            ),
+            "{from_bank}"
+        );
+        assert!(
+            !world.observe(quiet).unwrap().text.contains("willow"),
+            "{}",
+            world.observe(quiet).unwrap().text
+        );
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Willow))]);
+        assert!(!none.results[0].success);
+        assert_eq!(
+            none.results[0].message,
+            "There is no willow here to gather."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no willow here to gather." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no willow here to gather."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no willow here to gather."));
+
+        let one = world.step(&[intent("one", near, Attempt::Gather(Material::Willow))]);
+        assert_eq!(
+            one.results[0].message,
+            "You gather a bundle of willow cordage."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gather") && !event.text.contains("cordage") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a bundle of willow cordage." }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("gathers") && !event.text.contains("bundle of willow")
+        }));
+        let arms = world.observe(near).unwrap().text;
+        assert!(
+            arms.contains("You have a bundle of willow cordage."),
+            "{arms}"
+        );
+        assert!(
+            arms.contains("A bundle of willow cordage hangs here. It is withies from a willow."),
+            "{arms}"
+        );
+
+        let two = world.step(&[intent("two", near, Attempt::Gather(Material::Willow))]);
+        assert_eq!(
+            two.results[0].message,
+            "You gather a bundle of willow cordage."
+        );
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The willow here has no withies."), "{bare}");
+        assert!(
+            bare.contains("You have two bundles of willow cordage."),
+            "{bare}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("The willow to the south and west has no withies."));
+
+        let ticks = world.tuning.willow_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let back = world.observe(near).unwrap().text;
+        assert!(
+            back.contains("Bundles of willow cordage hang here. They are withies from a willow."),
+            "{back}"
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Willow cordage hangs on the willow again." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Willow cordage hangs on the willow again."));
+
+        world.mint_item(Material::Hook, 0, bank, Some(near), Role::Loose);
+        let cast = world.step(&[intent("cast", near, Attempt::FishHook)]);
+        assert_eq!(
+            cast.results[0].message,
+            "You catch a fish from the brook with the bone fish hook. The willow cordage is spent."
+        );
+        assert_eq!(world.loose_ids(near, Material::Willow).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Hook).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Fish).len(), 1);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("You catch") && !event.text.contains("catches a fish")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near catches a fish from the brook with the bone fish hook. The willow cordage is spent."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("catches a fish")
+                && !event.text.contains("willow cordage is spent")
+        }));
+
+        let again = world.step(&[intent("again", near, Attempt::FishHook)]);
+        assert_eq!(
+            again.results[0].message,
+            "The fish are gone from this stretch of the brook."
+        );
+        let other = world.spawn_at("Other", "o", 1, 2).unwrap();
+        let water = world.actor(other).unwrap().cell;
+        world.mint_item(Material::Hook, 0, water, Some(other), Role::Loose);
+        world.mint_item(Material::Cord, 0, water, Some(other), Role::Loose);
+        world.mint_item(Material::Willow, 0, water, Some(other), Role::Loose);
+        let prefer = world.step(&[intent("prefer", other, Attempt::FishHook)]);
+        assert_eq!(
+            prefer.results[0].message,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+        assert!(world.loose_ids(other, Material::Cord).is_empty());
+        assert_eq!(world.loose_ids(other, Material::Willow).len(), 1);
     }
 }
