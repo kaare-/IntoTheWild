@@ -28,6 +28,7 @@ launch                       a dugout canoe on the bank, into the brook beside y
 board                        a dugout canoe floating in the brook here or on the next cell
 paddle [n|s|e|w]             while aboard, move the dugout along the brook. You move with it. A bare paddle picks a brook cell. The bank refuses
 disembark                    leave the dugout onto the bank. leave canoe is the same. Walking off without this refuses
+beach                        a floating dugout, onto the bank beside it. If you are aboard, you come ashore with it. drag canoe is the same
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
@@ -177,6 +178,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "gather" | "get" | "take" => parse_material(rest).map(Attempt::Gather),
         "drop" => parse_material(rest).map(Attempt::Drop),
         "grab" | "grip" => Ok(Attempt::Grab),
+        "beach" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => Ok(Attempt::Beach),
+        "drag" | "pull" if rest == "canoe" || rest == "the canoe" => Ok(Attempt::Beach),
         "drag" | "pull" => parse_dir(rest).map(Attempt::Drag),
         "hollow" if rest == "log" || rest == "the log" => Ok(Attempt::HollowLog),
         "carve"

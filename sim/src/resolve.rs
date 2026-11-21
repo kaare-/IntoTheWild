@@ -91,6 +91,7 @@ impl World {
         let mut boards = Vec::new();
         let mut paddles = Vec::new();
         let mut disembarks = Vec::new();
+        let mut beaches = Vec::new();
         let mut carves = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
@@ -168,6 +169,7 @@ impl World {
                         Attempt::Board => boards.push(intent),
                         Attempt::Paddle(_) => paddles.push(intent),
                         Attempt::Disembark => disembarks.push(intent),
+                        Attempt::Beach => beaches.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
@@ -290,6 +292,7 @@ impl World {
         self.apply_boards(boards, &mut results);
         self.apply_paddles(paddles, &mut results);
         self.apply_disembarks(disembarks, &mut results);
+        self.apply_beaches(beaches, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
@@ -1572,6 +1575,21 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::Beach => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.floating_canoe_near(actor.cell).is_none() {
+                    Err("There is no dugout canoe here.".into())
+                } else if self.beach_bank(actor.id).is_none() {
+                    Err("There is no bank here.".into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::PutFish => {
                 if gripping {
                     return Err("Your hands are on the log.".into());
@@ -2473,6 +2491,66 @@ impl World {
                 actor.id,
                 true,
                 "You leave the dugout canoe.",
+                results,
+            );
+        }
+    }
+
+    /// Haul a floating dugout onto the bank. Anyone aboard comes ashore with it.
+    fn apply_beaches(&mut self, beaches: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in beaches {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.floating_canoe_near(actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no dugout canoe here.",
+                    results,
+                );
+                continue;
+            };
+            let Some(bank) = self.beach_bank(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no bank here.",
+                    results,
+                );
+                continue;
+            };
+            let origin = self.item(id).map(|canoe| canoe.cell).unwrap_or(actor.cell);
+            let riders: Vec<_> = self
+                .aboard
+                .iter()
+                .filter(|(_, canoe)| **canoe == id)
+                .map(|(who, _)| *who)
+                .collect();
+            if let Some(canoe) = self.items.get_mut(&id) {
+                canoe.cell = bank;
+            }
+            for rider in &riders {
+                self.move_actor(*rider, bank);
+                self.aboard.remove(rider);
+            }
+            let name = self.name_of(actor.id);
+            self.emit(
+                format!("{name} beaches the dugout canoe."),
+                Scope::Cell(bank),
+                vec![actor.id],
+                vec![origin, bank],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                "You beach the dugout canoe.",
                 results,
             );
         }
