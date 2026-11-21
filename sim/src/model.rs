@@ -5490,14 +5490,23 @@ mod dugout {
         assert!(
             afloat
                 .text
-                .contains("A dugout canoe floats here in the brook."),
+                .contains("You are aboard the dugout canoe in the brook."),
             "{}",
             afloat.text
         );
+        assert!(!afloat.text.contains("You are on the brook"));
+        assert!(!afloat
+            .text
+            .contains("A dugout canoe floats here in the brook."));
+        assert!(afloat.text.contains("The water here is raw."));
         assert!(
-            afloat.text.contains("You are aboard the dugout canoe."),
+            world
+                .observe(seen)
+                .unwrap()
+                .text
+                .contains("A dugout canoe floats in the brook to the north and west."),
             "{}",
-            afloat.text
+            world.observe(seen).unwrap().text
         );
         assert!(afloat.events.iter().all(|event| {
             !event.text.contains("You board") && !event.text.contains("Near boards")
@@ -5574,7 +5583,13 @@ mod dugout {
         assert_eq!(cell_xy(boat.cell), (1, 1));
         assert!(world.aboard.contains_key(&near));
         let look = world.observe(near).unwrap();
-        assert!(look.text.contains("You are aboard the dugout canoe."));
+        assert!(look
+            .text
+            .contains("You are aboard the dugout canoe in the brook."));
+        assert!(!look.text.contains("You are on the brook"));
+        assert!(!look
+            .text
+            .contains("A dugout canoe floats here in the brook."));
         assert!(look.events.iter().all(|event| {
             event.text != "You paddle the dugout canoe north."
                 && event.text != "Near paddles the dugout canoe north."

@@ -581,8 +581,27 @@ impl World {
         let actor = self.actor(actor_id).unwrap();
         let cell = self.cell(actor.cell);
         let outside = self.outside_floor(actor.cell);
+        let aboard = self
+            .aboard
+            .get(&actor.id)
+            .copied()
+            .filter(|id| self.canoe_floats(*id));
         let mut parts = Vec::new();
-        if let Some(floor) = outside {
+        if let Some(id) = aboard {
+            parts.push("You are aboard the dugout canoe in the brook.".into());
+            let riders: Vec<_> = self
+                .aboard
+                .iter()
+                .filter(|(who, canoe)| **canoe == id && **who != actor.id)
+                .map(|(who, _)| self.name_of(*who))
+                .collect();
+            if riders.len() == 1 {
+                parts.push(format!("{} is aboard it.", riders[0]));
+            } else if riders.len() > 1 {
+                parts.push(format!("{} are aboard it.", riders.join(" and ")));
+            }
+            parts.push(format!("You are {}.", self.cover_phrase(actor.cell)));
+        } else if let Some(floor) = outside {
             parts.push("You stand on the outside floor.".into());
             parts.push("Hoofprints mark the ground.".into());
             parts.push(format!(
@@ -878,29 +897,24 @@ impl World {
             }
         }
         if let Some(id) = self.canoe_at(actor.cell) {
-            if self.canoe_floats(id) {
-                parts.push("A dugout canoe floats here in the brook.".into());
-            } else {
-                parts.push("A dugout canoe lies here.".into());
+            if aboard != Some(id) {
+                if self.canoe_floats(id) {
+                    parts.push("A dugout canoe floats here in the brook.".into());
+                } else {
+                    parts.push("A dugout canoe lies here.".into());
+                }
+                let riders: Vec<_> = self
+                    .aboard
+                    .iter()
+                    .filter(|(who, canoe)| **canoe == id && **who != actor.id)
+                    .map(|(who, _)| self.name_of(*who))
+                    .collect();
+                if riders.len() == 1 {
+                    parts.push(format!("{} is aboard it.", riders[0]));
+                } else if riders.len() > 1 {
+                    parts.push(format!("{} are aboard it.", riders.join(" and ")));
+                }
             }
-            let riders: Vec<_> = self
-                .aboard
-                .iter()
-                .filter(|(actor_id, canoe)| **canoe == id && **actor_id != actor.id)
-                .map(|(actor_id, _)| self.name_of(*actor_id))
-                .collect();
-            if riders.len() == 1 {
-                parts.push(format!("{} is aboard it.", riders[0]));
-            } else if riders.len() > 1 {
-                parts.push(format!("{} are aboard it.", riders.join(" and ")));
-            }
-        }
-        if self
-            .aboard
-            .get(&actor.id)
-            .is_some_and(|id| self.canoe_floats(*id))
-        {
-            parts.push("You are aboard the dugout canoe.".into());
         }
         let water_here = self.pile_count(actor.cell, Material::Water)
             + self.ground_ids(actor.cell, Material::Water).len() as u32;
