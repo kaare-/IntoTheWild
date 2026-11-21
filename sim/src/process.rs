@@ -1562,30 +1562,42 @@ impl World {
         if loss == 0 {
             return;
         }
-        let ill_at = self.tuning.ill_at;
         let ids: Vec<ActorId> = self.actors.keys().copied().collect();
         for id in ids {
+            self.ease_illness(id, loss);
+        }
+    }
+
+    /// Take illness off one body. Crossing back under ill is private:
+    /// "Your stomach settles." Nobody else is on that scope. A rest the
+    /// wind allows spends several of these ticks at once.
+    pub(crate) fn ease_illness(&mut self, id: ActorId, loss: u32) {
+        if loss == 0 {
+            return;
+        }
+        let ill_at = self.tuning.ill_at;
+        let settled = {
             let Some(actor) = self.actors.get_mut(&id) else {
-                continue;
+                return;
             };
             let before = actor.illness;
             if before == 0 {
-                continue;
+                return;
             }
             actor.illness = before.saturating_sub(loss);
             let after = actor.illness;
-            if before >= ill_at && after < ill_at {
-                let cell = actor.cell;
-                self.emit(
-                    "Your stomach settles.",
-                    Scope::Personal(id),
-                    vec![id],
-                    vec![cell],
-                    vec![],
-                    vec![],
-                    None,
-                );
-            }
+            (before >= ill_at && after < ill_at).then_some(actor.cell)
+        };
+        if let Some(cell) = settled {
+            self.emit(
+                "Your stomach settles.",
+                Scope::Personal(id),
+                vec![id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
         }
     }
 

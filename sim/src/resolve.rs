@@ -4601,6 +4601,10 @@ impl World {
             if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                 person.energy = after;
             }
+            // The open wind already refused this rest. What remains is the
+            // rock, a lean-to, or a reed mat, and that rest hurries a stomach.
+            let hurried = self.tuning.illness_recovery.saturating_mul(5);
+            self.ease_illness(intent.actor_id, hurried);
             let under_rock = self.cell(actor.cell).rock;
             let place = if under_rock {
                 " under the rock"

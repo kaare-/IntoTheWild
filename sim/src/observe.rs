@@ -3106,6 +3106,9 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
+        if self.illness_word(actor.illness) == "ill" {
+            parts.push("Your stomach has not settled.".into());
+        }
         if actor.sunburn >= self.tuning.burned_at {
             parts.push("The sun burns. It hurts.".into());
         } else if actor.sunburn >= self.tuning.pink_at {

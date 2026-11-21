@@ -2684,6 +2684,120 @@ fn illness_fades_and_the_actor_hears_it_settle() {
 }
 
 #[test]
+fn poison_berry_illness_fades_and_rest_under_the_rock_hurries_it() {
+    let mut open = World::valley(Tuning::evening(), 1);
+    let near = open.spawn_at("Near", "n", 4, 1).unwrap();
+    let far = open.spawn_at("Far", "f", 5, 3).unwrap();
+    let eaten = open.step(&[cmd("eat", near, Attempt::Eat(Material::BitterBerry))]);
+    assert_eq!(
+        eaten.results[0].message,
+        "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+    );
+    let ill = open.observe(near).unwrap();
+    assert_eq!(ill.self_info.illness, "ill");
+    assert!(ill.text.contains("You are ill."));
+    assert!(ill.text.contains("Your stomach has not settled."));
+    assert!(ill
+        .events
+        .iter()
+        .any(|event| event.text == "Your stomach turns."));
+    assert!(open
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near eats a handful of dark berries."));
+    assert!(open
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("stomach")));
+    let mut open_ticks = 0;
+    while open.observe(near).unwrap().self_info.illness == "ill" {
+        open.step(&[]);
+        open_ticks += 1;
+        assert!(open_ticks < 30, "illness should fade");
+    }
+    assert_eq!(open_ticks, 15);
+    let well = open.observe(near).unwrap();
+    assert_eq!(well.self_info.illness, "well");
+    assert!(well.text.contains("You are well."));
+    assert!(!well.text.contains("You are ill."));
+    assert!(!well.text.contains("has not settled"));
+    assert_eq!(
+        well.events
+            .iter()
+            .filter(|event| event.text.contains("settles"))
+            .map(|event| event.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Your stomach settles."]
+    );
+    assert!(open
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("settles") && !event.text.contains("stomach")));
+
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 5, 3).unwrap();
+    world.step(&[cmd("eat", near, Attempt::Eat(Material::BitterBerry))]);
+    world.step(&[cmd("e1", near, Attempt::Move(Dir::East))]);
+    world.step(&[cmd("e2", near, Attempt::Move(Dir::East))]);
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
+    let mut rests = 0;
+    while world.observe(near).unwrap().self_info.illness == "ill" {
+        let rested = world.step(&[cmd(&format!("r{rests}"), near, Attempt::Rest)]);
+        assert!(
+            rested.results[0]
+                .message
+                .starts_with("You rest under the rock."),
+            "{}",
+            rested.results[0].message
+        );
+        rests += 1;
+        assert!(rests < 10, "rest should hurry the stomach");
+    }
+    assert!(
+        rests < open_ticks,
+        "rest took {rests}, waiting took {open_ticks}"
+    );
+    assert_eq!(rests, 3);
+    let settled = world.observe(near).unwrap();
+    assert_eq!(settled.self_info.illness, "well");
+    assert!(settled.text.contains("You are well."));
+    assert!(!settled.text.contains("has not settled"));
+    assert!(settled
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Near rests")));
+    assert_eq!(
+        settled
+            .events
+            .iter()
+            .filter(|event| event.text.contains("settles"))
+            .map(|event| event.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Your stomach settles."]
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near rests under the rock."));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("settles") && !event.text.contains("stomach")));
+}
+
+#[test]
 fn the_still_pool_freezes_at_tick_twelve_and_the_refusal_stays_private() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();
