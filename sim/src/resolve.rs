@@ -906,11 +906,7 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if !self.has_butcher_tool(actor.id) {
                     Err("You need a flint spear or an iron knife.".into())
-                } else if !self
-                    .ground_ids(actor.cell, Material::Carcass)
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|carcass| !carcass.fox))
-                {
+                } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
                     Err("There is no carcass here to butcher.".into())
                 } else {
                     Ok(true)
@@ -1985,17 +1981,20 @@ impl World {
                 .ground_ids(cell, Material::Hide)
                 .first()
                 .and_then(|id| self.item(*id).cloned());
-            let noun = if material == Material::Hide
-                && first_hide.as_ref().is_some_and(|hide| hide.otter)
-            {
-                "otter hide"
-            } else if material == Material::Hide
-                && first_hide.as_ref().is_some_and(|hide| hide.wolf)
-            {
-                "wolf hide"
-            } else {
-                material.gather_noun()
-            };
+            let noun =
+                if material == Material::Hide && first_hide.as_ref().is_some_and(|hide| hide.fox) {
+                    "fox hide"
+                } else if material == Material::Hide
+                    && first_hide.as_ref().is_some_and(|hide| hide.otter)
+                {
+                    "otter hide"
+                } else if material == Material::Hide
+                    && first_hide.as_ref().is_some_and(|hide| hide.wolf)
+                {
+                    "wolf hide"
+                } else {
+                    material.gather_noun()
+                };
             for intent in claims {
                 let hash = contest_hash(self.seed, self.time, "gather", &subject, intent.actor_id);
                 let draw = Some(Draw {
@@ -2056,6 +2055,8 @@ impl World {
                         "a honeycomb. The bees sting.".to_string()
                     } else if noun == "otter hide" {
                         format!("an otter hide{from}.")
+                    } else if noun == "fox hide" {
+                        format!("a fox hide{from}.")
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -5686,11 +5687,15 @@ impl World {
                 .iter()
                 .copied()
                 .find(|id| self.item(*id).is_some_and(|carcass| carcass.otter));
+            let fox = carcasses
+                .iter()
+                .copied()
+                .find(|id| self.item(*id).is_some_and(|carcass| carcass.fox));
             let other = carcasses.iter().copied().find(|id| {
                 self.item(*id)
                     .is_some_and(|carcass| !carcass.otter && !carcass.fox)
             });
-            let Some(carcass) = other.or(otter) else {
+            let Some(carcass) = other.or(fox).or(otter) else {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -5701,17 +5706,19 @@ impl World {
                 continue;
             };
             let otter = self.item(carcass).is_some_and(|carcass| carcass.otter);
+            let fox = self.item(carcass).is_some_and(|carcass| carcass.fox);
             let wolf = self.item(carcass).is_some_and(|carcass| carcass.wolf);
             self.items.remove(&carcass);
             let mut ids = Vec::new();
-            let portions = if otter { 1 } else { 3 };
+            let portions = if otter || fox { 1 } else { 3 };
             for _ in 0..portions {
                 ids.push(self.mint_item(Material::Meat, 0, actor.cell, None, Role::Loose));
             }
             let hide = self.mint_item(Material::Hide, 0, actor.cell, None, Role::Loose);
             if let Some(item) = self.items.get_mut(&hide) {
-                item.wolf = wolf && !otter;
+                item.wolf = wolf && !otter && !fox;
                 item.otter = otter;
+                item.fox = fox;
             }
             ids.push(hide);
             ids.push(self.mint_item(Material::Bone, 0, actor.cell, None, Role::Loose));
@@ -5720,6 +5727,10 @@ impl World {
                 "the otter carcass with the iron knife into a portion of raw meat, an otter hide, and a bone."
             } else if otter {
                 "the otter carcass into a portion of raw meat, an otter hide, and a bone."
+            } else if fox && with_knife {
+                "the fox carcass with the iron knife into a portion of raw meat, a fox hide, and a bone."
+            } else if fox {
+                "the fox carcass into a portion of raw meat, a fox hide, and a bone."
             } else {
                 match (wolf, with_knife) {
                     (true, true) => {

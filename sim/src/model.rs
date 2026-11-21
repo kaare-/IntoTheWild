@@ -12010,19 +12010,48 @@ mod fox_hunt {
         let left = world.step(&[intent("butcher", near, Attempt::Butcher)]);
         assert_eq!(
             left.results[0].message,
-            "There is no carcass here to butcher."
+            "You butcher the fox carcass into a portion of raw meat, a fox hide, and a bone."
         );
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .text
-            .contains("A fox carcass lies here."));
+        let cut = world.observe(near).unwrap();
+        assert!(
+            cut.text.contains("A portion of raw meat lies here."),
+            "{}",
+            cut.text
+        );
+        assert!(cut.text.contains("A fox hide lies here."), "{}", cut.text);
+        assert!(cut.text.contains("A bone lies here."), "{}", cut.text);
+        assert!(!cut.text.contains("A fox carcass"), "{}", cut.text);
+        assert!(!cut.text.contains("deer hide"), "{}", cut.text);
+        assert!(cut
+            .events
+            .iter()
+            .all(|event| !event.text.contains("butcher")));
+        let butchered =
+            "Near butchers the fox carcass into a portion of raw meat, a fox hide, and a bone.";
         assert!(world
             .observe(seen)
             .unwrap()
             .events
             .iter()
-            .all(|event| event.text != "There is no carcass here to butcher."));
+            .any(|event| event.text == butchered));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("butcher") && !event.text.contains("fox hide")));
+        assert_eq!(
+            world
+                .ground_ids(world.actor(near).unwrap().cell, Material::Meat)
+                .len(),
+            1
+        );
+        assert!(world
+            .ground_ids(world.actor(near).unwrap().cell, Material::Hide)
+            .iter()
+            .any(|id| world
+                .item(*id)
+                .is_some_and(|hide| hide.fox && !hide.otter && !hide.wolf)));
 
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 4, 4).unwrap();
@@ -12059,6 +12088,84 @@ mod fox_hunt {
             floor.contains("East: valley floor, a fox carcass"),
             "{floor}"
         );
+    }
+
+    #[test]
+    fn a_knife_is_named_when_both_tools_butcher_the_fox() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        flint_spear(&mut world, near);
+        let bare = world.step(&[intent("none", near, Attempt::Butcher)]);
+        assert_eq!(
+            bare.results[0].message,
+            "There is no carcass here to butcher."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no carcass here to butcher."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no carcass here to butcher."));
+        let carcass = world.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        world.items.get_mut(&carcass).unwrap().fox = true;
+        world.mint_item(Material::Knife, 0, cell, Some(near), Role::Loose);
+        let both = world.step(&[intent("both", near, Attempt::Butcher)]);
+        assert_eq!(
+            both.results[0].message,
+            "You butcher the fox carcass with the iron knife into a portion of raw meat, a fox hide, and a bone."
+        );
+        assert_eq!(world.loose_ids(near, Material::Knife).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Spear).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| {
+                event.text
+                    != "You butcher the fox carcass with the iron knife into a portion of raw meat, a fox hide, and a bone."
+                    && event.text
+                        != "Near butchers the fox carcass with the iron knife into a portion of raw meat, a fox hide, and a bone."
+            }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near butchers the fox carcass with the iron knife into a portion of raw meat, a fox hide, and a bone."
+        }));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A fox hide lies here."), "{here}");
+        assert!(
+            world.observe(seen).unwrap().text.contains("a fox hide"),
+            "{}",
+            world.observe(seen).unwrap().text
+        );
+        let taken = world.step(&[intent("hide", near, Attempt::Gather(Material::Hide))]);
+        assert_eq!(taken.results[0].message, "You gather a fox hide.");
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("a fox hide"), "{arms}");
+        assert!(!arms.contains("deer hide"), "{arms}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("You gather a fox hide.")
+                && !event.text.contains("gathers a fox hide")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a fox hide." }));
+        let body = world.examine(near, super::ExamineTarget::Hide);
+        assert!(body.contains("A fox hide is carried by you"), "{body}");
     }
 
     #[test]
