@@ -2866,6 +2866,122 @@ fn the_still_pool_freezes_at_tick_twelve_and_the_refusal_stays_private() {
 }
 
 #[test]
+fn a_hearer_gets_the_crack_when_the_still_pool_freezes() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+    let far = world.spawn_at("Far", "f", 3, 3).unwrap();
+    let west = world.spawn_at("West", "w", 5, 3).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+    let crack = "You hear ice forming to the north and west.";
+    while world.sim_time() < 12 {
+        world.step(&[]);
+    }
+    assert_eq!(world.sim_time(), 12);
+    let standing = world.observe(near).unwrap();
+    assert!(standing
+        .text
+        .contains("The still water is frozen. Ice covers it."));
+    assert!(standing
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("ice forming") && !event.text.contains("Ice forms") }));
+    let seen = world.observe(far).unwrap();
+    assert!(seen
+        .text
+        .contains("The still water to the north and west is frozen. Ice covers it."));
+    assert!(seen
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("ice forming") && !event.text.contains("Ice forms") }));
+    let heard = world.observe(west).unwrap();
+    assert!(!heard.text.contains("frozen"));
+    assert!(!heard.text.contains("Ice covers"));
+    let cracks: Vec<_> = heard
+        .events
+        .iter()
+        .filter(|event| event.text == crack)
+        .collect();
+    assert_eq!(cracks.len(), 1);
+    assert_eq!(cracks[0].time, 12);
+    assert!(heard
+        .events
+        .iter()
+        .all(|event| event.text != "Ice forms on the still water."));
+    let past = world.observe(quiet).unwrap();
+    assert!(past
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("ice forming") && !event.text.contains("Ice forms") }));
+    assert!(!past.text.contains("frozen"));
+    world.step(&[]);
+    assert_eq!(
+        world
+            .observe(west)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == crack)
+            .count(),
+        1
+    );
+    let dawn = world.tuning.night_at + world.tuning.night_len;
+    while world.sim_time() < dawn {
+        world.step(&[]);
+    }
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("The day has thawed the still water."));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != crack && !event.text.contains("thaw")));
+    let next_night = dawn + world.tuning.day_len;
+    while world.sim_time() < next_night {
+        world.step(&[]);
+    }
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("The still water is frozen. Ice covers it."));
+    let again: Vec<_> = world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| event.text == crack)
+        .map(|event| event.time)
+        .collect();
+    assert_eq!(again, vec![next_night]);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("ice forming") }));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("ice forming") }));
+    assert_eq!(
+        world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text.contains("ice forming"))
+            .count(),
+        0
+    );
+}
+
+#[test]
 fn far_reads_the_ice_once_the_pool_in_sight_is_frozen() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();

@@ -1442,6 +1442,7 @@ impl World {
         self.trim_events();
         self.time += 1;
         self.howl_on_nightfall();
+        self.crack_on_freeze();
         StepReport { time, results }
     }
 

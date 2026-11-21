@@ -9010,6 +9010,39 @@ impl World {
         Some(format!("You hear a wolf howl to the {way}."))
     }
 
+    /// Ice taking the still pool, heard from out of sight. Someone who can
+    /// see the pool already has the ice in look, so the crack is not delivered
+    /// there. Past hearing, nothing.
+    fn ice_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
+        let cell = self.ice_cell(event)?;
+        if !self.hears_ice_at(origin, cell) {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear ice forming to the {way}."))
+    }
+
+    fn hears_ice(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        self.ice_cell(event)
+            .is_some_and(|cell| self.hears_ice_at(origin, cell))
+    }
+
+    fn hears_ice_at(&self, origin: CellId, cell: CellId) -> bool {
+        let distance = chebyshev(origin, cell);
+        distance > self.tuning.sight && distance <= self.tuning.hearing
+    }
+
+    fn ice_forming(&self, event: &crate::model::Event) -> bool {
+        event.text == "Ice forms on the still water."
+    }
+
+    fn ice_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !self.ice_forming(event) {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     /// A successful walk, heard from out of sight. Someone who can see the
     /// arrival keeps the walk sentence. The walker reads it in the second
     /// person instead. Past hearing, nothing is delivered.
@@ -9574,6 +9607,9 @@ impl World {
         if let Some(line) = self.howl_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.ice_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.gather_for_these_eyes(viewer, event) {
             return line;
         }
@@ -9856,6 +9892,9 @@ impl World {
             Scope::Valley => true,
             Scope::Personal(actor) => actor == viewer,
             Scope::Cell(cell) => {
+                if self.ice_forming(event) {
+                    return self.hears_ice(origin, event);
+                }
                 chebyshev(origin, cell) <= self.tuning.sight
                     || event.affected_actors.contains(&viewer)
                     || self.hears_a_branch_break(origin, event)

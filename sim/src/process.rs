@@ -853,6 +853,52 @@ impl World {
         );
     }
 
+    /// The still pool has just frozen. Someone who can see it already has
+    /// the ice in look. Someone out of sight but within hearing gets the
+    /// crack. The day thaw, and every tick the ice simply holds, is silent.
+    pub(crate) fn crack_on_freeze(&mut self) {
+        if self.time == 0 {
+            return;
+        }
+        let previous = self.time - 1;
+        let cells: Vec<CellId> = self
+            .cells
+            .iter()
+            .filter(|cell| self.still_frozen(cell.id) && !self.still_cold_at(cell.id, previous))
+            .map(|cell| cell.id)
+            .collect();
+        for cell in cells {
+            self.emit(
+                "Ice forms on the still water.",
+                Scope::Cell(cell),
+                Vec::new(),
+                vec![cell],
+                Vec::new(),
+                Vec::new(),
+                None,
+            );
+        }
+    }
+
+    /// Still water would be frozen at `time` if no fire were holding it open.
+    fn still_cold_at(&self, cell: CellId, time: u64) -> bool {
+        time >= self.tuning.chill_at
+            && self.cell(cell).still
+            && self.cell(cell).region != Region::Brook
+            && !self.morning_at(time)
+    }
+
+    fn morning_at(&self, time: u64) -> bool {
+        if time < self.tuning.night_at {
+            return false;
+        }
+        let cycle = self.tuning.night_len.saturating_add(self.tuning.day_len);
+        if cycle == 0 {
+            return false;
+        }
+        (time - self.tuning.night_at) % cycle >= self.tuning.night_len
+    }
+
     /// A drying wait ends when the person steps off the fire. The clothes
     /// stay as wet as they were. Standing still at the fire lets the wait finish.
     pub(crate) fn tend_clothes(&mut self) {
