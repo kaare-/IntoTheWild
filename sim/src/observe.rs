@@ -3448,6 +3448,8 @@ impl World {
                 "otter-hide"
             } else if fox {
                 "fox-hide"
+            } else if hare {
+                "hare-hide"
             } else if wolf {
                 "wolf-hide"
             } else {
@@ -3750,11 +3752,15 @@ impl World {
             let fox_sewn = worn(|hide| hide.fox && hide.sewn);
             let fox_pierced = worn(|hide| hide.fox && hide.pierced && !hide.sewn);
             let fox_plain = worn(|hide| hide.fox && !hide.sewn && !hide.pierced);
+            let hare_sewn = worn(|hide| hide.hare && hide.sewn);
+            let hare_pierced = worn(|hide| hide.hare && hide.pierced && !hide.sewn);
             let hare_plain = worn(|hide| hide.hare && !hide.sewn && !hide.pierced);
             if otter_sewn {
                 parts.push("The sewn otter-hide cloak is on you.".into());
             } else if fox_sewn {
                 parts.push("The sewn fox-hide cloak is on you. It breaks the wind.".into());
+            } else if hare_sewn {
+                parts.push("The sewn hare-hide cloak is on you. It is a light cover.".into());
             } else if sewn {
                 parts.push(if wolf {
                     "The sewn wolf-hide cloak is on you.".into()
@@ -3765,6 +3771,8 @@ impl World {
                 parts.push("The pierced otter hide is on you. It is ready to sew.".into());
             } else if fox_pierced {
                 parts.push("The pierced fox hide is on you. It is ready to sew.".into());
+            } else if hare_pierced {
+                parts.push("The pierced hare hide is on you. It is ready to sew.".into());
             } else if pierced {
                 parts.push(if wolf {
                     "The pierced wolf hide is on you. It is ready to sew.".into()
@@ -6465,33 +6473,88 @@ impl World {
             .collect()
     }
 
+    fn hare_hide_stage(&self, ids: &[ItemId]) -> Option<(bool, bool)> {
+        let hare = self.hare_hide_ids(ids);
+        if hare.is_empty() {
+            return None;
+        }
+        let sewn = hare
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn));
+        let pierced = hare
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+        Some((sewn, pierced))
+    }
+
     fn hare_hide_here(&self, ids: &[ItemId]) -> Vec<String> {
-        if self.hare_hide_ids(ids).is_empty() {
-            Vec::new()
+        let Some((sewn, pierced)) = self.hare_hide_stage(ids) else {
+            return Vec::new();
+        };
+        if sewn {
+            vec!["A sewn hare-hide cloak lies here. It is a light cover.".into()]
+        } else if pierced {
+            vec!["A pierced hare hide lies here. It is ready to sew.".into()]
         } else {
             vec!["A hare hide lies here.".into()]
         }
     }
 
     fn hare_hide_compass(&self, ids: &[ItemId]) -> Vec<String> {
-        if self.hare_hide_ids(ids).is_empty() {
-            Vec::new()
+        let Some((sewn, pierced)) = self.hare_hide_stage(ids) else {
+            return Vec::new();
+        };
+        if sewn {
+            vec!["a sewn hare-hide cloak".into()]
+        } else if pierced {
+            vec!["a pierced hare hide".into()]
         } else {
             vec!["a hare hide".into()]
         }
     }
 
     fn hare_hide_ground_line(&self, ids: &[ItemId], place: &str) -> Option<String> {
-        if self.hare_hide_ids(ids).is_empty() {
-            None
+        let Some((sewn, pierced)) = self.hare_hide_stage(ids) else {
+            return None;
+        };
+        if sewn {
+            Some(format!(
+                "A sewn hare-hide cloak lies {place}. It is a light cover."
+            ))
+        } else if pierced {
+            Some(format!(
+                "A pierced hare hide lies {place}. It is ready to sew."
+            ))
         } else {
             Some(format!("A hare hide lies {place}."))
         }
     }
 
     fn hare_hide_held_line(&self, hides: &[ItemId], who: &str, cover: &str) -> Option<String> {
-        if self.hare_hide_ids(hides).is_empty() {
-            None
+        let Some((sewn, pierced)) = self.hare_hide_stage(hides) else {
+            return None;
+        };
+        let worn = hides
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.hare && hide.worn));
+        if sewn && worn {
+            Some(format!(
+                "A sewn hare-hide cloak is on {who}, {cover}. It is a light cover."
+            ))
+        } else if sewn {
+            Some(format!(
+                "A sewn hare-hide cloak is carried by {who}, {cover}. It is a light cover."
+            ))
+        } else if pierced && worn {
+            Some(format!(
+                "A pierced hare hide is on {who}, {cover}. It is ready to sew."
+            ))
+        } else if pierced {
+            Some(format!(
+                "A pierced hare hide is carried by {who}, {cover}. It is ready to sew."
+            ))
+        } else if worn {
+            Some(format!("A hare hide is on {who}, {cover}."))
         } else {
             Some(format!("A hare hide is carried by {who}, {cover}."))
         }
@@ -8847,6 +8910,7 @@ impl World {
                     && self.hare_butcher_for_these_eyes(viewer, event).is_none()
                     && self.otter_cloak_for_these_eyes(viewer, event).is_none()
                     && self.fox_cloak_for_these_eyes(viewer, event).is_none()
+                    && self.hare_cloak_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
@@ -10661,6 +10725,44 @@ impl World {
             format!("{name} wears the otter hide."),
             format!("{name} removes the sewn otter-hide cloak."),
             format!("{name} removes the otter hide."),
+        ];
+        if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// A hare hide pierced, sewn, worn, or taken off. The person who did it
+    /// already read the sentence as the command result. A refusal stays with them.
+    fn hare_cloak_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let failures = [
+            "The hare hide is not pierced.",
+            "The hare hide is already pierced.",
+            "The hare hide is already a cloak.",
+            "You are not wearing a hare hide.",
+            "You are not carrying a hare hide.",
+            "You need a copper awl and a hare hide.",
+        ];
+        if failures.iter().any(|line| line == &event.text) {
+            return Some(event.text.clone());
+        }
+        let name = self.name_of(viewer);
+        let lines = [
+            format!("{name} pierces the hare hide with the copper awl. It is ready to sew."),
+            format!("{name} pierces the hare hide with the bone awl. It is ready to sew."),
+            format!("{name} sews the pierced hare hide into a cloak."),
+            format!("{name} wears the sewn hare-hide cloak."),
+            format!("{name} wears the hare hide."),
+            format!("{name} removes the sewn hare-hide cloak."),
+            format!("{name} removes the hare hide."),
         ];
         if lines.iter().any(|line| line == &event.text) {
             Some(event.text.clone())

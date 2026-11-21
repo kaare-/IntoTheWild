@@ -1802,8 +1802,10 @@ impl World {
             }
             if self.wearing_wolf_cloak(id) {
                 cold_gain /= 4;
-            } else if wearing {
+            } else if wearing && !self.wearing_only_hare_cloak(id) {
                 cold_gain /= 2;
+            } else if self.wearing_only_hare_cloak(id) {
+                cold_gain = cold_gain.saturating_mul(3) / 4;
             }
             // An otter cloak is a hide, so the line above already halved the
             // sky. Rain and the brook cut that wet cold once more.

@@ -2826,6 +2826,32 @@ impl World {
         })
     }
 
+    /// A sewn hare hide worn on the body, and no heavier hide with it.
+    /// A deer cloak worn as well still takes the deer cut.
+    pub(crate) fn wearing_only_hare_cloak(&self, actor: ActorId) -> bool {
+        self.wearing_hare_cloak(actor)
+            && self
+                .loose_ids(actor, Material::Hide)
+                .iter()
+                .all(|id| self.item(*id).is_some_and(|hide| !hide.worn || hide.hare))
+    }
+
+    /// A sewn hare hide worn on the body. It is a light cover: a quarter of
+    /// the open cold, not half the way a deer cloak does, and the wind stays.
+    /// Rain still soaks it.
+    pub(crate) fn wearing_hare_cloak(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| hide.worn && hide.sewn && hide.hare)
+        })
+    }
+
+    pub(crate) fn carrying_hare_hide(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Hide)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.hare))
+    }
+
     /// A sewn otter hide worn on the body. Rain and the brook wet it less
     /// than a deer cloak, and that wet cold is cut again.
     pub(crate) fn wearing_otter_cloak(&self, actor: ActorId) -> bool {
@@ -11998,7 +12024,7 @@ mod fox {
 
 #[cfg(test)]
 mod hare {
-    use super::{Attempt, Dir, World};
+    use super::{Attempt, Dir, Material, Role, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
         super::Intent {
@@ -12302,6 +12328,133 @@ mod hare {
         assert!(world.observe(seen).unwrap().events.iter().any(|event| {
             event.text == "Near butchers the hare carcass with the iron knife into a portion of raw meat, a hare hide, and a bone."
         }));
+    }
+
+    #[test]
+    fn a_hare_hide_sews_into_a_light_cloak() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let bare = world.spawn_at("Bare", "b", 6, 3).unwrap();
+        let deer = world.spawn_at("Deer", "d", 3, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let hide = world.mint_item(Material::Hide, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&hide).unwrap().hare = true;
+        let awl = world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&awl).unwrap().bone = true;
+        let deer_cell = world.actor(deer).unwrap().cell;
+        let deer_hide = world.mint_item(Material::Hide, 0, deer_cell, Some(deer), Role::Loose);
+        world.items.get_mut(&deer_hide).unwrap().sewn = true;
+        world.items.get_mut(&deer_hide).unwrap().worn = true;
+
+        let early = world.step(&[intent("sew", near, Attempt::Sew)]);
+        assert_eq!(early.results[0].message, "The hare hide is not pierced.");
+        assert!(!early.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The hare hide is not pierced."));
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            !event.text.contains("hare") && event.text != "The hare hide is not pierced."
+        }));
+
+        let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
+        assert_eq!(
+            pierced.results[0].message,
+            "You pierce the hare hide with the bone awl. It is ready to sew."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("pierce") && !event.text.contains("hare hide") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near pierces the hare hide with the bone awl. It is ready to sew."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare") && !event.text.contains("pierce")));
+
+        let sewn = world.step(&[intent("sew-cloak", near, Attempt::Sew)]);
+        assert_eq!(
+            sewn.results[0].message,
+            "You sew the pierced hare hide into a cloak."
+        );
+        let again = world.step(&[intent("again", near, Attempt::Sew)]);
+        assert_eq!(
+            again.results[0].message,
+            "The hare hide is already a cloak."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The hare hide is already a cloak."));
+        let carried = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            carried.contains(
+                "A sewn hare-hide cloak is carried by you, in the open. It is a light cover."
+            ),
+            "{carried}"
+        );
+        let wore = world.step(&[intent("wear", near, Attempt::Wear)]);
+        assert_eq!(
+            wore.results[0].message,
+            "You wear the sewn hare-hide cloak."
+        );
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("The sewn hare-hide cloak is on you. It is a light cover."),
+            "{look}"
+        );
+        assert!(look.contains("a sewn hare-hide cloak"), "{look}");
+        assert!(look.contains("You are in the wind."), "{look}");
+        assert!(!look.contains("little wind"), "{look}");
+        let held = world.examine(near, super::ExamineTarget::Hide);
+        assert!(
+            held.contains("A sewn hare-hide cloak is on you, in the open. It is a light cover."),
+            "{held}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sews the pierced hare hide into a cloak." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near wears the sewn hare-hide cloak." }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("sewn hare-hide") && !event.text.contains("pierced hare")
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare") && !event.text.contains("cloak")));
+
+        world.step(&[]);
+        let hare_cold = world.actor(near).unwrap().cold;
+        let deer_cold = world.actor(deer).unwrap().cold;
+        let bare_cold = world.actor(bare).unwrap().cold;
+        assert!(
+            hare_cold < bare_cold && hare_cold > deer_cold,
+            "hare {hare_cold} deer {deer_cold} bare {bare_cold}"
+        );
+        assert!(!world.wearing_otter_cloak(near));
+        assert!(world.wearing_only_hare_cloak(near));
     }
 }
 

@@ -101,8 +101,8 @@ smelt iron                   a carried lump of iron ore; a small fire refuses it
 feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hot enough for iron. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
-pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way. A fox hide uses a copper awl or a bone awl the same way
-sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off. A pierced fox hide sews into a cloak that breaks the wind and cuts the cold the way a deer cloak does
+pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way. A fox hide uses a copper awl or a bone awl the same way. A hare hide uses a copper awl or a bone awl the same way
+sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off. A pierced fox hide sews into a cloak that breaks the wind and cuts the cold the way a deer cloak does. A pierced hare hide sews into a light cloak that takes a little of the cold off and leaves the wind and the rain
 rest|sleep                   under the rock, a lean-to, or on a reed mat, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
