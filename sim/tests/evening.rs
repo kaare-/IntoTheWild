@@ -8801,9 +8801,12 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
         .events
         .iter()
         .map(|event| event.text.clone())
-        .filter(|text| text.contains("knap"))
+        .filter(|text| text.contains("knap") || text.contains("flake"))
         .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+    assert!(
+        yours.is_empty(),
+        "the knapper does not re-read the knap: {yours:?}"
+    );
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
