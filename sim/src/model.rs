@@ -407,6 +407,8 @@ pub enum Attempt {
     Smelt,
     SmeltIron,
     Feed,
+    /// Dry branches on a burning fire, covered with a handful of mud.
+    Bank,
     Hammer,
     HammerIron,
     Pierce,
@@ -848,6 +850,8 @@ pub enum Wake {
     Stings,
     /// Wet clothes on this person dry at the fire they are standing by.
     DryClothes(ActorId),
+    /// Dry branches banked on the fire in this cell, under a cover of mud.
+    Charcoal(CellId),
 }
 
 /// A seeded berry patch. Emptying it, by gathering or by the deer, arms the same wait.
@@ -1014,6 +1018,10 @@ pub struct World {
     /// A black charcoal mark left on a cell. Open rain washes it. The rock keeps it.
     #[serde(default)]
     pub(crate) charcoal_marks: BTreeSet<CellId>,
+    /// Dry branches spent onto a fire under a cover of mud, waiting to char.
+    /// The count is those branches. Absent once they char, or the fire dies first.
+    #[serde(default)]
+    pub(crate) banks: BTreeMap<CellId, u32>,
     /// A lean-to of branches. It stands in that cell and breaks the wind.
     #[serde(default)]
     pub(crate) lean_tos: BTreeSet<CellId>,
@@ -1263,6 +1271,7 @@ impl World {
             deer_ate_berries: BTreeSet::new(),
             ochre_marks: BTreeSet::new(),
             charcoal_marks: BTreeSet::new(),
+            banks: BTreeMap::new(),
             lean_tos: BTreeSet::new(),
             thatched: BTreeSet::new(),
             snares: BTreeMap::new(),
@@ -2221,6 +2230,40 @@ impl World {
             .collect()
     }
 
+    /// Dry branches lying on this cell, pile and loose. Carried wood stays in the arms.
+    pub(crate) fn dry_wood_on_ground(&self, cell: CellId) -> u32 {
+        let loose = self
+            .ground_ids(cell, Material::Branch)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+            .count() as u32;
+        self.dry_pile_count(cell, Material::Branch) + loose
+    }
+
+    /// Spend that dry wood. The count is what left the ground.
+    pub(crate) fn take_dry_wood_on_ground(&mut self, cell: CellId) -> u32 {
+        let pile = self.dry_pile_count(cell, Material::Branch);
+        if pile > 0 {
+            self.take_from_pile(cell, Material::Branch, pile);
+        }
+        let loose: Vec<_> = self
+            .ground_ids(cell, Material::Branch)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+            .collect();
+        let n = loose.len() as u32;
+        for id in loose {
+            self.items.remove(&id);
+        }
+        pile + n
+    }
+
     pub(crate) fn dry_pile_count(&self, cell: CellId, material: Material) -> u32 {
         let count = self.pile_count(cell, material);
         if count > 0 && self.is_dry(self.pile_moisture(cell, material)) {
@@ -2339,7 +2382,11 @@ impl World {
         if let Some(cause) = extra_cause {
             causes.push(cause);
         }
-        self.mint_item(Material::Charcoal, 0, fire.cell, None, Role::Loose);
+        // A banked fire's wood is the charcoal. The leftover lump waits
+        // until that wood chars, or comes back as branches if the fire dies.
+        if !self.banks.contains_key(&fire.cell) {
+            self.mint_item(Material::Charcoal, 0, fire.cell, None, Role::Loose);
+        }
         self.emit(
             text,
             Scope::Cell(fire.cell),
@@ -14485,5 +14532,218 @@ mod wooden_spear {
             .events
             .iter()
             .all(|event| { event.text != "Near brings the deer down." }));
+    }
+}
+
+#[cfg(test)]
+mod charcoal_bank {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn mud_covers_dry_branches_on_a_fire_and_they_char() {
+        assert!(matches!(
+            crate::parse::parse_attempt("bank").unwrap(),
+            Attempt::Bank
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("smother").unwrap(),
+            Attempt::Bank
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("cover fire").unwrap(),
+            Attempt::Bank
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Bank)]);
+        assert_eq!(bare.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no fire burning here." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here." }));
+        world.mint_fire(cell, 0);
+        world.add_pile(cell, Material::Branch, 3, 0);
+        let soft = world.step(&[intent("soft", near, Attempt::Bank)]);
+        assert_eq!(
+            soft.results[0].message,
+            "You have no mud to cover the fire."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != soft.results[0].message }));
+        world.mint_item(Material::Mud, 0, cell, Some(near), Role::Loose);
+        let banked = world.step(&[intent("banked", near, Attempt::Bank)]);
+        let yours = "You bank the branches on the fire and cover them with mud.";
+        let witnessed = "Near banks the branches on the fire and cover them with mud.";
+        assert_eq!(banked.results[0].message, yours);
+        assert_eq!(world.dry_wood_on_ground(cell), 0);
+        assert!(world.loose_ids(near, Material::Mud).is_empty());
+        assert!(world.fire_at(cell).is_some());
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text
+                .contains("Branches are banked on the fire under a cover of mud."),
+            "{}",
+            here.text
+        );
+        assert!(here
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == witnessed }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("bank") }));
+        let again = world.step(&[intent("again", near, Attempt::Bank)]);
+        assert_eq!(again.results[0].message, "The fire is already banked.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != again.results[0].message }));
+        let mut charred = None;
+        for _ in 0..6 {
+            world.step(&[]);
+            if world.fire_at(cell).is_none() {
+                charred = Some(world.time);
+                break;
+            }
+        }
+        assert!(charred.is_some());
+        let line = "The banked wood chars into charcoal. The fire is out.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == line }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == line }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != line }));
+        let ground = world.observe(near).unwrap();
+        assert!(
+            ground.text.contains("Lumps of charcoal lie here."),
+            "{}",
+            ground.text
+        );
+        assert!(
+            !ground.text.contains("A small fire burns"),
+            "{}",
+            ground.text
+        );
+        assert_eq!(world.ground_ids(cell, Material::Charcoal).len(), 3);
+        let taken = world.step(&[intent("taken", near, Attempt::Gather(Material::Charcoal))]);
+        assert_eq!(taken.results[0].message, "You gather a lump of charcoal.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != taken.results[0].message }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a lump of charcoal." }));
+    }
+
+    #[test]
+    fn a_fire_that_dies_gives_the_banked_wood_back() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        world.mint_fire(cell, 0);
+        world.add_pile(cell, Material::Branch, 2, 1000);
+        world.mint_item(Material::Mud, 0, cell, Some(near), Role::Loose);
+        let wet = world.step(&[intent("wet", near, Attempt::Bank)]);
+        assert_eq!(wet.results[0].message, "The wood is too wet to bank.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != wet.results[0].message }));
+        assert_eq!(world.pile_count(cell, Material::Branch), 2);
+        world.take_from_pile(cell, Material::Branch, 2);
+        world.add_pile(cell, Material::Branch, 2, 0);
+        let banked = world.step(&[intent("banked", near, Attempt::Bank)]);
+        assert_eq!(
+            banked.results[0].message,
+            "You bank the branches on the fire and cover them with mud."
+        );
+        let id = world.fire_at(cell).unwrap().id;
+        world.extinguish(id, "Rain puts out the fire.", None);
+        assert_eq!(world.ground_ids(cell, Material::Charcoal).len(), 0);
+        let mut restored = false;
+        for _ in 0..6 {
+            world.step(&[]);
+            if world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == "The banked wood did not char. The fire is out.")
+            {
+                restored = true;
+                break;
+            }
+        }
+        assert!(restored);
+        assert_eq!(world.dry_wood_on_ground(cell), 2);
+        assert_eq!(world.ground_ids(cell, Material::Charcoal).len(), 0);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The banked wood did not char. The fire is out." }));
     }
 }

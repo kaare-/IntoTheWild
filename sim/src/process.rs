@@ -63,6 +63,7 @@ impl World {
                 Wake::HareReturn => self.return_hare(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
+                Wake::Charcoal(cell) => self.char_bank(cell),
             }
         }
     }
@@ -2420,6 +2421,57 @@ impl World {
         if self.fires.contains_key(&id) {
             self.extinguish(id, "The fire burns down.", None);
         }
+    }
+
+    /// The cover has waited. The wood chars if the fire is still burning.
+    /// A fire that died first gives the branches back, and no charcoal from the bank.
+    fn char_bank(&mut self, cell: CellId) {
+        let Some(count) = self.banks.remove(&cell) else {
+            return;
+        };
+        if count == 0 || self.fire_at(cell).is_none() {
+            if count > 0 {
+                self.add_pile(cell, Material::Branch, count, 0);
+            }
+            self.emit(
+                "The banked wood did not char. The fire is out.",
+                Scope::Cell(cell),
+                vec![],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+            return;
+        }
+        let ids: Vec<_> = self
+            .fires
+            .values()
+            .filter(|fire| fire.cell == cell)
+            .map(|fire| fire.id)
+            .collect();
+        for id in ids {
+            self.fires.remove(&id);
+            self.schedule.retain(|entry| entry.wake != Wake::Fire(id));
+        }
+        let mut lumps = Vec::new();
+        for _ in 0..count {
+            lumps.push(self.mint_item(Material::Charcoal, 0, cell, None, Role::Loose));
+        }
+        let text = if count == 1 {
+            "The banked wood chars into a lump of charcoal. The fire is out."
+        } else {
+            "The banked wood chars into charcoal. The fire is out."
+        };
+        self.emit(
+            text,
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            lumps,
+            vec![],
+            None,
+        );
     }
 
     fn complete_work(&mut self, id: WorkId) {

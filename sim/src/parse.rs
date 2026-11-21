@@ -64,6 +64,7 @@ weave mat                    two bundles of reeds, from the arms or the pile at 
 set mat                      a carried reed mat, on this ground. It leaves the arms. rest works on it, as under a lean-to.
 make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
+bank                         dry branches lying on a burning fire, covered with a handful of mud. After a short wait the wood chars into charcoal and the fire goes out. The branches in your arms stay there. smother and cover fire are the same
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
 wear hide                    a carried deer hide, against the cold
@@ -504,6 +505,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::Feed)
         }
+        "bank" | "smother"
+            if rest.is_empty()
+                || rest == "fire"
+                || rest == "the fire"
+                || rest == "branches"
+                || rest == "wood" =>
+        {
+            Ok(Attempt::Bank)
+        }
+        "cover" if rest == "fire" || rest == "the fire" => Ok(Attempt::Bank),
         "hammer" | "forge"
             if rest.is_empty() || rest == "bead" || rest == "copper" || rest == "copper bead" =>
         {

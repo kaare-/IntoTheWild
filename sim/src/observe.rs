@@ -714,6 +714,9 @@ impl World {
             } else {
                 parts.push(format!("A small fire burns here. It warms you.{kept}"));
             }
+            if self.banks.contains_key(&actor.cell) {
+                parts.push("Branches are banked on the fire under a cover of mud.".into());
+            }
         } else if self
             .fires
             .values()
@@ -3243,6 +3246,9 @@ impl World {
                     parts.push(format!("{burn}"));
                 } else {
                     parts.push(format!("{burn} It warms {}.", self.join_names(&warmed)));
+                }
+                if self.banks.contains_key(&cell) {
+                    parts.push("Branches are banked on it under a cover of mud.".into());
                 }
             }
             let charcoal = self.ground_ids(cell, Material::Charcoal).len();
@@ -8015,8 +8021,13 @@ impl World {
             } else {
                 "A small fire burns"
             };
+            let cover = if self.banks.contains_key(&fire.cell) {
+                " Branches are banked on it under a cover of mud."
+            } else {
+                ""
+            };
             lines.push(format!(
-                "{kind} {}. It was lit on this ground. It warms anyone standing at it.{reach}",
+                "{kind} {}. It was lit on this ground. It warms anyone standing at it.{reach}{cover}",
                 self.place_phrase(origin, fire.cell)
             ));
         }
@@ -8983,6 +8994,7 @@ impl World {
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
                     && self.haft_for_these_eyes(viewer, event).is_none()
+                    && self.bank_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -10596,6 +10608,19 @@ impl World {
         Some("You set a lump of iron ore by the fire. It leaves your arms.".into())
     }
 
+    /// Branches banked on a fire. The banker already has the reply.
+    fn bank_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} banks "))?;
+        if rest != "the branches on the fire and cover them with mud." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "bank", rest))
+    }
+
     /// A dry branch fed into a fire, filled for the person who fed it.
     fn feed_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -11708,6 +11733,17 @@ impl World {
                 || self.has_dry(actor_id, Material::Branch))
         {
             actions.push("feed".into());
+        }
+        if actor.busy.is_none()
+            && self.gripping(actor_id).is_none()
+            && self.fire_at(actor.cell).is_some()
+            && !self.banks.contains_key(&actor.cell)
+            && (!self.loose_ids(actor_id, Material::Mud).is_empty()
+                || self.pile_count(actor.cell, Material::Mud) > 0
+                || !self.ground_ids(actor.cell, Material::Mud).is_empty())
+            && self.dry_wood_on_ground(actor.cell) > 0
+        {
+            actions.push("bank".into());
         }
         if actor.busy.is_none()
             && self.gripping(actor_id).is_none()

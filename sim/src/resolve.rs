@@ -67,6 +67,7 @@ impl World {
         let mut sets = Vec::new();
         let mut smelts = Vec::new();
         let mut feeds = Vec::new();
+        let mut banks = Vec::new();
         let mut hammers = Vec::new();
         let mut pierces = Vec::new();
         let mut sews = Vec::new();
@@ -187,6 +188,7 @@ impl World {
                         Attempt::SetClay => sets.push(intent),
                         Attempt::Smelt | Attempt::SmeltIron => smelts.push(intent),
                         Attempt::Feed => feeds.push(intent),
+                        Attempt::Bank => banks.push(intent),
                         Attempt::Hammer | Attempt::HammerIron => hammers.push(intent),
                         Attempt::Pierce => pierces.push(intent),
                         Attempt::Sew => sews.push(intent),
@@ -337,6 +339,7 @@ impl World {
         self.apply_boils(boils, &mut results);
         self.apply_sets(sets, &mut results);
         self.apply_feeds(feeds, &mut results);
+        self.apply_banks(banks, &mut results);
         self.apply_smelts(smelts, &mut results);
         self.apply_hammers(hammers, &mut results);
         self.apply_pierces(pierces, &mut results);
@@ -1207,6 +1210,34 @@ impl World {
                     Ok(true)
                 } else {
                     Err("You have nothing to feed the fire.".into())
+                }
+            }
+            Attempt::Bank => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.banks.contains_key(&actor.cell) {
+                    Err("The fire is already banked.".into())
+                } else if self.loose_ids(actor.id, Material::Mud).is_empty()
+                    && self.pile_count(actor.cell, Material::Mud) == 0
+                    && self.ground_ids(actor.cell, Material::Mud).is_empty()
+                {
+                    Err("You have no mud to cover the fire.".into())
+                } else if self.dry_wood_on_ground(actor.cell) == 0 {
+                    let wet = self.pile_count(actor.cell, Material::Branch) > 0
+                        || !self.ground_ids(actor.cell, Material::Branch).is_empty();
+                    if wet {
+                        Err("The wood is too wet to bank.".into())
+                    } else {
+                        Err("There is no dry wood here to bank.".into())
+                    }
+                } else {
+                    Ok(true)
                 }
             }
             Attempt::Hammer => {
@@ -8303,6 +8334,83 @@ impl World {
                 intent.actor_id,
                 true,
                 "You set a lump of clay by the fire. It is not hard yet.",
+                results,
+            );
+        }
+    }
+
+    fn apply_banks(&mut self, mut banks: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        banks.sort_by_key(|intent| intent.actor_id);
+        for intent in banks {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let cell = actor.cell;
+            if self.fire_at(cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            if self.banks.contains_key(&cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The fire is already banked.",
+                    results,
+                );
+                continue;
+            }
+            if self.loose_ids(actor.id, Material::Mud).is_empty()
+                && self.pile_count(cell, Material::Mud) == 0
+                && self.ground_ids(cell, Material::Mud).is_empty()
+            {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no mud to cover the fire.",
+                    results,
+                );
+                continue;
+            }
+            if self.dry_wood_on_ground(cell) == 0 {
+                let wet = self.pile_count(cell, Material::Branch) > 0
+                    || !self.ground_ids(cell, Material::Branch).is_empty();
+                let message = if wet {
+                    "The wood is too wet to bank."
+                } else {
+                    "There is no dry wood here to bank."
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            }
+            let _ = self.take_hand(actor.id, Material::Mud);
+            let spent = self.take_dry_wood_on_ground(cell);
+            self.banks.insert(cell, spent);
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            self.schedule(ready, Wake::Charcoal(cell));
+            let name = self.name_of(actor.id);
+            let rest = "the branches on the fire and cover them with mud.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "bank", rest),
+                Scope::Cell(cell),
+                vec![actor.id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "bank", rest),
                 results,
             );
         }
