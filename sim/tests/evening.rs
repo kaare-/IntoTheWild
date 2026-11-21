@@ -906,6 +906,10 @@ fn parser_accepts_the_evening_commands() {
         Attempt::Eat(Material::Bark)
     ));
     assert!(matches!(
+        parse_attempt("eat sheets of bark").unwrap(),
+        Attempt::Eat(Material::Bark)
+    ));
+    assert!(matches!(
         parse_attempt("Say The wood is still dry.").unwrap(),
         Attempt::Say(text) if text == "The wood is still dry."
     ));
@@ -3091,8 +3095,30 @@ fn eat_bark_is_refused_and_the_sheet_still_lights() {
     let west = world.spawn_at("West", "w", 5, 3).unwrap();
     let far = world.spawn_at("Far", "f", 3, 3).unwrap();
     let bark = world.material_tally(Material::Bark);
-    let line = "Bark is tinder, not food.";
+    let line = "Bark does not feed you.";
     let hunger = world.observe(near).unwrap().self_info.hunger.clone();
+    let absent = world.spawn_at("Dry", "d", 4, 3).unwrap();
+    let none = world.step(&[cmd("none", absent, Attempt::Eat(Material::Bark))]);
+    assert_eq!(none.results[0].message, "There is no bark here to eat.");
+    assert!(world
+        .observe(absent)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| { event.text == "There is no bark here to eat." }));
+    for witness in [near, west, far] {
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no bark here to eat."));
+    }
+    assert!(!world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("Bark does not feed you."));
     assert!(world
         .observe(near)
         .unwrap()
@@ -3108,16 +3134,28 @@ fn eat_bark_is_refused_and_the_sheet_still_lights() {
     assert!(world
         .observe(near)
         .unwrap()
+        .text
+        .contains("A pile of bark lies here. Bark does not feed you."));
+    assert!(world
+        .examine(near, ExamineTarget::Bark)
+        .contains("Bark does not feed you."));
+    assert!(!world
+        .examine(west, ExamineTarget::Bark)
+        .contains("does not feed"));
+    assert!(!world.observe(west).unwrap().text.contains("does not feed"));
+    assert!(world
+        .observe(near)
+        .unwrap()
         .events
         .iter()
-        .any(|event| event.text == line));
+        .all(|event| event.text != line));
     for witness in [west, far] {
         assert!(world
             .observe(witness)
             .unwrap()
             .events
             .iter()
-            .all(|event| event.text != line && !event.text.contains("tinder")));
+            .all(|event| event.text != line && !event.text.contains("does not feed")));
     }
 
     let gathered = world.step(&[cmd("gather", near, Attempt::Gather(Material::Bark))]);

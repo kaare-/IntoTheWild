@@ -934,10 +934,15 @@ impl World {
         }
         let bark_here = self.pile_count(actor.cell, Material::Bark)
             + self.ground_ids(actor.cell, Material::Bark).len() as u32;
+        let bark_lesson = if self.bark_known(actor.id) {
+            " Bark does not feed you."
+        } else {
+            ""
+        };
         if bark_here > 1 {
-            parts.push("A pile of bark lies here.".into());
+            parts.push(format!("A pile of bark lies here.{bark_lesson}"));
         } else if bark_here == 1 {
-            parts.push("A sheet of bark lies here.".into());
+            parts.push(format!("A sheet of bark lies here.{bark_lesson}"));
         } else if self.bark_bare(actor.cell) {
             parts.push("There is no bark under the rock.".into());
         }
@@ -6547,6 +6552,10 @@ impl World {
             .is_some_and(|actor| actor.pale_berry_known)
     }
 
+    pub(crate) fn bark_known(&self, viewer: ActorId) -> bool {
+        self.actor(viewer).is_some_and(|actor| actor.bark_known)
+    }
+
     /// Bitter berries keep their answer until this person has tasted them.
     /// A raw mushroom keeps its warning until this person has tried to eat one.
     fn food_clause_for(&self, viewer: ActorId, material: Material) -> &'static str {
@@ -6870,6 +6879,9 @@ impl World {
                     self.food_clause_for(viewer, material)
                 ));
             }
+        }
+        if material == Material::Bark && self.bark_known(viewer) && !lines.is_empty() {
+            lines.push("Bark does not feed you.".into());
         }
         if lines.is_empty() {
             if material == Material::Berry && self.spent_berries.contains(&origin) {

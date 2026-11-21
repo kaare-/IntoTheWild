@@ -601,6 +601,10 @@ pub struct Actor {
     /// be cooked. Someone who has not eaten them does not get that sentence.
     #[serde(default)]
     pub pale_berry_known: bool,
+    /// This person has tried to eat bark. Look may then say it does not
+    /// feed them. Someone who has not tried does not get that sentence.
+    #[serde(default)]
+    pub bark_known: bool,
     pub busy: Option<WorkId>,
 }
 
@@ -1309,6 +1313,7 @@ impl World {
                 tasted_bitter: false,
                 raw_mushroom_known: false,
                 pale_berry_known: false,
+                bark_known: false,
                 busy: None,
             },
         );

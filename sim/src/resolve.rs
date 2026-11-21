@@ -18,6 +18,7 @@ enum WetBranch {
 /// The raw mushroom refusal. Reply only. The same two sentences as the look
 /// after this person has tried them.
 const RAW_MUSHROOM_REFUSAL: &str = "Raw mushrooms do not feed you. They must be cooked.";
+const BARK_REFUSAL: &str = "Bark does not feed you.";
 
 impl World {
     pub(crate) fn resolve(&mut self, intents: &[Intent]) -> Vec<CommandResult> {
@@ -137,6 +138,7 @@ impl World {
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
+                            && message != BARK_REFUSAL
                             && !hook_refusal;
                     failures.push((intent, message, personal));
                 }
@@ -228,6 +230,11 @@ impl World {
             if message == RAW_MUSHROOM_REFUSAL {
                 if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                     person.raw_mushroom_known = true;
+                }
+            }
+            if message == BARK_REFUSAL {
+                if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                    person.bark_known = true;
                 }
             }
             if personal {
@@ -1217,7 +1224,15 @@ impl World {
                         }
                         Material::Clay => Err("Unfired clay is not food.".into()),
                         Material::Bowl => Err("A bowl is not food.".into()),
-                        Material::Bark => Err("Bark is tinder, not food.".into()),
+                        Material::Bark => {
+                            let near_bark = self.has_material_at_hand(actor.id, Material::Bark)
+                                || !self.ground_ids(actor.cell, Material::Bark).is_empty();
+                            if near_bark {
+                                Err(BARK_REFUSAL.into())
+                            } else {
+                                Err("There is no bark here to eat.".into())
+                            }
+                        }
                         Material::Ochre => Err("Ochre is not food.".into()),
                         Material::CopperOre => Err("Copper ore is not food.".into()),
                         Material::IronOre => Err("Iron ore is not food.".into()),

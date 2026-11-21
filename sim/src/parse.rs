@@ -86,7 +86,7 @@ smoke meat                   a portion of raw meat at a lit fire, from the arms 
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
 eat mushrooms                mushrooms
 eat carcass                  a carcass must be cooked
-eat bark                     bark is tinder, not food
+eat bark                     bark does not feed you. The sheet stays. It still lights a fire
 smear mud                    mud on skin against the sun
 smear ochre                  red ochre on the skin, a mark unlike mud
 mark                         a carried lump of ochre leaves a red mark on this ground. A lump of charcoal leaves a black mark instead, and is used up. With neither, you have nothing to mark with
@@ -546,7 +546,9 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         | "poison berries" | "dark" | "dark berry" | "dark berries" => {
             Ok(Attempt::Eat(Material::BitterBerry))
         }
-        "bark" => Ok(Attempt::Eat(Material::Bark)),
+        "bark" | "sheet" | "sheet of bark" | "sheets" | "sheets of bark" | "dry bark" => {
+            Ok(Attempt::Eat(Material::Bark))
+        }
         "wood" | "branch" | "branches" | "log" => Err("Bark is tinder, not food.".into()),
         "mud" => Err("Mud is for your skin, not your stomach.".into()),
         "carcass" | "deer carcass" => Ok(Attempt::Eat(Material::Carcass)),
