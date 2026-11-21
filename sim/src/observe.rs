@@ -1280,9 +1280,15 @@ impl World {
         {
             parts.push("A hare carcass lies here.".into());
         }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
+        {
+            parts.push("A beaver carcass lies here.".into());
+        }
         if carcasses.iter().any(|id| {
             self.item(*id).is_some_and(|carcass| {
-                !carcass.wolf && !carcass.otter && !carcass.fox && !carcass.hare
+                !carcass.wolf && !carcass.otter && !carcass.fox && !carcass.hare && !carcass.beaver
             })
         }) {
             parts.push("A deer carcass lies here.".into());
@@ -3501,6 +3507,12 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
             {
                 "a hare carcass".into()
+            } else if self
+                .loose_ids(actor_id, Material::Carcass)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
+            {
+                "a beaver carcass".into()
             } else {
                 "a deer carcass".into()
             }
@@ -4013,6 +4025,11 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
         {
             " They carry a hare carcass.".into()
+        } else if carried
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
+        {
+            " They carry a beaver carcass.".into()
         } else {
             " They carry a deer carcass.".into()
         }
@@ -4539,9 +4556,15 @@ impl World {
         {
             bits.push("a hare carcass".into());
         }
+        if carcasses
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
+        {
+            bits.push("a beaver carcass".into());
+        }
         if carcasses.iter().any(|id| {
             self.item(*id).is_some_and(|carcass| {
-                !carcass.wolf && !carcass.otter && !carcass.fox && !carcass.hare
+                !carcass.wolf && !carcass.otter && !carcass.fox && !carcass.hare && !carcass.beaver
             })
         }) {
             bits.push("a carcass".into());
@@ -6108,6 +6131,8 @@ impl World {
                     "fox"
                 } else if item.is_some_and(|carcass| carcass.hare) {
                     "hare"
+                } else if item.is_some_and(|carcass| carcass.beaver) {
+                    "beaver"
                 } else {
                     "deer"
                 };
@@ -6151,6 +6176,11 @@ impl World {
                 .any(|id| self.item(*id).is_some_and(|carcass| carcass.hare))
             {
                 "hare"
+            } else if carried
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
+            {
+                "beaver"
             } else {
                 "deer"
             };
@@ -9063,6 +9093,7 @@ impl World {
                     && self.scare_for_these_eyes(viewer, event).is_none()
                     && self.wolf_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_hunt_for_these_eyes(viewer, event).is_none()
+                    && self.beaver_hunt_for_these_eyes(viewer, event).is_none()
                     && self.fox_hunt_for_these_eyes(viewer, event).is_none()
                     && self.hare_hunt_for_these_eyes(viewer, event).is_none()
                     && self.otter_butcher_for_these_eyes(viewer, event).is_none()
@@ -11066,6 +11097,40 @@ impl World {
             format!("The wolf bolts. {name}'s flint spear does not land."),
         ];
         if lines.iter().any(|line| line == &event.text) {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
+    /// A beaver brought down, or missed. The hunter already has the reply,
+    /// so the event list does not repeat it. Someone who can see keeps
+    /// the stored third person.
+    fn beaver_hunt_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        let brings = text == format!("{name} brings the beaver down with the flint spear.")
+            || text
+                == format!("{name} brings the beaver down. A beaver carcass lies where it stood.")
+            || text
+                == format!("{name} brings the beaver down with the bow. The flint flake is spent.");
+        let misses = text.starts_with(&format!("{name} misses the beaver"))
+            && text.contains("splashes away");
+        let bolts = text.starts_with("The beaver splashes away to the ")
+            && (text.ends_with(&format!("{name}'s flint spear does not land."))
+                || text.ends_with(&format!("{name}'s spear does not land.")));
+        let stays = text == format!("{name} misses the beaver with the flint spear. It stays.")
+            || text == format!("{name} misses the beaver. It stays.")
+            || text == format!("The beaver stays. {name}'s flint spear does not land.")
+            || text == format!("The beaver stays. {name}'s spear does not land.");
+        if brings || misses || bolts || stays {
             Some(event.text.clone())
         } else {
             None

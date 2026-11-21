@@ -722,6 +722,10 @@ pub struct Item {
     /// Other materials leave this false.
     #[serde(default)]
     pub hare: bool,
+    /// A carcass from the beaver, not the deer or the other animals.
+    /// Other materials leave this false.
+    #[serde(default)]
+    pub beaver: bool,
     /// Pine resin rubbed into a dugout. Other materials leave this false.
     /// A pitched canoe does not keep soaking the person aboard it.
     #[serde(default)]
@@ -1798,6 +1802,7 @@ impl World {
                 otter: false,
                 fox: false,
                 hare: false,
+                beaver: false,
                 pitched: false,
             },
         );
@@ -12246,6 +12251,174 @@ mod beaver {
             .events
             .iter()
             .all(|event| { !event.text.contains("beaver") && !event.text.contains("swims") }));
+    }
+
+    fn quiet_valley(seed: u64) -> World {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), seed);
+        world.deer = None;
+        world.otter = None;
+        world.fox = None;
+        world.hare = None;
+        world
+    }
+
+    fn flint_spear(world: &mut World, actor: u32, cell: super::CellId) {
+        let id = world.mint_item(
+            super::Material::Spear,
+            0,
+            cell,
+            Some(actor),
+            super::Role::Loose,
+        );
+        let spear = world.items.get_mut(&id).unwrap();
+        spear.hardened = true;
+        spear.flint_tip = true;
+    }
+
+    #[test]
+    fn a_spear_or_a_bow_brings_the_beaver_down() {
+        let mut world = quiet_valley(1);
+        let near = world.spawn_at("Near", "n", 2, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Hunt)]);
+        assert_eq!(bare.results[0].message, "You are not carrying a spear.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You are not carrying a spear."));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "You are not carrying a spear."));
+        }
+        let cell = world.actor(near).unwrap().cell;
+        flint_spear(&mut world, near, cell);
+        let far = world.step(&[intent("far", near, Attempt::Hunt)]);
+        assert_eq!(
+            far.results[0].message,
+            "The beaver is not close enough to hunt."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The beaver is not close enough to hunt." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("beaver") && !event.text.contains("hunt") }));
+        }
+
+        let mut beside = quiet_valley(1);
+        let hunter = beside.spawn_at("Near", "n", 0, 3).unwrap();
+        let eyes = beside.spawn_at("Seen", "s", 2, 3).unwrap();
+        let ears = beside.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let stood = beside.actor(hunter).unwrap().cell;
+        flint_spear(&mut beside, hunter, stood);
+        let hit = beside.step(&[intent("hunt", hunter, Attempt::Hunt)]);
+        let yours = "You bring the beaver down with the flint spear.";
+        let witnessed = "Near brings the beaver down with the flint spear.";
+        assert_eq!(hit.results[0].message, yours);
+        assert!(beside.beaver_cell().is_none());
+        assert!(beside
+            .observe(hunter)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
+        assert!(beside
+            .observe(eyes)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(beside
+            .observe(ears)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("beaver")));
+        let here = beside.observe(hunter).unwrap().text;
+        assert!(here.contains("A beaver carcass lies here."), "{here}");
+        let cut = beside.step(&[intent("cut", hunter, Attempt::Butcher)]);
+        assert_eq!(
+            cut.results[0].message,
+            "The beaver carcass is not cut up yet."
+        );
+        assert!(beside
+            .observe(hunter)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The beaver carcass is not cut up yet." }));
+        assert!(beside
+            .observe(eyes)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("not cut up") }));
+        assert!(beside
+            .observe(hunter)
+            .unwrap()
+            .text
+            .contains("A beaver carcass lies here."));
+
+        let mut shot = quiet_valley(4);
+        let archer = shot.spawn_at("Near", "n", 2, 3).unwrap();
+        let watch = shot.spawn_at("Seen", "s", 2, 2).unwrap();
+        let far_one = shot.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let place = shot.actor(archer).unwrap().cell;
+        shot.mint_item(
+            super::Material::Bow,
+            0,
+            place,
+            Some(archer),
+            super::Role::Loose,
+        );
+        shot.mint_item(
+            super::Material::Flake,
+            0,
+            place,
+            Some(archer),
+            super::Role::Loose,
+        );
+        let loosed = shot.step(&[intent("bow", archer, Attempt::Hunt)]);
+        let line = "You bring the beaver down with the bow. The flint flake is spent.";
+        let named = "Near brings the beaver down with the bow. The flint flake is spent.";
+        assert_eq!(loosed.results[0].message, line);
+        assert!(shot.beaver_cell().is_none());
+        assert_eq!(shot.loose_ids(archer, super::Material::Flake).len(), 0);
+        assert!(shot
+            .observe(archer)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != line && event.text != named }));
+        assert!(shot
+            .observe(watch)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == named));
+        assert!(shot
+            .observe(far_one)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("beaver")));
+        let bank = shot.spawn_at("Bank", "b", 0, 4).unwrap();
+        let from_bank = shot.observe(bank).unwrap().text;
+        assert!(from_bank.contains("a beaver carcass"), "{from_bank}");
     }
 }
 

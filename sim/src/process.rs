@@ -1618,7 +1618,7 @@ impl World {
     }
 
     /// The other of the brook cell and the bank south of it.
-    fn beaver_aside(&self, from: CellId) -> Option<CellId> {
+    pub(crate) fn beaver_aside(&self, from: CellId) -> Option<CellId> {
         let home = cell_id(BEAVER_HOME.0, BEAVER_HOME.1)?;
         let bank = cell_id(BEAVER_BANK.0, BEAVER_BANK.1)?;
         if from == home {

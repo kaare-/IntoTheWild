@@ -985,6 +985,12 @@ impl World {
                     Err("You need a flint spear or an iron knife.".into())
                 } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
                     Err("There is no carcass here to butcher.".into())
+                } else if self
+                    .ground_ids(actor.cell, Material::Carcass)
+                    .iter()
+                    .all(|id| self.item(*id).is_some_and(|carcass| carcass.beaver))
+                {
+                    Err("The beaver carcass is not cut up yet.".into())
                 } else {
                     Ok(true)
                 }
@@ -1016,6 +1022,10 @@ impl World {
                         .hare
                         .as_ref()
                         .map(|hare| crate::model::chebyshev(actor.cell, hare.cell));
+                    let beaver = self
+                        .beaver
+                        .as_ref()
+                        .map(|beaver| crate::model::chebyshev(actor.cell, beaver.cell));
                     let nearer = |dist: i32| {
                         deer.is_none_or(|far| dist < far)
                             && wolf.is_none_or(|far| dist < far)
@@ -1047,6 +1057,17 @@ impl World {
                     });
                     let hare_shot = self.bow_in_hand(actor.id)
                         && hare.is_some_and(|dist| dist <= self.tuning.sight && hare_nearer(dist));
+                    let beaver_nearer = |dist: i32| {
+                        deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                            && hare.is_none_or(|far| dist < far)
+                    };
+                    let beaver_melee = beaver.is_some_and(|dist| dist <= 1 && beaver_nearer(dist));
+                    let beaver_shot = self.bow_in_hand(actor.id)
+                        && beaver
+                            .is_some_and(|dist| dist <= self.tuning.sight && beaver_nearer(dist));
                     if wolf_melee
                         || deer.is_some_and(|dist| dist <= 1)
                         || wolf_shot
@@ -1057,8 +1078,12 @@ impl World {
                         || fox_shot
                         || hare_melee
                         || hare_shot
+                        || beaver_melee
+                        || beaver_shot
                     {
                         Ok(true)
+                    } else if beaver.is_some_and(|dist| beaver_nearer(dist)) {
+                        Err("The beaver is not close enough to hunt.".into())
                     } else if hare.is_some_and(|dist| hare_nearer(dist)) {
                         Err("The hare is not close enough to hunt.".into())
                     } else if fox.is_some_and(|dist| fox_nearer(dist)) {
@@ -1122,8 +1147,29 @@ impl World {
                             && fox.is_none_or(|far| dist < far)
                             && otter.is_none_or(|far| dist < far)
                     });
-                    if wolf_shot || deer_shot || otter_shot || fox_shot || hare_shot {
+                    let beaver = self
+                        .beaver
+                        .as_ref()
+                        .map(|beaver| crate::model::chebyshev(actor.cell, beaver.cell));
+                    let beaver_shot = beaver.is_some_and(|dist| {
+                        dist <= self.tuning.sight
+                            && deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                            && hare.is_none_or(|far| dist < far)
+                    });
+                    if wolf_shot || deer_shot || otter_shot || fox_shot || hare_shot || beaver_shot
+                    {
                         Ok(true)
+                    } else if beaver.is_some_and(|dist| {
+                        deer.is_none_or(|far| dist < far)
+                            && wolf.is_none_or(|far| dist < far)
+                            && fox.is_none_or(|far| dist < far)
+                            && otter.is_none_or(|far| dist < far)
+                            && hare.is_none_or(|far| dist < far)
+                    }) {
+                        Err("The beaver is not close enough for the bow.".into())
                     } else if hare.is_some_and(|dist| {
                         deer.is_none_or(|far| dist < far)
                             && wolf.is_none_or(|far| dist < far)
@@ -5105,6 +5151,13 @@ impl World {
         {
             return false;
         }
+        if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| crate::model::chebyshev(person.cell, beaver.cell) < dist)
+        {
+            return false;
+        }
         // A wolf this weapon can already reach stays the quarry. The otter
         // does not step in front of it.
         let wolf_dist = self
@@ -5117,6 +5170,294 @@ impl World {
             return false;
         }
         true
+    }
+
+    /// The beaver is nearer than the deer, the otter, the fox, and the hare.
+    /// A wolf this weapon can already reach stays the quarry.
+    fn beaver_is_nearest(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        let Some(beaver) = self.beaver.as_ref() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(person.cell, beaver.cell);
+        if self
+            .deer
+            .as_ref()
+            .is_some_and(|deer| dist >= crate::model::chebyshev(person.cell, deer.cell))
+        {
+            return false;
+        }
+        if self
+            .otter
+            .as_ref()
+            .is_some_and(|otter| dist >= crate::model::chebyshev(person.cell, otter.cell))
+        {
+            return false;
+        }
+        if self
+            .fox
+            .as_ref()
+            .is_some_and(|fox| dist >= crate::model::chebyshev(person.cell, fox.cell))
+        {
+            return false;
+        }
+        if self
+            .hare
+            .as_ref()
+            .is_some_and(|hare| crate::model::chebyshev(person.cell, hare.cell) < dist)
+        {
+            return false;
+        }
+        if self
+            .wolf_standing()
+            .is_some_and(|wolf| dist >= crate::model::chebyshev(person.cell, wolf))
+        {
+            return false;
+        }
+        let wolf_dist = self
+            .wolf_standing()
+            .map(|wolf| crate::model::chebyshev(person.cell, wolf));
+        let wolf_in_reach = wolf_dist.is_some_and(|far| {
+            self.spear_in_reach(actor, far) || (self.bow_in_hand(actor) && far <= self.tuning.sight)
+        });
+        if wolf_in_reach {
+            return false;
+        }
+        true
+    }
+
+    /// A spear on the beaver's cell or the next, or a bow out to sight,
+    /// and only when the beaver is the nearer animal.
+    fn strike_the_beaver(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        results: &mut Vec<CommandResult>,
+    ) -> bool {
+        if !self.beaver_is_nearest(actor.id) {
+            return false;
+        }
+        let Some(beaver) = self.beaver.clone() else {
+            return false;
+        };
+        let dist = crate::model::chebyshev(actor.cell, beaver.cell);
+        if self.spear_can_hunt(actor.id) && dist == 0 {
+            self.bring_down_beaver(intent, beaver.cell, None, results);
+            return true;
+        }
+        if self.spear_reaches_next(actor.id) && dist == 1 {
+            self.contest_the_beaver(intent, actor, &beaver, results);
+            return true;
+        }
+        if self.bow_in_hand(actor.id) && dist <= self.tuning.sight {
+            self.loose_the_bow_at_the_beaver(intent, actor, beaver.cell, results);
+            return true;
+        }
+        false
+    }
+
+    fn bring_down_beaver(
+        &mut self,
+        intent: &Intent,
+        cell: crate::model::CellId,
+        draw: Option<Draw>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let name = self.name_of(intent.actor_id);
+        let flint = self
+            .loose_ids(intent.actor_id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        self.beaver = None;
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.beaver = true;
+        }
+        let (heard, yours) = if flint {
+            let rest = "the beaver down with the flint spear.";
+            (
+                crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+                crate::model::spoken_act(None, "bring", rest),
+            )
+        } else {
+            (
+                format!("{name} brings the beaver down. A beaver carcass lies where it stood."),
+                "You bring the beaver down. A beaver carcass lies where it stood.".to_string(),
+            )
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            draw,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            intent.actor_id,
+            true,
+            yours,
+            results,
+        );
+    }
+
+    fn loose_the_bow_at_the_beaver(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if let Some(flake) = self.loose_ids(actor.id, Material::Flake).first().copied() {
+            self.items.remove(&flake);
+        }
+        self.beaver = None;
+        let id = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        if let Some(carcass) = self.items.get_mut(&id) {
+            carcass.beaver = true;
+        }
+        let name = self.name_of(actor.id);
+        let rest = "the beaver down with the bow. The flint flake is spent.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "bring", rest),
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id.clone(),
+            actor.id,
+            true,
+            crate::model::spoken_act(None, "bring", rest),
+            results,
+        );
+    }
+
+    /// The next cell. One of three, from the same draw the otter uses.
+    /// A miss leaves no carcass. The beaver splashes to the other of its
+    /// brook cell and the bank, unless that landing is taken.
+    fn contest_the_beaver(
+        &mut self,
+        intent: &Intent,
+        actor: &crate::model::Actor,
+        beaver: &crate::model::Beaver,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let (x, y) = crate::model::cell_xy(beaver.cell);
+        let subject = format!("{x},{y}:beaver");
+        let hash = contest_hash(self.seed, self.time, "hunt", &subject, actor.id);
+        let draw = Some(Draw {
+            tag: "hunt".into(),
+            subject,
+            value: hash,
+        });
+        if hash % 3 == 0 {
+            self.bring_down_beaver(intent, beaver.cell, draw, results);
+            return;
+        }
+        let cell = beaver.cell;
+        let way = self.splash_the_beaver(actor.cell);
+        let name = self.name_of(actor.id);
+        let flint = self
+            .loose_ids(actor.id, Material::Spear)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip));
+        let (heard, yours) = if hash % 3 == 1 {
+            match (flint, way) {
+                (true, Some(way)) => (
+                    format!(
+                        "{name} misses the beaver with the flint spear. It splashes away to the {way}."
+                    ),
+                    format!(
+                        "You miss the beaver with the flint spear. It splashes away to the {way}."
+                    ),
+                ),
+                (false, Some(way)) => (
+                    format!("{name} misses the beaver. It splashes away to the {way}."),
+                    format!("You miss the beaver. It splashes away to the {way}."),
+                ),
+                (true, None) => (
+                    format!("{name} misses the beaver with the flint spear. It stays."),
+                    "You miss the beaver with the flint spear. It stays.".to_string(),
+                ),
+                (false, None) => (
+                    format!("{name} misses the beaver. It stays."),
+                    "You miss the beaver. It stays.".to_string(),
+                ),
+            }
+        } else {
+            match (flint, way) {
+                (true, Some(way)) => (
+                    format!(
+                        "The beaver splashes away to the {way}. {name}'s flint spear does not land."
+                    ),
+                    format!(
+                        "The beaver splashes away to the {way}. Your flint spear does not land."
+                    ),
+                ),
+                (false, Some(way)) => (
+                    format!("The beaver splashes away to the {way}. {name}'s spear does not land."),
+                    format!("The beaver splashes away to the {way}. Your spear does not land."),
+                ),
+                (true, None) => (
+                    format!("The beaver stays. {name}'s flint spear does not land."),
+                    "The beaver stays. Your flint spear does not land.".to_string(),
+                ),
+                (false, None) => (
+                    format!("The beaver stays. {name}'s spear does not land."),
+                    "The beaver stays. Your spear does not land.".to_string(),
+                ),
+            }
+        };
+        self.emit(
+            heard,
+            Scope::Cell(cell),
+            vec![actor.id],
+            vec![cell],
+            vec![],
+            vec![],
+            draw,
+        );
+        self.finish(intent.command_id.clone(), actor.id, false, yours, results);
+    }
+
+    /// Onto the other of the brook and the bank, away from the hunter.
+    /// None when that landing is the hunter, a person, or the otter.
+    fn splash_the_beaver(&mut self, hunter: crate::model::CellId) -> Option<&'static str> {
+        let beaver = self.beaver.clone()?;
+        let next = self.beaver_aside(beaver.cell)?;
+        if next == hunter || next == beaver.cell {
+            return None;
+        }
+        if self.actors.values().any(|person| person.cell == next) {
+            return None;
+        }
+        if self.otter.as_ref().is_some_and(|otter| otter.cell == next) {
+            return None;
+        }
+        let (x1, y1) = crate::model::cell_xy(beaver.cell);
+        let (x2, y2) = crate::model::cell_xy(next);
+        let word = if x2 > x1 {
+            "east"
+        } else if x2 < x1 {
+            "west"
+        } else if y2 > y1 {
+            "south"
+        } else {
+            "north"
+        };
+        if let Some(beaver) = self.beaver.as_mut() {
+            beaver.cell = next;
+            beaver.held = true;
+        }
+        Some(word)
     }
 
     /// A spear on the otter's cell or the next, or a bow out to sight,
@@ -5183,6 +5524,13 @@ impl World {
             .hare
             .as_ref()
             .is_some_and(|hare| crate::model::chebyshev(person.cell, hare.cell) < dist)
+        {
+            return false;
+        }
+        if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| crate::model::chebyshev(person.cell, beaver.cell) < dist)
         {
             return false;
         }
@@ -5807,6 +6155,13 @@ impl World {
             return false;
         }
         if self
+            .beaver
+            .as_ref()
+            .is_some_and(|beaver| crate::model::chebyshev(person.cell, beaver.cell) < dist)
+        {
+            return false;
+        }
+        if self
             .wolf_standing()
             .is_some_and(|wolf| dist >= crate::model::chebyshev(person.cell, wolf))
         {
@@ -6059,6 +6414,19 @@ impl World {
                     actor.id,
                     false,
                     "The otter is not close enough to hunt.",
+                    results,
+                );
+                continue;
+            }
+            if self.beaver_is_nearest(actor.id) {
+                if self.strike_the_beaver(&intent, &actor, results) {
+                    continue;
+                }
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The beaver is not close enough to hunt.",
                     results,
                 );
                 continue;
@@ -6383,10 +6751,30 @@ impl World {
                 .iter()
                 .copied()
                 .find(|id| self.item(*id).is_some_and(|carcass| carcass.hare));
+            let beaver = carcasses
+                .iter()
+                .copied()
+                .find(|id| self.item(*id).is_some_and(|carcass| carcass.beaver));
             let other = carcasses.iter().copied().find(|id| {
-                self.item(*id)
-                    .is_some_and(|carcass| !carcass.otter && !carcass.fox && !carcass.hare)
+                self.item(*id).is_some_and(|carcass| {
+                    !carcass.otter && !carcass.fox && !carcass.hare && !carcass.beaver
+                })
             });
+            if beaver.is_some()
+                && other.is_none()
+                && fox.is_none()
+                && otter.is_none()
+                && hare.is_none()
+            {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The beaver carcass is not cut up yet.",
+                    results,
+                );
+                continue;
+            }
             let Some(carcass) = other.or(fox).or(otter).or(hare) else {
                 self.finish(
                     intent.command_id,
@@ -8169,6 +8557,22 @@ impl World {
                     return;
                 }
             }
+        }
+        if self.beaver_is_nearest(actor.id) {
+            if let Some(beaver) = self.beaver.clone() {
+                if crate::model::chebyshev(actor.cell, beaver.cell) <= self.tuning.sight {
+                    self.loose_the_bow_at_the_beaver(intent, actor, beaver.cell, results);
+                    return;
+                }
+            }
+            self.finish(
+                intent.command_id.clone(),
+                actor.id,
+                false,
+                "The beaver is not close enough for the bow.",
+                results,
+            );
+            return;
         }
         if self.hare_is_nearest(actor.id) {
             if let Some(hare) = self.hare.clone() {
