@@ -10431,6 +10431,43 @@ impl World {
         Some(format!("You hear a wolf howl to the {way}."))
     }
 
+    /// A deer or a person stepping into brush or timber. Someone who can see
+    /// that cell already has the step, so this line is not delivered there.
+    /// Out of sight, within hearing, the direction is from the listener.
+    /// Past hearing, nothing.
+    fn brush_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
+        let cell = self.brush_crack_cell(event)?;
+        if !self.hears_brush(origin, event) {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        let sound = if event.text == "Wood cracks in the timber." {
+            "wood cracking"
+        } else {
+            "branches breaking"
+        };
+        Some(format!("You hear {sound} to the {way}."))
+    }
+
+    fn hears_brush(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.brush_crack_cell(event) else {
+            return false;
+        };
+        let distance = chebyshev(origin, cell);
+        distance > self.tuning.sight && distance <= self.tuning.hearing
+    }
+
+    fn brush_crack_marker(&self, event: &crate::model::Event) -> bool {
+        event.text == "Branches break in the brush." || event.text == "Wood cracks in the timber."
+    }
+
+    fn brush_crack_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !self.brush_crack_marker(event) {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
     /// Ice taking the still pool, heard from out of sight. Someone who can
     /// see the pool already has the ice in look, so the crack is not delivered
     /// there. Past hearing, nothing.
@@ -11556,6 +11593,9 @@ impl World {
         if let Some(line) = self.ice_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.brush_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.gather_for_these_eyes(viewer, event) {
             return line;
         }
@@ -11843,6 +11883,9 @@ impl World {
             Scope::Cell(cell) => {
                 if self.ice_forming(event) {
                     return self.hears_ice(origin, event);
+                }
+                if self.brush_crack_marker(event) {
+                    return self.hears_brush(origin, event);
                 }
                 chebyshev(origin, cell) <= self.tuning.sight
                     || event.affected_actors.contains(&viewer)

@@ -2578,6 +2578,7 @@ impl World {
                 vec![],
                 None,
             );
+            self.note_brush(dest, false);
             let mut message = if ice {
                 format!("You walk {} across the ice.", dir.word())
             } else if brook {

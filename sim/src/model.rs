@@ -2809,6 +2809,45 @@ impl World {
             })
     }
 
+    /// A heavy log, or a tree that still stands here. Brush is the loose branches.
+    pub(crate) fn has_timber(&self, cell: CellId) -> bool {
+        self.pile_count(cell, Material::Log) > 0
+            || self.ground_ids(cell, Material::Log).is_empty() == false
+            || self.resin_stands.contains(&cell)
+            || self.willow_stands.contains(&cell)
+            || self.honey_nests.contains(&cell)
+            || self.bird_nests.contains(&cell)
+    }
+
+    /// The sound of one step onto brush or timber. Nothing on open ground.
+    /// `snapped` keeps the sound when that step took the last loose branch.
+    pub(crate) fn brush_crack(&self, cell: CellId, snapped: bool) -> Option<&'static str> {
+        if self.has_brush(cell) || snapped {
+            Some("Branches break in the brush.")
+        } else if self.has_timber(cell) {
+            Some("Wood cracks in the timber.")
+        } else {
+            None
+        }
+    }
+
+    /// One crack for this step. People who can see the cell do not get it.
+    /// Someone out of sight but within hearing gets the direction. Not every tick.
+    pub(crate) fn note_brush(&mut self, cell: CellId, snapped: bool) {
+        let Some(text) = self.brush_crack(cell, snapped) else {
+            return;
+        };
+        self.emit(
+            text,
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
     pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
         !self.loose_ids(actor, Material::Carcass).is_empty()
             || self.raw_mushroom_id(actor).is_some()
@@ -6196,7 +6235,7 @@ mod bow_hunt {
 
 #[cfg(test)]
 mod deer_return {
-    use super::{Attempt, ExamineTarget, Material, Role, World};
+    use super::{Attempt, Dir, ExamineTarget, Material, Role, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
         super::Intent {
@@ -6204,6 +6243,100 @@ mod deer_return {
             actor_id: actor,
             attempt,
         }
+    }
+
+    #[test]
+    fn a_step_through_brush_is_heard_out_of_sight_and_not_every_tick() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        for _ in 0..3 {
+            world.step(&[]);
+        }
+        assert_ne!(world.deer_cell(), Some((5, 2)));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("branches breaking") && !event.text.contains("wood cracking")
+        }));
+        world.step(&[]);
+        assert_eq!(world.deer_cell(), Some((5, 2)));
+        let heard = "You hear branches breaking to the east.";
+        let near_hear = world.observe(near).unwrap();
+        assert_eq!(
+            near_hear
+                .events
+                .iter()
+                .filter(|event| event.text == heard)
+                .count(),
+            1
+        );
+        assert!(near_hear.events.iter().all(|event| {
+            !event.text.contains("A branch snapped") && !event.text.contains("Branches break")
+        }));
+        let seen_view = world.observe(seen).unwrap();
+        assert!(seen_view
+            .events
+            .iter()
+            .any(|event| { event.text.contains("A branch snapped under the deer") }));
+        assert!(seen_view
+            .events
+            .iter()
+            .all(|event| !event.text.contains("You hear branches breaking")));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("branches") && !event.text.contains("deer steps")
+        }));
+        world.step(&[]);
+        assert_eq!(world.deer_cell(), Some((5, 1)));
+        assert_eq!(
+            world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .filter(|event| event.text == heard)
+                .count(),
+            1
+        );
+
+        let walked = world.step(&[intent("log", near, Attempt::Move(Dir::East))]);
+        assert_eq!(walked.results[0].message, "You walk east.");
+        let crack = "You hear wood cracking to the south and east.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != crack && !event.text.contains("Wood cracks") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near walks east." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != crack));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == crack));
+        let open = world.step(&[intent("open", near, Attempt::Move(Dir::East))]);
+        assert_eq!(open.results[0].message, "You walk east.");
+        assert_eq!(
+            world
+                .observe(quiet)
+                .unwrap()
+                .events
+                .iter()
+                .filter(|event| event.text == crack)
+                .count(),
+            1
+        );
     }
 
     #[test]

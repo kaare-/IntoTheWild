@@ -1444,6 +1444,7 @@ impl World {
             deer.route_at = next_at;
             deer.last_event = Some(id);
         }
+        self.note_brush(dest, snapped);
     }
 
     /// One step along the brook when nobody is beside the otter.
