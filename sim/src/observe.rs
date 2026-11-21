@@ -10274,8 +10274,9 @@ impl World {
         Some(format!("You hear a fox to the {way}."))
     }
 
-    /// A hare bolting, heard from out of sight. Someone who can see the cell
-    /// keeps that sentence. Past hearing, nothing is delivered.
+    /// A hare bolting, or one returning to the floor, heard from out of sight.
+    /// Someone who can see the cell keeps that sentence. Past hearing, nothing
+    /// is delivered.
     fn hare_for_these_ears(&self, origin: CellId, event: &crate::model::Event) -> Option<String> {
         let cell = self.hare_bolt_cell(event)?;
         if chebyshev(origin, cell) <= self.tuning.sight {
@@ -10297,7 +10298,9 @@ impl World {
     }
 
     fn hare_bolt_cell(&self, event: &crate::model::Event) -> Option<CellId> {
-        if !event.text.contains("startles and bolts") {
+        if !event.text.contains("startles and bolts")
+            && event.text != "A hare is on the valley floor again."
+        {
             return None;
         }
         event.affected_cells.first().copied()

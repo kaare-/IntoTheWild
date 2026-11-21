@@ -4,7 +4,7 @@
 use crate::model::{
     cell_id, cell_xy, chebyshev, ActorId, CellId, ConstructionId, Dir, EventId, FireId, ItemId,
     Material, Region, Role, Scope, Wake, Work, WorkId, WorkKind, World, DEER_ROUTE, FOX_ROUTE,
-    OTTER_ROUTE,
+    HARE_HOME, OTTER_ROUTE,
 };
 
 impl World {
@@ -60,6 +60,7 @@ impl World {
                 Wake::DeerReturn => self.return_deer(),
                 Wake::OtterReturn => self.return_otter(),
                 Wake::FoxReturn => self.return_fox(),
+                Wake::HareReturn => self.return_hare(),
                 Wake::Stings => self.apply_stings(),
                 Wake::DryClothes(actor) => self.dry_clothes(actor),
             }
@@ -655,6 +656,36 @@ impl World {
         );
     }
 
+    /// The same wait as the fox. A hare is on the dry floor again, on its home
+    /// cell. Someone who can see that cell reads the sentence. Someone out of
+    /// sight but within hearing hears a hare that way. Past hearing, nothing.
+    fn return_hare(&mut self) {
+        let Some(at) = self.hare_returns_at else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.hare_returns_at = None;
+        if self.hare.is_some() {
+            return;
+        }
+        let (x, y) = HARE_HOME;
+        let Some(cell) = cell_id(x, y) else {
+            return;
+        };
+        self.hare = Some(crate::model::Hare { cell });
+        self.emit(
+            "A hare is on the valley floor again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
     /// The hide snare on this cell has waited out its ticks. It is gone.
     /// If the valley hare is on this cell or the next, that hare is caught
     /// and a hare carcass lies where the snare was. Otherwise one portion of
@@ -674,6 +705,7 @@ impl World {
             .is_some_and(|hare| chebyshev(hare.cell, cell) <= 1);
         let caught_id = if valley {
             self.hare = None;
+            self.arm_hare_return();
             let carcass = self.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
             if let Some(item) = self.items.get_mut(&carcass) {
                 item.hare = true;

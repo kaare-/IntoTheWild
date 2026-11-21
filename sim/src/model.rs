@@ -838,6 +838,8 @@ pub enum Wake {
     OtterReturn,
     /// A fox is on the dry floor again after the last one was brought down.
     FoxReturn,
+    /// A hare is on the dry floor again after the last one was snared.
+    HareReturn,
     /// The otter swims one step along the brook when nobody is beside it.
     Otter,
     /// The fox trots one step on the dry floor when nobody is beside it.
@@ -899,6 +901,9 @@ pub(crate) const FOX_ROUTE: [(i32, i32); 2] = [(5, 4), (6, 4)];
 pub struct Hare {
     pub cell: CellId,
 }
+
+/// The dry floor where a new hare stands after the last one was snared.
+pub(crate) const HARE_HOME: (i32, i32) = (2, 4);
 
 /// Trail the deer already uses, then a detour to the berries under the rock
 /// and back. Orthogonal, so each step is one direction.
@@ -1167,6 +1172,9 @@ pub struct World {
     /// When a fox is on the dry floor again. Look names no live fox until then.
     #[serde(default)]
     pub(crate) fox_returns_at: Option<u64>,
+    /// When a hare is on the dry floor again. Look names no live hare until then.
+    #[serde(default)]
+    pub(crate) hare_returns_at: Option<u64>,
     /// The next deer's id. The first deer is 1.
     #[serde(default = "default_next_deer_id")]
     pub(crate) next_deer_id: u32,
@@ -1248,7 +1256,7 @@ impl World {
                 held: false,
             }),
             hare: Some(Hare {
-                cell: cell_id(2, 4).unwrap(),
+                cell: cell_id(HARE_HOME.0, HARE_HOME.1).unwrap(),
             }),
             tracks: BTreeSet::new(),
             spent_berries: BTreeSet::new(),
@@ -1305,6 +1313,7 @@ impl World {
             deer_returns_at: None,
             otter_returns_at: None,
             fox_returns_at: None,
+            hare_returns_at: None,
             next_deer_id: default_next_deer_id(),
             grips: Vec::new(),
             schedule: Vec::new(),
@@ -2146,6 +2155,18 @@ impl World {
         let at = self.time.saturating_add(self.tuning.deer_ticks);
         self.fox_returns_at = Some(at);
         self.schedule(at, Wake::FoxReturn);
+    }
+
+    /// The hare is snared. Another stands on the dry floor after the same wait
+    /// as the fox. A carcass still lying where it fell does not move that tick.
+    /// A wake that finds a hare already there does not add a second one.
+    pub(crate) fn arm_hare_return(&mut self) {
+        if self.hare.is_some() || self.hare_returns_at.is_some() {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.deer_ticks);
+        self.hare_returns_at = Some(at);
+        self.schedule(at, Wake::HareReturn);
     }
 
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
@@ -12385,6 +12406,181 @@ mod hare {
                 .iter()
                 .all(|event| { !event.text.contains("hare") && !event.text.contains("snare") }));
         }
+    }
+
+    #[test]
+    fn a_hare_is_on_the_dry_floor_again_after_the_same_wait_as_the_fox() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 5, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        world.mint_item(
+            Material::Cord,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            Role::Loose,
+        );
+        let set = world.step(&[intent("set", near, Attempt::SetSnare)]);
+        assert_eq!(set.results[0].message, "You set a snare of hide strips.");
+        assert!(world.hare_returns_at.is_none());
+        for _ in 0..world.tuning.snare_ticks {
+            world.step(&[]);
+        }
+        assert!(world.hare_cell().is_none());
+        let back_at = world.hare_returns_at.unwrap();
+        assert_eq!(back_at, world.time + world.tuning.deer_ticks - 1);
+        assert_eq!(world.tuning.deer_ticks, 24);
+        let gone = world.examine(quiet, super::ExamineTarget::Hare);
+        assert_eq!(gone, "You cannot see a hare from here.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != gone));
+        while world.time < back_at {
+            world.step(&[]);
+        }
+        assert!(world.hare_cell().is_none());
+        let waiting = world.observe(near).unwrap();
+        assert!(
+            !waiting.text.contains("A hare is on the valley floor"),
+            "{}",
+            waiting.text
+        );
+        assert!(waiting
+            .events
+            .iter()
+            .all(|event| event.text != "A hare is on the valley floor again."));
+        world.step(&[]);
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert!(world.hare_returns_at.is_none());
+        let arrived = "A hare is on the valley floor again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text
+                .contains("A hare is on the valley floor to the west."),
+            "{}",
+            back.text
+        );
+        assert!(
+            back.text
+                .contains("Strip willow south of the brook, then set a snare."),
+            "{}",
+            back.text
+        );
+        assert_eq!(
+            back.events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+        assert_eq!(
+            world.examine(near, super::ExamineTarget::Hare),
+            "A hare is on the valley floor to the west."
+        );
+        let seen_back = world.observe(seen).unwrap();
+        assert!(
+            seen_back
+                .text
+                .contains("A hare is on the valley floor to the south and west."),
+            "{}",
+            seen_back.text
+        );
+        assert_eq!(
+            seen_back
+                .events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+        assert!(seen_back
+            .events
+            .iter()
+            .all(|event| !event.text.starts_with("You hear a hare")));
+        let heard_back = world.observe(heard).unwrap();
+        assert!(!heard_back.text.contains("A hare is on the valley floor"));
+        assert_eq!(
+            heard_back
+                .events
+                .iter()
+                .filter(|event| event.text == "You hear a hare to the west.")
+                .count(),
+            1
+        );
+        assert!(heard_back.events.iter().all(|event| event.text != arrived));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("hare")));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("A hare is on the valley floor"));
+        world.step(&[]);
+        assert_eq!(
+            world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .filter(|event| event.text == arrived)
+                .count(),
+            1
+        );
+
+        let onto = world.step(&[intent("onto", near, Attempt::Move(Dir::West))]);
+        assert_eq!(onto.results[0].message, "You walk west.");
+        assert!(!onto.results[0].message.contains("hare"));
+        assert_eq!(world.hare_cell(), Some((1, 4)));
+        let bolted = world.observe(near).unwrap();
+        assert!(bolted
+            .events
+            .iter()
+            .any(|event| event.text == "A hare startles and bolts to the west."));
+        assert!(world
+            .observe(heard)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You hear a hare to the west."));
+        world.mint_item(
+            Material::Cord,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            Role::Loose,
+        );
+        let again = world.step(&[intent("again", near, Attempt::SetSnare)]);
+        assert_eq!(again.results[0].message, "You set a snare of hide strips.");
+        for _ in 0..world.tuning.snare_ticks {
+            world.step(&[]);
+        }
+        assert!(world.hare_cell().is_none());
+        assert_eq!(
+            world.hare_returns_at,
+            Some(world.time + world.tuning.deer_ticks - 1)
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "The snare catches a hare."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("snare") && !event.text.contains("hare")));
     }
 
     #[test]
