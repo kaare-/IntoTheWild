@@ -471,6 +471,9 @@ impl World {
             if let Some(whistle) = self.seen_whistle(actor_id) {
                 lines.push(whistle);
             }
+            if let Some(flute) = self.seen_flute(actor_id) {
+                lines.push(flute);
+            }
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
@@ -1928,6 +1931,24 @@ impl World {
         }
         let way = self.relative(origin, sound.cell);
         Some(format!("You hear a whistle to the {way}."))
+    }
+
+    /// A reed flute just blown, past sight. The same two cells as the whistle.
+    /// Someone who can see the blower already has the blow. The hare stays.
+    fn seen_flute(&self, viewer: ActorId) -> Option<String> {
+        let sound = self.flute?;
+        if self.time > sound.until {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let distance = chebyshev(origin, sound.cell);
+        let near = self.tuning.sight.saturating_add(1);
+        let far = near.saturating_add(1);
+        if distance != near && distance != far {
+            return None;
+        }
+        let way = self.relative(origin, sound.cell);
+        Some(format!("You hear a flute to the {way}."))
     }
 
     /// Smoke from a fire past sight, still inside the smoke range.
@@ -4851,6 +4872,10 @@ impl World {
             "a bone whistle".into()
         } else if item.material == "whistle" {
             format!("{} bone whistles", count_word(item.count))
+        } else if item.material == "flute" && item.count == 1 {
+            "a reed flute".into()
+        } else if item.material == "flute" {
+            format!("{} reed flutes", count_word(item.count))
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -9600,6 +9625,7 @@ impl World {
                 Material::Worm => "worm",
                 Material::Quartz => "quartz",
                 Material::Whistle => "bone whistle",
+                Material::Flute => "reed flute",
             };
             format!("You see no {name} from here.")
         } else {
@@ -12434,6 +12460,8 @@ impl World {
             && rest != "the spent bow drill anew with one dry branch."
             && rest != "a bone into a bone whistle with the iron knife."
             && rest != "a bone into a bone whistle with the flint flake."
+            && rest != "a bundle of reeds into a reed flute with the iron knife."
+            && rest != "a bundle of reeds into a reed flute with the flint flake."
         {
             return None;
         }
@@ -12448,6 +12476,8 @@ impl World {
         let name = self.name_of(viewer);
         if event.text == format!("{name} blows the bone whistle.") {
             Some("You blow the bone whistle.".into())
+        } else if event.text == format!("{name} blows the reed flute.") {
+            Some("You blow the reed flute.".into())
         } else {
             None
         }
@@ -12649,6 +12679,7 @@ impl World {
             "handful of cattail fluff",
             "worm",
             "clear stone of quartz",
+            "reed flute",
             "cattail flour",
             "cattail flatbread",
             "bark cup",
@@ -14647,6 +14678,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Quartz, false) => "clear stones of quartz",
         (Material::Whistle, true) => "bone whistle",
         (Material::Whistle, false) => "bone whistles",
+        (Material::Flute, true) => "reed flute",
+        (Material::Flute, false) => "reed flutes",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

@@ -156,7 +156,11 @@ pub enum Material {
     /// It is not the loose stone, and it is not the flint nodule.
     Quartz,
     /// Carved from a bone. Blown, it is a sound, not a column of smoke.
+    /// A hare within hearing bolts.
     Whistle,
+    /// Carved from a bundle of reeds. Blown, it is heard like the bone whistle.
+    /// It does not bolt the hare.
+    Flute,
 }
 
 impl Material {
@@ -219,6 +223,7 @@ impl Material {
             Material::Worm => "worm",
             Material::Quartz => "quartz",
             Material::Whistle => "whistle",
+            Material::Flute => "flute",
         }
     }
 
@@ -281,6 +286,7 @@ impl Material {
             Material::Worm => "worm",
             Material::Quartz => "clear stone of quartz",
             Material::Whistle => "bone whistle",
+            Material::Flute => "reed flute",
         }
     }
 
@@ -552,6 +558,12 @@ pub enum Attempt {
     CarveWhistle,
     /// Blow the bone whistle in the arms. The sound is not a smoke column.
     BlowWhistle,
+    /// A bundle of reeds, with a flint flake or an iron knife, into a reed flute.
+    /// The tool is not used up.
+    CarveFlute,
+    /// Blow the reed flute in the arms. The same reach as the bone whistle.
+    /// The hare does not bolt.
+    BlowFlute,
 }
 
 impl Attempt {
@@ -641,6 +653,8 @@ impl Attempt {
                 | Attempt::Strike
                 | Attempt::CarveWhistle
                 | Attempt::BlowWhistle
+                | Attempt::CarveFlute
+                | Attempt::BlowFlute
         )
     }
 }
@@ -1314,6 +1328,9 @@ pub struct World {
     /// within `until`. It is not a fire and not a column of smoke.
     #[serde(default)]
     pub(crate) whistle: Option<WhistleSound>,
+    /// A reed flute just blown. The same reach as the whistle, and not a bolt.
+    #[serde(default)]
+    pub(crate) flute: Option<WhistleSound>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1571,6 +1588,7 @@ impl World {
             bone_caches: BTreeSet::new(),
             bone_returns_at: BTreeMap::new(),
             whistle: None,
+            flute: None,
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -21754,6 +21772,143 @@ mod whistle {
         assert_eq!(again.results[0].message, "You blow the bone whistle.");
         assert!(!again.results[0].message.contains("hare"));
         assert_eq!(world.hare_cell(), Some((1, 4)));
+    }
+
+    #[test]
+    fn a_reed_flute_is_heard_like_the_whistle_and_the_hare_stays() {
+        assert!(matches!(
+            crate::parse::parse_attempt("carve a reed flute").unwrap(),
+            Attempt::CarveFlute
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("blow flute").unwrap(),
+            Attempt::BlowFlute
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("play the reed flute").unwrap(),
+            Attempt::BlowFlute
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        let far = world.spawn_at("Far", "f", 1, 1).unwrap();
+        let missed = world.step(&[intent("none", near, Attempt::CarveFlute)]);
+        assert_eq!(
+            missed.results[0].message,
+            "You have no reeds to carve a flute."
+        );
+        assert!(says(&world, near, "You have no reeds to carve a flute."));
+        assert!(!says(&world, quiet, "You have no reeds to carve a flute."));
+        assert!(!says(&world, far, "You have no reeds to carve a flute."));
+        let no_blow = world.step(&[intent("noblow", near, Attempt::BlowFlute)]);
+        assert_eq!(
+            no_blow.results[0].message,
+            "You are not carrying a reed flute."
+        );
+        assert!(!says(&world, quiet, "You are not carrying a reed flute."));
+        world.mint_item(
+            Material::Reed,
+            0,
+            cell_id(4, 3).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let no_tool = world.step(&[intent("tool", near, Attempt::CarveFlute)]);
+        assert_eq!(
+            no_tool.results[0].message,
+            "You need a flint flake or an iron knife to carve a flute."
+        );
+        assert!(!says(
+            &world,
+            far,
+            "You need a flint flake or an iron knife to carve a flute."
+        ));
+        world.mint_item(
+            Material::Flake,
+            0,
+            cell_id(4, 3).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let carved = world.step(&[intent("carve", near, Attempt::CarveFlute)]);
+        assert_eq!(
+            carved.results[0].message,
+            "You carve a bundle of reeds into a reed flute with the flint flake."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "Near carves a bundle of reeds into a reed flute with the flint flake."
+        ));
+        assert!(says(
+            &world,
+            quiet,
+            "Near carves a bundle of reeds into a reed flute with the flint flake."
+        ));
+        assert!(world.loose_ids(near, Material::Reed).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Flute).len(), 1);
+        assert!(
+            world.arms_line(near).contains("a reed flute"),
+            "{}",
+            world.arms_line(near)
+        );
+        let blown = world.step(&[intent("blow", near, Attempt::BlowFlute)]);
+        assert_eq!(blown.results[0].message, "You blow the reed flute.");
+        assert!(!blown.results[0].message.contains("hare"));
+        assert!(!says(&world, near, "Near blows the reed flute."));
+        assert!(says(&world, quiet, "Near blows the reed flute."));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("You hear a flute"));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        let heard = "You hear a flute to the south and east.";
+        let far_look = world.observe(far).unwrap().text;
+        assert!(far_look.contains(heard), "{far_look}");
+        assert!(!far_look.contains("smoke"), "{far_look}");
+        assert!(!says(&world, far, "Near blows the reed flute."));
+        assert!(!says(&world, far, heard));
+        world.step(&[]);
+        assert!(!world
+            .observe(far)
+            .unwrap()
+            .text
+            .contains("You hear a flute"));
+        let played = world.step(&[intent("play", near, Attempt::BlowFlute)]);
+        assert_eq!(played.results[0].message, "You blow the reed flute.");
+        assert!(world.observe(far).unwrap().text.contains(heard));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+
+        world.mint_item(
+            Material::Whistle,
+            0,
+            cell_id(4, 3).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let whistle = world.step(&[intent("whistle", near, Attempt::BlowWhistle)]);
+        assert_eq!(whistle.results[0].message, "You blow the bone whistle.");
+        assert_eq!(world.hare_cell(), Some((1, 4)));
+
+        let mut bed = World::valley(crate::tuning::Tuning::evening(), 1);
+        let reeds = cell_id(0, 3).unwrap();
+        assert_eq!(bed.pile_count(reeds, Material::Reed), 4);
+        let carver = bed.spawn_at("Near", "n", 0, 3).unwrap();
+        bed.mint_item(Material::Flake, 0, reeds, Some(carver), Role::Loose);
+        let from_bed = bed.step(&[intent("bed", carver, Attempt::CarveFlute)]);
+        assert_eq!(
+            from_bed.results[0].message,
+            "You carve a bundle of reeds into a reed flute with the flint flake."
+        );
+        assert_eq!(bed.pile_count(reeds, Material::Reed), 3);
+        assert_eq!(bed.loose_ids(carver, Material::Flute).len(), 1);
+        let stayed = bed.step(&[intent("stay", carver, Attempt::BlowFlute)]);
+        assert_eq!(stayed.results[0].message, "You blow the reed flute.");
+        assert_eq!(bed.hare_cell(), Some((2, 4)));
     }
 }
 

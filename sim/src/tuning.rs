@@ -806,6 +806,7 @@ impl Tuning {
             Material::Worm => 0,
             Material::Quartz => 0,
             Material::Whistle => 0,
+            Material::Flute => 0,
         }
     }
 }
