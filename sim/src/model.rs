@@ -17595,6 +17595,31 @@ mod bark_cup {
             .unwrap()
             .text
             .contains("A soaked bark cup lies here."));
+        let lifted = world.step(&[intent("lift-wet", near, Attempt::Gather(Material::BarkCup))]);
+        assert_eq!(lifted.results[0].message, "You gather a soaked bark cup.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers a soaked bark cup") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a soaked bark cup." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers a soaked bark cup") }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a soaked bark cup"));
     }
 
     #[test]
@@ -17642,6 +17667,33 @@ mod bark_cup {
         let ground = world.observe(near).unwrap().text;
         assert!(ground.contains("A sealed bark cup lies here."), "{ground}");
         assert!(!ground.contains("A soaked bark cup"));
+        let lifted = world.step(&[intent(
+            "lift-sealed",
+            near,
+            Attempt::Gather(Material::BarkCup),
+        )]);
+        assert_eq!(lifted.results[0].message, "You gather a sealed bark cup.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a sealed bark cup." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers") }));
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("a sealed bark cup"), "{arms}");
+        assert!(!arms.contains("a soaked bark cup"));
     }
 
     #[test]

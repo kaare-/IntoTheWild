@@ -11692,6 +11692,8 @@ impl World {
             "bundle of nettle cordage",
             "cattail roots",
             "bark cup",
+            "sealed bark cup",
+            "soaked bark cup",
             "fishing net",
             "reed mat",
         ];

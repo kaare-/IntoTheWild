@@ -2354,6 +2354,18 @@ impl World {
                         format!("a hare hide{from}.")
                     } else if noun == "beaver hide" {
                         format!("a beaver hide{from}.")
+                    } else if material == Material::BarkCup {
+                        let kind = if self.item(item).is_some_and(|cup| cup.pitched) {
+                            "sealed bark cup"
+                        } else if self
+                            .item(item)
+                            .is_some_and(|cup| cup.moisture >= self.tuning.soaked_at)
+                        {
+                            "soaked bark cup"
+                        } else {
+                            "bark cup"
+                        };
+                        format!("a {kind}{from}.")
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
