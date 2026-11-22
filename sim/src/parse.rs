@@ -89,7 +89,7 @@ gather salt                  a salt crust from the slope, or from the dry margin
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
-dig worms                    a worm from damp earth, the bank or a place with mud. gather worms is the same. On a bone fish hook the worm is spent, and that stretch of the brook can be fished again on the next tick. Without a worm the hook is unchanged.
+dig worms                    a worm from damp earth, the bank or a place with mud. gather worms is the same. The damp earth has no worms once it is dug, then they are there again after 24 ticks. On a bone fish hook the worm is spent, and that stretch of the brook can be fished again on the next tick. Without a worm the hook is unchanged.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
 strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
 strip willow bark            a strip of bark from that same willow. It is not the cordage. gather willow bark is the same. The willow has no bark once the strip is taken, then the strip grows back.

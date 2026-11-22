@@ -56,6 +56,7 @@ impl World {
                 Wake::NettleReturn(cell) => self.return_nettle(cell),
                 Wake::CattailReturn(cell) => self.return_cattail(cell),
                 Wake::FluffReturn(cell) => self.return_fluff(cell),
+                Wake::WormReturn(cell) => self.return_worms(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -234,6 +235,33 @@ impl World {
         self.add_pile(cell, Material::Egg, 1, 0);
         self.emit(
             "The bird's nest fills again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The damp earth has waited out the same ticks as moss. A worm is there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_worms(&mut self, cell: CellId) {
+        let Some(at) = self.worm_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.worm_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Worm) > 0
+            || !self.ground_ids(cell, Material::Worm).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Worm, 1, 0);
+        self.emit(
+            "Worms are in the damp earth again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

@@ -997,6 +997,8 @@ pub enum Wake {
     DryClothes(ActorId),
     /// Dry branches banked on the fire in this cell, under a cover of mud.
     Charcoal(CellId),
+    /// Worms are in this damp earth again.
+    WormReturn(CellId),
 }
 
 /// A seeded berry patch. Emptying it, by gathering or by the deer, arms the same wait.
@@ -1268,6 +1270,9 @@ pub struct World {
     /// Look names them until the handful is dug.
     #[serde(default)]
     pub(crate) worm_beds: BTreeSet<CellId>,
+    /// When a dug bed has worms again. Look says the damp earth has none until then.
+    #[serde(default)]
+    pub(crate) worm_returns_at: BTreeMap<CellId, u64>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1520,6 +1525,7 @@ impl World {
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
             worm_beds: BTreeSet::new(),
+            worm_returns_at: BTreeMap::new(),
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -2282,6 +2288,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.cattail_ticks);
         self.fluff_returns_at.insert(cell, at);
         self.schedule(at, Wake::FluffReturn(cell));
+    }
+
+    /// The damp earth has no worms. They return `moss_ticks` after this step.
+    /// A wake that finds a worm already there does not add a second one.
+    pub(crate) fn arm_worm_bed(&mut self, cell: CellId) {
+        if !self.worm_beds.contains(&cell) || self.worm_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Worm) > 0
+            || !self.ground_ids(cell, Material::Worm).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.moss_ticks);
+        self.worm_returns_at.insert(cell, at);
+        self.schedule(at, Wake::WormReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -21142,5 +21164,75 @@ mod worms {
             .unwrap()
             .text
             .contains("The damp earth here has no worms."));
+    }
+
+    #[test]
+    fn dug_worms_return_after_twenty_four_ticks() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let bank = cell_id(2, 2).unwrap();
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        assert_eq!(world.tuning.moss_ticks, 24);
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(dug.results[0].message, "You gather a worm.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The damp earth here has no worms."));
+        let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            missed.results[0].message,
+            "The damp earth here has no worms."
+        );
+        assert!(says(&world, near, "The damp earth here has no worms."));
+        assert!(!says(&world, seen, "The damp earth here has no worms."));
+        let ticks = world.tuning.moss_ticks;
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The damp earth here has no worms."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Worms are in the damp earth again." }));
+        world.step(&[]);
+        let grown = "Worms are in the damp earth again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("Worms are in the damp earth here."),
+            "{}",
+            back.text
+        );
+        assert!(!back.text.contains("The damp earth here has no worms."));
+        assert!(back.events.iter().any(|event| event.text == grown));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == grown));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Worms are in the damp earth to the north and west."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown));
+        assert!(!world.observe(quiet).unwrap().text.contains("damp earth"));
+        assert_eq!(world.pile_count(bank, Material::Worm), 1);
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(again.results[0].message, "You gather a worm.");
     }
 }

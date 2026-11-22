@@ -2627,6 +2627,9 @@ impl World {
                     if material == Material::Fluff {
                         self.arm_fluff(cell);
                     }
+                    if material == Material::Worm {
+                        self.arm_worm_bed(cell);
+                    }
                     if material == Material::Flint {
                         self.arm_flint_bed(cell);
                     }
