@@ -1941,7 +1941,7 @@ impl World {
             deer.route_at = next_at;
             deer.last_event = Some(id);
         }
-        self.note_brush(dest, snapped);
+        self.note_deer_brush(dest, snapped, id);
     }
 
     /// One step along the brook when nobody is beside the otter.

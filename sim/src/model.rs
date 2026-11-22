@@ -3458,6 +3458,23 @@ impl World {
         );
     }
 
+    /// The deer's crack. The step is the cause, so a rhythm-stick click the
+    /// same way can leave this sound out without hiding a person's step.
+    pub(crate) fn note_deer_brush(&mut self, cell: CellId, snapped: bool, step: EventId) {
+        let Some(text) = self.brush_crack(cell, snapped) else {
+            return;
+        };
+        self.emit(
+            text,
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![step],
+            None,
+        );
+    }
+
     pub(crate) fn cookable_carried(&self, actor: ActorId) -> bool {
         !self.loose_ids(actor, Material::Carcass).is_empty()
             || self.raw_mushroom_id(actor).is_some()
@@ -25070,5 +25087,56 @@ mod sticks {
             .unwrap()
             .text
             .contains("A pair of rhythm sticks lies here."));
+    }
+
+    #[test]
+    fn a_click_is_not_buried_under_the_deers_snap() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 3, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 3).unwrap();
+        world.mint_item(
+            Material::Sticks,
+            0,
+            cell_id(6, 1).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        if let Some(deer) = world.deer.as_mut() {
+            deer.cell = cell_id(5, 1).unwrap();
+            deer.route_at = 5;
+            deer.held = false;
+        }
+        let snapped = world.step(&[]);
+        assert!(world.observe(quiet).unwrap().events.iter().any(|event| {
+            event.time == snapped.time && event.text == "You hear branches breaking to the east."
+        }));
+        if let Some(deer) = world.deer.as_mut() {
+            deer.cell = cell_id(5, 1).unwrap();
+            deer.route_at = 5;
+            deer.held = false;
+        }
+        let played = world.step(&[intent("click", near, Attempt::BeatSticks)]);
+        assert_eq!(played.results[0].message, "You click the rhythm sticks.");
+        let quiet_view = world.observe(quiet).unwrap();
+        assert!(
+            quiet_view
+                .text
+                .contains("You hear sticks click to the east."),
+            "{}",
+            quiet_view.text
+        );
+        assert!(!quiet_view.events.iter().any(|event| {
+            event.time == played.time && event.text.contains("branches breaking")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.time == played.time && event.text == "Near clicks the rhythm sticks."
+        }));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near clicks the rhythm sticks." }));
     }
 }

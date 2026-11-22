@@ -12502,6 +12502,32 @@ impl World {
         Some(format!("You hear {sound} to the {way}."))
     }
 
+    /// A deer's branch-snap on the tick the rhythm sticks click, and the same
+    /// way. The click stays the sound. A person's step through brush is not this.
+    fn deer_snap_under_sticks(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(sound) = self.sticks else {
+            return false;
+        };
+        let click_tick = sound.until.saturating_sub(1);
+        if event.time != click_tick {
+            return false;
+        }
+        let Some(cell) = self.brush_crack_cell(event) else {
+            return false;
+        };
+        let deer_step = event.causes.iter().any(|cause| {
+            self.events.iter().any(|earlier| {
+                earlier.id == *cause
+                    && (earlier.text.contains("A deer steps")
+                        || earlier.text.contains("under the deer"))
+            })
+        });
+        if !deer_step {
+            return false;
+        }
+        self.relative(origin, sound.cell) == self.relative(origin, cell)
+    }
+
     fn hears_brush(&self, origin: CellId, event: &crate::model::Event) -> bool {
         let Some(cell) = self.brush_crack_cell(event) else {
             return false;
@@ -14244,6 +14270,9 @@ impl World {
                     return true;
                 }
                 if self.brush_crack_marker(event) {
+                    if self.deer_snap_under_sticks(origin, event) {
+                        return false;
+                    }
                     return self.hears_brush(origin, event);
                 }
                 chebyshev(origin, cell) <= self.tuning.sight
