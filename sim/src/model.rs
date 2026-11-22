@@ -347,6 +347,7 @@ pub enum ExamineTarget {
     Charcoal,
     Reeds,
     Snare,
+    Weir,
     Bone,
     Salt,
     Honey,
@@ -429,6 +430,9 @@ pub enum Attempt {
     Thatch,
     SetSnare,
     SetNet,
+    /// Reeds and cordage in a brook cell. Spent when the weir is set.
+    /// After a wait a raw fish lies there. The weir is gone. The brook is not fished out.
+    SetWeir,
     CarveAwl,
     SaltMeat,
     SaltFish,
@@ -506,6 +510,7 @@ impl Attempt {
                 | Attempt::Thatch
                 | Attempt::SetSnare
                 | Attempt::SetNet
+                | Attempt::SetWeir
                 | Attempt::CarveAwl
                 | Attempt::SaltMeat
                 | Attempt::SaltFish
@@ -807,6 +812,8 @@ pub enum Wake {
     Snare(CellId),
     /// A fishing net set in this brook cell. It catches on that tick.
     NetCatch(CellId),
+    /// A reed weir set in this brook cell. It catches on that tick, then is gone.
+    Weir(CellId),
     /// Raw unsalted meat spoils on this tick. Salted meat and cooked meat do not.
     Spoil(ItemId),
     /// The salt lick on this cell forms another crust.
@@ -1068,6 +1075,10 @@ pub struct World {
     /// When that set net catches a fish. Absent once it has caught, or was gathered.
     #[serde(default)]
     pub(crate) net_catches_at: BTreeMap<CellId, u64>,
+    /// A reed weir set in a brook cell, catching at this sim time.
+    /// The reeds and the cordage are already spent. Absent once it has caught.
+    #[serde(default)]
+    pub(crate) weirs: BTreeMap<CellId, u64>,
     /// The heavy-log pile on this cell has been charred by a fire.
     #[serde(default)]
     pub(crate) charred_logs: BTreeSet<CellId>,
@@ -1316,6 +1327,7 @@ impl World {
             snare_willow: BTreeSet::new(),
             set_nets: BTreeSet::new(),
             net_catches_at: BTreeMap::new(),
+            weirs: BTreeMap::new(),
             charred_logs: BTreeSet::new(),
             charred_items: BTreeSet::new(),
             aboard: BTreeMap::new(),
@@ -8098,6 +8110,215 @@ mod set_net {
             .events
             .iter()
             .any(|event| event.text == "Near gathers a fishing net."));
+    }
+}
+
+#[cfg(test)]
+mod weir {
+    use super::{Attempt, Dir, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_reed_weir_in_the_brook_catches_a_fish_and_is_spent() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        assert!(matches!(
+            crate::parse_attempt("set weir").unwrap(),
+            Attempt::SetWeir
+        ));
+        assert!(matches!(
+            crate::parse_attempt("weir").unwrap(),
+            Attempt::SetWeir
+        ));
+        assert!(matches!(
+            crate::parse_attempt("set trap").unwrap(),
+            Attempt::SetSnare
+        ));
+
+        let ashore = world.step(&[intent("ashore", quiet, Attempt::SetWeir)]);
+        assert_eq!(
+            ashore.results[0].message,
+            "You cannot set a weir out of the brook."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You cannot set a weir out of the brook." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("weir")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("weir")));
+
+        let bare = world.step(&[intent("bare", near, Attempt::SetWeir)]);
+        assert_eq!(bare.results[0].message, "You have no reeds to set a weir.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You have no reeds to set a weir."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("reeds to set")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("reeds to set")));
+
+        world.step(&[intent("west", near, Attempt::Move(Dir::West))]);
+        world.step(&[intent("south", near, Attempt::Move(Dir::South))]);
+        assert_eq!(world.actor_cell(near), Some((0, 3)));
+        let unbound = world.step(&[intent("unbound", near, Attempt::SetWeir)]);
+        assert_eq!(
+            unbound.results[0].message,
+            "You have no cordage to bind a weir."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You have no cordage to bind a weir."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cordage")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cordage")));
+
+        let reeds = world.step(&[intent("reeds", near, Attempt::Gather(Material::Reed))]);
+        assert!(reeds.results[0].success, "{}", reeds.results[0].message);
+        world.step(&[intent("to-willow", near, Attempt::Move(Dir::South))]);
+        assert_eq!(world.actor_cell(near), Some((0, 4)));
+        let willow = world.step(&[intent("willow", near, Attempt::Gather(Material::Willow))]);
+        assert!(willow.results[0].success, "{}", willow.results[0].message);
+        world.step(&[intent("back", near, Attempt::Move(Dir::North))]);
+        assert_eq!(world.actor_cell(near), Some((0, 3)));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .allowed_actions
+            .iter()
+            .any(|action| action == "set weir"));
+
+        let set = world.step(&[intent("set", near, Attempt::SetWeir)]);
+        assert_eq!(set.results[0].message, "You set a reed weir in the brook.");
+        let yours = "You set a reed weir in the brook.";
+        let witnessed = "Near sets a reed weir in the brook.";
+        let after = world.observe(near).unwrap();
+        assert!(after.events.iter().all(|event| event.text != yours));
+        assert!(after
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near sets")));
+        assert!(
+            after.text.contains("A reed weir is set in the brook here."),
+            "{}",
+            after.text
+        );
+        assert!(!after.text.contains("fishing net"), "{}", after.text);
+        assert_eq!(
+            world.examine(near, ExamineTarget::Weir),
+            "A reed weir is set here, in the brook. It is reeds bound with cordage."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("A reed weir is set in the brook to the west."),
+            "{from_seen}"
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != witnessed && !event.text.contains("sets a reed weir")));
+        assert!(!world.observe(quiet).unwrap().text.contains("reed weir"));
+        assert!(world.brook_quiet.is_empty());
+        assert!(world.set_nets.is_empty());
+        assert!(world.snares.is_empty());
+        assert_eq!(world.material_tally(Material::Reed), 3);
+        assert_eq!(world.material_tally(Material::Willow), 1);
+
+        let ticks = world.tuning.weir_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        let brook = super::cell_id(0, 3).unwrap();
+        assert!(world.weirs.contains_key(&brook));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A raw fish lies here."));
+        world.step(&[]);
+        let caught = "The reed weir catches a fish.";
+        let landed = world.observe(near).unwrap();
+        assert!(landed.events.iter().any(|event| event.text == caught));
+        assert!(
+            !landed.text.contains("A reed weir is set"),
+            "{}",
+            landed.text
+        );
+        assert!(
+            landed.text.contains("A raw fish lies here."),
+            "{}",
+            landed.text
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == caught));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != caught));
+        assert!(world.weirs.is_empty());
+        assert!(world.brook_quiet.is_empty());
+        assert_eq!(world.material_tally(Material::Fish), 1);
+        assert_eq!(
+            world.examine(near, ExamineTarget::Weir),
+            "You see no weir from here."
+        );
     }
 }
 

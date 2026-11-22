@@ -41,6 +41,7 @@ impl World {
                 Wake::BrandOut(id) => self.brand_out(id),
                 Wake::Snare(cell) => self.spring_snare(cell),
                 Wake::NetCatch(cell) => self.catch_in_net(cell),
+                Wake::Weir(cell) => self.catch_in_weir(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
@@ -791,6 +792,29 @@ impl World {
         let fish = self.mint_item(Material::Fish, 0, cell, None, Role::Loose);
         self.emit(
             "The fishing net catches a fish.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![fish],
+            vec![],
+            None,
+        );
+    }
+
+    /// The reed weir in this brook has waited out its ticks. A raw fish lies
+    /// there. The weir is gone. Someone who cannot see the cell hears nothing.
+    /// The brook is not marked quiet.
+    fn catch_in_weir(&mut self, cell: CellId) {
+        let Some(ready) = self.weirs.get(&cell).copied() else {
+            return;
+        };
+        if ready > self.time {
+            return;
+        }
+        self.weirs.remove(&cell);
+        let fish = self.mint_item(Material::Fish, 0, cell, None, Role::Loose);
+        self.emit(
+            "The reed weir catches a fish.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

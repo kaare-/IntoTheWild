@@ -65,6 +65,11 @@ snare_ticks = 3
 # The net stays set until someone gathers it. Someone who cannot see
 # that brook does not get the line.
 net_ticks = 3
+# A reed weir set in the brook catches a fish after this many ticks.
+# One bundle of reeds and cordage (willow or hide strips) are spent when
+# it is set. The weir is gone once the fish lies there. The brook is not
+# fished out. This is not a spear, a hook, or a set net.
+weir_ticks = 3
 # Raw meat spoils this many ticks after the step that cut it. A raw fish
 # spoils the same number of ticks after the step it was speared. On the tick
 # before that, look and examine say it is going bad. Then it is not food.

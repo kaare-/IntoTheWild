@@ -96,6 +96,7 @@ impl World {
         let mut puts = Vec::new();
         let mut snares = Vec::new();
         let mut set_nets = Vec::new();
+        let mut weirs = Vec::new();
         let mut set_mats = Vec::new();
         let mut hollows = Vec::new();
         let mut carves_canoe = Vec::new();
@@ -226,6 +227,7 @@ impl World {
                         Attempt::PutFish => puts.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
+                        Attempt::SetWeir => weirs.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::CarvePaddle => paddle_carves.push(intent),
                         Attempt::CarveHook => hook_carves.push(intent),
@@ -378,6 +380,7 @@ impl World {
         self.apply_puts(puts, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
+        self.apply_weirs(weirs, &mut results);
         self.apply_carves(carves, &mut results);
         self.apply_paddle_carves(paddle_carves, &mut results);
         self.apply_hook_carves(hook_carves, &mut results);
@@ -882,6 +885,25 @@ impl World {
                     Err("A snare is already set here.".into())
                 } else if !self.has_snare_line(actor.id) {
                     Err("You have no hide strips or willow cordage to set a snare.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SetWeir => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.cell(actor.cell).region != Region::Brook {
+                    Err("You cannot set a weir out of the brook.".into())
+                } else if self.weirs.contains_key(&actor.cell) {
+                    Err("A reed weir is already set here.".into())
+                } else if !self.has_reeds(actor.id) {
+                    Err("You have no reeds to set a weir.".into())
+                } else if !self.has_snare_line(actor.id) {
+                    Err("You have no cordage to bind a weir.".into())
                 } else {
                     Ok(true)
                 }
@@ -7699,6 +7721,97 @@ impl World {
         }
     }
 
+    /// One bundle of reeds and one length of cordage, spent into this brook.
+    /// After the wait a raw fish lies there and the weir is gone.
+    fn apply_weirs(&mut self, weirs: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in weirs {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.cell(actor.cell).region != Region::Brook {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You cannot set a weir out of the brook.",
+                    results,
+                );
+                continue;
+            }
+            if self.weirs.contains_key(&actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A reed weir is already set here.",
+                    results,
+                );
+                continue;
+            }
+            if !self.has_reeds(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no reeds to set a weir.",
+                    results,
+                );
+                continue;
+            }
+            if !self.has_snare_line(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no cordage to bind a weir.",
+                    results,
+                );
+                continue;
+            }
+            if !self.take_one_reed(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no reeds to set a weir.",
+                    results,
+                );
+                continue;
+            }
+            if self.take_snare_line(actor.id, actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no cordage to bind a weir.",
+                    results,
+                );
+                continue;
+            }
+            let ready = self.time.saturating_add(self.tuning.weir_ticks);
+            self.weirs.insert(actor.cell, ready);
+            self.schedule(ready, crate::model::Wake::Weir(actor.cell));
+            let name = self.name_of(actor.id);
+            let rest = "a reed weir in the brook.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "set", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "set", rest),
+                results,
+            );
+        }
+    }
+
     /// A carried fishing net leaves the arms and is set in this brook cell.
     fn apply_set_nets(&mut self, sets: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in sets {
@@ -7814,7 +7927,7 @@ impl World {
         false
     }
 
-    fn has_reeds(&self, actor: crate::model::ActorId) -> bool {
+    pub(crate) fn has_reeds(&self, actor: crate::model::ActorId) -> bool {
         let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
         !self.loose_ids(actor, Material::Reed).is_empty()
             || self.pile_count(cell, Material::Reed) > 0

@@ -211,6 +211,7 @@ impl World {
             ExamineTarget::Charcoal => self.examine_charcoal(actor_id),
             ExamineTarget::Reeds => self.examine_reeds(actor_id),
             ExamineTarget::Snare => self.examine_snare(actor_id),
+            ExamineTarget::Weir => self.examine_weir(actor_id),
             ExamineTarget::Bone => self.examine_bone(actor_id),
             ExamineTarget::Salt => self.examine_salt(actor_id),
             ExamineTarget::Honey => self.examine_honey(actor_id),
@@ -395,6 +396,9 @@ impl World {
             }
             if let Some(snare) = self.seen_snare(actor_id) {
                 lines.push(snare);
+            }
+            if let Some(weir) = self.seen_weir(actor_id) {
+                lines.push(weir);
             }
             if let Some(meat) = self.seen_meat(actor_id) {
                 lines.push(meat);
@@ -1351,6 +1355,9 @@ impl World {
             } else {
                 parts.push("A hide snare is set here.".into());
             }
+        }
+        if self.weirs.contains_key(&actor.cell) {
+            parts.push("A reed weir is set in the brook here.".into());
         }
         parts.extend(self.hide_here_lines(&self.ground_ids(actor.cell, Material::Hide)));
         for id in self.ground_ids(actor.cell, Material::Spear) {
@@ -3205,6 +3212,49 @@ impl World {
         }
         if lines.is_empty() {
             "You see no bone from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    /// A reed weir in a brook this person can see but is not standing in.
+    fn seen_weir(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.weirs.contains_key(&cell) {
+                continue;
+            }
+            lines.push(format!(
+                "A reed weir is set in the brook to the {}.",
+                self.relative(origin, cell)
+            ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_weir(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.weirs.contains_key(&cell) {
+                continue;
+            }
+            let place = if origin == cell {
+                "here, in the brook".to_string()
+            } else {
+                format!("in the brook to the {}", self.relative(origin, cell))
+            };
+            lines.push(format!(
+                "A reed weir is set {place}. It is reeds bound with cordage."
+            ));
+        }
+        if lines.is_empty() {
+            "You see no weir from here.".into()
         } else {
             lines.join(" ")
         }
@@ -9318,6 +9368,7 @@ impl World {
                     && self.cut_for_these_eyes(viewer, event).is_none()
                     && self.snare_for_these_eyes(viewer, event).is_none()
                     && self.set_net_for_these_eyes(viewer, event).is_none()
+                    && self.weir_for_these_eyes(viewer, event).is_none()
                     && self.carve_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
@@ -9717,6 +9768,21 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "butcher", rest))
+    }
+
+    /// A reed weir set in the brook. The person who set it already has this
+    /// as the reply, so the event list does not repeat it. A witness keeps
+    /// the stored sentence. The later catch names no one.
+    fn weir_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} sets "))?;
+        if rest != "a reed weir in the brook." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "set", rest))
     }
 
     /// A fishing net set in the brook. The person who set it already has this
@@ -12536,6 +12602,13 @@ impl World {
         }
         if !self.snares.contains_key(&actor.cell) && self.has_snare_line(actor_id) {
             actions.push("set snare".into());
+        }
+        if self.cell(actor.cell).region == crate::model::Region::Brook
+            && !self.weirs.contains_key(&actor.cell)
+            && self.has_reeds(actor_id)
+            && self.has_snare_line(actor_id)
+        {
+            actions.push("set weir".into());
         }
         if self.water_here(actor.cell)
             && !self.still_frozen(actor.cell)

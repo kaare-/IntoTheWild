@@ -60,6 +60,7 @@ thatch lean-to               a carried bundle of reeds on a lean-to already stan
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
+set weir                     one bundle of reeds and cordage, willow or hide strips, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
 weave mat                    two bundles of reeds, from the arms or the pile at your feet, into a reed mat. Set it or drop it, then rest on it. The open wind becomes a little wind.
 set mat                      a carried reed mat, on this ground. It leaves the arms. rest works on it, as under a lean-to.
 make net                     the same net
@@ -375,6 +376,18 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::SetSnare)
         }
+        "set"
+            if rest == "weir"
+                || rest == "a weir"
+                || rest == "the weir"
+                || rest == "fish weir"
+                || rest == "a fish weir"
+                || rest == "reed weir"
+                || rest == "a reed weir" =>
+        {
+            Ok(Attempt::SetWeir)
+        }
+        "weir" if rest.is_empty() || rest == "fish" || rest == "the brook" => Ok(Attempt::SetWeir),
         "bind" if rest == "spear" => Ok(Attempt::BindSpear),
         "knap"
             if rest.is_empty() || rest == "flint" || rest == "nodule" || rest == "flint nodule" =>
@@ -738,6 +751,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         }
         "bone awl" => ExamineTarget::Awl,
         "snare" | "trap" | "hide snare" => ExamineTarget::Snare,
+        "weir" | "reed weir" | "fish weir" | "a reed weir" => ExamineTarget::Weir,
         "slope" | "the slope" => ExamineTarget::Slope,
         other => ExamineTarget::Person(other.to_string()),
     }
