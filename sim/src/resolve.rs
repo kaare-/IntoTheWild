@@ -898,10 +898,12 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.fire_at(actor.cell).is_none() {
+                } else if !self.fire_near(actor.cell) {
                     Err("There is no fire burning here.".into())
-                } else if self.raw_fish_id(actor.id).is_none() {
-                    if self.smoked_fish_id(actor.id).is_some() {
+                } else if self.fish_to_hang(actor.id).is_none() {
+                    if self.fish_already_hanging(actor.id) {
+                        Err("A raw fish is already hanging by the fire.".into())
+                    } else if self.smoked_fish_id(actor.id).is_some() {
                         Err("The fish is already smoked.".into())
                     } else if self.spoiled_fish_near(actor.id) {
                         Err("The fish has spoiled.".into())
@@ -8347,13 +8349,50 @@ impl World {
         }
     }
 
-    /// Hang a raw fish in the smoke. The fire is not used up. The fish keeps, and it can be eaten cold.
+    /// A raw fish that can be hung or set. One already waiting by the fire is not it.
+    fn fish_to_hang(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let ready = |id: crate::model::ItemId| {
+            self.item(id).is_some_and(|fish| {
+                !fish.cooked
+                    && !fish.salted
+                    && !fish.smoked
+                    && !fish.spoiled
+                    && fish.firing_ready_at.is_none()
+            })
+        };
+        if let Some(id) = self
+            .loose_ids(actor, Material::Fish)
+            .into_iter()
+            .find(|id| ready(*id))
+        {
+            return Some(id);
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Fish)
+            .into_iter()
+            .find(|id| ready(*id))
+    }
+
+    /// A raw fish already waiting on this cell. A second smoke does not start another wait.
+    fn fish_already_hanging(&self, actor: crate::model::ActorId) -> bool {
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.ground_ids(cell, Material::Fish).into_iter().any(|id| {
+            self.item(id).is_some_and(|fish| {
+                !fish.smoked && !fish.cooked && !fish.spoiled && fish.firing_ready_at.is_some()
+            })
+        })
+    }
+
+    /// Hang a raw fish in the smoke, or set it on the next cell. It is not smoked yet.
+    /// The fire is not used up. When the wait ends, the fish keeps and can be eaten cold.
     fn apply_smoke_fish(&mut self, smokes: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in smokes {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            if self.fire_at(actor.cell).is_none() {
+            if !self.fire_near(actor.cell) {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -8363,8 +8402,10 @@ impl World {
                 );
                 continue;
             }
-            let Some(fish_id) = self.raw_fish_id(actor.id) else {
-                let message = if self.smoked_fish_id(actor.id).is_some() {
+            let Some(fish_id) = self.fish_to_hang(actor.id) else {
+                let message = if self.fish_already_hanging(actor.id) {
+                    "A raw fish is already hanging by the fire."
+                } else if self.smoked_fish_id(actor.id).is_some() {
                     "The fish is already smoked."
                 } else if self.spoiled_fish_near(actor.id) {
                     "The fish has spoiled."
@@ -8374,15 +8415,31 @@ impl World {
                 self.finish(intent.command_id, actor.id, false, message, results);
                 continue;
             };
+            let on_the_fire = self.fire_at(actor.cell).is_some();
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
             if let Some(fish) = self.items.get_mut(&fish_id) {
-                fish.smoked = true;
-                fish.spoiled = false;
-                fish.spoils_at = None;
+                fish.carrier = None;
+                fish.cell = actor.cell;
+                fish.in_basket = false;
+                fish.firing_ready_at = Some(ready);
             }
+            self.schedule(ready, crate::model::Wake::SmokeFish(fish_id));
             let name = self.name_of(actor.id);
-            let rest = "a raw fish. It will keep, and it can be eaten cold.";
+            let (verb, rest, reply) = if on_the_fire {
+                (
+                    "hang",
+                    "a raw fish by the fire.",
+                    "You hang a raw fish by the fire. It is not smoked yet.",
+                )
+            } else {
+                (
+                    "set",
+                    "a raw fish near the fire.",
+                    "You set a raw fish near the fire. It is not smoked yet.",
+                )
+            };
             self.emit(
-                crate::model::spoken_act(Some(name.as_str()), "smoke", rest),
+                crate::model::spoken_act(Some(name.as_str()), verb, rest),
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
@@ -8390,13 +8447,7 @@ impl World {
                 vec![],
                 None,
             );
-            self.finish(
-                intent.command_id,
-                actor.id,
-                true,
-                crate::model::spoken_act(None, "smoke", rest),
-                results,
-            );
+            self.finish(intent.command_id, actor.id, true, reply, results);
         }
     }
 

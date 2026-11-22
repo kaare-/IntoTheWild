@@ -387,6 +387,9 @@ impl World {
             if let Some(net) = self.seen_net(actor_id) {
                 lines.push(net);
             }
+            if let Some(hung) = self.seen_hanging_fish(actor_id) {
+                lines.push(hung);
+            }
             if let Some(mat) = self.seen_mat(actor_id) {
                 lines.push(mat);
             }
@@ -2353,6 +2356,37 @@ impl World {
                     "The brook's edge to the {} has no reeds.",
                     self.relative(origin, cell)
                 ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A raw fish hung by a fire, or set on the next cell, in sight and not underfoot.
+    /// Past sight it is not on the look.
+    fn seen_hanging_fish(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            for id in self.ground_ids(cell, Material::Fish) {
+                let Some(fish) = self.item(id) else {
+                    continue;
+                };
+                if fish.smoked || fish.cooked || fish.spoiled || fish.firing_ready_at.is_none() {
+                    continue;
+                }
+                let way = self.relative(origin, cell);
+                if self.fire_at(cell).is_some() {
+                    lines.push(format!("A raw fish hangs by the fire to the {way}."));
+                } else {
+                    lines.push(format!("A raw fish is set near the fire to the {way}."));
+                }
             }
         }
         if lines.is_empty() {
@@ -7824,6 +7858,12 @@ impl World {
                     "going" => format!(
                         "A raw fish lies in contact with the ground {place}. It is going bad."
                     ),
+                    "hanging" => format!(
+                        "A raw fish hangs by the fire {place}. It is not smoked yet."
+                    ),
+                    "set" => format!(
+                        "A raw fish is set near the fire {place}. It is not smoked yet."
+                    ),
                     _ => format!(
                         "A raw fish lies in contact with the ground {place}. It must be cooked before it feeds you."
                     ),
@@ -10850,13 +10890,20 @@ impl World {
         }
         let name = self.name_of(viewer);
         let nest = format!("{name} smokes the bees' nest. The bees quiet.");
+        let hung = format!("{name} hangs a raw fish by the fire.");
+        let set = format!("{name} sets a raw fish near the fire.");
         let fish = format!("{name} smokes a raw fish. It will keep, and it can be eaten cold.");
         let portion =
             format!("{name} smokes a portion of raw meat. It will keep, and it can be eaten cold.");
         let piece = format!(
             "{name} smokes a smaller piece of raw meat. It will keep, and it can be eaten cold."
         );
-        if event.text == nest || event.text == fish || event.text == portion || event.text == piece
+        if event.text == nest
+            || event.text == hung
+            || event.text == set
+            || event.text == fish
+            || event.text == portion
+            || event.text == piece
         {
             Some(event.text.clone())
         } else {
@@ -11211,6 +11258,12 @@ impl World {
             "smoked"
         } else if fish.salted {
             "salted"
+        } else if fish.firing_ready_at.is_some() {
+            if self.fire_at(fish.cell).is_some() {
+                "hanging"
+            } else {
+                "set"
+            }
         } else if fish.spoils_at == Some(self.time) {
             "going"
         } else {
@@ -11225,6 +11278,8 @@ impl World {
             "salted" => "A salted fish lies here. It can be eaten cold.".into(),
             "spoiled" => "A spoiled fish lies here. It is not food.".into(),
             "going" => "A raw fish lies here. It is going bad.".into(),
+            "hanging" => "A raw fish hangs by the fire. It is not smoked yet.".into(),
+            "set" => "A raw fish is set near the fire. It is not smoked yet.".into(),
             _ => "A raw fish lies here.".into(),
         }
     }

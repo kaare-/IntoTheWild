@@ -109,7 +109,7 @@ eat honey                    the honeycomb. Hunger eases.
 eat eggs                     cooked eggs. Raw eggs are not food. Hunger eases once they are cooked.
 salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
 salt fish                    salt on a raw fish. The salt is spent. The fish can be eaten cold, and it does not spoil.
-smoke fish                   a raw fish at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the fish is the same
+smoke fish                   a raw fish hung by a lit fire, or set on the next cell, from the arms or the ground. It is not smoked yet. When the wait ends it can be eaten cold, and it does not spoil. smoke is the same
 smoke meat                   a portion of raw meat at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the meat is the same
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
 eat mushrooms                mushrooms
@@ -207,7 +207,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             parse_signal(rest.trim_start_matches("signal").trim())
         }
         "smoke"
-            if rest == "fish"
+            if rest.is_empty()
+                || rest == "fish"
                 || rest == "the fish"
                 || rest == "a fish"
                 || rest == "raw fish"

@@ -58,6 +58,7 @@ impl World {
                 Wake::FluffReturn(cell) => self.return_fluff(cell),
                 Wake::WormReturn(cell) => self.return_worms(cell),
                 Wake::BoneReturn(cell) => self.return_bone(cell),
+                Wake::SmokeFish(id) => self.smoke_fish(id),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -1121,6 +1122,51 @@ impl World {
             vec![],
             vec![cell],
             vec![fish],
+            vec![],
+            None,
+        );
+    }
+
+    /// A raw fish has waited by a fire. If a fire is still on that cell or the next,
+    /// the fish is smoked. It keeps, and it can be eaten cold. A fire that has
+    /// gone out leaves it raw. Someone who cannot see the cell hears nothing.
+    fn smoke_fish(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Fish || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        let still_raw = !item.smoked && !item.cooked && !item.spoiled;
+        if !still_raw || item.carrier.is_some() || !self.fire_near(item.cell) {
+            if let Some(lying) = self.items.get_mut(&id) {
+                lying.firing_ready_at = None;
+            }
+            if still_raw && item.carrier.is_none() && !self.fire_near(item.cell) {
+                self.emit(
+                    "The fish is still raw. The fire is out.",
+                    Scope::Cell(item.cell),
+                    vec![],
+                    vec![item.cell],
+                    vec![id],
+                    vec![],
+                    None,
+                );
+            }
+            return;
+        }
+        if let Some(lying) = self.items.get_mut(&id) {
+            lying.smoked = true;
+            lying.spoiled = false;
+            lying.spoils_at = None;
+            lying.firing_ready_at = None;
+        }
+        self.emit(
+            "The fish is smoked. It will keep, and it can be eaten cold.",
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
             vec![],
             None,
         );
