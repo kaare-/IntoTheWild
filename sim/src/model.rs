@@ -4811,9 +4811,14 @@ mod honey {
             here.contains("A bees' nest hangs in the tree here."),
             "{here}"
         );
+        assert!(here.contains("You hear the bees buzzing."), "{here}");
         let from_west = world.observe(seen).unwrap().text;
         assert!(
             from_west.contains("A bees' nest hangs in a tree on the slope to the east."),
+            "{from_west}"
+        );
+        assert!(
+            from_west.contains("You hear the bees buzzing to the east."),
             "{from_west}"
         );
         let missed = world.observe(quiet).unwrap().text;
@@ -4858,12 +4863,14 @@ mod honey {
         let empty = world.observe(near).unwrap().text;
         assert!(empty.contains("The bees' nest is empty."), "{empty}");
         assert!(!empty.contains("A bees' nest hangs"), "{empty}");
+        assert!(!empty.contains("buzzing"), "{empty}");
         assert!(empty.contains("a honeycomb"), "{empty}");
         let west_empty = world.observe(seen).unwrap().text;
         assert!(
             west_empty.contains("The bees' nest in the tree on the slope to the east is empty."),
             "{west_empty}"
         );
+        assert!(!west_empty.contains("buzzing"), "{west_empty}");
         if let Some(person) = world.actors.get_mut(&near) {
             person.hunger = world.tuning.hungry_at;
         }
@@ -4897,6 +4904,24 @@ mod honey {
             .iter()
             .all(|event| !event.text.contains("honeycomb")));
         assert_eq!(world.material_tally(Material::Honey), 0);
+    }
+
+    #[test]
+    fn two_cells_off_the_nest_you_see_the_tree_and_do_not_hear_the_bees() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let far = world.spawn_at("Far", "f", 4, 0).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let text = world.observe(far).unwrap().text;
+        assert!(
+            text.contains("A bees' nest hangs in a tree on the slope to the east."),
+            "{text}"
+        );
+        assert!(!text.contains("buzzing"), "{text}");
+        let missed = world.observe(quiet).unwrap().text;
+        assert!(
+            !missed.contains("bees") && !missed.contains("buzzing"),
+            "{missed}"
+        );
     }
 
     #[test]
@@ -4975,6 +5000,13 @@ mod honey {
         let near = world.spawn_at("Near", "n", 6, 0).unwrap();
         let seen = world.spawn_at("West", "w", 5, 0).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 2, 3).unwrap();
+        let before = world.observe(near).unwrap().text;
+        assert!(before.contains("You hear the bees buzzing."), "{before}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("You hear the bees buzzing to the east."));
         let none = world.step(&[intent("none", near, Attempt::SmokeNest)]);
         assert_eq!(
             none.results[0].message,
@@ -5015,9 +5047,11 @@ mod honey {
             .all(|event| !event.text.contains("smoke")));
         let here = world.observe(near).unwrap().text;
         assert!(here.contains("Smoke hangs in the bees' nest."), "{here}");
+        assert!(!here.contains("buzzing"), "{here}");
         assert!(here.contains("You are well."), "{here}");
         let west = world.observe(seen).unwrap().text;
         assert!(west.contains("Smoke hangs in it."), "{west}");
+        assert!(!west.contains("buzzing"), "{west}");
         assert!(!world.observe(quiet).unwrap().text.contains("Smoke"));
         let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Honey))]);
         assert_eq!(gathered.results[0].message, "You gather a honeycomb.");
@@ -5080,11 +5114,13 @@ mod honey {
         let empty = world.observe(near).unwrap().text;
         assert!(empty.contains("The bees' nest is empty."), "{empty}");
         assert!(!empty.contains("A bees' nest hangs"), "{empty}");
+        assert!(!empty.contains("buzzing"), "{empty}");
         let west_empty = world.observe(seen).unwrap().text;
         assert!(
             west_empty.contains("The bees' nest in the tree on the slope to the east is empty."),
             "{west_empty}"
         );
+        assert!(!west_empty.contains("buzzing"), "{west_empty}");
         assert!(!world.observe(quiet).unwrap().text.contains("bees"));
         let ticks = world.tuning.honey_ticks;
         for _ in 0..ticks - 1 {
@@ -5100,6 +5136,11 @@ mod honey {
         let back = world.observe(near).unwrap();
         assert!(
             back.text.contains("A bees' nest hangs in the tree here."),
+            "{}",
+            back.text
+        );
+        assert!(
+            back.text.contains("You hear the bees buzzing."),
             "{}",
             back.text
         );

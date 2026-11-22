@@ -1115,6 +1115,8 @@ impl World {
             parts.push("A bees' nest hangs in the tree here.".into());
             if self.smoked_nests.contains(&actor.cell) {
                 parts.push("Smoke hangs in the bees' nest.".into());
+            } else if let Some(buzz) = self.bees_buzz_line(actor.cell, actor.cell) {
+                parts.push(buzz);
             }
         } else if self.honey_nests.contains(&actor.cell) {
             parts.push("The bees' nest is empty.".into());
@@ -2336,6 +2338,25 @@ impl World {
         }
     }
 
+    /// Bees in a full nest, heard on that cell and the next. Smoke and an
+    /// empty nest are quiet. Two cells off, the tree can still be seen.
+    fn bees_buzz_line(&self, origin: CellId, cell: CellId) -> Option<String> {
+        if self.smoked_nests.contains(&cell) || chebyshev(origin, cell) > 1 {
+            return None;
+        }
+        let full = self.pile_count(cell, Material::Honey) > 0
+            || !self.ground_ids(cell, Material::Honey).is_empty();
+        if !full {
+            return None;
+        }
+        if origin == cell {
+            Some("You hear the bees buzzing.".into())
+        } else {
+            let way = self.relative(origin, cell);
+            Some(format!("You hear the bees buzzing to the {way}."))
+        }
+    }
+
     /// A bees' nest in a tree this person can see but is not standing under.
     fn seen_honey(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -2357,6 +2378,9 @@ impl World {
                     lines.push(format!(
                         "A bees' nest hangs in a tree on the {region} to the {way}."
                     ));
+                    if let Some(buzz) = self.bees_buzz_line(origin, cell) {
+                        lines.push(buzz);
+                    }
                 }
             } else if self.honey_nests.contains(&cell) {
                 lines.push(format!(
