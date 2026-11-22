@@ -11556,7 +11556,10 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
+        let rest = event
+            .text
+            .strip_prefix(&format!("{name} cooks "))
+            .or_else(|| event.text.strip_prefix(&format!("{name} roasts ")))?;
         if rest.ends_with(" over the fire.") {
             Some(event.text.clone())
         } else {
@@ -11591,7 +11594,15 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
+        let cooked = event.text.strip_prefix(&format!("{name} cooks "));
+        let roasted = event.text.strip_prefix(&format!("{name} roasts "));
+        let (stem, rest) = if let Some(rest) = cooked {
+            ("cook", rest)
+        } else if let Some(rest) = roasted {
+            ("roast", rest)
+        } else {
+            return None;
+        };
         if rest != "the mushroom over the fire."
             && rest != "the eggs over the fire."
             && rest != "the pale berries over the fire."
@@ -11600,7 +11611,10 @@ impl World {
         {
             return None;
         }
-        Some(crate::model::spoken_act(None, "cook", rest))
+        if stem == "roast" && rest != "the mushroom over the fire." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, stem, rest))
     }
 
     fn meat_here_line(&self, cell: crate::model::CellId) -> Option<String> {

@@ -215,6 +215,8 @@ impl World {
                     // A mushroom bite that does not feed is the reply only.
                     let mushroom_eat_refusal =
                         matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
+                    // A roast miss is the reply only.
+                    let roast_refusal = matches!(intent.attempt, Attempt::Roast);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -226,7 +228,8 @@ impl World {
                             && !sinew_refusal
                             && !sticks_refusal
                             && !torch_refusal
-                            && !mushroom_eat_refusal;
+                            && !mushroom_eat_refusal
+                            && !roast_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -259,7 +262,7 @@ impl World {
                         Attempt::Light => lights.push(intent),
                         Attempt::DrillFire => drill_fires.push(intent),
                         Attempt::CarveDrill => drill_carves.push(intent),
-                        Attempt::Cook => cooks.push(intent),
+                        Attempt::Cook | Attempt::Roast => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
                         Attempt::SmearOchre => ochre_smears.push(intent),
@@ -2168,6 +2171,21 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if let Some(message) = self.cook_refusal(actor.id) {
                     Err(message)
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Roast => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.raw_mushroom_id(actor.id).is_none()
+                    && self.pile_count(actor.cell, Material::Mushroom) == 0
+                {
+                    Err("There is nothing here to roast.".into())
                 } else {
                     Ok(true)
                 }
@@ -5005,6 +5023,10 @@ impl World {
         let mut carried = Vec::new();
         let mut piles: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
         for intent in cooks {
+            if matches!(intent.attempt, Attempt::Roast) {
+                self.heat_mushroom(intent, results, "roast");
+                continue;
+            }
             let cell = self
                 .actor(intent.actor_id)
                 .map(|actor| actor.cell)
@@ -5026,7 +5048,7 @@ impl World {
             if self.raw_mushroom_id(intent.actor_id).is_some()
                 || self.pile_count(cell, Material::Mushroom) > 0
             {
-                self.cook_mushroom(intent, results);
+                self.heat_mushroom(intent, results, "cook");
                 continue;
             }
             if self.raw_cattail_id(intent.actor_id).is_some()
@@ -5162,9 +5184,15 @@ impl World {
     }
 
     /// Heat leaves the mushroom in the arms, or on the ground if it was a pile.
-    /// It does not feed anyone until it is eaten.
-    fn cook_mushroom(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+    /// It does not feed anyone until it is eaten. `roast` uses that stem.
+    /// `cook` stays cook.
+    fn heat_mushroom(&mut self, intent: Intent, results: &mut Vec<CommandResult>, stem: &str) {
         if let Some(message) = self.cook_refusal(intent.actor_id) {
+            let message = if stem == "roast" && message == "There is nothing here to cook." {
+                "There is nothing here to roast.".to_string()
+            } else {
+                message
+            };
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         }
@@ -5187,13 +5215,12 @@ impl World {
             }
             id
         } else {
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                false,
-                "There is nothing here to cook.",
-                results,
-            );
+            let message = if stem == "roast" {
+                "There is nothing here to roast."
+            } else {
+                "There is nothing here to cook."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         };
         let rest = "the mushroom over the fire.";
@@ -5204,7 +5231,7 @@ impl World {
             .into_iter()
             .collect();
         self.emit(
-            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            crate::model::spoken_act(Some(name.as_str()), stem, rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -5216,7 +5243,7 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            crate::model::spoken_act(None, "cook", rest),
+            crate::model::spoken_act(None, stem, rest),
             results,
         );
     }
