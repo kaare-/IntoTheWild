@@ -2282,6 +2282,18 @@ impl World {
         }
     }
 
+    /// A whistle within ordinary hearing. The beaver splashes the same way it
+    /// does when someone steps onto it. The blow's reply does not carry this line.
+    pub(crate) fn whistle_frighten_beaver(&mut self, blower: CellId) {
+        let Some(beaver) = self.beaver.clone() else {
+            return;
+        };
+        if chebyshev(blower, beaver.cell) > self.tuning.hearing {
+            return;
+        }
+        self.yield_beaver(beaver.cell);
+    }
+
     /// A missed throw. The hare bolts to a dry neighbor farther from the hunter.
     /// None when it has nowhere to go.
     pub(crate) fn bolt_hunted_hare(&mut self, hunter: CellId) -> Option<&'static str> {

@@ -21913,6 +21913,105 @@ mod whistle {
         assert_eq!(far.results[0].message, "You blow the bone whistle.");
         assert!(!far.results[0].message.contains("otter"));
         assert_eq!(world.otter_cell(), Some((0, 1)));
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+    }
+
+    #[test]
+    fn a_whistle_within_hearing_splashes_the_beaver_and_a_flute_does_not() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        let near = world.spawn_at("Near", "n", 3, 0).unwrap();
+        let heard = world.spawn_at("Heard", "h", 1, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let legend = world.observe(heard).unwrap().legend;
+        assert!(legend.contains("t otter"), "{legend}");
+        assert!(legend.contains("o ochre"), "{legend}");
+        let before = world.observe(heard).unwrap();
+        assert!(before.map.contains('t'), "{}", before.map);
+        assert!(
+            before
+                .text
+                .contains("An otter is in the brook to the north."),
+            "{}",
+            before.text
+        );
+        let missed = world.step(&[intent("none", near, Attempt::BlowWhistle)]);
+        assert_eq!(
+            missed.results[0].message,
+            "You are not carrying a bone whistle."
+        );
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        assert!(!says(&world, heard, "You are not carrying a bone whistle."));
+        assert!(!says(&world, quiet, "You are not carrying a bone whistle."));
+        world.mint_item(
+            Material::Flute,
+            0,
+            cell_id(3, 0).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let flute = world.step(&[intent("flute", near, Attempt::BlowFlute)]);
+        assert_eq!(flute.results[0].message, "You blow the reed flute.");
+        assert!(!flute.results[0].message.contains("beaver"));
+        assert!(!says(&world, near, "Near blows the reed flute."));
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert!(!says(&world, heard, "A beaver splashes away to the south."));
+        world.mint_item(
+            Material::Whistle,
+            0,
+            cell_id(3, 0).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let blown = world.step(&[intent("blow", near, Attempt::BlowWhistle)]);
+        assert_eq!(blown.results[0].message, "You blow the bone whistle.");
+        assert!(!blown.results[0].message.contains("beaver"));
+        assert!(!says(&world, near, "Near blows the bone whistle."));
+        assert_eq!(world.beaver_cell(), Some((0, 4)));
+        assert_eq!(world.otter_cell(), Some((0, 1)));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert!(says(
+            &world,
+            near,
+            "You hear a splash to the south and west."
+        ));
+        assert!(!says(&world, near, "A beaver splashes away to the south."));
+        assert!(says(&world, near, "An otter splashes away to the west."));
+        assert!(says(&world, heard, "A beaver splashes away to the south."));
+        assert!(says(&world, heard, "Near blows the bone whistle."));
+        assert!(!says(
+            &world,
+            quiet,
+            "You hear a splash to the south and west."
+        ));
+        assert!(!says(&world, quiet, "A beaver splashes away to the south."));
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(
+            quiet_look.contains("You hear a whistle to the north and west."),
+            "{quiet_look}"
+        );
+        assert!(!says(
+            &world,
+            quiet,
+            "You hear a whistle to the north and west."
+        ));
+        let after = world.observe(heard).unwrap();
+        assert!(
+            after
+                .text
+                .contains("A beaver is on the bank to the south and west."),
+            "{}",
+            after.text
+        );
+        world.actors.get_mut(&near).unwrap().cell = cell_id(6, 0).unwrap();
+        let far = world.step(&[intent("past", near, Attempt::BlowWhistle)]);
+        assert_eq!(far.results[0].message, "You blow the bone whistle.");
+        assert!(!far.results[0].message.contains("beaver"));
+        assert_eq!(world.beaver_cell(), Some((0, 4)));
     }
 
     #[test]
@@ -22041,6 +22140,7 @@ mod whistle {
         assert_eq!(world.hare_cell(), Some((1, 4)));
         assert_eq!(world.fox_cell(), Some((6, 4)));
         assert_eq!(world.otter_cell(), Some((0, 1)));
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
 
         let mut bed = World::valley(crate::tuning::Tuning::evening(), 1);
         let reeds = cell_id(0, 3).unwrap();
@@ -22059,6 +22159,7 @@ mod whistle {
         assert_eq!(bed.hare_cell(), Some((2, 4)));
         assert_eq!(bed.fox_cell(), Some((5, 4)));
         assert_eq!(bed.otter_cell(), Some((1, 1)));
+        assert_eq!(bed.beaver_cell(), Some((0, 3)));
     }
 }
 

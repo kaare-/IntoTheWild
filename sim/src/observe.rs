@@ -23,7 +23,7 @@ g iron ore     I bloom of iron
 K iron knife   i copper awl
 v bowl         j spear
 a carcass      + more than the letter shows
-d deer    x fox    r hare    z beaver
+d deer    x fox    r hare    z beaver    t otter
 \" tracks
 R rock roof    H bark roof
 f unfinished frame
@@ -10285,6 +10285,9 @@ impl World {
             .is_some_and(|beaver| beaver.cell == cell)
         {
             marks.push('z');
+        }
+        if self.otter.as_ref().is_some_and(|otter| otter.cell == cell) {
+            marks.push('t');
         }
         let log_here = self.pile_count(cell, Material::Log) > 0
             || self.items.values().any(|item| {

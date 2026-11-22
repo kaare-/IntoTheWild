@@ -8615,6 +8615,7 @@ impl World {
             self.whistle_frighten_hare(actor.cell);
             self.whistle_frighten_fox(actor.cell);
             self.whistle_frighten_otter(actor.cell);
+            self.whistle_frighten_beaver(actor.cell);
             let name = self.name_of(actor.id);
             let rest = "the bone whistle.";
             self.emit(
