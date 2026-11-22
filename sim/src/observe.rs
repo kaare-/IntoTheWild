@@ -1086,7 +1086,11 @@ impl World {
         if self.pile_count(actor.cell, Material::Ochre) > 0
             || !self.ground_ids(actor.cell, Material::Ochre).is_empty()
         {
-            parts.push("A lump of ochre lies here.".into());
+            if self.cell(actor.cell).rock {
+                parts.push("A lump of ochre lies on the rock face.".into());
+            } else {
+                parts.push("A lump of ochre lies here.".into());
+            }
         } else if self.ochre_bare(actor.cell) {
             parts.push("The slope has no ochre.".into());
         }
@@ -1753,11 +1757,17 @@ impl World {
                 if orthogonal_neighbor(origin, cell) {
                     continue;
                 }
-                let region = self.cell(cell).region.word();
-                lines.push(format!(
-                    "A lump of ochre lies on the {region} to the {}.",
-                    self.relative(origin, cell)
-                ));
+                let way = self.relative(origin, cell);
+                if self.cell(cell).rock {
+                    lines.push(format!(
+                        "A lump of ochre lies on the rock face to the {way}."
+                    ));
+                } else {
+                    let region = self.cell(cell).region.word();
+                    lines.push(format!(
+                        "A lump of ochre lies on the {region} to the {way}."
+                    ));
+                }
             } else if self.ochre_bare(cell) {
                 lines.push(format!(
                     "The slope to the {} has no ochre.",
@@ -4479,7 +4489,11 @@ impl World {
         if self.pile_count(dest, Material::Ochre) > 0
             || !self.ground_ids(dest, Material::Ochre).is_empty()
         {
-            bits.push("a lump of ochre".into());
+            if self.cell(dest).rock {
+                bits.push("a lump of ochre on the rock face".into());
+            } else {
+                bits.push("a lump of ochre".into());
+            }
         }
         if self.pile_count(dest, Material::Salt) > 0
             || !self.ground_ids(dest, Material::Salt).is_empty()
@@ -7365,13 +7379,24 @@ impl World {
             let on_ground = self.pile_count(cell, Material::Ochre)
                 + self.ground_ids(cell, Material::Ochre).len() as u32;
             if on_ground > 0 {
-                let region = self.cell(cell).region.word();
-                let place = if origin == cell {
-                    format!("here, on the {region}")
+                if self.cell(cell).rock {
+                    if origin == cell {
+                        lines.push("A lump of ochre lies here, on the rock face.".into());
+                    } else {
+                        lines.push(format!(
+                            "A lump of ochre lies on the rock face to the {}.",
+                            self.relative(origin, cell)
+                        ));
+                    }
                 } else {
-                    format!("on the {region} to the {}", self.relative(origin, cell))
-                };
-                lines.push(format!("A lump of ochre lies {place}."));
+                    let region = self.cell(cell).region.word();
+                    let place = if origin == cell {
+                        format!("here, on the {region}")
+                    } else {
+                        format!("on the {region} to the {}", self.relative(origin, cell))
+                    };
+                    lines.push(format!("A lump of ochre lies {place}."));
+                }
             } else if self.ochre_bare(cell) {
                 if origin == cell {
                     lines.push("The slope here has no ochre.".into());

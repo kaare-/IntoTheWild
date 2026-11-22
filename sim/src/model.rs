@@ -1426,6 +1426,8 @@ impl World {
         let ochre = cell_id(3, 0).unwrap();
         world.add_pile(ochre, Material::Ochre, 1, 0);
         world.ochre_beds.insert(ochre);
+        // A second lump, on the rock face. It does not grow back with the slope.
+        world.add_pile(cell_id(6, 1).unwrap(), Material::Ochre, 1, 0);
         let iron = cell_id(5, 0).unwrap();
         world.add_pile(iron, Material::IronOre, 1, 0);
         world.iron_beds.insert(iron);
