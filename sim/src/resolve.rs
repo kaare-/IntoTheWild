@@ -15,6 +15,13 @@ enum WetBranch {
     None,
 }
 
+#[derive(Clone, Copy)]
+enum FuelSpot {
+    Charcoal,
+    BranchPile,
+    BranchGround,
+}
+
 /// The raw mushroom refusal. Reply only. The same two sentences as the look
 /// after this person has tried them.
 const RAW_MUSHROOM_REFUSAL: &str = "Raw mushrooms do not feed you. They must be cooked.";
@@ -4082,35 +4089,38 @@ impl World {
 
     pub(crate) fn light_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
         let person = self.actor(actor)?;
-        let resin = !self.loose_ids(actor, Material::Resin).is_empty();
-        let fluff = self.fluff_tinder_in_arms(actor);
-        let carried_fluff = !self.loose_ids(actor, Material::Fluff).is_empty();
-        let dry_moss = self.moss_tinder_in_arms(actor);
-        let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
-        let dry_bark = self.has_dry(actor, Material::Bark);
-        if self.raining && self.exposure_millis(person.cell) >= 1000 {
-            return Some(if resin {
-                "The rain puts the resin out before it catches.".into()
-            } else if fluff {
-                "The rain puts the cattail fluff out before it catches.".into()
-            } else if dry_moss || (carried_moss && !dry_bark) {
-                "The rain puts the moss out before it catches.".into()
-            } else if carried_fluff {
-                "The cattail fluff is too damp to catch.".into()
-            } else {
-                "The rain puts the bark out before it catches.".into()
-            });
-        }
         if self.fire_at(person.cell).is_some() {
             return Some("A fire already burns here.".into());
         }
+        let open = self.raining && self.exposure_millis(person.cell) >= 1000;
         // A lump of pine resin in the arms is tinder. It is spent before
         // fluff, moss, and bark when it is held. Cattail fluff in the arms
         // still catches when it is only slightly damp. Soaked fluff does not.
         // The open rain puts it out, the same as bark. Dry moss is tinder the
         // way bark is, and it is spent before bark. Wet moss is not.
-        // Resin on the ground is not tinder.
-        if !resin && !fluff && !dry_moss && !dry_bark {
+        // Resin on the ground is not tinder. A soaked sheet in the arms is
+        // not the tinder when a dry sheet is on the ground or in the pile,
+        // at the feet or one step off out of the rain.
+        let tinder = self.tinder_at_hand(actor);
+        let fuel = self.fuel_at_hand(actor);
+        if tinder && fuel {
+            if open {
+                return Some(self.open_rain_tinder_line(actor));
+            }
+            return None;
+        }
+        if self.neighbor_dry_bark_cell(actor).is_some() {
+            return None;
+        }
+        if let Some(there) = self.neighbor_fire_instead(actor) {
+            return Some(self.fire_already_off(person.cell, there));
+        }
+        if open {
+            return Some(self.open_rain_tinder_line(actor));
+        }
+        if !tinder {
+            let carried_fluff = !self.loose_ids(actor, Material::Fluff).is_empty();
+            let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
             return Some(if carried_fluff {
                 "The cattail fluff is too damp to catch.".into()
             } else if carried_moss {
@@ -4121,17 +4131,241 @@ impl World {
                 "You need dry loose bark for tinder.".into()
             });
         }
-        if !self.charcoal_in_arms(actor)
-            && !self.has_dry(actor, Material::Branch)
-            && !self.charcoal_on_ground(actor)
-        {
-            return Some(if self.has_material_at_hand(actor, Material::Branch) {
-                "The branch is too damp to burn.".into()
-            } else {
-                "You need a dry branch or a lump of charcoal for the fire.".into()
-            });
+        return Some(if self.has_material_at_hand(actor, Material::Branch) {
+            "The branch is too damp to burn.".into()
+        } else {
+            "You need a dry branch or a lump of charcoal for the fire.".into()
+        });
+    }
+
+    /// Dry tinder in the arms or on this cell. A soaked sheet is not dry.
+    fn tinder_at_hand(&self, actor: crate::model::ActorId) -> bool {
+        !self.loose_ids(actor, Material::Resin).is_empty()
+            || self.fluff_tinder_in_arms(actor)
+            || self.moss_tinder_in_arms(actor)
+            || self.has_dry(actor, Material::Bark)
+    }
+
+    /// Dry fuel in the arms or on this cell.
+    fn fuel_at_hand(&self, actor: crate::model::ActorId) -> bool {
+        self.charcoal_in_arms(actor)
+            || self.has_dry(actor, Material::Branch)
+            || self.charcoal_on_ground(actor)
+    }
+
+    fn open_rain_tinder_line(&self, actor: crate::model::ActorId) -> String {
+        let resin = !self.loose_ids(actor, Material::Resin).is_empty();
+        let fluff = self.fluff_tinder_in_arms(actor);
+        let carried_fluff = !self.loose_ids(actor, Material::Fluff).is_empty();
+        let dry_moss = self.moss_tinder_in_arms(actor);
+        let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
+        let dry_bark = self.has_dry(actor, Material::Bark);
+        if resin {
+            "The rain puts the resin out before it catches.".into()
+        } else if fluff {
+            "The rain puts the cattail fluff out before it catches.".into()
+        } else if dry_moss || (carried_moss && !dry_bark) {
+            "The rain puts the moss out before it catches.".into()
+        } else if carried_fluff {
+            "The cattail fluff is too damp to catch.".into()
+        } else {
+            "The rain puts the bark out before it catches.".into()
+        }
+    }
+
+    /// Dry bark and fuel on the next cell, out of the rain, with no fire yet.
+    /// North, then east, south, and west. The soaked sheet in the arms stays.
+    fn neighbor_dry_bark_cell(&self, actor: crate::model::ActorId) -> Option<crate::model::CellId> {
+        let person = self.actor(actor)?;
+        let (x, y) = cell_xy(person.cell);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.fire_at(next).is_some() {
+                continue;
+            }
+            if self.raining && self.exposure_millis(next) >= 1000 {
+                continue;
+            }
+            if self.dry_bark_spot(next).is_some() && self.dry_fuel_spot(next).is_some() {
+                return Some(next);
+            }
         }
         None
+    }
+
+    /// A fire already burns on the next sheltered cell. The open rain is not
+    /// the reason the light failed.
+    fn neighbor_fire_instead(&self, actor: crate::model::ActorId) -> Option<crate::model::CellId> {
+        let person = self.actor(actor)?;
+        let (x, y) = cell_xy(person.cell);
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(next) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.fire_at(next).is_none() {
+                continue;
+            }
+            if self.raining && self.exposure_millis(next) >= 1000 {
+                continue;
+            }
+            return Some(next);
+        }
+        None
+    }
+
+    fn fire_already_off(&self, from: crate::model::CellId, there: crate::model::CellId) -> String {
+        if self.cell(there).rock {
+            "A fire already burns under the rock.".into()
+        } else {
+            format!(
+                "A fire already burns to the {}.",
+                self.step_word(from, there)
+            )
+        }
+    }
+
+    fn step_word(&self, from: crate::model::CellId, there: crate::model::CellId) -> &'static str {
+        let (x1, y1) = cell_xy(from);
+        let (x2, y2) = cell_xy(there);
+        match (x2 - x1, y2 - y1) {
+            (0, -1) => "north",
+            (1, 0) => "east",
+            (0, 1) => "south",
+            _ => "west",
+        }
+    }
+
+    fn tinder_place(&self, from: crate::model::CellId, there: crate::model::CellId) -> String {
+        if self.cell(there).rock {
+            "under the rock".into()
+        } else {
+            format!("to the {}", self.step_word(from, there))
+        }
+    }
+
+    fn dry_ground_id(
+        &self,
+        cell: crate::model::CellId,
+        material: Material,
+    ) -> Option<crate::model::ItemId> {
+        self.ground_ids(cell, material).into_iter().find(|id| {
+            self.item(*id)
+                .is_some_and(|item| self.is_dry(item.moisture))
+        })
+    }
+
+    fn dry_bark_spot(&self, cell: crate::model::CellId) -> Option<bool> {
+        if self.dry_pile_count(cell, Material::Bark) > 0 {
+            Some(true)
+        } else if self.dry_ground_id(cell, Material::Bark).is_some() {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    fn dry_fuel_spot(&self, cell: crate::model::CellId) -> Option<FuelSpot> {
+        if !self.ground_ids(cell, Material::Charcoal).is_empty() {
+            Some(FuelSpot::Charcoal)
+        } else if self.dry_pile_count(cell, Material::Branch) > 0 {
+            Some(FuelSpot::BranchPile)
+        } else if self.dry_ground_id(cell, Material::Branch).is_some() {
+            Some(FuelSpot::BranchGround)
+        } else {
+            None
+        }
+    }
+
+    /// Spend the dry sheet and the fuel on `there`. The soaked sheet in the
+    /// arms stays. The fire burns on that cell, not in the rain at the feet.
+    fn light_dry_bark_off(
+        &mut self,
+        intent: Intent,
+        there: crate::model::CellId,
+        draw: &Option<Draw>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let Some(person) = self.actor(intent.actor_id) else {
+            return;
+        };
+        let from = person.cell;
+        let Some(bark_pile) = self.dry_bark_spot(there) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You need dry loose bark for tinder.",
+                results,
+            );
+            return;
+        };
+        let Some(fuel) = self.dry_fuel_spot(there) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You need a dry branch or a lump of charcoal for the fire.",
+                results,
+            );
+            return;
+        };
+        let mut spent = Vec::new();
+        if bark_pile {
+            self.take_from_pile(there, Material::Bark, 1);
+        } else if let Some(id) = self.dry_ground_id(there, Material::Bark) {
+            self.items.remove(&id);
+            spent.push(id);
+        }
+        let from_charcoal = matches!(fuel, FuelSpot::Charcoal);
+        match fuel {
+            FuelSpot::Charcoal => {
+                if let Some(id) = self.ground_ids(there, Material::Charcoal).first().copied() {
+                    self.items.remove(&id);
+                    spent.push(id);
+                }
+            }
+            FuelSpot::BranchPile => {
+                self.take_from_pile(there, Material::Branch, 1);
+            }
+            FuelSpot::BranchGround => {
+                if let Some(id) = self.dry_ground_id(there, Material::Branch) {
+                    self.items.remove(&id);
+                    spent.push(id);
+                }
+            }
+        }
+        let place = self.tinder_place(from, there);
+        let name = self.name_of(intent.actor_id);
+        let line = off_bark_line(Some(&name), &place, bark_pile, fuel);
+        let yours = off_bark_line(None, &place, bark_pile, fuel);
+        let copied = draw.as_ref().map(|draw| Draw {
+            tag: draw.tag.clone(),
+            subject: draw.subject.clone(),
+            value: draw.value,
+        });
+        let event = self.emit(
+            line,
+            Scope::Cell(there),
+            vec![intent.actor_id],
+            vec![there],
+            spent,
+            vec![],
+            copied,
+        );
+        if from_charcoal {
+            self.mint_charcoal_fire(there, event);
+        } else {
+            self.mint_fire(there, event);
+        }
+        let mut yours = yours;
+        if self.scare_wolf(Some(intent.actor_id)) {
+            yours.push_str(" The wolf flees the fire.");
+        }
+        self.finish(intent.command_id, intent.actor_id, true, yours, results);
     }
 
     /// A lump you are holding, or one on this ground. Either is the fuel,
@@ -4403,6 +4637,12 @@ impl World {
                         .unwrap_or_else(|| "A fire already burns here.".into());
                     self.finish(intent.command_id, intent.actor_id, false, message, results);
                     continue;
+                }
+                if !self.tinder_at_hand(intent.actor_id) {
+                    if let Some(there) = self.neighbor_dry_bark_cell(intent.actor_id) {
+                        self.light_dry_bark_off(intent, there, &draw, results);
+                        continue;
+                    }
                 }
                 let brand = self
                     .loose_ids(intent.actor_id, Material::Brand)
@@ -13475,6 +13715,31 @@ fn charcoal_light_line(
         format!("{tinder} and {lump}")
     };
     crate::model::spoken_act(who, "light", &format!("a fire with {fuel}."))
+}
+
+/// Dry bark one step off. The soaked sheet in the arms is not named.
+fn off_bark_line(who: Option<&str>, place: &str, bark_pile: bool, fuel: FuelSpot) -> String {
+    let rest = match (bark_pile, fuel) {
+        (true, FuelSpot::Charcoal) => format!(
+            "a fire with bark from the pile {place} and a lump of charcoal from the ground."
+        ),
+        (false, FuelSpot::Charcoal) => format!(
+            "a fire with a dry sheet of bark from the ground {place} and a lump of charcoal from the ground."
+        ),
+        (true, FuelSpot::BranchPile) => {
+            format!("a fire with bark and a dry branch from the pile {place}.")
+        }
+        (true, FuelSpot::BranchGround) => format!(
+            "a fire with bark from the pile {place} and a dry branch from the ground."
+        ),
+        (false, FuelSpot::BranchPile) => format!(
+            "a fire with a dry sheet of bark from the ground {place} and a dry branch from the pile {place}."
+        ),
+        (false, FuelSpot::BranchGround) => format!(
+            "a fire with a dry sheet of bark and a dry branch from the ground {place}."
+        ),
+    };
+    crate::model::spoken_act(who, "light", &rest)
 }
 
 /// One light, filled for the person who set it and for anyone else.

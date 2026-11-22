@@ -5841,6 +5841,143 @@ mod fire_look {
 }
 
 #[cfg(test)]
+mod dry_tinder {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn soaked_bark_in_the_arms_leaves_the_dry_pile_one_step_off() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        world.raining = true;
+        let near = world.spawn_at("Near", "n", 6, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 3, 3).unwrap();
+        let rock = cell_id(6, 1).unwrap();
+        let here = world.actor(near).unwrap().cell;
+        world.mint_item(
+            Material::Bark,
+            world.tuning.soaked_at,
+            here,
+            Some(near),
+            Role::Loose,
+        );
+        world.mint_item(Material::Charcoal, 0, rock, None, Role::Loose);
+        let bark_before = world.dry_pile_count(rock, Material::Bark);
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert_eq!(
+            lit.results[0].message,
+            "You light a fire with bark from the pile under the rock and a lump of charcoal from the ground."
+        );
+        assert!(lit.results[0].success);
+        assert!(world.fire_at(rock).is_some());
+        assert!(world.fire_at(here).is_none());
+        assert_eq!(world.loose_ids(near, Material::Bark).len(), 1);
+        assert_eq!(world.dry_pile_count(rock, Material::Bark), bark_before - 1);
+        assert!(world.ground_ids(rock, Material::Charcoal).is_empty());
+        let yours = world.observe(near).unwrap();
+        assert!(yours.events.iter().all(|event| {
+            !event.text.contains("Near lights")
+                && event.text != "The rain puts the bark out before it catches."
+        }));
+        let heard = world.observe(seen).unwrap();
+        assert!(heard.events.iter().any(|event| {
+            event.text == "Near lights a fire with bark from the pile under the rock and a lump of charcoal from the ground."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("lights a fire")
+                && event.text != "The rain puts the bark out before it catches."
+        }));
+        let again = world.step(&[intent("again", near, Attempt::Light)]);
+        assert_eq!(
+            again.results[0].message,
+            "A fire already burns under the rock."
+        );
+        assert!(!again.results[0].success);
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "A fire already burns under the rock." }));
+        }
+    }
+
+    #[test]
+    fn soaked_bark_in_the_arms_leaves_the_dry_pile_at_the_feet() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        world.raining = true;
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        world.mint_item(
+            Material::Bark,
+            world.tuning.soaked_at,
+            rock,
+            Some(near),
+            Role::Loose,
+        );
+        let lit = world.step(&[intent("feet", near, Attempt::Light)]);
+        assert!(
+            lit.results[0].message.contains("from the pile at the feet"),
+            "{}",
+            lit.results[0].message
+        );
+        assert!(lit.results[0].success);
+        assert!(world.fire_at(rock).is_some());
+        assert_eq!(world.loose_ids(near, Material::Bark).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Near lights") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text.contains("Near lights a fire") }));
+    }
+
+    #[test]
+    fn open_rain_still_puts_soaked_bark_out_when_no_dry_sheet_is_near() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        world.raining = true;
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let here = world.actor(near).unwrap().cell;
+        world.mint_item(
+            Material::Bark,
+            world.tuning.soaked_at,
+            here,
+            Some(near),
+            Role::Loose,
+        );
+        let refused = world.step(&[intent("rain", near, Attempt::Light)]);
+        assert_eq!(
+            refused.results[0].message,
+            "The rain puts the bark out before it catches."
+        );
+        assert!(!refused.results[0].success);
+        assert_eq!(world.loose_ids(near, Material::Bark).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The rain puts the bark out before it catches." }));
+    }
+}
+
+#[cfg(test)]
 mod salt_lick {
     use super::{Attempt, Intent, Material, Role, World};
 
