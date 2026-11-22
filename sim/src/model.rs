@@ -879,6 +879,10 @@ pub struct Actor {
     /// hide the pitch line. Cleared when that deer leaves sight.
     #[serde(default)]
     pub spear_hint_said: u8,
+    /// Looks left for the pitch line, including the one just armed. The fire
+    /// line does not use this. Zero when that deer leaves sight.
+    #[serde(default)]
+    pub spear_hint_pitch_left: u8,
     pub busy: Option<WorkId>,
 }
 
@@ -1645,6 +1649,9 @@ fn spear_said_bit(kind: SpearReach) -> u8 {
     }
 }
 
+/// Looks that still name pitch after the tick it first appears.
+const PITCH_LOOK_TICKS: u8 = 3;
+
 impl World {
     pub fn valley(tuning: Tuning, seed: u64) -> Self {
         let mut cells = Vec::with_capacity((WIDTH * HEIGHT) as usize);
@@ -2009,6 +2016,7 @@ impl World {
                 spear_hint_fire: false,
                 spear_hint_pitch: false,
                 spear_hint_said: 0,
+                spear_hint_pitch_left: 0,
                 busy: None,
             },
         );
@@ -2159,7 +2167,8 @@ impl World {
         StepReport { time, results }
     }
 
-    /// The one-tick look hint is over. The deer id stays until it leaves sight.
+    /// The look flag is cleared at the start of the next tick. A pitch line
+    /// that still has ticks left is armed again before anyone looks.
     fn retire_spear_hints(&mut self) {
         for actor in self.actors.values_mut() {
             actor.spear_hint_show = false;
@@ -2170,7 +2179,8 @@ impl World {
     /// fire-harden. A flint tip says to set the spear by a fire, or to pitch
     /// it when pine resin is near. Each distinct sentence is armed once
     /// while that deer stays in sight, so a spent fire line still leaves
-    /// the pitch line.
+    /// the pitch line. The fire line is one tick. The pitch line stays for
+    /// [`PITCH_LOOK_TICKS`] looks, then stops.
     fn note_spear_reach(&mut self) {
         let deer = self.deer.as_ref().map(|deer| (deer.id, deer.cell));
         let sight = self.tuning.sight;
@@ -2197,7 +2207,17 @@ impl World {
             if actor.spear_hint_deer != Some(deer_id) {
                 actor.spear_hint_deer = Some(deer_id);
                 actor.spear_hint_said = 0;
+                actor.spear_hint_pitch_left = 0;
             }
+            if kind == SpearReach::Pitch && actor.spear_hint_pitch_left > 0 {
+                actor.spear_hint_pitch_left -= 1;
+                actor.spear_hint_show = actor.spear_hint_pitch_left > 0;
+                actor.spear_hint_harden = false;
+                actor.spear_hint_fire = false;
+                actor.spear_hint_pitch = actor.spear_hint_show;
+                continue;
+            }
+            actor.spear_hint_pitch_left = 0;
             if actor.spear_hint_said & bit != 0 {
                 actor.spear_hint_show = false;
                 continue;
@@ -2207,6 +2227,9 @@ impl World {
             actor.spear_hint_fire = matches!(kind, SpearReach::Fire);
             actor.spear_hint_pitch = matches!(kind, SpearReach::Pitch);
             actor.spear_hint_show = true;
+            if kind == SpearReach::Pitch {
+                actor.spear_hint_pitch_left = PITCH_LOOK_TICKS;
+            }
         }
     }
 
@@ -2217,6 +2240,7 @@ impl World {
         actor.spear_hint_fire = false;
         actor.spear_hint_pitch = false;
         actor.spear_hint_said = 0;
+        actor.spear_hint_pitch_left = 0;
     }
 
     /// Haft, fire-harden a wooden point, or set a flint tip by a fire.
@@ -26811,7 +26835,7 @@ mod spear_hint {
 
         hold(&mut world);
         world.step(&[]);
-        assert!(!world.observe(near).unwrap().text.contains(PITCH));
+        assert!(world.observe(near).unwrap().text.contains(PITCH));
 
         world.items.remove(&lump);
         world.add_pile(cell, Material::Resin, 1, 0);
@@ -26902,6 +26926,29 @@ mod spear_hint {
             .events
             .iter()
             .all(|event| { event.time != pitched.time || !event.text.contains(PITCH) }));
+
+        for step_n in 1..3 {
+            if step_n == 1 {
+                world.actors.get_mut(&near).unwrap().cell = cell_id(4, 2).unwrap();
+            } else {
+                world.actors.get_mut(&near).unwrap().cell = cell;
+            }
+            hold(&mut world);
+            let step = world.step(&[]);
+            let look = world.observe(near).unwrap();
+            assert!(look.text.contains(PITCH), "tick {step_n}: {}", look.text);
+            assert!(!look.text.contains(FIRE), "{}", look.text);
+            assert!(look.text.contains("deer"), "{}", look.text);
+            assert!(!look.events.iter().any(|event| event.text.contains(PITCH)));
+            assert!(!world.observe(seen).unwrap().text.contains(PITCH));
+            assert!(!world.observe(quiet).unwrap().text.contains(PITCH));
+            assert!(world
+                .observe(seen)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.time != step.time || !event.text.contains(PITCH) }));
+        }
 
         hold(&mut world);
         world.step(&[]);
