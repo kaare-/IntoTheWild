@@ -13023,6 +13023,10 @@ mod mushroom_return {
                 .all(|event| { event.text != "There is no fire burning here." }));
         }
         assert!(!world.item(carried).unwrap().cooked);
+        let raw_record = world.observe(near).unwrap().self_info.carrying;
+        assert!(raw_record
+            .iter()
+            .any(|item| { item.material == "meat" && item.condition == "dry" && item.count == 1 }));
         world.mint_fire(cell, 0);
         let roasted = world.step(&[intent("arms", near, Attempt::Roast)]);
         assert_eq!(
@@ -13034,6 +13038,13 @@ mod mushroom_return {
         assert!(!world.item(ground).unwrap().cooked);
         let arms = world.arms_line(near);
         assert!(arms.contains("cooked meat"), "{arms}");
+        let cooked_record = world.observe(near).unwrap().self_info.carrying;
+        assert!(cooked_record.iter().any(|item| {
+            item.material == "meat" && item.condition == "cooked" && item.count == 1
+        }));
+        assert!(!cooked_record
+            .iter()
+            .any(|item| item.material == "meat" && item.condition == "dry"));
         assert!(world.observe(near).unwrap().events.iter().all(|event| {
             event.text != "You roast the raw meat over the fire."
                 && event.text != "Near roasts the raw meat over the fire."
@@ -13051,6 +13062,16 @@ mod mushroom_return {
             .iter()
             .all(|event| { event.text != "Near roasts the raw meat over the fire." }));
         let second = world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        let mixed = world.observe(near).unwrap().self_info.carrying;
+        assert!(mixed.iter().any(|item| {
+            item.material == "meat" && item.condition == "cooked" && item.count == 1
+        }));
+        assert!(mixed
+            .iter()
+            .any(|item| { item.material == "meat" && item.condition == "dry" && item.count == 1 }));
+        let mixed_arms = world.arms_line(near);
+        assert_eq!(mixed_arms.matches("cooked meat").count(), 1, "{mixed_arms}");
+        assert!(mixed_arms.contains("raw meat"), "{mixed_arms}");
         let cooked = world.step(&[intent("cook", near, Attempt::Cook)]);
         assert_eq!(
             cooked.results[0].message,
@@ -13059,6 +13080,13 @@ mod mushroom_return {
         assert!(world.item(second).unwrap().cooked);
         assert_eq!(world.item(second).unwrap().carrier, Some(near));
         assert!(!world.item(ground).unwrap().cooked);
+        let both = world.observe(near).unwrap().self_info.carrying;
+        assert!(both.iter().any(|item| {
+            item.material == "meat" && item.condition == "cooked" && item.count == 2
+        }));
+        assert!(!both
+            .iter()
+            .any(|item| item.material == "meat" && item.condition == "dry"));
         assert!(world.observe(near).unwrap().events.iter().all(|event| {
             event.text != "You cook the raw meat over the fire."
                 && event.text != "Near cooks the raw meat over the fire."

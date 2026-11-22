@@ -5398,7 +5398,7 @@ impl World {
                 format!("{} lumps of charcoal", count_word(item.count))
             }
         } else if item.material == "meat" {
-            self.meat_carry_phrase(actor_id)
+            self.meat_carry_phrase(actor_id, item.condition == "cooked")
         } else {
             format!(
                 "{} {} carried by you ({})",
@@ -5432,8 +5432,14 @@ impl World {
         }
     }
 
-    fn meat_carry_phrase(&self, actor_id: ActorId) -> String {
-        let ids = self.loose_ids(actor_id, Material::Meat);
+    /// Cooked meat is its own carrying record, the same split as a cooked mushroom.
+    /// The other faces stay on the moisture word.
+    fn meat_carry_phrase(&self, actor_id: ActorId, cooked: bool) -> String {
+        let ids: Vec<_> = self
+            .loose_ids(actor_id, Material::Meat)
+            .into_iter()
+            .filter(|id| self.item(*id).is_some_and(|meat| meat.cooked == cooked))
+            .collect();
         let mut bits = Vec::new();
         for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
             let full = self.meat_tally(&ids, face, false);
@@ -11172,16 +11178,16 @@ impl World {
                 }
                 continue;
             }
-            if item.material == Material::Mushroom {
+            if item.material == Material::Mushroom || item.material == Material::Meat {
                 let word = item.cooked.then_some("cooked");
                 if let Some(group) = groups
                     .iter_mut()
-                    .find(|(material, _, _, flag)| *material == Material::Mushroom && *flag == word)
+                    .find(|(material, _, _, flag)| *material == item.material && *flag == word)
                 {
                     group.1 += 1;
                     group.2 = group.2.max(item.moisture);
                 } else {
-                    groups.push((Material::Mushroom, 1, item.moisture, word));
+                    groups.push((item.material, 1, item.moisture, word));
                 }
                 continue;
             }
