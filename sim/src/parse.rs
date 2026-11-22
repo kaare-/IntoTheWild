@@ -72,8 +72,8 @@ gather charcoal              a lump left when a small fire goes out, from rain o
 bank                         dry branches lying on a burning fire, covered with a handful of mud. After a short wait the wood chars into charcoal and the fire goes out. A fire that would burn out first is held until that wait. If the fire is put out, the wood comes back and does not char. The branches in your arms stay there. smother and cover fire are the same
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
-wear hide                    a carried deer hide, against the cold
-remove hide                  a worn deer hide; it returns to the arms
+wear hide                    a carried hide, against the cold. A sewn cloak on you does not take a carry slot
+remove hide                  a worn hide; it returns to the arms and counts again
 eat berries                  sweet berries, raw
 eat dark berries             the other patch of berries
 eat pale berries             pale berries

@@ -778,6 +778,14 @@ pub struct Item {
     pub pitched: bool,
 }
 
+impl Item {
+    /// A sewn hide cloak on the body. It does not take a carry slot.
+    /// Taking it off puts it back in the count. A hide that is not sewn still counts.
+    pub(crate) fn worn_cloak(&self) -> bool {
+        self.material == Material::Hide && self.worn && self.sewn
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Construction {
     pub id: ConstructionId,
@@ -2381,7 +2389,7 @@ impl World {
     pub(crate) fn carry_count(&self, actor: ActorId) -> u32 {
         self.items
             .values()
-            .filter(|i| i.carrier == Some(actor) && !i.in_basket)
+            .filter(|i| i.carrier == Some(actor) && !i.in_basket && !i.worn_cloak())
             .count() as u32
     }
 
@@ -18495,5 +18503,157 @@ mod arms {
                 .all(|event| event.text != sentence));
         }
         assert_eq!(world.carry_count(near), 5);
+    }
+
+    fn cloak(
+        world: &mut World,
+        cell: super::CellId,
+        actor: u32,
+        wolf: bool,
+        otter: bool,
+        fox: bool,
+        hare: bool,
+        beaver: bool,
+        sewn: bool,
+        worn: bool,
+    ) -> u32 {
+        let id = world.mint_item(Material::Hide, 0, cell, Some(actor), Role::Loose);
+        let hide = world.items.get_mut(&id).unwrap();
+        hide.wolf = wolf;
+        hide.otter = otter;
+        hide.fox = fox;
+        hide.hare = hare;
+        hide.beaver = beaver;
+        hide.sewn = sewn;
+        hide.worn = worn;
+        id
+    }
+
+    #[test]
+    fn a_worn_sewn_cloak_does_not_take_a_slot() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        for material in [
+            Material::Charcoal,
+            Material::IronOre,
+            Material::Bark,
+            Material::Stone,
+        ] {
+            world.mint_item(material, 0, cell, Some(near), Role::Loose);
+        }
+        cloak(
+            &mut world, cell, near, false, false, false, false, false, true, false,
+        );
+        assert_eq!(world.carry_count(near), 5);
+        world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        let held = world.step(&[intent("held", near, Attempt::Gather(Material::Branch))]);
+        let sentence = "Your arms are full. Drop something first.";
+        assert_eq!(held.results[0].message, sentence);
+
+        let wore = world.step(&[intent("wear", near, Attempt::Wear)]);
+        assert_eq!(
+            wore.results[0].message,
+            "You wear the sewn deer-hide cloak."
+        );
+        assert_eq!(world.carry_count(near), 4);
+        let fifth = world.step(&[intent("fifth", near, Attempt::Gather(Material::Branch))]);
+        assert_eq!(fifth.results[0].message, "You gather a branch.");
+        assert_eq!(world.carry_count(near), 5);
+        world.mint_item(Material::Berry, 0, cell, None, Role::Loose);
+        let full = world.step(&[intent("full", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(full.results[0].message, sentence);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == sentence));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != sentence));
+        }
+
+        let off = world.step(&[intent("off", near, Attempt::Remove)]);
+        assert_eq!(
+            off.results[0].message,
+            "You remove the sewn deer-hide cloak. The wind reaches you again."
+        );
+        assert_eq!(world.carry_count(near), 6);
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Branch))]);
+        assert!(dropped.results[0].success, "{}", dropped.results[0].message);
+        assert_eq!(world.carry_count(near), 5);
+        let still = world.step(&[intent("still", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(still.results[0].message, sentence);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != sentence));
+
+        let again = world.step(&[intent("again", near, Attempt::Wear)]);
+        assert_eq!(
+            again.results[0].message,
+            "You wear the sewn deer-hide cloak."
+        );
+        assert_eq!(world.carry_count(near), 4);
+        let fits = world.step(&[intent("fits", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(fits.results[0].message, "You gather a handful of berries.");
+        assert_eq!(world.carry_count(near), 5);
+
+        let mut plain = World::valley(crate::tuning::Tuning::evening(), 1);
+        let plain_cell = cell_id(4, 4).unwrap();
+        let bare = plain.spawn_at("Near", "n", 4, 4).unwrap();
+        for material in [
+            Material::Charcoal,
+            Material::IronOre,
+            Material::Bark,
+            Material::Stone,
+        ] {
+            plain.mint_item(material, 0, plain_cell, Some(bare), Role::Loose);
+        }
+        cloak(
+            &mut plain, plain_cell, bare, false, false, false, false, false, false, false,
+        );
+        assert_eq!(plain.carry_count(bare), 5);
+        let wore_hide = plain.step(&[intent("wear-hide", bare, Attempt::Wear)]);
+        assert_eq!(wore_hide.results[0].message, "You wear the deer hide.");
+        assert_eq!(plain.carry_count(bare), 5);
+        plain.mint_item(Material::Branch, 0, plain_cell, None, Role::Loose);
+        let blocked = plain.step(&[intent("blocked", bare, Attempt::Gather(Material::Branch))]);
+        assert_eq!(blocked.results[0].message, sentence);
+
+        for (wolf, otter, fox, hare, beaver) in [
+            (true, false, false, false, false),
+            (false, true, false, false, false),
+            (false, false, true, false, false),
+            (false, false, false, true, false),
+            (false, false, false, false, true),
+        ] {
+            let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+            let cell = cell_id(4, 4).unwrap();
+            let actor = world.spawn_at("Near", "n", 4, 4).unwrap();
+            for _ in 0..5 {
+                world.mint_item(Material::Stone, 0, cell, Some(actor), Role::Loose);
+            }
+            cloak(
+                &mut world, cell, actor, wolf, otter, fox, hare, beaver, true, true,
+            );
+            assert_eq!(world.carry_count(actor), 5);
+            let id = world
+                .loose_ids(actor, Material::Hide)
+                .into_iter()
+                .next()
+                .unwrap();
+            world.items.get_mut(&id).unwrap().worn = false;
+            assert_eq!(world.carry_count(actor), 6);
+        }
     }
 }

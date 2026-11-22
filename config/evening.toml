@@ -234,7 +234,8 @@ mud_fade = 0.04
 mud_wash = 0.20
 mud_sun = 0.25
 # Five things. Charcoal, ore, tinder, and one tool fit, and one more still fits.
-# A worn cloak still counts. The next gather is still the drop hint.
+# A sewn hide cloak that is worn does not take one. Taking it off counts it again.
+# The next gather is still the drop hint.
 carry_slots = 5
 sight = 2
 
