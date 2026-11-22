@@ -808,6 +808,7 @@ impl Tuning {
             Material::Whistle => 0,
             Material::Flute => 0,
             Material::Drum => 0,
+            Material::Sinew => 0,
         }
     }
 }

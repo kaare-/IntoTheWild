@@ -180,6 +180,13 @@ impl Host {
                 true,
                 "Board, carve canoe, or paddle.".into(),
             ),
+            Attempt::NameSinew => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Pull sinew from a carcass.".into(),
+            ),
             Attempt::Look => {
                 let text = self
                     .world
@@ -406,6 +413,9 @@ mod tests {
         let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
         let near = host.join("Near").unwrap();
         let seen = host.join("Seen").unwrap();
+        let hint = host.submit(&near.token, "sinew", "sinew", None);
+        assert!(hint.immediate, "{}", hint.message);
+        assert_eq!(hint.message, "Pull sinew from a carcass.");
         for (id, line) in [("m1", "n"), ("m2", "n"), ("m3", "n")] {
             let queued = host.submit(&near.token, id, line, None);
             assert!(

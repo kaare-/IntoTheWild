@@ -61,10 +61,10 @@ carve whistle                a bone the same way, into a bone whistle. One bone 
 blow whistle                 the bone whistle in the arms. play whistle is the same. Someone who can see you hears the blow. Past sight, a look says which way, and one cell farther still. A hare within hearing bolts, a fox within hearing slips, and an otter or a beaver within hearing splashes, and those lines are not added to the blow. It is not a smoke signal. With no whistle, only you hear it
 carve flute                  a bundle of reeds, from the arms or on the ground, with a flint flake or an iron knife, into a reed flute. The tool is not used up. With no reeds, or no flake or knife, only you hear which is missing
 blow flute                   the reed flute in the arms. play flute is the same reach as the bone whistle. The hare does not bolt, the fox does not slip, and the otter and the beaver do not splash. With no flute, only you hear it
-sew drum                     a hide, a dry branch bent into the hoop, and cordage. stretch drum is the same. The hide may be a deer hide, a hare hide, or another, from the arms or lying here. Hide strips, then willow, then nettle. The branch and the cordage are spent. With one of them missing, only you hear which
+sew drum                     a hide, a dry branch bent into the hoop, and cordage. stretch drum is the same. The hide may be a deer hide, a hare hide, or another, from the arms or lying here. Hide strips, then willow, then nettle, then sinew. The branch and the cordage are spent. With one of them missing, only you hear which
 beat drum                    the drum in the arms. play drum is the same. Someone who can see you hears the beat. Past sight, a look says which way, one cell farther than the bone whistle, and one cell farther still, and that someone is beating a drum as a signal. It is not birdsong. The hare does not bolt. A deer within hearing lifts its head, and that line is not added to the beat. With no drum, only you hear it
 make awl                     the same bone awl
-set snare                    hide strips, willow cordage, or nettle cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, and willow before nettle.
+set snare                    hide strips, willow cordage, nettle cordage, or sinew, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, willow before nettle, and nettle before sinew.
 set trap                     the same snare
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
@@ -103,6 +103,7 @@ gather resin                 a lump of pine resin from the pine south of the tra
 strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
 strip willow bark            a strip of bark from that same willow. It is not the cordage. gather willow bark is the same. The willow has no bark once the strip is taken, then the strip grows back.
 strip nettle                 a bundle of nettle cordage from the nettles east of the trail. gather nettle is the same. Bare hands sting. Mud on the skin does not. The nettles are bare, then they grow again. The bundle is cordage where hide strips or willow cordage work.
+pull sinew                   sinew from a carcass or from raw meat. strip sinew is the same. The carcass or the meat stays, and a second pull says it is already stripped. The length is cordage for a snare or a drum, and it is not willow or nettle. A miss stays with you. Bare sinew names the verb.
 press moss                   a carried handful on a sting. The stings clear.
 dress sting                  the same press
 use moss                     the same press
@@ -172,6 +173,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "inventory" | "inv" if rest.is_empty() => Ok(Attempt::Arms),
         "snare" | "trap" if rest.is_empty() => Ok(Attempt::NameSnare),
         "canoe" | "dugout" if rest.is_empty() => Ok(Attempt::NameCanoe),
+        "sinew" if rest.is_empty() => Ok(Attempt::NameSinew),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)
@@ -280,6 +282,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::DressSting)
         }
         "use" if rest == "moss" || rest == "the moss" => Ok(Attempt::DressSting),
+        "strip" | "pull"
+            if rest == "sinew"
+                || rest == "the sinew"
+                || rest == "sinew cordage"
+                || rest == "a length of sinew" =>
+        {
+            Ok(Attempt::PullSinew)
+        }
         "strip"
             if rest == "nettle"
                 || rest == "nettles"
@@ -936,6 +946,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "nettle" | "nettles" | "nettle cordage" | "bundle of nettle cordage" => {
             Ok(Material::Nettle)
         }
+        "sinew" | "sinew cordage" | "length of sinew" | "a length of sinew" => Ok(Material::Sinew),
         "willow bark" | "strip of willow bark" | "a strip of willow bark" => Ok(Material::WillowBark),
         "willow"
         | "willow cordage"
@@ -1041,6 +1052,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         | "beaver hide" | "wolf cloak" | "otter cloak" | "fox cloak" | "hare cloak"
         | "beaver cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" => ExamineTarget::Cord,
+        "sinew" | "sinew cordage" | "length of sinew" | "a length of sinew" => ExamineTarget::Sinew,
         "nettle" | "nettles" | "nettle cordage" => ExamineTarget::Nettle,
         "willow bark" | "strip of willow bark" => ExamineTarget::WillowBark,
         "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,

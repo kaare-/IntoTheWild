@@ -225,6 +225,7 @@ impl World {
             ExamineTarget::WillowBark => self.examine_willow_bark(actor_id),
             ExamineTarget::Fluff => self.examine_fluff(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
+            ExamineTarget::Sinew => self.examine_sinew(actor_id),
             ExamineTarget::Cattail => self.examine_cattail(actor_id),
             ExamineTarget::BarkCup => self.examine_bark_cup(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
@@ -1683,6 +1684,9 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Cord).is_empty() {
             parts.push("Hide strips lie here. They are cordage.".into());
         }
+        if !self.ground_ids(actor.cell, Material::Sinew).is_empty() {
+            parts.push("Sinew lies here. It is cordage.".into());
+        }
         let bows_here = self.ground_ids(actor.cell, Material::Bow);
         if !bows_here.is_empty() {
             let willow = bows_here
@@ -1724,6 +1728,8 @@ impl World {
                 parts.push("A nettle snare is set here.".into());
             } else if self.snare_willow.contains(&actor.cell) {
                 parts.push("A willow snare is set here.".into());
+            } else if self.snare_sinew.contains(&actor.cell) {
+                parts.push("A sinew snare is set here.".into());
             } else {
                 parts.push("A hide snare is set here.".into());
             }
@@ -3743,6 +3749,70 @@ impl World {
         }
     }
 
+    fn examine_sinew(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::Sinew).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A length of sinew lies {place}. It is cordage from a carcass, not willow and not nettle."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} lengths of sinew lie {place}. They are cordage from a carcass, not willow and not nettle.",
+                    count_word(count)
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Sinew).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A length of sinew is carried by {who} {cover}. It is cordage from a carcass, not willow and not nettle."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} lengths of sinew are carried by {who} {cover}. They are cordage from a carcass, not willow and not nettle.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no sinew from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    /// A pull of sinew. The person who pulled it already has the reply.
+    fn sinew_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        event
+            .text
+            .starts_with(&format!("{name} pulls sinew "))
+            .then(|| event.text.clone())
+    }
+
     fn examine_nettle(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -4420,6 +4490,8 @@ impl World {
                 "nettle"
             } else if self.snare_willow.contains(&cell) {
                 "willow"
+            } else if self.snare_sinew.contains(&cell) {
+                "sinew"
             } else {
                 "hide"
             };
@@ -4447,6 +4519,10 @@ impl World {
             } else if self.snare_willow.contains(&cell) {
                 lines.push(format!(
                     "A willow snare is set {place}. It is made of willow cordage."
+                ));
+            } else if self.snare_sinew.contains(&cell) {
+                lines.push(format!(
+                    "A sinew snare is set {place}. It is made of sinew."
                 ));
             } else {
                 lines.push(format!(
@@ -4900,6 +4976,10 @@ impl World {
             "a bundle of nettle cordage".into()
         } else if item.material == "nettle" {
             format!("{} bundles of nettle cordage", count_word(item.count))
+        } else if item.material == "sinew" && item.count == 1 {
+            "a length of sinew".into()
+        } else if item.material == "sinew" {
+            format!("{} lengths of sinew", count_word(item.count))
         } else if item.material == "flour" {
             let ids = self.loose_ids(actor_id, Material::Flour);
             let cooked = ids
@@ -7740,8 +7820,13 @@ impl World {
                     "deer"
                 };
                 let article = if kind == "otter" { "An" } else { "A" };
+                let pulled = if item.is_some_and(|carcass| carcass.stripped) {
+                    " The sinew has been pulled."
+                } else {
+                    ""
+                };
                 lines.push(format!(
-                    "{article} {kind} carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.",
+                    "{article} {kind} carcass lies in contact with the ground {}. It is {}. {} It must be cooked before it feeds you.{pulled}",
                     self.place_phrase(origin, cell),
                     self.condition_word(moisture),
                     self.rain_reaches_phrase(cell)
@@ -9885,6 +9970,7 @@ impl World {
                 Material::Whistle => "bone whistle",
                 Material::Flute => "reed flute",
                 Material::Drum => "drum",
+                Material::Sinew => "sinew",
             };
             format!("You see no {name} from here.")
         } else {
@@ -10921,6 +11007,7 @@ impl World {
                     && self.drum_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.scrape_for_these_eyes(viewer, event).is_none()
+                    && self.sinew_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
                     && self.craft_for_these_eyes(viewer, event).is_none()
@@ -11398,6 +11485,7 @@ impl World {
         if rest != "a snare of hide strips."
             && rest != "a snare of willow cordage."
             && rest != "a snare of nettle cordage."
+            && rest != "a snare of sinew."
         {
             return None;
         }
@@ -15170,6 +15258,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Flute, false) => "reed flutes",
         (Material::Drum, true) => "drum",
         (Material::Drum, false) => "drums",
+        (Material::Sinew, true) => "length of sinew",
+        (Material::Sinew, false) => "lengths of sinew",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

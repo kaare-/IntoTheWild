@@ -1039,6 +1039,7 @@ impl World {
         self.snares.remove(&cell);
         let nettle = self.snare_nettle.remove(&cell);
         let willow = self.snare_willow.remove(&cell);
+        let sinew = self.snare_sinew.remove(&cell);
         let valley = self
             .hare
             .as_ref()
@@ -1058,12 +1059,16 @@ impl World {
             "The nettle snare catches a hare."
         } else if valley && willow {
             "The willow snare catches a hare."
+        } else if valley && sinew {
+            "The sinew snare catches a hare."
         } else if valley {
             "The snare catches a hare."
         } else if nettle {
             "The nettle snare catches small game."
         } else if willow {
             "The willow snare catches small game."
+        } else if sinew {
+            "The sinew snare catches small game."
         } else {
             "The snare catches small game."
         };

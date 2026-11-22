@@ -35,6 +35,14 @@ enum Line {
     Hide,
     Willow,
     Nettle,
+    Sinew,
+}
+
+enum SinewSource {
+    Ready(crate::model::ItemId),
+    StrippedCarcass,
+    StrippedMeat,
+    None,
 }
 
 impl World {
@@ -150,6 +158,7 @@ impl World {
         let mut signals = Vec::new();
         let mut strikes = Vec::new();
         let mut ice_breaks = Vec::new();
+        let mut pulls = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -193,6 +202,7 @@ impl World {
                     let snare_line_refusal = matches!(intent.attempt, Attempt::SetSnare)
                         && message == "You have no hide strips or willow cordage to set a snare.";
                     let ice_refusal = matches!(intent.attempt, Attempt::BreakIce);
+                    let sinew_refusal = matches!(intent.attempt, Attempt::PullSinew);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -200,7 +210,8 @@ impl World {
                             && !hook_refusal
                             && !light_refusal
                             && !snare_line_refusal
-                            && !ice_refusal;
+                            && !ice_refusal
+                            && !sinew_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -212,7 +223,9 @@ impl World {
                         Attempt::Release => releases.push(intent),
                         Attempt::Look | Attempt::Examine(_) => quiet.push(intent),
                         Attempt::Arms => arms.push(intent),
-                        Attempt::NameSnare | Attempt::NameCanoe => hints.push(intent),
+                        Attempt::NameSnare | Attempt::NameCanoe | Attempt::NameSinew => {
+                            hints.push(intent)
+                        }
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -300,6 +313,7 @@ impl World {
                         Attempt::Signal(_) => signals.push(intent),
                         Attempt::Strike => strikes.push(intent),
                         Attempt::BreakIce => ice_breaks.push(intent),
+                        Attempt::PullSinew => pulls.push(intent),
                     }
                 }
             }
@@ -379,6 +393,7 @@ impl World {
         for intent in hints {
             let line = match intent.attempt {
                 Attempt::NameSnare => "Set a snare.",
+                Attempt::NameSinew => "Pull sinew from a carcass.",
                 _ => "Board, carve canoe, or paddle.",
             };
             self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
@@ -469,6 +484,7 @@ impl World {
         self.apply_dry_clothes(clothes, &mut results);
         self.apply_signals(signals, &mut results);
         self.apply_strikes(strikes, &mut results);
+        self.apply_pulls(pulls, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_drill_fires(drill_fires, &start_cells, &mut results);
         self.apply_drill_carves(drill_carves, &mut results);
@@ -493,7 +509,8 @@ impl World {
             | Attempt::Examine(_)
             | Attempt::Arms
             | Attempt::NameSnare
-            | Attempt::NameCanoe => Ok(false),
+            | Attempt::NameCanoe
+            | Attempt::NameSinew => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -1113,6 +1130,28 @@ impl World {
                     Err("A fishing net is already set here.".into())
                 } else {
                     Ok(true)
+                }
+            }
+            Attempt::PullSinew => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.carry_count(actor.id) >= self.tuning.carry_slots {
+                    Err(ARMS_FULL.into())
+                } else {
+                    match self.sinew_source(actor.id) {
+                        SinewSource::Ready(_) => Ok(true),
+                        SinewSource::StrippedCarcass => {
+                            Err("The carcass is already stripped.".into())
+                        }
+                        SinewSource::StrippedMeat => Err("The meat is already stripped.".into()),
+                        SinewSource::None => {
+                            Err("You have no carcass or raw meat to pull sinew from.".into())
+                        }
+                    }
                 }
             }
             Attempt::SetSnare => {
@@ -9483,11 +9522,35 @@ impl World {
         if !dry {
             return Some("You have no dry branch for a hoop.");
         }
-        if self.bow_line(actor).is_none() {
+        if self.drum_cord(actor).is_none() {
             Some("You have no cordage to sew a drum.")
         } else {
             None
         }
+    }
+
+    /// Hide strips, then willow, then nettle, then sinew.
+    fn drum_cord(
+        &self,
+        actor: crate::model::ActorId,
+    ) -> Option<(crate::model::ItemId, &'static str)> {
+        if let Some((id, kind)) = self.bow_line(actor) {
+            let word = match kind {
+                Line::Hide => "hide strips",
+                Line::Willow => "willow cordage",
+                Line::Nettle => "nettle cordage",
+                Line::Sinew => "sinew",
+            };
+            return Some((id, word));
+        }
+        let cell = self.bow_cell(actor);
+        if let Some(id) = self.loose_ids(actor, Material::Sinew).first().copied() {
+            return Some((id, "sinew"));
+        }
+        self.ground_ids(cell, Material::Sinew)
+            .first()
+            .copied()
+            .map(|id| (id, "sinew"))
     }
 
     fn apply_drum_stretches(&mut self, stretches: Vec<Intent>, results: &mut Vec<CommandResult>) {
@@ -9505,15 +9568,10 @@ impl World {
             let Some(branch) = self.bow_branch_id(actor.id) else {
                 continue;
             };
-            let Some((line, kind)) = self.bow_line(actor.id) else {
+            let Some((line, cord)) = self.drum_cord(actor.id) else {
                 continue;
             };
             let hide_word = self.drum_hide_word(hide);
-            let cord = match kind {
-                Line::Hide => "hide strips",
-                Line::Willow => "willow cordage",
-                Line::Nettle => "nettle cordage",
-            };
             self.items.remove(&hide);
             self.items.remove(&branch);
             self.items.remove(&line);
@@ -9649,6 +9707,119 @@ impl World {
         false
     }
 
+    fn apply_pulls(&mut self, pulls: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in pulls {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.sinew_ready(actor.id) else {
+                let message = match self.sinew_source(actor.id) {
+                    SinewSource::StrippedCarcass => "The carcass is already stripped.",
+                    SinewSource::StrippedMeat => "The meat is already stripped.",
+                    _ => "You have no carcass or raw meat to pull sinew from.",
+                };
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            };
+            if let Some(item) = self.items.get_mut(&id) {
+                item.stripped = true;
+            }
+            let from_meat = self
+                .item(id)
+                .is_some_and(|item| item.material == Material::Meat);
+            let rest = if from_meat {
+                "sinew from the raw meat."
+            } else {
+                "sinew from the carcass."
+            };
+            let sinew = self.mint_item(Material::Sinew, 0, actor.cell, Some(actor.id), Role::Loose);
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "pull", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![sinew],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "pull", rest),
+                results,
+            );
+        }
+    }
+
+    /// An unstripped carcass, then unstripped raw meat. Arms before the ground.
+    fn sinew_ready(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        match self.sinew_source(actor) {
+            SinewSource::Ready(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    fn sinew_source(&self, actor: crate::model::ActorId) -> SinewSource {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        let fresh = |id: crate::model::ItemId| self.item(id).is_some_and(|item| !item.stripped);
+        if let Some(id) = self
+            .loose_ids(actor, Material::Carcass)
+            .into_iter()
+            .find(|id| fresh(*id))
+        {
+            return SinewSource::Ready(id);
+        }
+        if let Some(id) = self
+            .ground_ids(cell, Material::Carcass)
+            .into_iter()
+            .find(|id| fresh(*id))
+        {
+            return SinewSource::Ready(id);
+        }
+        let raw = |id: crate::model::ItemId| {
+            self.item(id)
+                .is_some_and(|meat| !meat.stripped && !meat.cooked && !meat.smoked && !meat.spoiled)
+        };
+        if let Some(id) = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .find(|id| raw(*id))
+        {
+            return SinewSource::Ready(id);
+        }
+        if let Some(id) = self
+            .ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| raw(*id))
+        {
+            return SinewSource::Ready(id);
+        }
+        let stripped_carcass = self
+            .loose_ids(actor, Material::Carcass)
+            .into_iter()
+            .chain(self.ground_ids(cell, Material::Carcass))
+            .any(|id| self.item(id).is_some_and(|item| item.stripped));
+        if stripped_carcass {
+            return SinewSource::StrippedCarcass;
+        }
+        let stripped_meat = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .chain(self.ground_ids(cell, Material::Meat))
+            .any(|id| {
+                self.item(id).is_some_and(|meat| {
+                    meat.stripped && !meat.cooked && !meat.smoked && !meat.spoiled
+                })
+            });
+        if stripped_meat {
+            SinewSource::StrippedMeat
+        } else {
+            SinewSource::None
+        }
+    }
+
     fn apply_snares(&mut self, snares: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in snares {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -9683,6 +9854,9 @@ impl World {
                 Line::Nettle => {
                     self.snare_nettle.insert(actor.cell);
                 }
+                Line::Sinew => {
+                    self.snare_sinew.insert(actor.cell);
+                }
                 Line::Hide => {}
             }
             self.schedule(ready, crate::model::Wake::Snare(actor.cell));
@@ -9691,6 +9865,7 @@ impl World {
                 Line::Hide => "a snare of hide strips.",
                 Line::Willow => "a snare of willow cordage.",
                 Line::Nettle => "a snare of nettle cordage.",
+                Line::Sinew => "a snare of sinew.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "set", rest),
@@ -9873,9 +10048,18 @@ impl World {
             || !self.ground_ids(cell, Material::Cord).is_empty()
     }
 
-    /// Hide strips if any are here, otherwise willow cordage, otherwise nettle cordage.
+    /// Hide strips if any are here, otherwise willow, otherwise nettle, otherwise sinew.
     pub(crate) fn has_snare_line(&self, actor: crate::model::ActorId) -> bool {
-        self.has_cord(actor) || self.has_willow_cord(actor) || self.has_nettle_cord(actor)
+        self.has_cord(actor)
+            || self.has_willow_cord(actor)
+            || self.has_nettle_cord(actor)
+            || self.has_sinew(actor)
+    }
+
+    fn has_sinew(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Sinew).is_empty()
+            || !self.ground_ids(cell, Material::Sinew).is_empty()
     }
 
     fn has_willow_cord(&self, actor: crate::model::ActorId) -> bool {
@@ -9915,6 +10099,14 @@ impl World {
         if let Some(id) = self.ground_ids(cell, Material::Nettle).first().copied() {
             self.items.remove(&id);
             return Some(Line::Nettle);
+        }
+        if let Some(id) = self.loose_ids(actor, Material::Sinew).first().copied() {
+            self.items.remove(&id);
+            return Some(Line::Sinew);
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Sinew).first().copied() {
+            self.items.remove(&id);
+            return Some(Line::Sinew);
         }
         None
     }
@@ -13119,6 +13311,7 @@ impl World {
                 Line::Hide => "a bow drill from two dry branches and hide strips.",
                 Line::Willow => "a bow drill from two dry branches and willow cordage.",
                 Line::Nettle => "a bow drill from two dry branches and nettle cordage.",
+                Line::Sinew => "a bow drill from two dry branches and sinew.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "carve", rest),
@@ -13248,6 +13441,7 @@ impl World {
                 Line::Hide => "a bow from a dry branch and hide strips.",
                 Line::Willow => "a bow from a dry branch and willow cordage.",
                 Line::Nettle => "a bow from a dry branch and nettle cordage.",
+                Line::Sinew => "a bow from a dry branch and sinew.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "craft", rest),

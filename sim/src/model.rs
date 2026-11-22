@@ -165,6 +165,10 @@ pub enum Material {
     /// cell farther than the bone whistle. It does not bolt the hare.
     /// A deer within hearing lifts its head and does not run.
     Drum,
+    /// Tendon pulled from a carcass or from raw meat. It is cordage.
+    /// It is not willow, and it is not nettle. A snare or a drum can spend it
+    /// when hide strips, willow, and nettle are not at hand.
+    Sinew,
 }
 
 impl Material {
@@ -229,6 +233,7 @@ impl Material {
             Material::Whistle => "whistle",
             Material::Flute => "flute",
             Material::Drum => "drum",
+            Material::Sinew => "sinew",
         }
     }
 
@@ -293,6 +298,7 @@ impl Material {
             Material::Whistle => "bone whistle",
             Material::Flute => "reed flute",
             Material::Drum => "drum",
+            Material::Sinew => "length of sinew",
         }
     }
 
@@ -440,6 +446,8 @@ pub enum ExamineTarget {
     Drill,
     WillowBark,
     Fluff,
+    /// Sinew pulled from a carcass or from raw meat. It is not willow cordage.
+    Sinew,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -451,6 +459,10 @@ pub enum Attempt {
     NameSnare,
     /// Bare `canoe`. Names the verbs. Does not board, carve, or paddle.
     NameCanoe,
+    /// Bare `sinew`. Names the verb. Does not pull.
+    NameSinew,
+    /// Pull sinew from a carcass or from raw meat. The source stays, stripped.
+    PullSinew,
     Examine(ExamineTarget),
     Say(String),
     Move(Dir),
@@ -676,6 +688,7 @@ impl Attempt {
                 | Attempt::StretchDrum
                 | Attempt::BeatDrum
                 | Attempt::BreakIce
+                | Attempt::PullSinew
         )
     }
 }
@@ -855,6 +868,9 @@ pub struct Item {
     /// A pierced hide sewn into a cloak. Other materials leave this false.
     #[serde(default)]
     pub sewn: bool,
+    /// The sinew has already been pulled from this carcass or this raw meat.
+    #[serde(default)]
+    pub stripped: bool,
     /// A portion the iron knife has already split. A whole portion leaves this false.
     #[serde(default)]
     pub small: bool,
@@ -1271,6 +1287,9 @@ pub struct World {
     /// Snares in `snares` that were set with nettle cordage.
     #[serde(default)]
     pub(crate) snare_nettle: BTreeSet<CellId>,
+    /// Snares in `snares` that were set with sinew.
+    #[serde(default)]
+    pub(crate) snare_sinew: BTreeSet<CellId>,
     /// Brook cells where a fishing net is set. It stays until someone gathers it.
     #[serde(default)]
     pub(crate) set_nets: BTreeSet<CellId>,
@@ -1600,6 +1619,7 @@ impl World {
             snares: BTreeMap::new(),
             snare_willow: BTreeSet::new(),
             snare_nettle: BTreeSet::new(),
+            snare_sinew: BTreeSet::new(),
             set_nets: BTreeSet::new(),
             net_catches_at: BTreeMap::new(),
             weirs: BTreeMap::new(),
@@ -2152,6 +2172,7 @@ impl World {
                 pierced: false,
                 scraped: false,
                 sewn: false,
+                stripped: false,
                 small: false,
                 shaped: false,
                 in_basket: false,
@@ -24565,5 +24586,187 @@ mod scrape_hide {
         assert!(world.observe(near).unwrap().events.iter().all(|event| {
             event.text != "You need a flint flake or a stone to scrape the hide."
         }));
+    }
+}
+
+#[cfg(test)]
+mod sinew {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn quiet(world: &World, people: &[u32], line: &str) {
+        for person in people {
+            assert!(
+                world
+                    .observe(*person)
+                    .unwrap()
+                    .events
+                    .iter()
+                    .all(|event| event.text != line),
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn sinew_from_a_carcass_is_cordage_for_a_snare_and_a_drum() {
+        assert_eq!(
+            crate::parse::parse_attempt("pull sinew"),
+            Ok(Attempt::PullSinew)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("strip sinew"),
+            Ok(Attempt::PullSinew)
+        );
+        assert_eq!(crate::parse::parse_attempt("sinew"), Ok(Attempt::NameSinew));
+        assert_eq!(
+            crate::parse::parse_attempt("pull canoe"),
+            Ok(Attempt::Beach)
+        );
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet_id = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+
+        let none = world.step(&[intent("none", near, Attempt::PullSinew)]);
+        assert_eq!(
+            none.results[0].message,
+            "You have no carcass or raw meat to pull sinew from."
+        );
+        quiet(
+            &world,
+            &[near, seen, quiet_id],
+            "You have no carcass or raw meat to pull sinew from.",
+        );
+
+        let carcass = world.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        let named = world.step(&[intent("bare", near, Attempt::NameSinew)]);
+        assert_eq!(named.results[0].message, "Pull sinew from a carcass.");
+        assert!(!world.item(carcass).unwrap().stripped);
+
+        let pulled = world.step(&[intent("pull", near, Attempt::PullSinew)]);
+        assert_eq!(
+            pulled.results[0].message,
+            "You pull sinew from the carcass."
+        );
+        assert!(world.item(carcass).unwrap().stripped);
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("a length of sinew"), "{arms}");
+        assert!(!arms.contains("willow cordage"), "{arms}");
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near pulls sinew from the carcass."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near pulls sinew from the carcass."));
+        assert!(!world
+            .observe(quiet_id)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text.contains("sinew")));
+        let looked = world.examine(near, super::ExamineTarget::Carcass);
+        assert!(looked.contains("The sinew has been pulled."), "{looked}");
+
+        let again = world.step(&[intent("again", near, Attempt::PullSinew)]);
+        assert_eq!(again.results[0].message, "The carcass is already stripped.");
+        quiet(
+            &world,
+            &[near, seen, quiet_id],
+            "The carcass is already stripped.",
+        );
+
+        let meat = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
+        let from_meat = world.step(&[intent("meat", near, Attempt::PullSinew)]);
+        assert_eq!(
+            from_meat.results[0].message,
+            "You pull sinew from the raw meat."
+        );
+        assert!(world.item(meat).unwrap().stripped);
+        world.items.remove(&carcass);
+        let meat_again = world.step(&[intent("meat-again", near, Attempt::PullSinew)]);
+        assert_eq!(
+            meat_again.results[0].message,
+            "The meat is already stripped."
+        );
+        quiet(
+            &world,
+            &[near, seen, quiet_id],
+            "The meat is already stripped.",
+        );
+
+        world.items.get_mut(&meat).unwrap().cooked = true;
+        world.items.get_mut(&meat).unwrap().stripped = false;
+        let cooked = world.step(&[intent("cooked", near, Attempt::PullSinew)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You have no carcass or raw meat to pull sinew from."
+        );
+        world.items.remove(&meat);
+
+        world.mint_item(Material::Willow, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("west", near, Attempt::Move(super::Dir::West))]);
+        let willow_snare = world.step(&[intent("willow-snare", near, Attempt::SetSnare)]);
+        assert_eq!(
+            willow_snare.results[0].message,
+            "You set a snare of willow cordage."
+        );
+        let still = world.observe(near).unwrap().text;
+        assert!(
+            still.contains("a length of sinew") || still.contains("lengths of sinew"),
+            "{still}"
+        );
+
+        world.step(&[intent("west2", near, Attempt::Move(super::Dir::West))]);
+        let sinew_snare = world.step(&[intent("sinew-snare", near, Attempt::SetSnare)]);
+        assert_eq!(sinew_snare.results[0].message, "You set a snare of sinew.");
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near sets a snare of sinew."));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("A sinew snare is set here."), "{here}");
+        assert!(!world
+            .observe(quiet_id)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text.contains("snare of sinew")));
+
+        let drum_cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Hide, 0, drum_cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, drum_cell, Some(near), Role::Loose);
+        let drum = world.step(&[intent("drum", near, Attempt::StretchDrum)]);
+        assert_eq!(
+            drum.results[0].message,
+            "You sew a deer hide over a hoop of dry branch with sinew."
+        );
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text.contains("sews a deer hide")));
+        assert!(world.observe(seen).unwrap().events.iter().any(
+            |event| event.text == "Near sews a deer hide over a hoop of dry branch with sinew."
+        ));
+        let _ = cell_id(0, 0);
     }
 }
