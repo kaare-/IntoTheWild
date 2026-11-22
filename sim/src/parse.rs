@@ -48,7 +48,8 @@ cook                         heat a mushroom, or cook berries, a carcass, raw me
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
 hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, an otter on its cell or the next, a beaver on its cell or the next, a fox on its cell or the next, or a hare on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, the otter, the beaver, the fox, or the hare comes down. A refusal leaves it. The bow stays.
 fish                         a fire-hardened flint spear, or a fishing net, or a bone fish hook with hide strips, in the brook or beside it, and from a dugout on the brook. A bone fish hook and a worm, with no spear and no net, is the same cast as fish with hook, in the brook or in the still shallows. The spear and the net are not used up. The hide strips are spent as the line. The worm is spent as the bait. That stretch is quiet for a short wait
-fish with hook               the same cast with a bone fish hook and hide strips in the arms. A worm baits the hook. In the still shallows the worm is the bait and the line is not required. The hook stays. The strips are spent when they are the line. With no hook, no worm in the shallows, or no water, only you hear it
+fish with hook               the same cast with a bone fish hook and hide strips in the arms. A worm baits the hook. In the still shallows the worm is the bait and the line is not required. The hook stays. The strips are spent when they are the line. A hole in the ice lets that cast through while the still is frozen. With no hook, no worm in the shallows, or no water, only you hear it
+break ice                    a stone, a bone, or an iron knife on frozen still water. A hole opens, and the tool stays. break and chop are the same. With no ice, no tool, or a hole already open, only you hear it
 spear fish                   the same cast with the spear
 butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up. An otter, a fox, a hare, or a beaver is one portion of raw meat, that animal's hide, and a bone.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
@@ -664,6 +665,21 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::FishHook)
         }
         "spear" if rest == "fish" => Ok(Attempt::Fish),
+        "break" | "chop"
+            if rest.is_empty()
+                || rest == "ice"
+                || rest == "the ice"
+                || rest == "a hole"
+                || rest == "hole"
+                || rest == "the hole"
+                || rest == "ice hole"
+                || rest == "the ice hole"
+                || rest == "hole in the ice"
+                || rest == "a hole in the ice"
+                || rest == "the hole in the ice" =>
+        {
+            Ok(Attempt::BreakIce)
+        }
         "dry" if rest == "clothes" || rest == "my clothes" || rest == "the clothes" => {
             Ok(Attempt::DryClothes)
         }

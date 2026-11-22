@@ -576,6 +576,9 @@ pub enum Attempt {
     /// Beat the drum in the arms. Heard one cell farther than the bone whistle.
     /// The hare does not bolt. A deer within hearing lifts its head.
     BeatDrum,
+    /// A stone, a bone, or an iron knife opens a hole in ice on the still.
+    /// The tool is not used up. A baited bone hook can fish through the hole.
+    BreakIce,
 }
 
 impl Attempt {
@@ -669,6 +672,7 @@ impl Attempt {
                 | Attempt::BlowFlute
                 | Attempt::StretchDrum
                 | Attempt::BeatDrum
+                | Attempt::BreakIce
         )
     }
 }
@@ -1286,6 +1290,9 @@ pub struct World {
     /// until this sim time. The brook's quiet is separate.
     #[serde(default)]
     pub(crate) shallows_quiet: BTreeMap<CellId, u64>,
+    /// A hole chopped in the ice on this still cell. Gone once the ice is.
+    #[serde(default)]
+    pub(crate) ice_holes: BTreeSet<CellId>,
     /// A cell a deer has just left, or where a bolt or a kill left tracks,
     /// until this sim time. The permanent hoofprints are separate.
     #[serde(default)]
@@ -1593,6 +1600,7 @@ impl World {
             aboard: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
             shallows_quiet: BTreeMap::new(),
+            ice_holes: BTreeSet::new(),
             fresh_tracks: BTreeMap::new(),
             wolf_tracks: BTreeMap::new(),
             wolf_cell: None,
@@ -4196,6 +4204,11 @@ impl World {
     pub(crate) fn shallows_here(&self, cell: CellId) -> bool {
         let place = self.cell(cell);
         place.still && place.region != Region::Brook
+    }
+
+    /// A hole chopped through the ice on this still. Open water is not a hole.
+    pub(crate) fn ice_hole(&self, cell: CellId) -> bool {
+        self.ice_holes.contains(&cell) && self.still_frozen(cell)
     }
 
     /// A worm-baited hook has already taken a fish from these shallows.
@@ -13210,6 +13223,180 @@ mod fish_hook {
             .events
             .iter()
             .all(|event| event.text != "Ice covers the shallows."));
+    }
+
+    #[test]
+    fn a_hole_in_the_ice_lets_a_baited_hook_fish() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let far = world.spawn_at("Far", "f", 6, 3).unwrap();
+        let shallows = at(2, 1);
+        assert_eq!(
+            crate::parse::parse_attempt("break").unwrap(),
+            Attempt::BreakIce
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("chop ice").unwrap(),
+            Attempt::BreakIce
+        );
+        let early = say(&mut world, "early", near, Attempt::BreakIce);
+        assert_eq!(early, "There is no ice here.");
+        for id in [near, seen, quiet, far] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "There is no ice here."));
+        }
+        while !world.still_frozen(shallows) {
+            world.step(&[]);
+        }
+        let covered = world.observe(near).unwrap().text;
+        assert!(
+            covered.contains("The still water is frozen. Ice covers it."),
+            "{covered}"
+        );
+        let bare = say(&mut world, "bare", near, Attempt::BreakIce);
+        assert_eq!(bare, "You have nothing to break the ice.");
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You have nothing to break the ice." }));
+        }
+        world.mint_item(Material::Stone, 0, shallows, Some(near), super::Role::Loose);
+        let opened = say(&mut world, "open", near, Attempt::BreakIce);
+        assert_eq!(opened, "You break a hole in the ice with the stone.");
+        assert_eq!(world.loose_ids(near, Material::Stone).len(), 1);
+        assert!(world.ice_hole(shallows));
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text
+                .contains("The still water is frozen. A hole is open in the ice."),
+            "{}",
+            here.text
+        );
+        assert!(!here.text.contains("Ice covers it."), "{}", here.text);
+        assert!(here
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near breaks a hole")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near breaks a hole in the ice with the stone." }));
+        assert!(
+            world.observe(seen).unwrap().text.contains(
+                "The still water to the north and west is frozen. A hole is open in the ice."
+            ),
+            "{}",
+            world.observe(seen).unwrap().text
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You hear ice break to the north and west." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("breaks a hole") }));
+        assert!(world
+            .observe(far)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hole") && !event.text.contains("ice break") }));
+        let again = say(&mut world, "again", near, Attempt::BreakIce);
+        assert_eq!(again, "A hole is already open in the ice.");
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "A hole is already open in the ice."));
+        }
+        let nohook = say(&mut world, "nohook", near, Attempt::FishHook);
+        assert_eq!(nohook, "You are not carrying a bone fish hook.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a bone fish hook." }));
+        world.mint_item(Material::Hook, 0, shallows, Some(near), super::Role::Loose);
+        let noworm = say(&mut world, "noworm", near, Attempt::Fish);
+        assert_eq!(noworm, "You have no worm to bait the hook.");
+        world.mint_item(Material::Worm, 0, shallows, Some(near), super::Role::Loose);
+        world.mint_item(Material::Worm, 0, shallows, Some(near), super::Role::Loose);
+        let caught = say(&mut world, "catch", near, Attempt::Fish);
+        assert_eq!(
+            caught,
+            "You catch a fish from the hole in the ice with the bone fish hook and a worm."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Near catches") && event.text != caught }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near catches a fish from the hole in the ice with the bone fish hook and a worm."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You hear a splash to the north and west." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("catches a fish") }));
+        assert!(world.observe(far).unwrap().events.iter().all(|event| {
+            !event.text.contains("catches a fish") && !event.text.contains("splash")
+        }));
+        let gone = say(&mut world, "gone", near, Attempt::Fish);
+        assert_eq!(gone, "The fish are gone from the shallows.");
+        assert_eq!(world.loose_ids(near, Material::Worm).len(), 1);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The fish are gone from the shallows." }));
+        for _ in 0..80 {
+            if !world.still_frozen(shallows) {
+                break;
+            }
+            world.step(&[]);
+        }
+        assert!(!world.still_frozen(shallows));
+        assert!(!world.ice_hole(shallows));
+        let thawed = world.observe(near).unwrap().text;
+        assert!(
+            thawed.contains("The day has thawed the still water."),
+            "{thawed}"
+        );
+        assert!(!thawed.contains("A hole is open"), "{thawed}");
+        assert_eq!(
+            say(&mut world, "thawed", near, Attempt::BreakIce),
+            "There is no ice here."
+        );
     }
 }
 

@@ -1456,6 +1456,15 @@ impl World {
     /// the ice in look. Someone out of sight but within hearing gets the
     /// crack. The day thaw, and every tick the ice simply holds, is silent.
     pub(crate) fn crack_on_freeze(&mut self) {
+        let thawed: Vec<CellId> = self
+            .ice_holes
+            .iter()
+            .copied()
+            .filter(|cell| !self.still_frozen(*cell))
+            .collect();
+        for cell in thawed {
+            self.ice_holes.remove(&cell);
+        }
         if self.time == 0 {
             return;
         }

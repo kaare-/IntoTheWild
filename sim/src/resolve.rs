@@ -141,6 +141,7 @@ impl World {
         let mut clothes = Vec::new();
         let mut signals = Vec::new();
         let mut strikes = Vec::new();
+        let mut ice_breaks = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -183,13 +184,15 @@ impl World {
                     // set in the cell still sits in the actor's event list.
                     let snare_line_refusal = matches!(intent.attempt, Attempt::SetSnare)
                         && message == "You have no hide strips or willow cordage to set a snare.";
+                    let ice_refusal = matches!(intent.attempt, Attempt::BreakIce);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
                             && message != BARK_REFUSAL
                             && !hook_refusal
                             && !light_refusal
-                            && !snare_line_refusal;
+                            && !snare_line_refusal
+                            && !ice_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -287,6 +290,7 @@ impl World {
                         Attempt::DryClothes => clothes.push(intent),
                         Attempt::Signal(_) => signals.push(intent),
                         Attempt::Strike => strikes.push(intent),
+                        Attempt::BreakIce => ice_breaks.push(intent),
                     }
                 }
             }
@@ -415,6 +419,7 @@ impl World {
         self.apply_rests(rests, &mut results);
         self.apply_dries(dries, &mut results);
         self.apply_fishes(fishes, &mut results);
+        self.apply_ice_breaks(ice_breaks, &mut results);
         self.apply_brands(brands, &mut results);
         self.apply_baskets(baskets, &mut results);
         self.apply_cups(cups, &mut results);
@@ -662,7 +667,7 @@ impl World {
                 } else if self.shallows_here(actor.cell) {
                     if self.loose_ids(actor.id, Material::Worm).is_empty() {
                         Err("You have no worm to bait the hook.".into())
-                    } else if self.still_frozen(actor.cell) {
+                    } else if self.still_frozen(actor.cell) && !self.ice_hole(actor.cell) {
                         Err("Ice covers the shallows.".into())
                     } else if self.shallows_are_quiet(actor.cell) {
                         Err("The fish are gone from the shallows.".into())
@@ -1030,6 +1035,23 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if let Some(message) = self.drum_refusal(actor.id) {
                     Err(message.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::BreakIce => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.shallows_here(actor.cell) || !self.still_frozen(actor.cell) {
+                    Err("There is no ice here.".into())
+                } else if self.ice_hole(actor.cell) {
+                    Err("A hole is already open in the ice.".into())
+                } else if self.ice_tool(actor.id).is_none() {
+                    Err("You have nothing to break the ice.".into())
                 } else {
                     Ok(true)
                 }
@@ -5451,7 +5473,7 @@ impl World {
                 let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
                 if self.loose_ids(actor, Material::Worm).is_empty() {
                     Some("You have no worm to bait the hook.")
-                } else if self.still_frozen(cell) {
+                } else if self.still_frozen(cell) && !self.ice_hole(cell) {
                     Some("Ice covers the shallows.")
                 } else if self.shallows_are_quiet(cell) {
                     Some("The fish are gone from the shallows.")
@@ -5534,7 +5556,7 @@ impl World {
             );
             return;
         }
-        if self.still_frozen(cell) {
+        if self.still_frozen(cell) && !self.ice_hole(cell) {
             self.finish(
                 intent.command_id,
                 intent.actor_id,
@@ -5556,7 +5578,84 @@ impl World {
         }
         let until = self.time.saturating_add(self.tuning.clay_ticks);
         self.shallows_quiet.insert(cell, until);
-        self.finish_worm_hook(intent, cell, "the shallows", results);
+        let water = if self.ice_hole(cell) {
+            "the hole in the ice"
+        } else {
+            "the shallows"
+        };
+        self.finish_worm_hook(intent, cell, water, results);
+    }
+
+    /// A stone, a bone, or an iron knife. The first one in the arms is the one named.
+    fn ice_tool(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        if !self.loose_ids(actor, Material::Stone).is_empty() {
+            Some("the stone")
+        } else if !self.loose_ids(actor, Material::Bone).is_empty() {
+            Some("the bone")
+        } else if !self.loose_ids(actor, Material::Knife).is_empty() {
+            Some("the iron knife")
+        } else {
+            None
+        }
+    }
+
+    /// Open a hole in the ice. The tool stays. Someone who cannot see the cell
+    /// hears the break, and past hearing hears nothing.
+    fn apply_ice_breaks(&mut self, breaks: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in breaks {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self.shallows_here(actor.cell) || !self.still_frozen(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no ice here.",
+                    results,
+                );
+                continue;
+            }
+            if self.ice_hole(actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A hole is already open in the ice.",
+                    results,
+                );
+                continue;
+            }
+            let Some(tool) = self.ice_tool(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have nothing to break the ice.",
+                    results,
+                );
+                continue;
+            };
+            self.ice_holes.insert(actor.cell);
+            let name = self.name_of(actor.id);
+            let rest = format!("a hole in the ice with {tool}.");
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "break", &rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "break", &rest),
+                results,
+            );
+        }
     }
 
     /// A bone hook and a worm, and no line. The worm is spent. The hook stays.

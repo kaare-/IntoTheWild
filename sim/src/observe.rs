@@ -868,7 +868,9 @@ impl World {
             parts.push("The brook is quiet. The fish are gone.".into());
         }
         if cell.still && cell.region != crate::model::Region::Brook {
-            if self.still_frozen(actor.cell) {
+            if self.still_frozen(actor.cell) && self.ice_hole(actor.cell) {
+                parts.push("The still water is frozen. A hole is open in the ice.".into());
+            } else if self.still_frozen(actor.cell) {
                 parts.push("The still water is frozen. Ice covers it.".into());
             } else if self.still_would_freeze(actor.cell) {
                 parts.push("The fire is keeping the still water from freezing.".into());
@@ -1703,10 +1705,16 @@ impl World {
             if cell == origin || !self.still_frozen(cell) {
                 continue;
             }
-            lines.push(format!(
-                "The still water to the {} is frozen. Ice covers it.",
-                self.relative(origin, cell)
-            ));
+            let way = self.relative(origin, cell);
+            if self.ice_hole(cell) {
+                lines.push(format!(
+                    "The still water to the {way} is frozen. A hole is open in the ice."
+                ));
+            } else {
+                lines.push(format!(
+                    "The still water to the {way} is frozen. Ice covers it."
+                ));
+            }
         }
         if lines.is_empty() {
             None
@@ -9795,6 +9803,11 @@ impl World {
                     "The brook {} is running water. It does not freeze. Drinking it turns your stomach only occasionally. Boiled in a pot over a fire, it does not.",
                     self.place_phrase(origin, cell)
                 ));
+            } else if place.still && self.still_frozen(cell) && self.ice_hole(cell) {
+                lines.push(format!(
+                    "Still water {} is frozen. A hole is open in the ice.",
+                    self.place_phrase(origin, cell)
+                ));
             } else if place.still && self.still_frozen(cell) {
                 lines.push(format!(
                     "Still water {} is frozen. Ice covers it. A fire on it would keep it open.",
@@ -10764,6 +10777,7 @@ impl World {
                     && self.alone_pull_for_these_eyes(viewer, event).is_none()
                     && self.net_fish_for_these_eyes(viewer, event).is_none()
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
+                    && self.ice_break_for_these_eyes(viewer, event).is_none()
                     && self.haft_for_these_eyes(viewer, event).is_none()
                     && self.bank_for_these_eyes(viewer, event).is_none()
                     && self.thatch_for_these_eyes(viewer, event).is_none()
@@ -11764,6 +11778,7 @@ impl World {
                 != "a fish from the brook with the bone fish hook and a worm. The nettle cordage is spent."
             && rest != "a fish from the brook with the bone fish hook and a worm."
             && rest != "a fish from the shallows with the bone fish hook and a worm."
+            && rest != "a fish from the hole in the ice with the bone fish hook and a worm."
         {
             return None;
         }
@@ -12168,6 +12183,57 @@ impl World {
         event.affected_cells.first().copied()
     }
 
+    /// The person who broke the ice already has the reply.
+    fn ice_break_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} breaks "))?;
+        if !rest.starts_with("a hole in the ice with ") {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "break", rest))
+    }
+
+    fn ice_break_marker(&self, event: &crate::model::Event) -> bool {
+        event.text.contains(" breaks a hole in the ice with ")
+    }
+
+    fn ice_break_cell(&self, event: &crate::model::Event) -> Option<CellId> {
+        if !self.ice_break_marker(event) {
+            return None;
+        }
+        event.affected_cells.first().copied()
+    }
+
+    /// A hole chopped in the ice, heard from out of sight. Someone who can
+    /// see the still keeps the break sentence. Past hearing, nothing.
+    fn ice_break_for_these_ears(
+        &self,
+        origin: CellId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        let cell = self.ice_break_cell(event)?;
+        if !self.hears_an_ice_break(origin, event) {
+            return None;
+        }
+        let way = self.relative(origin, cell);
+        Some(format!("You hear ice break to the {way}."))
+    }
+
+    fn hears_an_ice_break(&self, origin: CellId, event: &crate::model::Event) -> bool {
+        let Some(cell) = self.ice_break_cell(event) else {
+            return false;
+        };
+        let distance = chebyshev(origin, cell);
+        distance > self.tuning.sight && distance <= self.tuning.hearing
+    }
+
     /// A successful walk, heard from out of sight. Someone who can see the
     /// arrival keeps the walk sentence. The walker reads it in the second
     /// person instead. Past hearing, nothing is delivered.
@@ -12338,6 +12404,9 @@ impl World {
             || event
                 .text
                 .contains(" catches a fish from the shallows with the bone fish hook")
+            || event
+                .text
+                .contains(" catches a fish from the hole in the ice with the bone fish hook")
             || event.text == "The fishing net catches a fish."
             || event.text.contains("splashes away");
         if !splash {
@@ -13420,6 +13489,9 @@ impl World {
         if let Some(line) = self.ice_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.ice_break_for_these_ears(origin, event) {
+            return line;
+        }
         if let Some(line) = self.brush_for_these_ears(origin, event) {
             return line;
         }
@@ -13710,6 +13782,9 @@ impl World {
             Scope::Cell(cell) => {
                 if self.ice_forming(event) {
                     return self.hears_ice(origin, event);
+                }
+                if self.ice_break_marker(event) && self.hears_an_ice_break(origin, event) {
+                    return true;
                 }
                 if self.brush_crack_marker(event) {
                     return self.hears_brush(origin, event);
