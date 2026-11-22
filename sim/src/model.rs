@@ -3522,7 +3522,7 @@ impl World {
             }
         }
         match ways.len() {
-            0 => self.ore_diagonal_step(cell, material),
+            0 => self.diagonal_gather_step(cell, material),
             1 => Some(format!(" Step {}.", ways[0])),
             _ => {
                 let last = ways.pop()?;
@@ -3531,10 +3531,13 @@ impl World {
         }
     }
 
-    /// One diagonal lump of ore, and no orthogonal one. The words match look:
-    /// `Step north and west.` Anything else stays quiet.
-    fn ore_diagonal_step(&self, cell: CellId, material: Material) -> Option<String> {
-        if !matches!(material, Material::IronOre | Material::CopperOre) {
+    /// One diagonal of this stock, and no orthogonal one. The words match look:
+    /// `Step north and west.` Ore, flint, and worms. Anything else stays quiet.
+    fn diagonal_gather_step(&self, cell: CellId, material: Material) -> Option<String> {
+        if !matches!(
+            material,
+            Material::IronOre | Material::CopperOre | Material::Flint | Material::Worm
+        ) {
             return None;
         }
         let (x, y) = cell_xy(cell);
@@ -21381,6 +21384,73 @@ mod gather_step {
         );
         assert_eq!(cell_xy(world.actor(near).unwrap().cell), (5, 1));
     }
+
+    #[test]
+    fn flint_and_worms_one_cell_off_name_the_step() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+
+        let corner = world.step(&[intent("corner", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(
+            corner.results[0].message,
+            "There is no flint here to gather. Step north and east."
+        );
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (3, 1));
+        assert!(world.observe(near).unwrap().events.iter().any(|event| {
+            event.text == "There is no flint here to gather. Step north and east."
+        }));
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                !event.text.contains("flint") && !event.text.contains("Step north")
+            }));
+        }
+
+        let worms = world.step(&[intent("worms", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            worms.results[0].message,
+            "There are no worms here to dig. Step south and west."
+        );
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (3, 1));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There are no worms here to dig. Step south and west." }));
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                !event.text.contains("worms") && !event.text.contains("Step south")
+            }));
+        }
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(4, 1).unwrap();
+        let beside = world.step(&[intent("beside", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(
+            beside.results[0].message,
+            "There is no flint here to gather. Step north."
+        );
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(2, 1).unwrap();
+        let south = world.step(&[intent("south", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            south.results[0].message,
+            "There are no worms here to dig. Step south."
+        );
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(6, 1).unwrap();
+        let rock = world.step(&[intent("rock", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(rock.results[0].message, "There is no flint here to gather.");
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(2, 0).unwrap();
+        let slope = world.step(&[intent("slope", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(slope.results[0].message, "There are no worms here to dig.");
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(4, 0).unwrap();
+        let taken = world.step(&[intent("taken", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(taken.results[0].message, "You gather a flint nodule.");
+    }
 }
 
 #[cfg(test)]
@@ -23792,10 +23862,18 @@ mod worms {
         let again = world.step(&[intent("again", near, Attempt::Gather(Material::Worm))]);
         assert_eq!(
             again.results[0].message,
-            "The damp earth here has no worms."
+            "The damp earth here has no worms. Step south and west."
         );
-        assert!(says(&world, near, "The damp earth here has no worms."));
-        assert!(!says(&world, seen, "The damp earth here has no worms."));
+        assert!(says(
+            &world,
+            near,
+            "The damp earth here has no worms. Step south and west."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "The damp earth here has no worms. Step south and west."
+        ));
 
         world.mint_item(Material::Hook, 0, bank, Some(near), Role::Loose);
         world.mint_item(Material::Cord, 0, bank, Some(near), Role::Loose);
@@ -23899,10 +23977,18 @@ mod worms {
         let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Worm))]);
         assert_eq!(
             missed.results[0].message,
-            "The damp earth here has no worms."
+            "The damp earth here has no worms. Step south and west."
         );
-        assert!(says(&world, near, "The damp earth here has no worms."));
-        assert!(!says(&world, seen, "The damp earth here has no worms."));
+        assert!(says(
+            &world,
+            near,
+            "The damp earth here has no worms. Step south and west."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "The damp earth here has no worms. Step south and west."
+        ));
         let ticks = world.tuning.moss_ticks;
         for _ in 0..ticks - 2 {
             world.step(&[]);
