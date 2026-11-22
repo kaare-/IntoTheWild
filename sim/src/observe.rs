@@ -369,6 +369,9 @@ impl World {
             if let Some(ochre) = self.seen_ochre(actor_id) {
                 lines.push(ochre);
             }
+            if let Some(quartz) = self.seen_quartz(actor_id) {
+                lines.push(quartz);
+            }
             if let Some(ore) = self.seen_copper_ore(actor_id) {
                 lines.push(ore);
             }
@@ -1300,6 +1303,19 @@ impl World {
         } else if self.ochre_bare(actor.cell) {
             parts.push("The slope has no ochre.".into());
         }
+        if self.pile_count(actor.cell, Material::Quartz) > 0
+            || !self.ground_ids(actor.cell, Material::Quartz).is_empty()
+        {
+            if self.quartz_faces.contains(&actor.cell) || self.cell(actor.cell).rock {
+                parts.push(
+                    "A clear stone of quartz lies on the rock face. It is a clear stone.".into(),
+                );
+            } else {
+                parts.push("A clear stone of quartz lies here.".into());
+            }
+        } else if self.quartz_faces.contains(&actor.cell) {
+            parts.push("The rock face has no quartz.".into());
+        }
         if self.pile_count(actor.cell, Material::Salt) > 0
             || !self.ground_ids(actor.cell, Material::Salt).is_empty()
         {
@@ -2086,6 +2102,32 @@ impl World {
                     "The slope to the {} has no ochre.",
                     self.relative(origin, cell)
                 ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A clear stone of quartz on a rock face in sight, not underfoot.
+    fn seen_quartz(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.quartz_faces.contains(&cell) {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::Quartz) > 0
+                || !self.ground_ids(cell, Material::Quartz).is_empty()
+            {
+                lines.push(format!(
+                    "A clear stone of quartz lies on the rock face to the {way}."
+                ));
+            } else {
+                lines.push(format!("The rock face to the {way} has no quartz."));
             }
         }
         if lines.is_empty() {
@@ -4760,6 +4802,10 @@ impl World {
             "a worm".into()
         } else if item.material == "worm" {
             format!("{} worms", count_word(item.count))
+        } else if item.material == "quartz" && item.count == 1 {
+            "a clear stone of quartz".into()
+        } else if item.material == "quartz" {
+            format!("{} clear stones of quartz", count_word(item.count))
         } else if item.material == "fish hook" && item.count == 1 {
             "a bone fish hook".into()
         } else if item.material == "fish hook" {
@@ -5679,6 +5725,13 @@ impl World {
             } else {
                 bits.push("a lump of ochre".into());
             }
+        }
+        if self.pile_count(dest, Material::Quartz) > 0
+            || !self.ground_ids(dest, Material::Quartz).is_empty()
+        {
+            bits.push("a clear stone of quartz on the rock face".into());
+        } else if self.quartz_faces.contains(&dest) {
+            bits.push("no quartz on the rock face".into());
         }
         if self.pile_count(dest, Material::Salt) > 0
             || !self.ground_ids(dest, Material::Salt).is_empty()
@@ -9504,6 +9557,7 @@ impl World {
                 Material::WillowBark => "willow bark",
                 Material::Fluff => "cattail fluff",
                 Material::Worm => "worm",
+                Material::Quartz => "quartz",
             };
             format!("You see no {name} from here.")
         } else {
@@ -12535,6 +12589,7 @@ impl World {
             "cattail roots",
             "handful of cattail fluff",
             "worm",
+            "clear stone of quartz",
             "cattail flour",
             "cattail flatbread",
             "bark cup",
@@ -14510,6 +14565,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Fluff, false) => "handfuls of cattail fluff",
         (Material::Worm, true) => "worm",
         (Material::Worm, false) => "worms",
+        (Material::Quartz, true) => "clear stone of quartz",
+        (Material::Quartz, false) => "clear stones of quartz",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

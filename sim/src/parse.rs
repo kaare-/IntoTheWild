@@ -90,6 +90,7 @@ gather honey                 a honeycomb from the bees' nest in the tree on the 
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
 dig worms                    a worm from damp earth, the bank or a place with mud. gather worms is the same. The damp earth has no worms once it is dug, then they are there again after 24 ticks. On a bone fish hook the worm is spent, and that stretch of the brook can be fished again on the next tick. Without a worm the hook is unchanged.
+gather quartz                a clear stone from the rock face. gather clear stone is the same. It can spark with flint. It does not grow back. strike flint on it makes sparks jump, and does not light a fire.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
 strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
 strip willow bark            a strip of bark from that same willow. It is not the cordage. gather willow bark is the same. The willow has no bark once the strip is taken, then the strip grows back.
@@ -185,6 +186,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "e" | "east" => Ok(Attempt::Move(Dir::East)),
         "w" | "west" => Ok(Attempt::Move(Dir::West)),
         "move" | "go" | "walk" => parse_dir(rest).map(Attempt::Move),
+        "strike"
+            if rest.is_empty()
+                || rest == "flint"
+                || rest == "quartz"
+                || rest == "flint on quartz"
+                || rest == "the flint"
+                || rest == "the quartz" =>
+        {
+            Ok(Attempt::Strike)
+        }
         "signal" => parse_signal(rest),
         "smoke" if rest == "signal" || rest.starts_with("signal ") => {
             parse_signal(rest.trim_start_matches("signal").trim())
@@ -805,6 +816,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "egg" | "eggs" => Ok(Material::Egg),
         "moss" | "handful of moss" => Ok(Material::Moss),
         "worm" | "worms" | "a worm" => Ok(Material::Worm),
+        "quartz" | "clear stone" | "clear stone of quartz" | "quartz stone" => Ok(Material::Quartz),
         "mint" | "handful of mint" | "wild mint" => Ok(Material::Mint),
         "pine needles" | "needles" | "handful of pine needles" | "pine needle" | "pine" => {
             Ok(Material::Needle)

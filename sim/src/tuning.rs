@@ -804,6 +804,7 @@ impl Tuning {
             Material::WillowBark => 0,
             Material::Fluff => self.bark_rain,
             Material::Worm => 0,
+            Material::Quartz => 0,
         }
     }
 }

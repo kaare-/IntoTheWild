@@ -134,6 +134,7 @@ impl World {
         let mut bows = Vec::new();
         let mut clothes = Vec::new();
         let mut signals = Vec::new();
+        let mut strikes = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -265,6 +266,7 @@ impl World {
                         Attempt::CraftBow => bows.push(intent),
                         Attempt::DryClothes => clothes.push(intent),
                         Attempt::Signal(_) => signals.push(intent),
+                        Attempt::Strike => strikes.push(intent),
                     }
                 }
             }
@@ -425,6 +427,7 @@ impl World {
         self.apply_bows(bows, &mut results);
         self.apply_dry_clothes(clothes, &mut results);
         self.apply_signals(signals, &mut results);
+        self.apply_strikes(strikes, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_drill_fires(drill_fires, &start_cells, &mut results);
         self.apply_drill_carves(drill_carves, &mut results);
@@ -1784,6 +1787,30 @@ impl World {
                     Err("You have nothing to mark with.".into())
                 }
             }
+            Attempt::Strike => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Flint).is_empty()
+                    && self.loose_ids(actor.id, Material::Flake).is_empty()
+                {
+                    Err("You have no flint to strike.".into())
+                } else if self.loose_ids(actor.id, Material::Quartz).is_empty()
+                    && self.pile_count(actor.cell, Material::Quartz) == 0
+                    && self.ground_ids(actor.cell, Material::Quartz).is_empty()
+                {
+                    if self.quartz_faces.contains(&actor.cell) {
+                        Err("The rock face has no quartz.".into())
+                    } else {
+                        Err("There is no quartz here to strike.".into())
+                    }
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::Signal(green) => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -1881,6 +1908,17 @@ impl World {
                         || !self.ground_ids(actor.cell, Material::Cattail).is_empty())
                 {
                     return Err("Ice covers the cattail roots.".into());
+                } else if *material == Material::Quartz {
+                    let here = self.pile_count(actor.cell, Material::Quartz) > 0
+                        || !self.ground_ids(actor.cell, Material::Quartz).is_empty();
+                    if !here {
+                        let bare = if self.quartz_faces.contains(&actor.cell) {
+                            "The rock face has no quartz.".to_string()
+                        } else {
+                            "There is no quartz here to gather.".to_string()
+                        };
+                        return Err(self.gather_miss(actor.cell, *material, bare));
+                    }
                 } else if *material == Material::Worm {
                     let here = self.pile_count(actor.cell, Material::Worm) > 0
                         || !self.ground_ids(actor.cell, Material::Worm).is_empty();
@@ -2419,6 +2457,7 @@ impl World {
                     | Material::Paddle
                     | Material::Hook
                     | Material::Worm
+                    | Material::Quartz
                     | Material::Willow
                     | Material::Nettle
                     | Material::BarkCup
@@ -2542,6 +2581,8 @@ impl World {
                         "a handful of cattail fluff.".to_string()
                     } else if material == Material::Worm {
                         "a worm.".to_string()
+                    } else if material == Material::Quartz {
+                        "a clear stone of quartz.".to_string()
                     } else if material == Material::Flour {
                         if self.item(item).is_some_and(|flour| flour.cooked) {
                             "a cattail flatbread.".to_string()
@@ -4011,6 +4052,20 @@ impl World {
             return Some("There is nothing here to cook.".into());
         }
         None
+    }
+
+    /// Flint on quartz. Sparks jump. The stone and the flint stay.
+    /// The reply stays with the striker. It does not light a fire.
+    fn apply_strikes(&mut self, strikes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in strikes {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                "You strike the flint on the quartz. Sparks jump.",
+                results,
+            );
+        }
     }
 
     /// A column of smoke from the fire here. The reply stays with the person

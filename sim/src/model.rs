@@ -152,6 +152,9 @@ pub enum Material {
     /// One worm from damp earth. On a bone fish hook it is spent,
     /// and that stretch of the brook is quiet for one tick.
     Worm,
+    /// A clear stone on the rock face. It can spark with flint.
+    /// It is not the loose stone, and it is not the flint nodule.
+    Quartz,
 }
 
 impl Material {
@@ -212,6 +215,7 @@ impl Material {
             Material::WillowBark => "willow bark",
             Material::Fluff => "cattail fluff",
             Material::Worm => "worm",
+            Material::Quartz => "quartz",
         }
     }
 
@@ -272,6 +276,7 @@ impl Material {
             Material::WillowBark => "strip of willow bark",
             Material::Fluff => "handful of cattail fluff",
             Material::Worm => "worm",
+            Material::Quartz => "clear stone of quartz",
         }
     }
 
@@ -536,6 +541,8 @@ pub enum Attempt {
     /// A column of smoke from a burning fire. Green reeds or pine needles
     /// may be laid on it. They do not change what the column means.
     Signal(Option<Material>),
+    /// Flint struck on quartz. Sparks jump. It does not light a fire.
+    Strike,
 }
 
 impl Attempt {
@@ -622,6 +629,7 @@ impl Attempt {
                 | Attempt::CarveDrill
                 | Attempt::DrillFire
                 | Attempt::Signal(_)
+                | Attempt::Strike
         )
     }
 }
@@ -1273,6 +1281,9 @@ pub struct World {
     /// When a dug bed has worms again. Look says the damp earth has none until then.
     #[serde(default)]
     pub(crate) worm_returns_at: BTreeMap<CellId, u64>,
+    /// The rock face where a clear stone of quartz lies. It does not grow back.
+    #[serde(default)]
+    pub(crate) quartz_faces: BTreeSet<CellId>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1526,6 +1537,7 @@ impl World {
             moss_banks: BTreeSet::new(),
             worm_beds: BTreeSet::new(),
             worm_returns_at: BTreeMap::new(),
+            quartz_faces: BTreeSet::new(),
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -1632,7 +1644,11 @@ impl World {
         world.add_pile(ochre, Material::Ochre, 1, 0);
         world.ochre_beds.insert(ochre);
         // A second lump, on the rock face. It does not grow back with the slope.
-        world.add_pile(cell_id(6, 1).unwrap(), Material::Ochre, 1, 0);
+        // A clear stone of quartz lies on that same face. It does not grow back.
+        let face = cell_id(6, 1).unwrap();
+        world.add_pile(face, Material::Ochre, 1, 0);
+        world.add_pile(face, Material::Quartz, 1, 0);
+        world.quartz_faces.insert(face);
         let iron = cell_id(5, 0).unwrap();
         world.add_pile(iron, Material::IronOre, 1, 0);
         world.iron_beds.insert(iron);
@@ -21234,5 +21250,99 @@ mod worms {
         assert_eq!(world.pile_count(bank, Material::Worm), 1);
         let again = world.step(&[intent("again", near, Attempt::Gather(Material::Worm))]);
         assert_eq!(again.results[0].message, "You gather a worm.");
+    }
+
+    #[test]
+    fn quartz_on_the_rock_face_is_a_clear_stone() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 3, 3).unwrap();
+        let face = cell_id(6, 1).unwrap();
+        let distant = "A clear stone of quartz lies on the rock face to the north and east.";
+        assert!(world.observe(near).unwrap().text.contains(distant));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("A clear stone of quartz lies on the rock face to the north and east."));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("clear stone of quartz"));
+        let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Quartz))]);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no quartz here to gather."
+        );
+        assert!(says(&world, near, "There is no quartz here to gather."));
+        assert!(!says(&world, seen, "There is no quartz here to gather."));
+        assert!(!says(&world, quiet, "There is no quartz here to gather."));
+        for (n, step) in [Dir::North, Dir::East, Dir::North, Dir::East]
+            .into_iter()
+            .enumerate()
+        {
+            let moved = world.step(&[intent(&format!("walk{n}"), near, Attempt::Move(step))]);
+            assert!(moved.results[0].success, "{}", moved.results[0].message);
+        }
+        assert_eq!(world.actor(near).unwrap().cell, face);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A clear stone of quartz lies on the rock face. It is a clear stone.")
+        );
+        assert!(here.contains("A lump of ochre lies on the rock face."));
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Quartz))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a clear stone of quartz."
+        );
+        let third = "Near gathers a clear stone of quartz.";
+        assert!(says(&world, seen, third));
+        assert!(!says(&world, quiet, third));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == third));
+        let after = world.observe(near).unwrap().text;
+        assert!(after.contains("The rock face has no quartz."));
+        assert!(after.contains("You have a clear stone of quartz."));
+        assert!(after.contains("A lump of ochre lies on the rock face."));
+        let second = world.step(&[intent("again", near, Attempt::Gather(Material::Quartz))]);
+        assert_eq!(second.results[0].message, "The rock face has no quartz.");
+        assert!(says(&world, near, "The rock face has no quartz."));
+        assert!(!says(&world, seen, "The rock face has no quartz."));
+        let bare = world.step(&[intent("strike", near, Attempt::Strike)]);
+        assert_eq!(bare.results[0].message, "You have no flint to strike.");
+        assert!(says(&world, near, "You have no flint to strike."));
+        assert!(!says(&world, seen, "You have no flint to strike."));
+        for (n, step) in [Dir::West, Dir::West, Dir::North].into_iter().enumerate() {
+            let moved = world.step(&[intent(&format!("slope{n}"), near, Attempt::Move(step))]);
+            assert!(moved.results[0].success, "{}", moved.results[0].message);
+        }
+        let nodule = world.step(&[intent("flint", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(nodule.results[0].message, "You gather a flint nodule.");
+        let struck = world.step(&[intent("sparks", near, Attempt::Strike)]);
+        assert_eq!(
+            struck.results[0].message,
+            "You strike the flint on the quartz. Sparks jump."
+        );
+        let spark = "You strike the flint on the quartz. Sparks jump.";
+        assert!(!says(&world, near, spark));
+        assert!(!says(&world, seen, spark));
+        assert!(!says(&world, quiet, spark));
+        assert!(world.fire_at(world.actor(near).unwrap().cell).is_none());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a clear stone of quartz"));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("The rock face to the north and east has no quartz."));
     }
 }
