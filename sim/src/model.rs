@@ -3794,11 +3794,15 @@ impl World {
     }
 
     /// One diagonal of this stock, and no orthogonal one. The words match look:
-    /// `Step north and west.` Ore, flint, and worms. Anything else stays quiet.
+    /// `Step north and west.` Ore, flint, stone, and worms. Anything else stays quiet.
     fn diagonal_gather_step(&self, cell: CellId, material: Material) -> Option<String> {
         if !matches!(
             material,
-            Material::IronOre | Material::CopperOre | Material::Flint | Material::Worm
+            Material::IronOre
+                | Material::CopperOre
+                | Material::Flint
+                | Material::Stone
+                | Material::Worm
         ) {
             return None;
         }
@@ -22600,6 +22604,27 @@ mod gather_step {
         let rock = world.step(&[intent("rock", near, Attempt::Gather(Material::Flint))]);
         assert_eq!(rock.results[0].message, "There is no flint here to gather.");
 
+        let stone = world.step(&[intent("stone-rock", near, Attempt::Gather(Material::Stone))]);
+        assert_eq!(
+            stone.results[0].message,
+            "There is no stone here to gather."
+        );
+        world.add_pile(cell_id(5, 0).unwrap(), Material::Stone, 1, 0);
+        let beside = world.step(&[intent("stone-near", near, Attempt::Gather(Material::Stone))]);
+        assert_eq!(
+            beside.results[0].message,
+            "There is no stone here to gather. Step north and west."
+        );
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (6, 1));
+        assert!(world.observe(near).unwrap().events.iter().any(|event| {
+            event.text == "There is no stone here to gather. Step north and west."
+        }));
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "There is no stone here to gather. Step north and west."
+            }));
+        }
+
         world.actors.get_mut(&near).unwrap().cell = cell_id(2, 0).unwrap();
         let slope = world.step(&[intent("slope", near, Attempt::Gather(Material::Worm))]);
         assert_eq!(slope.results[0].message, "There are no worms here to dig.");
@@ -25696,9 +25721,59 @@ mod scrape_hide {
             no_tool.results[0].message,
             "You need a flint flake or a stone to scrape the hide."
         );
+        for person in [bare, near, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "You need a flint flake or a stone to scrape the hide."
+            }));
+        }
+    }
+
+    #[test]
+    fn a_clear_stone_underfoot_scrapes_the_hide_and_stays() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        assert!(world.pile_count(cell, Material::Quartz) > 0);
+        world.mint_item(Material::Hide, 0, cell, Some(near), Role::Loose);
+        let scraped = world.step(&[intent("scrape", near, Attempt::Scrape)]);
+        assert_eq!(
+            scraped.results[0].message,
+            "You scrape the deer hide with the clear stone."
+        );
+        assert!(world.pile_count(cell, Material::Quartz) > 0);
+        assert!(world.loose_ids(near, Material::Quartz).is_empty());
+        let look = world.observe(near).unwrap().text;
+        assert!(look.contains("a scraped deer hide"), "{look}");
+        assert!(look.contains("clear stone"), "{look}");
         assert!(world.observe(near).unwrap().events.iter().all(|event| {
-            event.text != "You need a flint flake or a stone to scrape the hide."
+            event.text != "You scrape the deer hide with the clear stone."
+                && event.text != "Near scrapes the deer hide with the clear stone."
         }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near scrapes the deer hide with the clear stone." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("scrape") }));
+
+        let carried = world.spawn_at("Ash", "a", 4, 4).unwrap();
+        let away = world.actor(carried).unwrap().cell;
+        world.mint_item(Material::Hide, 0, away, Some(carried), Role::Loose);
+        world.mint_item(Material::Quartz, 0, away, Some(carried), Role::Loose);
+        let arms = world.step(&[intent("arms", carried, Attempt::Scrape)]);
+        assert_eq!(
+            arms.results[0].message,
+            "You scrape the deer hide with the clear stone."
+        );
+        assert_eq!(world.loose_ids(carried, Material::Quartz).len(), 1);
     }
 }
 

@@ -225,6 +225,9 @@ impl World {
                     let hammer_refusal =
                         matches!(intent.attempt, Attempt::Hammer | Attempt::HammerIron);
                     let pierce_refusal = matches!(intent.attempt, Attempt::Pierce);
+                    // A scrape with no flake, flint, stone, or clear stone is
+                    // the reply only, and so is any other scrape miss.
+                    let scrape_refusal = matches!(intent.attempt, Attempt::Scrape);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -240,7 +243,8 @@ impl World {
                             && !roast_refusal
                             && !cook_fire_refusal
                             && !hammer_refusal
-                            && !pierce_refusal;
+                            && !pierce_refusal
+                            && !scrape_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -12472,7 +12476,9 @@ impl World {
         }
     }
 
-    /// A flint flake, a flint nodule, or a loose stone. The flake is named first.
+    /// A flint flake, a flint nodule, a loose stone, or a clear stone of quartz.
+    /// The flake is named first. Quartz in the arms or underfoot is the stone.
+    /// It is not gathered and it is not used up.
     fn scrape_tool(&self, actor: ActorId) -> Option<&'static str> {
         if !self.loose_ids(actor, Material::Flake).is_empty() {
             return Some("the flint flake");
@@ -12482,6 +12488,15 @@ impl World {
         }
         if !self.loose_ids(actor, Material::Stone).is_empty() {
             return Some("the stone");
+        }
+        if !self.loose_ids(actor, Material::Quartz).is_empty() {
+            return Some("the clear stone");
+        }
+        let cell = self.actor(actor)?.cell;
+        if self.pile_count(cell, Material::Quartz) > 0
+            || !self.ground_ids(cell, Material::Quartz).is_empty()
+        {
+            return Some("the clear stone");
         }
         None
     }
