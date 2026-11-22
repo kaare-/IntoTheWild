@@ -5898,7 +5898,13 @@ impl World {
 
     /// Once while this deer stays in sight. Not an event. Not a hunt.
     fn spear_reach_hint(&self, viewer: ActorId) -> Option<String> {
-        self.actor(viewer)?.spear_hint_show.then(|| {
+        let actor = self.actor(viewer)?;
+        if !actor.spear_hint_show {
+            return None;
+        }
+        Some(if actor.spear_hint_harden {
+            "Fire-harden the tip of the spear that could reach the deer.".into()
+        } else {
             "Haft the flint flake and a dry branch into a spear that could reach the deer.".into()
         })
     }
