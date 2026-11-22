@@ -13237,6 +13237,92 @@ mod mushroom_return {
             .iter()
             .all(|event| event.text != cooked_seen));
     }
+
+    #[test]
+    fn a_smaller_piece_is_named_when_it_is_gathered_or_dropped() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let raw = world.mint_item(Material::Meat, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&raw).unwrap().small = true;
+        let gathered = world.step(&[intent("raw", near, Attempt::Gather(Material::Meat))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a smaller piece of raw meat."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You gather a smaller piece of raw meat."
+                && event.text != "Near gathers a smaller piece of raw meat."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a smaller piece of raw meat." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near gathers a smaller piece of raw meat." }));
+        let dropped = world.step(&[intent("drop-raw", near, Attempt::Drop(Material::Meat))]);
+        let raw_line = "You drop a smaller piece of raw meat. It is in contact with the ground.";
+        let raw_seen = "Near drops a smaller piece of raw meat. It is in contact with the ground.";
+        assert_eq!(dropped.results[0].message, raw_line);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != raw_line && event.text != raw_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == raw_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != raw_seen));
+        let cooked = world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        {
+            let piece = world.items.get_mut(&cooked).unwrap();
+            piece.small = true;
+            piece.cooked = true;
+        }
+        let cooked_drop = world.step(&[intent("drop-cooked", near, Attempt::Drop(Material::Meat))]);
+        let cooked_line =
+            "You drop a smaller piece of cooked meat. It is in contact with the ground.";
+        let cooked_seen =
+            "Near drops a smaller piece of cooked meat. It is in contact with the ground.";
+        assert_eq!(cooked_drop.results[0].message, cooked_line);
+        let arms = world.arms_line(near);
+        assert!(!arms.contains("a raw meat"), "{arms}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != cooked_line && event.text != cooked_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == cooked_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != cooked_seen));
+    }
 }
 
 #[cfg(test)]

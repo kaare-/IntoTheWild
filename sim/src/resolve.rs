@@ -2954,22 +2954,12 @@ impl World {
                             "bark cup"
                         };
                         format!("a {kind}{from}.")
-                    } else if material == Material::Meat
-                        && self
+                    } else if material == Material::Meat {
+                        let phrase = self
                             .item(item)
-                            .is_some_and(|meat| !meat.small && meat.cooked)
-                    {
-                        "a portion of cooked meat.".to_string()
-                    } else if material == Material::Meat
-                        && self.item(item).is_some_and(|meat| {
-                            !meat.small
-                                && !meat.cooked
-                                && !meat.salted
-                                && !meat.smoked
-                                && !meat.spoiled
-                        })
-                    {
-                        "a portion of raw meat.".to_string()
+                            .map(|meat| self.meat_lift_noun(meat))
+                            .unwrap_or_else(|| "portion of raw meat".into());
+                        format!("a {phrase}{from}.")
                     } else {
                         format!("{} {noun}{from}.", material.article())
                     };
@@ -3160,24 +3150,12 @@ impl World {
             let flatbread =
                 material == Material::Flour && self.item(item_id).is_some_and(|flour| flour.cooked);
             let flour = material == Material::Flour && !flatbread;
-            let meat_portion = if material == Material::Meat {
-                self.item(item_id).and_then(|meat| {
-                    if meat.small {
-                        None
-                    } else if meat.cooked {
-                        Some("portion of cooked meat")
-                    } else if !meat.salted && !meat.smoked && !meat.spoiled {
-                        Some("portion of raw meat")
-                    } else {
-                        None
-                    }
-                })
+            let meat_noun = if material == Material::Meat {
+                self.item(item_id).map(|meat| self.meat_lift_noun(meat))
             } else {
                 None
             };
-            let noun = if let Some(portion) = meat_portion {
-                portion
-            } else if bone_awl {
+            let noun = if bone_awl {
                 "bone awl"
             } else if sealed_cup {
                 "sealed bark cup"
@@ -3190,6 +3168,7 @@ impl World {
             } else {
                 material.gather_noun()
             };
+            let noun = meat_noun.as_deref().unwrap_or(noun);
             let dropped = if material == Material::Cord {
                 format!("{name} drops hide strips. They are in contact with the ground.")
             } else if material == Material::Egg {

@@ -11656,6 +11656,29 @@ impl World {
         lines
     }
 
+    /// The words after "a" for one piece of meat. A whole piece is a portion.
+    /// A cut piece is a smaller piece. The kind matches the arms.
+    pub(crate) fn meat_lift_noun(&self, meat: &crate::model::Item) -> String {
+        let face = self.meat_face(meat);
+        let kind = match face {
+            "cooked" => "cooked meat",
+            "spoiled" => "spoiled meat",
+            "smoked" => "smoked meat",
+            "salted" => "salted meat",
+            _ => "raw meat",
+        };
+        let bit = if meat.small {
+            format!("smaller piece of {kind}")
+        } else {
+            format!("portion of {kind}")
+        };
+        if face == "going" {
+            format!("{bit} that is going bad")
+        } else {
+            bit
+        }
+    }
+
     /// Raw, going bad, spoiled, salted, or cooked. Look is rebuilt from the item.
     fn meat_face(&self, meat: &crate::model::Item) -> &'static str {
         if meat.cooked {
@@ -13511,6 +13534,16 @@ impl World {
             "reed mat",
             "portion of raw meat",
             "portion of cooked meat",
+            "portion of salted meat",
+            "portion of smoked meat",
+            "portion of spoiled meat",
+            "portion of raw meat that is going bad",
+            "smaller piece of raw meat",
+            "smaller piece of cooked meat",
+            "smaller piece of salted meat",
+            "smaller piece of smoked meat",
+            "smaller piece of spoiled meat",
+            "smaller piece of raw meat that is going bad",
         ];
         let known = NOUNS
             .iter()
