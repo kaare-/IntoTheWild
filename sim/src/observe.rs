@@ -11707,6 +11707,8 @@ impl World {
                 != "a fish from the brook with the bone fish hook and a worm. The willow cordage is spent."
             && rest
                 != "a fish from the brook with the bone fish hook and a worm. The nettle cordage is spent."
+            && rest != "a fish from the brook with the bone fish hook and a worm."
+            && rest != "a fish from the shallows with the bone fish hook and a worm."
         {
             return None;
         }
@@ -12278,6 +12280,9 @@ impl World {
             || event
                 .text
                 .contains(" catches a fish from the brook with the bone fish hook")
+            || event
+                .text
+                .contains(" catches a fish from the shallows with the bone fish hook")
             || event.text == "The fishing net catches a fish."
             || event.text.contains("splashes away");
         if !splash {

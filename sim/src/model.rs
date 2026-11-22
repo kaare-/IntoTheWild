@@ -1280,6 +1280,10 @@ pub struct World {
     /// Banks that touch that cell fish the same stretch.
     #[serde(default)]
     pub(crate) brook_quiet: BTreeMap<CellId, u64>,
+    /// The still shallows, after a worm-baited hook has taken a fish,
+    /// until this sim time. The brook's quiet is separate.
+    #[serde(default)]
+    pub(crate) shallows_quiet: BTreeMap<CellId, u64>,
     /// A cell a deer has just left, or where a bolt or a kill left tracks,
     /// until this sim time. The permanent hoofprints are separate.
     #[serde(default)]
@@ -1586,6 +1590,7 @@ impl World {
             charred_items: BTreeSet::new(),
             aboard: BTreeMap::new(),
             brook_quiet: BTreeMap::new(),
+            shallows_quiet: BTreeMap::new(),
             fresh_tracks: BTreeMap::new(),
             wolf_tracks: BTreeMap::new(),
             wolf_cell: None,
@@ -4174,6 +4179,19 @@ impl World {
     /// cast on the step that begins then can take another fish.
     pub(crate) fn brook_is_quiet(&self, cell: CellId) -> bool {
         self.brook_quiet
+            .get(&cell)
+            .is_some_and(|until| self.time < *until)
+    }
+
+    /// The still at (2, 1). Cattails grow in it. It is not the brook.
+    pub(crate) fn shallows_here(&self, cell: CellId) -> bool {
+        let place = self.cell(cell);
+        place.still && place.region != Region::Brook
+    }
+
+    /// A worm-baited hook has already taken a fish from these shallows.
+    pub(crate) fn shallows_are_quiet(&self, cell: CellId) -> bool {
+        self.shallows_quiet
             .get(&cell)
             .is_some_and(|until| self.time < *until)
     }
@@ -12850,6 +12868,178 @@ mod fish_hook {
         assert!(look.text.contains("a bone fish hook"), "{}", look.text);
         assert!(look.text.contains("raw fish"), "{}", look.text);
         assert!(!look.text.contains("hide strips"), "{}", look.text);
+    }
+
+    #[test]
+    fn a_worm_baits_the_hook_in_the_shallows_and_the_brook() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let dry = world.spawn_at("Dry", "d", 4, 0).unwrap();
+        assert_eq!(
+            say(&mut world, "inland", near, Attempt::Fish),
+            "The brook is not here."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("brook is not here")));
+        world.mint_item(Material::Hook, 0, at(4, 0), Some(dry), super::Role::Loose);
+        world.mint_item(Material::Worm, 0, at(4, 0), Some(dry), super::Role::Loose);
+        assert_eq!(
+            say(&mut world, "dry", dry, Attempt::Fish),
+            "The brook is not here."
+        );
+        assert_eq!(world.loose_ids(dry, Material::Worm).len(), 1);
+        assert!(world
+            .observe(dry)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The brook is not here."));
+
+        let shallows = at(2, 1);
+        world.spawn_at("Wade", "w", 2, 1).unwrap();
+        let wade = world
+            .actors
+            .values()
+            .find(|actor| actor.name == "Wade")
+            .unwrap()
+            .id;
+        assert_eq!(
+            say(&mut world, "nohook", wade, Attempt::FishHook),
+            "You are not carrying a bone fish hook."
+        );
+        assert!(world
+            .observe(wade)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a bone fish hook." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("bone fish hook")));
+        world.mint_item(Material::Hook, 0, shallows, Some(wade), super::Role::Loose);
+        assert_eq!(
+            say(&mut world, "nobait", wade, Attempt::FishHook),
+            "You have no worm to bait the hook."
+        );
+        assert_eq!(world.loose_ids(wade, Material::Hook).len(), 1);
+        assert!(world
+            .observe(wade)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You have no worm to bait the hook." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("worm")));
+        world.mint_item(Material::Worm, 0, shallows, Some(wade), super::Role::Loose);
+        world.mint_item(Material::Cord, 0, shallows, Some(wade), super::Role::Loose);
+        let caught = say(&mut world, "cast", wade, Attempt::Fish);
+        assert_eq!(
+            caught,
+            "You catch a fish from the shallows with the bone fish hook and a worm."
+        );
+        assert_eq!(world.loose_ids(wade, Material::Worm).len(), 0);
+        assert_eq!(world.loose_ids(wade, Material::Hook).len(), 1);
+        assert_eq!(world.loose_ids(wade, Material::Cord).len(), 1);
+        assert_eq!(world.loose_ids(wade, Material::Fish).len(), 1);
+        assert_eq!(world.actor_cell(wade), Some((2, 1)));
+        assert!(world.observe(wade).unwrap().events.iter().all(|event| {
+            !event.text.contains("You catch") && !event.text.contains("Wade catches")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Wade catches a fish from the shallows with the bone fish hook and a worm."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You hear a splash to the north and west." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("catches a fish")));
+        world.mint_item(Material::Worm, 0, shallows, Some(wade), super::Role::Loose);
+        let missed = say(&mut world, "miss", wade, Attempt::FishHook);
+        assert_eq!(missed, "The fish are gone from the shallows.");
+        assert_eq!(world.loose_ids(wade, Material::Worm).len(), 1);
+        assert!(world
+            .observe(wade)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The fish are gone from the shallows." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("fish are gone")));
+
+        let bank = at(2, 2);
+        world.spawn_at("Brook", "b", 2, 2).unwrap();
+        let brook_id = world
+            .actors
+            .values()
+            .find(|actor| actor.name == "Brook")
+            .unwrap()
+            .id;
+        world.mint_item(Material::Hook, 0, bank, Some(brook_id), super::Role::Loose);
+        world.mint_item(Material::Worm, 0, bank, Some(brook_id), super::Role::Loose);
+        let from_bank = say(&mut world, "bank", brook_id, Attempt::Fish);
+        assert_eq!(
+            from_bank,
+            "You catch a fish from the brook with the bone fish hook and a worm."
+        );
+        assert_eq!(world.loose_ids(brook_id, Material::Worm).len(), 0);
+        assert_eq!(world.loose_ids(brook_id, Material::Hook).len(), 1);
+        assert_eq!(world.loose_ids(brook_id, Material::Fish).len(), 1);
+        assert!(world
+            .observe(brook_id)
+            .unwrap()
+            .events
+            .iter()
+            .all(
+                |event| !event.text.contains("You catch") && !event.text.contains("Brook catches")
+            ));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Brook catches a fish from the brook with the bone fish hook and a worm."
+        }));
+
+        while !world.still_frozen(shallows) {
+            world.step(&[]);
+        }
+        world.mint_item(Material::Worm, 0, shallows, Some(wade), super::Role::Loose);
+        let iced = say(&mut world, "ice", wade, Attempt::Fish);
+        assert_eq!(iced, "Ice covers the shallows.");
+        assert!(world.loose_ids(wade, Material::Worm).len() >= 1);
+        assert!(world
+            .observe(wade)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Ice covers the shallows."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Ice covers the shallows."));
     }
 }
 

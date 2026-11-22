@@ -160,14 +160,22 @@ impl World {
                     // dry refusal, and those still sit in the actor's
                     // event list. A spear or a net that says the brook is
                     // not here, or that the fish are gone, still does too.
-                    let hook_refusal = matches!(intent.attempt, Attempt::FishHook)
-                        && matches!(
-                            message.as_str(),
-                            "The brook is not here."
-                                | "You are not carrying a bone fish hook."
-                                | "You have no hide strips for a line."
-                                | "The fish are gone from this stretch of the brook."
-                        );
+                    let hook_line = matches!(
+                        message.as_str(),
+                        "The brook is not here."
+                            | "You are not carrying a bone fish hook."
+                            | "You have no hide strips for a line."
+                            | "You have no worm to bait the hook."
+                            | "Ice covers the shallows."
+                            | "The fish are gone from this stretch of the brook."
+                            | "The fish are gone from the shallows."
+                    );
+                    let fish_is_the_hook = matches!(intent.attempt, Attempt::Fish)
+                        && self.loose_ids(actor.id, Material::Spear).is_empty()
+                        && self.loose_ids(actor.id, Material::Net).is_empty()
+                        && !self.loose_ids(actor.id, Material::Hook).is_empty();
+                    let hook_refusal = hook_line
+                        && (matches!(intent.attempt, Attempt::FishHook) || fish_is_the_hook);
                     // A light refusal is the reply only. Bark, resin, rain,
                     // and a fire already burning stay with the person who tried.
                     let light_refusal = matches!(intent.attempt, Attempt::Light);
@@ -626,6 +634,11 @@ impl World {
                     Err("The brook is not here.".into())
                 } else if let Some(message) = self.fish_tool_refusal(actor.id) {
                     Err(message.into())
+                } else if self.shallows_here(actor.cell)
+                    && !self.loose_ids(actor.id, Material::Hook).is_empty()
+                    && !self.loose_ids(actor.id, Material::Worm).is_empty()
+                {
+                    Ok(true)
                 } else if self
                     .brook_stretch(actor.cell)
                     .is_some_and(|stretch| self.brook_is_quiet(stretch))
@@ -642,16 +655,28 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if !self.fishing_water(actor.cell) {
+                } else if !self.fishing_water(actor.cell) && !self.shallows_here(actor.cell) {
                     Err("The brook is not here.".into())
                 } else if self.loose_ids(actor.id, Material::Hook).is_empty() {
                     Err("You are not carrying a bone fish hook.".into())
+                } else if self.shallows_here(actor.cell) {
+                    if self.loose_ids(actor.id, Material::Worm).is_empty() {
+                        Err("You have no worm to bait the hook.".into())
+                    } else if self.still_frozen(actor.cell) {
+                        Err("Ice covers the shallows.".into())
+                    } else if self.shallows_are_quiet(actor.cell) {
+                        Err("The fish are gone from the shallows.".into())
+                    } else {
+                        Ok(true)
+                    }
                 } else if self
                     .brook_stretch(actor.cell)
                     .is_some_and(|stretch| self.brook_is_quiet(stretch))
                 {
                     Err("The fish are gone from this stretch of the brook.".into())
-                } else if self.fishing_line(actor.id).is_none() {
+                } else if self.fishing_line(actor.id).is_none()
+                    && self.loose_ids(actor.id, Material::Worm).is_empty()
+                {
                     Err("You have no hide strips for a line.".into())
                 } else {
                     Ok(true)
@@ -5417,7 +5442,30 @@ impl World {
             }
             Some("You are not carrying a spear.")
                 if !self.loose_ids(actor, Material::Hook).is_empty()
+                    && self
+                        .actor(actor)
+                        .is_some_and(|person| self.shallows_here(person.cell)) =>
+            {
+                let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+                if self.loose_ids(actor, Material::Worm).is_empty() {
+                    Some("You have no worm to bait the hook.")
+                } else if self.still_frozen(cell) {
+                    Some("Ice covers the shallows.")
+                } else if self.shallows_are_quiet(cell) {
+                    Some("The fish are gone from the shallows.")
+                } else {
+                    None
+                }
+            }
+            Some("You are not carrying a spear.")
+                if !self.loose_ids(actor, Material::Hook).is_empty()
                     && self.fishing_line(actor).is_some() =>
+            {
+                None
+            }
+            Some("You are not carrying a spear.")
+                if !self.loose_ids(actor, Material::Hook).is_empty()
+                    && !self.loose_ids(actor, Material::Worm).is_empty() =>
             {
                 None
             }
@@ -5445,7 +5493,8 @@ impl World {
         self.fish_spear_refusal(intent.actor_id) == Some("You are not carrying a spear.")
             && self.loose_ids(intent.actor_id, Material::Net).is_empty()
             && !self.loose_ids(intent.actor_id, Material::Hook).is_empty()
-            && self.fishing_line(intent.actor_id).is_some()
+            && (self.fishing_line(intent.actor_id).is_some()
+                || !self.loose_ids(intent.actor_id, Material::Worm).is_empty())
     }
 
     /// Hide strips if the arms hold them, otherwise a bundle of willow cordage.
@@ -5466,13 +5515,112 @@ impl World {
         None
     }
 
+    /// The still shallows. The worm is the bait. The hook stays. The line is not spent.
+    fn apply_shallows_hook(
+        &mut self,
+        intent: Intent,
+        cell: crate::model::CellId,
+        results: &mut Vec<CommandResult>,
+    ) {
+        if self.loose_ids(intent.actor_id, Material::Worm).is_empty() {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You have no worm to bait the hook.",
+                results,
+            );
+            return;
+        }
+        if self.still_frozen(cell) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "Ice covers the shallows.",
+                results,
+            );
+            return;
+        }
+        if self.shallows_are_quiet(cell) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "The fish are gone from the shallows.",
+                results,
+            );
+            return;
+        }
+        let until = self.time.saturating_add(self.tuning.clay_ticks);
+        self.shallows_quiet.insert(cell, until);
+        self.finish_worm_hook(intent, cell, "the shallows", results);
+    }
+
+    /// A bone hook and a worm, and no line. The worm is spent. The hook stays.
+    fn finish_worm_hook(
+        &mut self,
+        intent: Intent,
+        cell: crate::model::CellId,
+        water: &str,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let Some(worm) = self
+            .loose_ids(intent.actor_id, Material::Worm)
+            .first()
+            .copied()
+        else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You have no worm to bait the hook.",
+                results,
+            );
+            return;
+        };
+        self.items.remove(&worm);
+        let into_basket = self.carry_count(intent.actor_id) >= self.tuning.carry_slots
+            && self.basket_has_room(intent.actor_id);
+        let carrier = if self.carry_count(intent.actor_id) < self.tuning.carry_slots || into_basket
+        {
+            Some(intent.actor_id)
+        } else {
+            None
+        };
+        let id = self.mint_item(Material::Fish, 0, cell, carrier, Role::Loose);
+        if into_basket {
+            if let Some(fish) = self.items.get_mut(&id) {
+                fish.in_basket = true;
+            }
+        }
+        let name = self.name_of(intent.actor_id);
+        let rest = format!("a fish from {water} with the bone fish hook and a worm.");
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "catch", &rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "catch", &rest),
+            results,
+        );
+    }
+
     /// The line is spent. The hook stays.
     fn apply_hook_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
         let cell = self
             .actor(intent.actor_id)
             .map(|actor| actor.cell)
             .unwrap_or(0);
-        if !self.fishing_water(cell) {
+        if !self.fishing_water(cell) && !self.shallows_here(cell) {
             self.finish(
                 intent.command_id,
                 intent.actor_id,
@@ -5492,6 +5640,10 @@ impl World {
             );
             return;
         }
+        if self.shallows_here(cell) {
+            self.apply_shallows_hook(intent, cell, results);
+            return;
+        }
         if self
             .brook_stretch(cell)
             .is_some_and(|stretch| self.brook_is_quiet(stretch))
@@ -5506,13 +5658,21 @@ impl World {
             return;
         }
         let Some((line, spent)) = self.fishing_line(intent.actor_id) else {
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                false,
-                "You have no hide strips for a line.",
-                results,
-            );
+            if self.loose_ids(intent.actor_id, Material::Worm).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no hide strips for a line.",
+                    results,
+                );
+            } else {
+                if let Some(stretch) = self.brook_stretch(cell) {
+                    let until = self.time.saturating_add(1);
+                    self.brook_quiet.insert(stretch, until);
+                }
+                self.finish_worm_hook(intent, cell, "the brook", results);
+            }
             return;
         };
         self.items.remove(&line);
