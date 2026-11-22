@@ -1308,10 +1308,11 @@ impl World {
         {
             if self.quartz_faces.contains(&actor.cell) || self.cell(actor.cell).rock {
                 parts.push(
-                    "A clear stone of quartz lies on the rock face. It is a clear stone.".into(),
+                    "A clear stone of quartz lies on the rock face. It is a clear stone. It can spark."
+                        .into(),
                 );
             } else {
-                parts.push("A clear stone of quartz lies here.".into());
+                parts.push("A clear stone of quartz lies here. It can spark.".into());
             }
         } else if self.quartz_faces.contains(&actor.cell) {
             parts.push("The rock face has no quartz.".into());
@@ -2124,7 +2125,7 @@ impl World {
                 || !self.ground_ids(cell, Material::Quartz).is_empty()
             {
                 lines.push(format!(
-                    "A clear stone of quartz lies on the rock face to the {way}."
+                    "A clear stone of quartz lies on the rock face to the {way}. It can spark."
                 ));
             } else {
                 lines.push(format!("The rock face to the {way} has no quartz."));
@@ -10607,6 +10608,7 @@ impl World {
                     && self.mat_for_these_eyes(viewer, event).is_none()
                     && self.canoe_for_these_eyes(viewer, event).is_none()
                     && self.light_for_these_eyes(viewer, event).is_none()
+                    && self.strike_for_these_eyes(viewer, event).is_none()
                     && self.fire_pot_for_these_eyes(viewer, event).is_none()
                     && self.boil_reply_for_these_eyes(viewer, event).is_none()
                     && self.steep_reply_for_these_eyes(viewer, event).is_none()
@@ -13190,6 +13192,25 @@ impl World {
             return None;
         }
         Some(event.text.clone())
+    }
+
+    /// The striker already has the reply. The third person stays with
+    /// someone who can see the cell.
+    fn strike_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let line = format!("{name} strikes the flint on the quartz. The sparks catch.");
+        if event.text == line {
+            Some(event.text.clone())
+        } else {
+            None
+        }
     }
 
     /// An event keeps the weather of its own tick. The wood is named, not counted.

@@ -21345,4 +21345,121 @@ mod worms {
             .text
             .contains("The rock face to the north and east has no quartz."));
     }
+
+    #[test]
+    fn sparks_catch_in_dry_tinder_and_a_dry_branch() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let face = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 3, 3).unwrap();
+        world.add_pile(face, Material::Flint, 1, 0);
+        let nodule = world.step(&[intent("flint", near, Attempt::Gather(Material::Flint))]);
+        assert_eq!(nodule.results[0].message, "You gather a flint nodule.");
+        let stone = world.step(&[intent("stone", near, Attempt::Gather(Material::Quartz))]);
+        assert_eq!(
+            stone.results[0].message,
+            "You gather a clear stone of quartz."
+        );
+        let bare = world.step(&[intent("bare", near, Attempt::Strike)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You strike the flint on the quartz. Sparks jump."
+        );
+        assert!(world.fire_at(face).is_none());
+        let bark = world.step(&[intent("bark", near, Attempt::Gather(Material::Bark))]);
+        assert!(bark.results[0].success, "{}", bark.results[0].message);
+        let branch = world.step(&[intent("branch", near, Attempt::Gather(Material::Branch))]);
+        assert!(branch.results[0].success, "{}", branch.results[0].message);
+        let caught = world.step(&[intent("catch", near, Attempt::Strike)]);
+        assert_eq!(
+            caught.results[0].message,
+            "You strike the flint on the quartz. The sparks catch."
+        );
+        let third = "Near strikes the flint on the quartz. The sparks catch.";
+        assert!(says(&world, seen, third));
+        assert!(!says(&world, quiet, third));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == third));
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A small fire burns here. It warms you."),
+            "{here}"
+        );
+        assert!(here.contains("a clear stone of quartz"), "{here}");
+        assert!(world.loose_ids(near, Material::Bark).is_empty());
+        assert!(world.loose_ids(near, Material::Branch).is_empty());
+        let again_bark = world.step(&[intent("bark2", near, Attempt::Gather(Material::Bark))]);
+        assert!(
+            again_bark.results[0].success,
+            "{}",
+            again_bark.results[0].message
+        );
+        let again_branch =
+            world.step(&[intent("branch2", near, Attempt::Gather(Material::Branch))]);
+        assert!(
+            again_branch.results[0].success,
+            "{}",
+            again_branch.results[0].message
+        );
+        let blocked = world.step(&[intent("blocked", near, Attempt::Strike)]);
+        assert_eq!(blocked.results[0].message, "A fire already burns here.");
+        assert!(says(&world, near, "A fire already burns here."));
+        assert!(!says(&world, seen, "A fire already burns here."));
+        assert!(!says(&world, quiet, "A fire already burns here."));
+
+        let mut moss = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = moss.spawn_at("Near", "n", 6, 1).unwrap();
+        moss.add_pile(face, Material::Flint, 1, 0);
+        moss.step(&[intent("flint", near, Attempt::Gather(Material::Flint))]);
+        moss.step(&[intent("stone", near, Attempt::Gather(Material::Quartz))]);
+        moss.step(&[intent("moss", near, Attempt::Gather(Material::Moss))]);
+        moss.step(&[intent("branch", near, Attempt::Gather(Material::Branch))]);
+        let caught = moss.step(&[intent("catch", near, Attempt::Strike)]);
+        assert_eq!(
+            caught.results[0].message,
+            "You strike the flint on the quartz. The sparks catch."
+        );
+        assert!(moss.fire_at(face).is_some());
+        assert!(moss.loose_ids(near, Material::Moss).is_empty());
+
+        let mut fluff = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = fluff.spawn_at("Near", "n", 6, 1).unwrap();
+        fluff.add_pile(face, Material::Flint, 1, 0);
+        fluff.mint_item(Material::Fluff, 0, face, Some(near), Role::Loose);
+        fluff.step(&[intent("flint", near, Attempt::Gather(Material::Flint))]);
+        fluff.step(&[intent("stone", near, Attempt::Gather(Material::Quartz))]);
+        fluff.step(&[intent("branch", near, Attempt::Gather(Material::Branch))]);
+        let caught = fluff.step(&[intent("catch", near, Attempt::Strike)]);
+        assert_eq!(
+            caught.results[0].message,
+            "You strike the flint on the quartz. The sparks catch."
+        );
+        assert!(fluff.loose_ids(near, Material::Fluff).is_empty());
+
+        let mut damp = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = damp.spawn_at("Near", "n", 6, 1).unwrap();
+        damp.add_pile(face, Material::Flint, 1, 0);
+        damp.mint_item(
+            Material::Fluff,
+            damp.tuning.damp_at,
+            face,
+            Some(near),
+            Role::Loose,
+        );
+        damp.step(&[intent("flint", near, Attempt::Gather(Material::Flint))]);
+        damp.step(&[intent("stone", near, Attempt::Gather(Material::Quartz))]);
+        damp.step(&[intent("branch", near, Attempt::Gather(Material::Branch))]);
+        let jumped = damp.step(&[intent("jump", near, Attempt::Strike)]);
+        assert_eq!(
+            jumped.results[0].message,
+            "You strike the flint on the quartz. Sparks jump."
+        );
+        assert!(damp.fire_at(face).is_none());
+        assert!(!damp.loose_ids(near, Material::Fluff).is_empty());
+    }
 }

@@ -1807,6 +1807,8 @@ impl World {
                     } else {
                         Err("There is no quartz here to strike.".into())
                     }
+                } else if let Some(message) = self.spark_catch_block(actor.id) {
+                    Err(message)
                 } else {
                     Ok(true)
                 }
@@ -4054,17 +4056,124 @@ impl World {
         None
     }
 
-    /// Flint on quartz. Sparks jump. The stone and the flint stay.
-    /// The reply stays with the striker. It does not light a fire.
+    /// Dry cattail fluff, dry moss, or dry bark, already in the arms.
+    /// Resin is not this tinder. A damp handful is not.
+    fn dry_tinder_in_arms(&self, actor: crate::model::ActorId) -> Option<Material> {
+        let dry_fluff = self
+            .loose_ids(actor, Material::Fluff)
+            .into_iter()
+            .any(|id| self.item(id).is_some_and(|item| self.is_dry(item.moisture)));
+        if dry_fluff {
+            Some(Material::Fluff)
+        } else if self.moss_tinder_in_arms(actor) {
+            Some(Material::Moss)
+        } else if !self.dry_loose_ids(actor, Material::Bark).is_empty() {
+            Some(Material::Bark)
+        } else {
+            None
+        }
+    }
+
+    /// Rain or a fire already burning, and only when the sparks would catch.
+    /// Without dry tinder and a dry branch this stays empty, and the strike
+    /// is sparks only.
+    fn spark_catch_block(&self, actor: crate::model::ActorId) -> Option<String> {
+        let tinder = self.dry_tinder_in_arms(actor)?;
+        if !self.has_dry(actor, Material::Branch) {
+            return None;
+        }
+        let person = self.actor(actor)?;
+        if self.raining && self.exposure_millis(person.cell) >= 1000 {
+            return Some(match tinder {
+                Material::Fluff => "The rain puts the cattail fluff out before it catches.".into(),
+                Material::Moss => "The rain puts the moss out before it catches.".into(),
+                _ => "The rain puts the bark out before it catches.".into(),
+            });
+        }
+        if self.fire_at(person.cell).is_some() {
+            return Some("A fire already burns here.".into());
+        }
+        None
+    }
+
+    fn take_dry_from_arms(
+        &mut self,
+        actor: crate::model::ActorId,
+        material: Material,
+    ) -> Option<crate::model::ItemId> {
+        let id = self.dry_loose_ids(actor, material).first().copied()?;
+        self.items.remove(&id);
+        Some(id)
+    }
+
+    /// Flint on quartz. Sparks jump. With dry tinder in the arms and a dry
+    /// branch, the sparks catch and a fire burns. The stone and the flint stay.
+    /// The catch is heard by someone who can see the cell. The striker does
+    /// not read it again. Without the tinder, only the striker hears the sparks.
     fn apply_strikes(&mut self, strikes: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in strikes {
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                true,
-                "You strike the flint on the quartz. Sparks jump.",
-                results,
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let catch = self.dry_tinder_in_arms(actor.id).is_some()
+                && self.has_dry(actor.id, Material::Branch)
+                && self.fire_at(actor.cell).is_none()
+                && !(self.raining && self.exposure_millis(actor.cell) >= 1000);
+            if !catch {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    true,
+                    "You strike the flint on the quartz. Sparks jump.",
+                    results,
+                );
+                continue;
+            }
+            let Some(tinder) = self.dry_tinder_in_arms(actor.id) else {
+                continue;
+            };
+            let Some(tinder_id) = self.take_dry_from_arms(actor.id, tinder) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    true,
+                    "You strike the flint on the quartz. Sparks jump.",
+                    results,
+                );
+                continue;
+            };
+            let (branch_id, _) = match self.consume_dry(actor.id, Material::Branch) {
+                Ok(spent) => spent,
+                Err(()) => {
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        false,
+                        "You need a dry branch for the fire.",
+                        results,
+                    );
+                    continue;
+                }
+            };
+            let name = self.name_of(actor.id);
+            let rest = "the flint on the quartz. The sparks catch.";
+            let line = crate::model::spoken_act(Some(&name), "strike", rest);
+            let mut yours = crate::model::spoken_act(None, "strike", rest);
+            let spent: Vec<_> = Some(tinder_id).into_iter().chain(branch_id).collect();
+            let event = self.emit(
+                line,
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                spent,
+                vec![],
+                None,
             );
+            self.mint_fire(actor.cell, event);
+            if self.scare_wolf(Some(actor.id)) {
+                yours.push_str(" The wolf flees the fire.");
+            }
+            self.finish(intent.command_id, actor.id, true, yours, results);
         }
     }
 

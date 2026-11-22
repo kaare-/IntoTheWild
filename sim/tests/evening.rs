@@ -4508,7 +4508,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A handful of berries lies here. It is good to eat raw. A deer ate the rest. A pot sits here. A pile of branches lies here. A pile of bark lies here. A lump of ochre lies on the rock face. A clear stone of quartz lies on the rock face. It is a clear stone. Dry moss grows in the shade here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Near is here. The branches here stay out of the weather. A handful of berries lies here. It is good to eat raw. A deer ate the rest. A pot sits here. A pile of branches lies here. A pile of bark lies here. A lump of ochre lies on the rock face. A clear stone of quartz lies on the rock face. It is a clear stone. It can spark. Dry moss grows in the shade here. Hoofprints mark the ground."
     );
     let step_west = step_look
         .text
@@ -4553,7 +4553,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         near_place,
-        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A handful of berries lies here. It is good to eat raw. A deer ate the rest. A pot sits here. A pile of branches lies here. A pile of bark lies here. A lump of ochre lies on the rock face. A clear stone of quartz lies on the rock face. It is a clear stone. Dry moss grows in the shade here. Hoofprints mark the ground."
+        "You are on the valley floor, under the rock overhang. Rock leans overhead, and the rain does not reach this ground. Step is here. The branches here stay out of the weather. A handful of berries lies here. It is good to eat raw. A deer ate the rest. A pot sits here. A pile of branches lies here. A pile of bark lies here. A lump of ochre lies on the rock face. A clear stone of quartz lies on the rock face. It is a clear stone. It can spark. Dry moss grows in the shade here. Hoofprints mark the ground."
     );
     let far_look = world.observe(far).unwrap();
     assert_eq!(far_look.self_info.cold, "cold");
@@ -10584,7 +10584,9 @@ fn a_lump_of_ochre_on_the_rock_face_can_be_carried() {
         "{after}"
     );
     assert!(
-        after.contains("A clear stone of quartz lies on the rock face. It is a clear stone."),
+        after.contains(
+            "A clear stone of quartz lies on the rock face. It is a clear stone. It can spark."
+        ),
         "{after}"
     );
     assert!(arms_sentence(&after).contains("a lump of ochre"), "{after}");
