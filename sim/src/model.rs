@@ -875,6 +875,10 @@ pub struct Actor {
     /// The sentence on `spear_hint_show` says to pitch the flint tip with pine resin.
     #[serde(default)]
     pub spear_hint_pitch: bool,
+    /// Sentences already said for `spear_hint_deer`. A spent fire line does not
+    /// hide the pitch line. Cleared when that deer leaves sight.
+    #[serde(default)]
+    pub spear_hint_said: u8,
     pub busy: Option<WorkId>,
 }
 
@@ -1632,6 +1636,15 @@ enum SpearReach {
     Pitch,
 }
 
+fn spear_said_bit(kind: SpearReach) -> u8 {
+    match kind {
+        SpearReach::Haft => 1,
+        SpearReach::Wooden => 2,
+        SpearReach::Fire => 4,
+        SpearReach::Pitch => 8,
+    }
+}
+
 impl World {
     pub fn valley(tuning: Tuning, seed: u64) -> Self {
         let mut cells = Vec::with_capacity((WIDTH * HEIGHT) as usize);
@@ -1995,6 +2008,7 @@ impl World {
                 spear_hint_harden: false,
                 spear_hint_fire: false,
                 spear_hint_pitch: false,
+                spear_hint_said: 0,
                 busy: None,
             },
         );
@@ -2153,8 +2167,10 @@ impl World {
     }
 
     /// A flint flake and no spear says to haft. A wooden point says to
-    /// fire-harden. A flint tip says to set the spear by a fire. Each
-    /// sentence is armed once while that deer stays in sight.
+    /// fire-harden. A flint tip says to set the spear by a fire, or to pitch
+    /// it when pine resin is near. Each distinct sentence is armed once
+    /// while that deer stays in sight, so a spent fire line still leaves
+    /// the pitch line.
     fn note_spear_reach(&mut self) {
         let deer = self.deer.as_ref().map(|deer| (deer.id, deer.cell));
         let sight = self.tuning.sight;
@@ -2177,15 +2193,16 @@ impl World {
                 Self::clear_spear_hint(actor);
                 continue;
             };
-            let same = actor.spear_hint_deer == Some(deer_id)
-                && actor.spear_hint_harden == matches!(kind, SpearReach::Wooden)
-                && actor.spear_hint_fire == matches!(kind, SpearReach::Fire)
-                && actor.spear_hint_pitch == matches!(kind, SpearReach::Pitch);
-            if same {
+            let bit = spear_said_bit(kind);
+            if actor.spear_hint_deer != Some(deer_id) {
+                actor.spear_hint_deer = Some(deer_id);
+                actor.spear_hint_said = 0;
+            }
+            if actor.spear_hint_said & bit != 0 {
                 actor.spear_hint_show = false;
                 continue;
             }
-            actor.spear_hint_deer = Some(deer_id);
+            actor.spear_hint_said |= bit;
             actor.spear_hint_harden = matches!(kind, SpearReach::Wooden);
             actor.spear_hint_fire = matches!(kind, SpearReach::Fire);
             actor.spear_hint_pitch = matches!(kind, SpearReach::Pitch);
@@ -2199,6 +2216,7 @@ impl World {
         actor.spear_hint_harden = false;
         actor.spear_hint_fire = false;
         actor.spear_hint_pitch = false;
+        actor.spear_hint_said = 0;
     }
 
     /// Haft, fire-harden a wooden point, or set a flint tip by a fire.
@@ -26825,6 +26843,79 @@ mod spear_hint {
             .retain(|_, item| item.material != Material::Resin);
         let far = cell_id(6, 3).unwrap();
         world.mint_item(Material::Resin, 0, far, None, Role::Loose);
+        world.actors.get_mut(&near).unwrap().cell = cell_id(0, 0).unwrap();
+        hold(&mut world);
+        world.step(&[]);
+        world.actors.get_mut(&near).unwrap().cell = cell;
+        hold(&mut world);
+        world.step(&[]);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(FIRE), "{}", look.text);
+        assert!(!look.text.contains(PITCH), "{}", look.text);
+    }
+
+    #[test]
+    fn a_spent_fire_line_still_names_pitch_once_when_resin_arrives() {
+        const PITCH: &str =
+            "Pitch spear with pine resin, or glue the join, so the tip could reach the deer.";
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&spear).unwrap().flint_tip = true;
+
+        hold(&mut world);
+        let fired = world.step(&[]);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(FIRE), "{}", look.text);
+        assert!(!look.text.contains(PITCH), "{}", look.text);
+        assert!(!look.events.iter().any(|event| event.text.contains(FIRE)));
+        assert!(!world.observe(seen).unwrap().text.contains(FIRE));
+        assert!(!world.observe(quiet).unwrap().text.contains(FIRE));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.time != fired.time || !event.text.contains(FIRE) }));
+
+        hold(&mut world);
+        world.step(&[]);
+        let spent = world.observe(near).unwrap();
+        assert!(!spent.text.contains(FIRE), "{}", spent.text);
+        assert!(spent.text.contains("deer"), "{}", spent.text);
+
+        let lump = world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        hold(&mut world);
+        let pitched = world.step(&[]);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(PITCH), "{}", look.text);
+        assert!(!look.text.contains(FIRE), "{}", look.text);
+        assert!(!look.events.iter().any(|event| event.text.contains(PITCH)));
+        assert!(!world.observe(seen).unwrap().text.contains(PITCH));
+        assert!(!world.observe(quiet).unwrap().text.contains(PITCH));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.time != pitched.time || !event.text.contains(PITCH) }));
+
+        hold(&mut world);
+        world.step(&[]);
+        let gone = world.observe(near).unwrap();
+        assert!(!gone.text.contains(PITCH), "{}", gone.text);
+        assert!(gone.text.contains("deer"), "{}", gone.text);
+
+        world.items.remove(&lump);
+        hold(&mut world);
+        world.step(&[]);
+        let again = world.observe(near).unwrap();
+        assert!(!again.text.contains(FIRE), "{}", again.text);
+        assert!(!again.text.contains(PITCH), "{}", again.text);
+
         world.actors.get_mut(&near).unwrap().cell = cell_id(0, 0).unwrap();
         hold(&mut world);
         world.step(&[]);
