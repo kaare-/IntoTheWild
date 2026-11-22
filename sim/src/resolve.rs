@@ -9864,17 +9864,73 @@ impl World {
         self.consume_dry(actor, material).is_ok()
     }
 
-    fn spend_torch_tinder(&mut self, actor: crate::model::ActorId) -> bool {
-        if self.spend_torch_dry(actor, Material::Bark)
-            || self.spend_torch_dry(actor, Material::Moss)
-        {
-            return true;
+    /// Dry bark, then dry moss, then cattail fluff. The words name which, and
+    /// whether it came from the arms, the ground, or the pile at the feet.
+    fn spend_torch_tinder(&mut self, actor: crate::model::ActorId) -> Option<&'static str> {
+        if let Some(rest) = self.spend_named_dry(
+            actor,
+            Material::Bark,
+            "the pitch torch with the bark.",
+            "the pitch torch with a dry sheet of bark from the ground.",
+            "the pitch torch with bark from the pile at the feet.",
+        ) {
+            return Some(rest);
         }
-        if let Some(id) = self.torch_held_or_here(actor, Material::Fluff) {
+        if let Some(rest) = self.spend_named_dry(
+            actor,
+            Material::Moss,
+            "the pitch torch with the moss.",
+            "the pitch torch with dry moss from the ground.",
+            "the pitch torch with moss from the pile at the feet.",
+        ) {
+            return Some(rest);
+        }
+        self.spend_named_fluff(actor)
+    }
+
+    fn spend_named_dry(
+        &mut self,
+        actor: crate::model::ActorId,
+        material: Material,
+        arms: &'static str,
+        ground: &'static str,
+        pile: &'static str,
+    ) -> Option<&'static str> {
+        if let Some(id) = self.dry_loose_ids(actor, material).first().copied() {
             self.items.remove(&id);
-            return true;
+            return Some(arms);
         }
-        self.take_hand(actor, Material::Fluff).is_ok()
+        let cell = self.actor(actor)?.cell;
+        if let Some(id) = self.ground_ids(cell, material).into_iter().find(|id| {
+            self.item(*id)
+                .is_some_and(|item| self.is_dry(item.moisture))
+        }) {
+            self.items.remove(&id);
+            return Some(ground);
+        }
+        if self.dry_pile_count(cell, material) > 0
+            && self.take_from_pile(cell, material, 1).is_some()
+        {
+            return Some(pile);
+        }
+        None
+    }
+
+    /// Fluff still catches when it is damp.
+    fn spend_named_fluff(&mut self, actor: crate::model::ActorId) -> Option<&'static str> {
+        if let Some(id) = self.loose_ids(actor, Material::Fluff).first().copied() {
+            self.items.remove(&id);
+            return Some("the pitch torch with the cattail fluff.");
+        }
+        let cell = self.actor(actor)?.cell;
+        if let Some(id) = self.ground_ids(cell, Material::Fluff).first().copied() {
+            self.items.remove(&id);
+            return Some("the pitch torch with cattail fluff from the ground.");
+        }
+        if self.take_from_pile(cell, Material::Fluff, 1).is_some() {
+            return Some("the pitch torch with cattail fluff from the pile at the feet.");
+        }
+        None
     }
 
     fn apply_torch_makes(&mut self, makes: Vec<Intent>, results: &mut Vec<CommandResult>) {
@@ -9948,7 +10004,12 @@ impl World {
                 continue;
             };
             let from_fire = self.fire_at(actor.cell).is_some();
-            if !from_fire && !self.spend_torch_tinder(actor.id) {
+            let spent = if from_fire {
+                None
+            } else {
+                self.spend_torch_tinder(actor.id)
+            };
+            if !from_fire && spent.is_none() {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -9969,10 +10030,8 @@ impl World {
                 torch.firing_ready_at = Some(ready);
             }
             self.schedule(ready, Wake::TorchOut(id));
-            let rest = if from_fire {
-                "the pitch torch from the fire."
-            } else {
-                "the pitch torch with tinder."
+            let Some(rest) = spent.or(from_fire.then_some("the pitch torch from the fire.")) else {
+                continue;
             };
             let name = self.name_of(actor.id);
             self.emit(

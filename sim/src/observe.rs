@@ -3998,7 +3998,7 @@ impl World {
                     "{name} binds a lump of pine resin and a sheet of bark into a pitch torch."
                 )
             || text == format!("{name} lights the pitch torch from the fire.")
-            || text == format!("{name} lights the pitch torch with tinder.")
+            || text.starts_with(&format!("{name} lights the pitch torch with "))
         {
             Some(text.to_string())
         } else {

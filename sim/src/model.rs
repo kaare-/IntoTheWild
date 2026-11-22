@@ -25539,10 +25539,10 @@ mod pitch_torch {
         let lit = world.step(&[intent("light", near, Attempt::LightTorch)]);
         assert_eq!(
             lit.results[0].message,
-            "You light the pitch torch with tinder."
+            "You light the pitch torch with the bark."
         );
-        let light_yours = "You light the pitch torch with tinder.";
-        let light_seen = "Near lights the pitch torch with tinder.";
+        let light_yours = "You light the pitch torch with the bark.";
+        let light_seen = "Near lights the pitch torch with the bark.";
         assert!(world
             .observe(near)
             .unwrap()
@@ -25635,6 +25635,8 @@ mod pitch_torch {
     fn a_bark_pile_under_the_rock_lights_the_torch() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
         let cell = world.actor(near).unwrap().cell;
         let bark = world.pile_count(cell, Material::Bark);
         let moss = world.pile_count(cell, Material::Moss);
@@ -25646,18 +25648,88 @@ mod pitch_torch {
         let lit = world.step(&[intent("light", near, Attempt::LightTorch)]);
         assert_eq!(
             lit.results[0].message,
-            "You light the pitch torch with tinder."
+            "You light the pitch torch with bark from the pile at the feet."
         );
         assert_eq!(world.pile_count(cell, Material::Bark), bark - 1);
         assert_eq!(world.pile_count(cell, Material::Moss), moss);
         let need = "You need a fire here, or tinder in the arms.";
-        let yours = "You light the pitch torch with tinder.";
-        let witnessed = "Near lights the pitch torch with tinder.";
+        let yours = "You light the pitch torch with bark from the pile at the feet.";
+        let witnessed = "Near lights the pitch torch with bark from the pile at the feet.";
         assert!(world
             .observe(near)
             .unwrap()
             .events
             .iter()
             .all(|event| { event.text != need && event.text != yours && event.text != witnessed }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != witnessed));
+
+        while world.take_from_pile(cell, Material::Bark, 1).is_some() {}
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let again = world.step(&[intent("again", near, Attempt::MakeTorch)]);
+        assert!(again.results[0].success, "{}", again.results[0].message);
+        let moss_lit = world.step(&[intent("moss", near, Attempt::LightTorch)]);
+        assert_eq!(
+            moss_lit.results[0].message,
+            "You light the pitch torch with moss from the pile at the feet."
+        );
+        let moss_seen = "Near lights the pitch torch with moss from the pile at the feet.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != moss_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == moss_seen));
+        assert_eq!(world.pile_count(cell, Material::Moss), moss - 1);
+
+        for id in world.loose_ids(near, Material::Torch) {
+            world.items.remove(&id);
+        }
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Fluff, 0, cell, Some(near), Role::Loose);
+        let third = world.step(&[intent("third", near, Attempt::MakeTorch)]);
+        assert!(third.results[0].success, "{}", third.results[0].message);
+        let fluff = world.step(&[intent("fluff", near, Attempt::LightTorch)]);
+        assert_eq!(
+            fluff.results[0].message,
+            "You light the pitch torch with the cattail fluff."
+        );
+        let fluff_seen = "Near lights the pitch torch with the cattail fluff.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != fluff_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == fluff_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != fluff_seen));
     }
 }
