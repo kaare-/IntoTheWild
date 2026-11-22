@@ -13754,27 +13754,40 @@ impl World {
         }
     }
 
-    /// A scraped hide that is not pierced. A held awl is named. Neither awl names both.
-    fn unpierced_sew_line(&self, actor: ActorId) -> String {
-        let ids = self.loose_ids(actor, Material::Awl);
+    /// The awl a sew miss should name. Arms win. The ground at the feet is next.
+    /// One kind is named. Both kinds name the first. None names both tools.
+    fn awl_tool_phrase(&self, ids: &[crate::model::ItemId]) -> Option<&'static str> {
+        if ids.is_empty() {
+            return None;
+        }
         let bone = ids
             .iter()
             .any(|id| self.item(*id).is_some_and(|awl| awl.bone));
         let copper = ids
             .iter()
             .any(|id| self.item(*id).is_some_and(|awl| !awl.bone));
-        let tool = if bone && !copper {
+        Some(if bone && !copper {
             "the bone awl"
         } else if copper && !bone {
             "the copper awl"
-        } else if bone && copper {
-            if self.item(ids[0]).is_some_and(|awl| awl.bone) {
-                "the bone awl"
-            } else {
-                "the copper awl"
-            }
+        } else if self.item(ids[0]).is_some_and(|awl| awl.bone) {
+            "the bone awl"
         } else {
-            "a copper awl or a bone awl"
+            "the copper awl"
+        })
+    }
+
+    /// A scraped hide that is not pierced. A held awl is named, then an awl at the feet.
+    /// Neither awl names both.
+    fn unpierced_sew_line(&self, actor: ActorId) -> String {
+        let held = self.loose_ids(actor, Material::Awl);
+        let tool = if let Some(phrase) = self.awl_tool_phrase(&held) {
+            phrase
+        } else {
+            let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+            let ground = self.ground_ids(cell, Material::Awl);
+            self.awl_tool_phrase(&ground)
+                .unwrap_or("a copper awl or a bone awl")
         };
         let kind = if self.carrying_otter_hide(actor) {
             "otter"
