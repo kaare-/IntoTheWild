@@ -514,16 +514,8 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.fire_at(actor.cell).is_none() {
-                    Err("There is no fire burning here.".into())
-                } else if self.loose_ids(actor.id, Material::Mint).is_empty() {
-                    Err("You have no mint to steep.".into())
-                } else if self.loose_ids(actor.id, Material::Water).is_empty() {
-                    Err("You have no water to steep the mint in.".into())
-                } else if self.loose_ids(actor.id, Material::Pot).is_empty()
-                    && self.loose_ids(actor.id, Material::BarkCup).is_empty()
-                {
-                    Err("You need a pot or a bark cup to steep the mint.".into())
+                } else if let Some(message) = self.steep_refusal(actor, Material::Mint) {
+                    Err(message.into())
                 } else {
                     Ok(true)
                 }
@@ -535,16 +527,8 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.fire_at(actor.cell).is_none() {
-                    Err("There is no fire burning here.".into())
-                } else if self.loose_ids(actor.id, Material::WillowBark).is_empty() {
-                    Err("You have no willow bark to steep.".into())
-                } else if self.loose_ids(actor.id, Material::Water).is_empty() {
-                    Err("You have no water to steep the willow bark in.".into())
-                } else if self.loose_ids(actor.id, Material::Pot).is_empty()
-                    && self.loose_ids(actor.id, Material::BarkCup).is_empty()
-                {
-                    Err("You need a pot or a bark cup to steep the willow bark.".into())
+                } else if let Some(message) = self.steep_refusal(actor, Material::WillowBark) {
+                    Err(message.into())
                 } else {
                     Ok(true)
                 }
@@ -556,16 +540,8 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.fire_at(actor.cell).is_none() {
-                    Err("There is no fire burning here.".into())
-                } else if self.loose_ids(actor.id, Material::Needle).is_empty() {
-                    Err("You have no pine needles to steep.".into())
-                } else if self.loose_ids(actor.id, Material::Water).is_empty() {
-                    Err("You have no water to steep the pine needles in.".into())
-                } else if self.loose_ids(actor.id, Material::Pot).is_empty()
-                    && self.loose_ids(actor.id, Material::BarkCup).is_empty()
-                {
-                    Err("You need a pot or a bark cup to steep the pine needles.".into())
+                } else if let Some(message) = self.steep_refusal(actor, Material::Needle) {
+                    Err(message.into())
                 } else {
                     Ok(true)
                 }
@@ -10520,6 +10496,38 @@ impl World {
         }
     }
 
+    /// Fire, then the herb, then a pot or a bark cup, then water in that vessel.
+    /// Each miss names the one thing that is missing.
+    fn steep_refusal(&self, actor: &crate::model::Actor, herb: Material) -> Option<&'static str> {
+        if self.fire_at(actor.cell).is_none() {
+            return Some("There is no fire burning here.");
+        }
+        if self.loose_ids(actor.id, herb).is_empty() {
+            return Some(match herb {
+                Material::Needle => "You have no pine needles to steep.",
+                Material::WillowBark => "You have no willow bark to steep.",
+                _ => "You have no mint to steep.",
+            });
+        }
+        let pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
+        let cup = !self.loose_ids(actor.id, Material::BarkCup).is_empty();
+        if !pot && !cup {
+            return Some(match herb {
+                Material::Needle => "You need a pot or a bark cup to steep the pine needles.",
+                Material::WillowBark => "You need a pot or a bark cup to steep the willow bark.",
+                _ => "You need a pot or a bark cup to steep the mint.",
+            });
+        }
+        if self.loose_ids(actor.id, Material::Water).is_empty() {
+            return Some(if pot {
+                "The pot has no water."
+            } else {
+                "The bark cup has no water."
+            });
+        }
+        None
+    }
+
     /// A strip of willow bark and a drink of water, in a pot or a bark cup, over a fire.
     /// Both are spent. The tea is drunk in the same act. A sunburn eases by two open-sky ticks.
     /// A sick stomach and a chill are left alone. The sunburn line stays in the reply.
@@ -10529,19 +10537,7 @@ impl World {
                 continue;
             };
             let cell = actor.cell;
-            let refuse = if self.fire_at(cell).is_none() {
-                Some("There is no fire burning here.")
-            } else if self.loose_ids(actor.id, Material::WillowBark).is_empty() {
-                Some("You have no willow bark to steep.")
-            } else if self.loose_ids(actor.id, Material::Water).is_empty() {
-                Some("You have no water to steep the willow bark in.")
-            } else if self.loose_ids(actor.id, Material::Pot).is_empty()
-                && self.loose_ids(actor.id, Material::BarkCup).is_empty()
-            {
-                Some("You need a pot or a bark cup to steep the willow bark.")
-            } else {
-                None
-            };
+            let refuse = self.steep_refusal(&actor, Material::WillowBark);
             if let Some(message) = refuse {
                 self.emit(
                     message.to_string(),
@@ -10617,19 +10613,7 @@ impl World {
                 continue;
             };
             let cell = actor.cell;
-            let refuse = if self.fire_at(cell).is_none() {
-                Some("There is no fire burning here.")
-            } else if self.loose_ids(actor.id, Material::Needle).is_empty() {
-                Some("You have no pine needles to steep.")
-            } else if self.loose_ids(actor.id, Material::Water).is_empty() {
-                Some("You have no water to steep the pine needles in.")
-            } else if self.loose_ids(actor.id, Material::Pot).is_empty()
-                && self.loose_ids(actor.id, Material::BarkCup).is_empty()
-            {
-                Some("You need a pot or a bark cup to steep the pine needles.")
-            } else {
-                None
-            };
+            let refuse = self.steep_refusal(&actor, Material::Needle);
             if let Some(message) = refuse {
                 self.emit(
                     message.to_string(),
@@ -10705,19 +10689,7 @@ impl World {
                 continue;
             };
             let cell = actor.cell;
-            let refuse = if self.fire_at(cell).is_none() {
-                Some("There is no fire burning here.")
-            } else if self.loose_ids(actor.id, Material::Mint).is_empty() {
-                Some("You have no mint to steep.")
-            } else if self.loose_ids(actor.id, Material::Water).is_empty() {
-                Some("You have no water to steep the mint in.")
-            } else if self.loose_ids(actor.id, Material::Pot).is_empty()
-                && self.loose_ids(actor.id, Material::BarkCup).is_empty()
-            {
-                Some("You need a pot or a bark cup to steep the mint.")
-            } else {
-                None
-            };
+            let refuse = self.steep_refusal(&actor, Material::Mint);
             if let Some(message) = refuse {
                 self.emit(
                     message.to_string(),

@@ -3410,12 +3410,35 @@ impl World {
             }
         }
         match ways.len() {
-            0 => None,
+            0 => self.ore_diagonal_step(cell, material),
             1 => Some(format!(" Step {}.", ways[0])),
             _ => {
                 let last = ways.pop()?;
                 Some(format!(" Step {} or {last}.", ways.join(", ")))
             }
+        }
+    }
+
+    /// One diagonal lump of ore, and no orthogonal one. The words match look:
+    /// `Step north and west.` Anything else stays quiet.
+    fn ore_diagonal_step(&self, cell: CellId, material: Material) -> Option<String> {
+        if !matches!(material, Material::IronOre | Material::CopperOre) {
+            return None;
+        }
+        let (x, y) = cell_xy(cell);
+        let mut ways = Vec::new();
+        for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.pile_count(dest, material) > 0 || !self.ground_ids(dest, material).is_empty() {
+                ways.push(self.relative(cell, dest));
+            }
+        }
+        if ways.len() == 1 {
+            Some(format!(" Step {}.", ways[0]))
+        } else {
+            None
         }
     }
 
@@ -17214,7 +17237,10 @@ mod charcoal_bank {
         }
         let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
         let under = world.step(&[intent("under", rock, Attempt::SmeltIron)]);
-        assert_eq!(under.results[0].message, "You are not carrying iron ore.");
+        assert_eq!(
+            under.results[0].message,
+            "You are not carrying iron ore. Step north and west."
+        );
         let bank = world.spawn_at("Bank", "b", 2, 2).unwrap();
         let copper = world.step(&[intent("copper", bank, Attempt::Smelt)]);
         assert_eq!(
@@ -17238,6 +17264,111 @@ mod charcoal_bank {
     }
 
     #[test]
+    fn a_steep_names_what_is_missing() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let says = |world: &mut World, id: &str, attempt: Attempt, line: &str| {
+            let step = world.step(&[intent(id, near, attempt)]);
+            assert_eq!(step.results[0].message, line);
+            assert!(world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line));
+            for person in [seen, quiet] {
+                assert!(world
+                    .observe(person)
+                    .unwrap()
+                    .events
+                    .iter()
+                    .all(|event| event.text != line));
+            }
+            assert_eq!(world.actor(near).unwrap().cell, rock);
+        };
+        says(
+            &mut world,
+            "ore",
+            Attempt::Gather(Material::IronOre),
+            "There is no iron ore here to gather. Step north and west.",
+        );
+        says(
+            &mut world,
+            "fire",
+            Attempt::Brew,
+            "There is no fire burning here.",
+        );
+        world.mint_fire(rock, 0);
+        says(
+            &mut world,
+            "mint",
+            Attempt::Brew,
+            "You have no mint to steep.",
+        );
+        says(
+            &mut world,
+            "pine",
+            Attempt::SteepPine,
+            "You have no pine needles to steep.",
+        );
+        says(
+            &mut world,
+            "willow",
+            Attempt::SteepWillow,
+            "You have no willow bark to steep.",
+        );
+        world.mint_item(Material::Mint, 0, rock, Some(near), Role::Loose);
+        says(
+            &mut world,
+            "vessel",
+            Attempt::Brew,
+            "You need a pot or a bark cup to steep the mint.",
+        );
+        world.mint_item(Material::Pot, 0, rock, Some(near), Role::Loose);
+        says(&mut world, "pot", Attempt::Brew, "The pot has no water.");
+        let pot = world.loose_ids(near, Material::Pot)[0];
+        world.items.remove(&pot);
+        world.mint_item(Material::BarkCup, 0, rock, Some(near), Role::Loose);
+        says(
+            &mut world,
+            "cup",
+            Attempt::Brew,
+            "The bark cup has no water.",
+        );
+        world.mint_item(Material::Needle, 0, rock, Some(near), Role::Loose);
+        says(
+            &mut world,
+            "needles",
+            Attempt::SteepPine,
+            "The bark cup has no water.",
+        );
+        world.mint_item(Material::WillowBark, 0, rock, Some(near), Role::Loose);
+        says(
+            &mut world,
+            "bark",
+            Attempt::SteepWillow,
+            "The bark cup has no water.",
+        );
+        says(
+            &mut world,
+            "resin",
+            Attempt::SealCup,
+            "You have no pine resin to seal the cup.",
+        );
+        let cup = world.loose_ids(near, Material::BarkCup)[0];
+        world.items.remove(&cup);
+        says(
+            &mut world,
+            "gone",
+            Attempt::SealCup,
+            "There is no bark cup here.",
+        );
+    }
+
+    #[test]
     fn iron_needs_a_hot_charcoal_fire() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 3);
         let cell = cell_id(6, 1).unwrap();
@@ -17245,20 +17376,23 @@ mod charcoal_bank {
         let seen = world.spawn_at("Seen", "s", 4, 1).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
         let bare = world.step(&[intent("bare", near, Attempt::SmeltIron)]);
-        assert_eq!(bare.results[0].message, "You are not carrying iron ore.");
+        assert_eq!(
+            bare.results[0].message,
+            "You are not carrying iron ore. Step north and west."
+        );
         assert!(world
             .observe(near)
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "You are not carrying iron ore."));
+            .any(|event| event.text == "You are not carrying iron ore. Step north and west."));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
                 .unwrap()
                 .events
                 .iter()
-                .all(|event| event.text != "You are not carrying iron ore."));
+                .all(|event| event.text != "You are not carrying iron ore. Step north and west."));
         }
         world.mint_item(Material::IronOre, 0, cell, Some(near), Role::Loose);
         world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
@@ -20180,7 +20314,7 @@ mod mint_tea {
         let no_water = world.step(&[intent("water", near, Attempt::Brew)]);
         assert_eq!(
             no_water.results[0].message,
-            "You have no water to steep the mint in."
+            "You need a pot or a bark cup to steep the mint."
         );
         assert!(world
             .observe(seen)
@@ -20477,7 +20611,7 @@ mod pine_tea {
         let no_water = world.step(&[intent("water", near, Attempt::SteepPine)]);
         assert_eq!(
             no_water.results[0].message,
-            "You have no water to steep the pine needles in."
+            "You need a pot or a bark cup to steep the pine needles."
         );
         world.mint_item(Material::Water, 0, pine, Some(near), Role::Loose);
         world.mint_item(Material::Bowl, 0, pine, Some(near), Role::Loose);

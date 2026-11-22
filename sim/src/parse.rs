@@ -37,7 +37,7 @@ raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
-steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough
+steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough. With no fire, no mint, no pot or cup, or no water in that pot or cup, only you hear which one is missing
 steep|brew pine            a handful of pine needles the same way. A chill eases a little. It does not settle a stomach. gather pine needles takes them from the pine south of the trail
 steep|brew willow bark      a strip of willow bark the same way. A sunburn eases a little. It does not settle a stomach or a chill. The cordage is not the bark
 light fire                   dry bark and a dry branch, from the arms if you carry them. Dry moss from the shade under the rock is tinder the same way, and is spent before bark when both are held. Wet moss is not tinder. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before moss and bark when it is held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
@@ -68,7 +68,7 @@ gather cattail fluff         a handful of fluff from those cattails, when they a
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 fold bark                    a sheet of bark into a bark cup. make bark cup is the same. The cup holds water. A clay pot is still a pot.
-seal bark cup                a lump of pine resin on a bark cup in the arms or at your feet. The lump is spent. pitch bark cup is the same. An unsealed cup lets a drink soak through after 8 ticks. A sealed cup keeps it.
+seal bark cup                a lump of pine resin on a bark cup in the arms or at your feet. The lump is spent. pitch bark cup is the same. An unsealed cup lets a drink soak through after 8 ticks. A sealed cup keeps it. With no cup, or no pine resin, only you hear which one is missing.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
 set weir                     one bundle of reeds and cordage, hide strips or willow or nettle, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
