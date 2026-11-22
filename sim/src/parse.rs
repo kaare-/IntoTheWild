@@ -56,6 +56,8 @@ cut hide                     a whole deer hide into hide strips, with an iron kn
 carve awl                    a bone, with a flint flake or an iron knife, into a bone awl. The tool is not used up. The awl can pierce hide.
 carve paddle                 a dry branch, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The wooden paddle stays in the arms. Holding it names the paddle when you paddle. Bare hands still paddle.
 carve hook                   a bone, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The bone fish hook stays in the arms.
+carve whistle                a bone the same way, into a bone whistle. The tool is not used up. With no bone, or no flake or knife, only you hear which is missing
+blow whistle                 the bone whistle in the arms. play whistle is the same. Someone who can see you hears the blow. Past sight, a look says which way, and one cell farther still. It is not a smoke signal. With no whistle, only you hear it
 make awl                     the same bone awl
 set snare                    hide strips, willow cordage, or nettle cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, and willow before nettle.
 set trap                     the same snare
@@ -445,6 +447,25 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::CarvePaddle)
         }
         "carve"
+            if rest == "whistle"
+                || rest == "a whistle"
+                || rest == "the whistle"
+                || rest == "bone whistle"
+                || rest == "a bone whistle" =>
+        {
+            Ok(Attempt::CarveWhistle)
+        }
+        "blow" | "play"
+            if rest == "whistle"
+                || rest == "a whistle"
+                || rest == "the whistle"
+                || rest == "bone whistle"
+                || rest == "a bone whistle"
+                || rest == "the bone whistle" =>
+        {
+            Ok(Attempt::BlowWhistle)
+        }
+        "carve"
             if rest == "hook"
                 || rest == "a hook"
                 || rest == "the hook"
@@ -811,6 +832,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
         "awl" | "copper awl" | "bone awl" => Ok(Material::Awl),
         "bone" => Ok(Material::Bone),
+        "whistle" | "bone whistle" | "a bone whistle" | "the bone whistle" => {
+            Ok(Material::Whistle)
+        }
         "salt" | "salt crust" => Ok(Material::Salt),
         "honey" | "honeycomb" | "bees nest" | "bee nest" => Ok(Material::Honey),
         "egg" | "eggs" => Ok(Material::Egg),

@@ -155,6 +155,8 @@ pub enum Material {
     /// A clear stone on the rock face. It can spark with flint.
     /// It is not the loose stone, and it is not the flint nodule.
     Quartz,
+    /// Carved from a bone. Blown, it is a sound, not a column of smoke.
+    Whistle,
 }
 
 impl Material {
@@ -216,6 +218,7 @@ impl Material {
             Material::Fluff => "cattail fluff",
             Material::Worm => "worm",
             Material::Quartz => "quartz",
+            Material::Whistle => "whistle",
         }
     }
 
@@ -277,6 +280,7 @@ impl Material {
             Material::Fluff => "handful of cattail fluff",
             Material::Worm => "worm",
             Material::Quartz => "clear stone of quartz",
+            Material::Whistle => "bone whistle",
         }
     }
 
@@ -543,6 +547,11 @@ pub enum Attempt {
     Signal(Option<Material>),
     /// Flint struck on quartz. Sparks jump. It does not light a fire.
     Strike,
+    /// A bone, with a flint flake or an iron knife, into a bone whistle.
+    /// The tool is not used up.
+    CarveWhistle,
+    /// Blow the bone whistle in the arms. The sound is not a smoke column.
+    BlowWhistle,
 }
 
 impl Attempt {
@@ -630,6 +639,8 @@ impl Attempt {
                 | Attempt::DrillFire
                 | Attempt::Signal(_)
                 | Attempt::Strike
+                | Attempt::CarveWhistle
+                | Attempt::BlowWhistle
         )
     }
 }
@@ -1129,6 +1140,13 @@ pub struct Event {
     pub draw: Option<Draw>,
 }
 
+/// One blow of a bone whistle. Look keeps the direction through `until`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct WhistleSound {
+    pub cell: CellId,
+    pub until: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct World {
     pub tuning: Tuning,
@@ -1284,6 +1302,10 @@ pub struct World {
     /// The rock face where a clear stone of quartz lies. It does not grow back.
     #[serde(default)]
     pub(crate) quartz_faces: BTreeSet<CellId>,
+    /// A whistle just blown. Look names the direction while `time` is still
+    /// within `until`. It is not a fire and not a column of smoke.
+    #[serde(default)]
+    pub(crate) whistle: Option<WhistleSound>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1538,6 +1560,7 @@ impl World {
             worm_beds: BTreeSet::new(),
             worm_returns_at: BTreeMap::new(),
             quartz_faces: BTreeSet::new(),
+            whistle: None,
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -21336,6 +21359,153 @@ mod signal {
             far,
             "You lay green pine needles on the fire. A column of smoke rises."
         ));
+    }
+}
+
+#[cfg(test)]
+mod whistle {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: u32, text: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == text)
+    }
+
+    #[test]
+    fn a_bone_whistle_is_heard_past_sight_and_is_not_smoke() {
+        assert!(matches!(
+            crate::parse::parse_attempt("carve bone whistle").unwrap(),
+            Attempt::CarveWhistle
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("blow whistle").unwrap(),
+            Attempt::BlowWhistle
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("play the bone whistle").unwrap(),
+            Attempt::BlowWhistle
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let farther = world.spawn_at("Far", "f", 2, 1).unwrap();
+        let past = world.spawn_at("Past", "p", 1, 1).unwrap();
+
+        let no_bone = world.step(&[intent("bone", near, Attempt::CarveWhistle)]);
+        assert_eq!(
+            no_bone.results[0].message,
+            "You have no bone to carve a whistle."
+        );
+        assert!(says(&world, near, "You have no bone to carve a whistle."));
+        for person in [quiet, seen, farther, past] {
+            assert!(!says(
+                &world,
+                person,
+                "You have no bone to carve a whistle."
+            ));
+        }
+        let no_blow = world.step(&[intent("none", near, Attempt::BlowWhistle)]);
+        assert_eq!(
+            no_blow.results[0].message,
+            "You are not carrying a bone whistle."
+        );
+        assert!(says(&world, near, "You are not carrying a bone whistle."));
+        assert!(!says(&world, quiet, "You are not carrying a bone whistle."));
+
+        world.mint_item(Material::Bone, 0, rock, Some(near), Role::Loose);
+        let no_tool = world.step(&[intent("tool", near, Attempt::CarveWhistle)]);
+        assert_eq!(
+            no_tool.results[0].message,
+            "You need a flint flake or an iron knife to carve a whistle."
+        );
+        assert!(!says(
+            &world,
+            seen,
+            "You need a flint flake or an iron knife to carve a whistle."
+        ));
+        assert_eq!(world.loose_ids(near, Material::Bone).len(), 1);
+
+        world.mint_item(Material::Flake, 0, rock, Some(near), Role::Loose);
+        let carved = world.step(&[intent("carve", near, Attempt::CarveWhistle)]);
+        assert_eq!(
+            carved.results[0].message,
+            "You carve a bone into a bone whistle with the flint flake."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "Near carves a bone into a bone whistle with the flint flake."
+        ));
+        assert!(says(
+            &world,
+            quiet,
+            "Near carves a bone into a bone whistle with the flint flake."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "Near carves a bone into a bone whistle with the flint flake."
+        ));
+        assert!(world.loose_ids(near, Material::Bone).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Whistle).len(), 1);
+        assert_eq!(world.actor(near).unwrap().cell, rock);
+        assert!(
+            world.arms_line(near).contains("bone whistle"),
+            "{}",
+            world.arms_line(near)
+        );
+
+        let blown = world.step(&[intent("blow", near, Attempt::BlowWhistle)]);
+        assert_eq!(blown.results[0].message, "You blow the bone whistle.");
+        assert!(!says(&world, near, "Near blows the bone whistle."));
+        assert!(says(&world, quiet, "Near blows the bone whistle."));
+        assert!(!says(&world, seen, "Near blows the bone whistle."));
+        assert_eq!(world.loose_ids(near, Material::Whistle).len(), 1);
+        assert_eq!(world.actor(near).unwrap().cell, rock);
+
+        let near_look = world.observe(near).unwrap().text;
+        assert!(!near_look.contains("You hear a whistle"), "{near_look}");
+        assert!(!near_look.contains("smoke"), "{near_look}");
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(!quiet_look.contains("You hear a whistle"), "{quiet_look}");
+        let heard = "You hear a whistle to the north and east.";
+        let seen_look = world.observe(seen).unwrap().text;
+        assert!(seen_look.contains(heard), "{seen_look}");
+        assert!(!seen_look.contains("smoke"), "{seen_look}");
+        assert!(!says(&world, seen, heard));
+        let far_look = world.observe(farther).unwrap().text;
+        assert!(
+            far_look.contains("You hear a whistle to the east."),
+            "{far_look}"
+        );
+        let past_look = world.observe(past).unwrap().text;
+        assert!(!past_look.contains("You hear a whistle"), "{past_look}");
+
+        world.step(&[]);
+        assert!(!world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("You hear a whistle"));
+        let played = world.step(&[intent("play", near, Attempt::BlowWhistle)]);
+        assert_eq!(played.results[0].message, "You blow the bone whistle.");
+        assert!(world.observe(seen).unwrap().text.contains(heard));
     }
 }
 

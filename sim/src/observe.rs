@@ -468,6 +468,9 @@ impl World {
             if let Some(column) = self.seen_signal(actor_id) {
                 lines.push(column);
             }
+            if let Some(whistle) = self.seen_whistle(actor_id) {
+                lines.push(whistle);
+            }
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
@@ -1904,6 +1907,25 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// A bone whistle just blown, past sight. One cell past sight, and one
+    /// cell farther, a look says which way. Someone who can see the blower
+    /// already has the blow. It is not smoke, and it does not last.
+    fn seen_whistle(&self, viewer: ActorId) -> Option<String> {
+        let sound = self.whistle?;
+        if self.time > sound.until {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let distance = chebyshev(origin, sound.cell);
+        let near = self.tuning.sight.saturating_add(1);
+        let far = near.saturating_add(1);
+        if distance != near && distance != far {
+            return None;
+        }
+        let way = self.relative(origin, sound.cell);
+        Some(format!("You hear a whistle to the {way}."))
     }
 
     /// Smoke from a fire past sight, still inside the smoke range.
@@ -4811,6 +4833,10 @@ impl World {
             "a bone fish hook".into()
         } else if item.material == "fish hook" {
             format!("{} bone fish hooks", count_word(item.count))
+        } else if item.material == "whistle" && item.count == 1 {
+            "a bone whistle".into()
+        } else if item.material == "whistle" {
+            format!("{} bone whistles", count_word(item.count))
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -9559,6 +9585,7 @@ impl World {
                 Material::Fluff => "cattail fluff",
                 Material::Worm => "worm",
                 Material::Quartz => "quartz",
+                Material::Whistle => "bone whistle",
             };
             format!("You see no {name} from here.")
         } else {
@@ -10583,6 +10610,7 @@ impl World {
                     && self.set_net_for_these_eyes(viewer, event).is_none()
                     && self.weir_for_these_eyes(viewer, event).is_none()
                     && self.carve_for_these_eyes(viewer, event).is_none()
+                    && self.blow_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
@@ -12390,10 +12418,25 @@ impl World {
             && rest != "a bow drill from two dry branches and willow cordage."
             && rest != "a bow drill from two dry branches and nettle cordage."
             && rest != "the spent bow drill anew with one dry branch."
+            && rest != "a bone into a bone whistle with the iron knife."
+            && rest != "a bone into a bone whistle with the flint flake."
         {
             return None;
         }
         Some(crate::model::spoken_act(None, "carve", rest))
+    }
+
+    /// The person who blew the whistle already has the reply.
+    fn blow_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} blows the bone whistle.") {
+            Some("You blow the bone whistle.".into())
+        } else {
+            None
+        }
     }
 
     /// A hide pierced with a bone awl. The copper awl still reaches the piercer.
@@ -14588,6 +14631,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Worm, false) => "worms",
         (Material::Quartz, true) => "clear stone of quartz",
         (Material::Quartz, false) => "clear stones of quartz",
+        (Material::Whistle, true) => "bone whistle",
+        (Material::Whistle, false) => "bone whistles",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

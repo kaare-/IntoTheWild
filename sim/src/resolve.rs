@@ -125,6 +125,8 @@ impl World {
         let mut carves = Vec::new();
         let mut paddle_carves = Vec::new();
         let mut hook_carves = Vec::new();
+        let mut whistle_carves = Vec::new();
+        let mut whistle_blows = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smoke_fish = Vec::new();
@@ -257,6 +259,8 @@ impl World {
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::CarvePaddle => paddle_carves.push(intent),
                         Attempt::CarveHook => hook_carves.push(intent),
+                        Attempt::CarveWhistle => whistle_carves.push(intent),
+                        Attempt::BlowWhistle => whistle_blows.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeFish => smoke_fish.push(intent),
@@ -418,6 +422,8 @@ impl World {
         self.apply_carves(carves, &mut results);
         self.apply_paddle_carves(paddle_carves, &mut results);
         self.apply_hook_carves(hook_carves, &mut results);
+        self.apply_whistle_carves(whistle_carves, &mut results);
+        self.apply_whistle_blows(whistle_blows, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smoke_fish(smoke_fish, &mut results);
@@ -916,6 +922,34 @@ impl World {
                     Err(message.into())
                 } else if self.paddle_tool_rest(actor.id).is_none() {
                     Err("You need a flint flake or an iron knife to carve a paddle.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarveWhistle => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.has_bone(actor.id) {
+                    Err("You have no bone to carve a whistle.".into())
+                } else if self.whistle_tool_rest(actor.id).is_none() {
+                    Err("You need a flint flake or an iron knife to carve a whistle.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::BlowWhistle => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Whistle).is_empty() {
+                    Err("You are not carrying a bone whistle.".into())
                 } else {
                     Ok(true)
                 }
@@ -2440,6 +2474,7 @@ impl World {
                     | Material::Hook
                     | Material::Worm
                     | Material::Quartz
+                    | Material::Whistle
                     | Material::Willow
                     | Material::Nettle
                     | Material::BarkCup
@@ -8448,6 +8483,114 @@ impl World {
             Some("a bone into a bone fish hook with the flint flake.")
         } else {
             None
+        }
+    }
+
+    /// Knife before flake. Either may be in the arms or lying on this cell. It is not spent.
+    pub(crate) fn whistle_tool_rest(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        let knife = !self.loose_ids(actor, Material::Knife).is_empty()
+            || !self.ground_ids(cell, Material::Knife).is_empty();
+        let flake = !self.loose_ids(actor, Material::Flake).is_empty()
+            || !self.ground_ids(cell, Material::Flake).is_empty();
+        if knife {
+            Some("a bone into a bone whistle with the iron knife.")
+        } else if flake {
+            Some("a bone into a bone whistle with the flint flake.")
+        } else {
+            None
+        }
+    }
+
+    fn apply_whistle_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(rest) = self.whistle_tool_rest(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve a whistle.",
+                    results,
+                );
+                continue;
+            };
+            if !self.take_one_bone(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no bone to carve a whistle.",
+                    results,
+                );
+                continue;
+            }
+            let id = self.mint_item(
+                Material::Whistle,
+                0,
+                actor.cell,
+                Some(actor.id),
+                Role::Loose,
+            );
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_whistle_blows(&mut self, blows: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in blows {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Whistle).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a bone whistle.",
+                    results,
+                );
+                continue;
+            }
+            self.whistle = Some(crate::model::WhistleSound {
+                cell: actor.cell,
+                until: self.time.saturating_add(1),
+            });
+            let name = self.name_of(actor.id);
+            let rest = "the bone whistle.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "blow", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "blow", rest),
+                results,
+            );
         }
     }
 
