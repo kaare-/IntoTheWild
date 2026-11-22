@@ -20217,7 +20217,7 @@ mod charcoal_bank {
         let refused = world.step(&[intent("plain", near, Attempt::SmeltIron)]);
         assert_eq!(
             refused.results[0].message,
-            "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+            "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."
         );
         assert!(world
             .observe(near)
@@ -20225,7 +20225,7 @@ mod charcoal_bank {
             .events
             .iter()
             .any(|event| event.text
-                == "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."));
+                == "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
@@ -20239,7 +20239,7 @@ mod charcoal_bank {
         let fed = world.step(&[intent("fed", near, Attempt::SmeltIron)]);
         assert_eq!(
             fed.results[0].message,
-            "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+            "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."
         );
         assert!(!world.fire_at(cell).unwrap().charcoal);
         let mut waits = 0;
@@ -20381,7 +20381,7 @@ mod charcoal_bank {
         let wait = world.step(&[intent("wait-hint", near, Attempt::SmeltIron)]);
         assert_eq!(
             wait.results[0].message,
-            "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+            "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."
         );
 
         world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);

@@ -12005,8 +12005,8 @@ impl World {
 
     /// A plain fire will not smelt iron. The reply names the verb that fits
     /// what is already here: feed a carried lump, gather one and feed it,
-    /// bank dry branches with mud, or wait until this fire leaves charcoal
-    /// and light with that.
+    /// bank dry branches with mud, or wait until this fire burns down and
+    /// goes out, then light with the charcoal.
     fn iron_charcoal_hint(&self, actor_id: crate::model::ActorId) -> String {
         let cell = self.actor(actor_id).map(|actor| actor.cell).unwrap_or(0);
         let hot = self.fire_at(cell).is_some_and(|fire| fire.hot);
@@ -12025,7 +12025,7 @@ impl World {
         } else if wood && mud {
             "Bank the branches with mud."
         } else {
-            "Wait for the charcoal, then light with it."
+            "This fire must burn down and go out first, then light with the charcoal."
         };
         format!("Iron needs a hot charcoal fire. {hint}")
     }
