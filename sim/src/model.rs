@@ -20217,14 +20217,15 @@ mod charcoal_bank {
         let refused = world.step(&[intent("plain", near, Attempt::SmeltIron)]);
         assert_eq!(
             refused.results[0].message,
-            "Iron needs a hot charcoal fire."
+            "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
         );
         assert!(world
             .observe(near)
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "Iron needs a hot charcoal fire."));
+            .any(|event| event.text
+                == "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
@@ -20236,7 +20237,10 @@ mod charcoal_bank {
         world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
         world.step(&[intent("branch", near, Attempt::Feed)]);
         let fed = world.step(&[intent("fed", near, Attempt::SmeltIron)]);
-        assert_eq!(fed.results[0].message, "Iron needs a hot charcoal fire.");
+        assert_eq!(
+            fed.results[0].message,
+            "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+        );
         assert!(!world.fire_at(cell).unwrap().charcoal);
         let mut waits = 0;
         while !world
@@ -20305,6 +20309,89 @@ mod charcoal_bank {
             .events
             .iter()
             .all(|event| event.text != "The iron ore smelts into a bloom."));
+    }
+
+    #[test]
+    fn iron_names_how_to_get_a_charcoal_fire() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        world.mint_item(Material::IronOre, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("lit", near, Attempt::Light)]);
+        world.mint_item(Material::Charcoal, 0, cell, Some(near), Role::Loose);
+        let feed = world.step(&[intent("feed-hint", near, Attempt::SmeltIron)]);
+        let feed_line = "Iron needs a hot charcoal fire. Feed a lump of charcoal.";
+        assert_eq!(feed.results[0].message, feed_line);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == feed_line));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("charcoal fire") }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("charcoal fire") }));
+
+        let carried: Vec<_> = world.loose_ids(near, Material::Charcoal);
+        for id in carried {
+            world.items.get_mut(&id).unwrap().carrier = None;
+        }
+        let ground = world.step(&[intent("ground-hint", near, Attempt::SmeltIron)]);
+        assert_eq!(
+            ground.results[0].message,
+            "Iron needs a hot charcoal fire. Gather the charcoal and feed it."
+        );
+
+        for id in world.ground_ids(cell, Material::Charcoal) {
+            world.items.remove(&id);
+        }
+        world.mint_item(Material::Mud, 0, cell, Some(near), Role::Loose);
+        let bank = world.step(&[intent("bank-hint", near, Attempt::SmeltIron)]);
+        assert_eq!(
+            bank.results[0].message,
+            "Iron needs a hot charcoal fire. Bank the branches with mud."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Bank the branches") }));
+
+        for id in world.loose_ids(near, Material::Mud) {
+            world.items.remove(&id);
+        }
+        while world.take_from_pile(cell, Material::Branch, 1).is_some() {}
+        for id in world.ground_ids(cell, Material::Branch) {
+            world.items.remove(&id);
+        }
+        let wait = world.step(&[intent("wait-hint", near, Attempt::SmeltIron)]);
+        assert_eq!(
+            wait.results[0].message,
+            "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+        );
+
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("hotter", near, Attempt::Feed)]);
+        world.mint_item(Material::Charcoal, 0, cell, Some(near), Role::Loose);
+        let held = world.step(&[intent("held-hot", near, Attempt::SmeltIron)]);
+        assert_eq!(
+            held.results[0].message,
+            "Iron needs a hot charcoal fire. Wait for this fire to go out, then light with the charcoal."
+        );
     }
 }
 

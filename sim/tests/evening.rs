@@ -12376,7 +12376,10 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
     world.step(&[cmd("branch", near, Attempt::Gather(Material::Branch))]);
     world.step(&[cmd("light", near, Attempt::Light)]);
     let cold = world.step(&[cmd("early", near, Attempt::Smelt)]);
-    assert_eq!(cold.results[0].message, "Iron needs a hot charcoal fire.");
+    assert_eq!(
+        cold.results[0].message,
+        "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+    );
     assert!(!cold.results[0].success);
     for witness in [far, west] {
         assert!(
@@ -12458,13 +12461,13 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
         world.examine(near, ExamineTarget::Fire)
     );
     let still = world.step(&[cmd("fed-fire", near, Attempt::SmeltIron)]);
-    assert_eq!(still.results[0].message, "Iron needs a hot charcoal fire.");
-    assert!(world
-        .observe(near)
-        .unwrap()
-        .events
-        .iter()
-        .any(|event| event.text == "Iron needs a hot charcoal fire."));
+    assert_eq!(
+        still.results[0].message,
+        "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+    );
+    assert!(world.observe(near).unwrap().events.iter().any(|event| {
+        event.text == "Iron needs a hot charcoal fire. Wait for the charcoal, then light with it."
+    }));
     for witness in [far, west] {
         assert!(world
             .observe(witness)

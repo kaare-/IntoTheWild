@@ -12003,6 +12003,33 @@ impl World {
         }
     }
 
+    /// A plain fire will not smelt iron. The reply names the verb that fits
+    /// what is already here: feed a carried lump, gather one and feed it,
+    /// bank dry branches with mud, or wait until this fire leaves charcoal
+    /// and light with that.
+    fn iron_charcoal_hint(&self, actor_id: crate::model::ActorId) -> String {
+        let cell = self.actor(actor_id).map(|actor| actor.cell).unwrap_or(0);
+        let hot = self.fire_at(cell).is_some_and(|fire| fire.hot);
+        let in_arms = !self.loose_ids(actor_id, Material::Charcoal).is_empty();
+        let on_ground = !self.ground_ids(cell, Material::Charcoal).is_empty();
+        let mud = !self.loose_ids(actor_id, Material::Mud).is_empty()
+            || self.pile_count(cell, Material::Mud) > 0
+            || !self.ground_ids(cell, Material::Mud).is_empty();
+        let wood = self.dry_wood_on_ground(cell) > 0;
+        let hint = if in_arms && !hot {
+            "Feed a lump of charcoal."
+        } else if on_ground && !hot {
+            "Gather the charcoal and feed it."
+        } else if in_arms || on_ground {
+            "Wait for this fire to go out, then light with the charcoal."
+        } else if wood && mud {
+            "Bank the branches with mud."
+        } else {
+            "Wait for the charcoal, then light with it."
+        };
+        format!("Iron needs a hot charcoal fire. {hint}")
+    }
+
     fn iron_smelt_ready(&self, actor: &crate::model::Actor) -> Result<bool, String> {
         if self.loose_ids(actor.id, Material::IronOre).is_empty() {
             Err(self.gather_miss(
@@ -12013,7 +12040,7 @@ impl World {
         } else if self.fire_at(actor.cell).is_none() {
             Err("There is no fire burning here.".into())
         } else if self.fire_at(actor.cell).is_some_and(|fire| !fire.charcoal) {
-            Err("Iron needs a hot charcoal fire.".into())
+            Err(self.iron_charcoal_hint(actor.id))
         } else {
             Ok(true)
         }
@@ -12227,13 +12254,8 @@ impl World {
             return;
         }
         if self.fire_at(cell).is_some_and(|fire| !fire.charcoal) {
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                false,
-                "Iron needs a hot charcoal fire.",
-                results,
-            );
+            let message = self.iron_charcoal_hint(intent.actor_id);
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         }
         let ready = self.time.saturating_add(self.tuning.clay_ticks);
