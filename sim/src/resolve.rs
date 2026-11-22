@@ -2955,6 +2955,12 @@ impl World {
                         };
                         format!("a {kind}{from}.")
                     } else if material == Material::Meat
+                        && self
+                            .item(item)
+                            .is_some_and(|meat| !meat.small && meat.cooked)
+                    {
+                        "a portion of cooked meat.".to_string()
+                    } else if material == Material::Meat
                         && self.item(item).is_some_and(|meat| {
                             !meat.small
                                 && !meat.cooked
