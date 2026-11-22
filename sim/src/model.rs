@@ -17163,7 +17163,49 @@ mod cattail {
             .all(|event| { event.text != "Cattails grow again in the shallows." }));
         world.step(&[]);
         let grown = "Cattails grow again in the shallows.";
+        let held = world.observe(near).unwrap();
+        assert!(
+            held.text
+                .contains("The still water is frozen. Ice covers it."),
+            "{}",
+            held.text
+        );
+        assert!(
+            held.text.contains("The shallows here have no cattails."),
+            "{}",
+            held.text
+        );
+        assert!(!held.text.contains("Cattails grow here"), "{}", held.text);
+        assert!(held.events.iter().all(|event| event.text != grown));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown));
+        let thaw = world.tuning.night_at + world.tuning.night_len;
+        while world.time < thaw {
+            world.step(&[]);
+            assert!(world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != grown));
+            assert!(world
+                .observe(near)
+                .unwrap()
+                .text
+                .contains("The shallows here have no cattails."));
+        }
+        world.step(&[]);
         let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("The day has thawed the still water."),
+            "{}",
+            back.text
+        );
+        assert!(!back.text.contains("Ice covers it."), "{}", back.text);
         assert!(
             back.text.contains(
                 "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
@@ -17187,5 +17229,54 @@ mod cattail {
         assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
         let again = world.step(&[intent("again", near, Attempt::Gather(Material::Cattail))]);
         assert_eq!(again.results[0].message, "You gather cattail roots.");
+    }
+
+    #[test]
+    fn ice_covers_cattail_roots_until_the_still_thaws() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let open = world.observe(near).unwrap().text;
+        assert!(open.contains(
+            "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
+        ));
+        assert!(!open.contains("Ice covers"));
+        while world.time < world.tuning.chill_at {
+            world.step(&[]);
+        }
+        let iced = world.observe(near).unwrap().text;
+        assert!(
+            iced.contains("The still water is frozen. Ice covers it."),
+            "{iced}"
+        );
+        assert!(
+            iced.contains(
+                "Cattails stand under the ice. The roots cannot be dug. They are not the reeds."
+            ),
+            "{iced}"
+        );
+        assert!(!iced.contains("The roots can be dug."), "{iced}");
+        assert!(world.observe(seen).unwrap().text.contains(
+            "Cattails stand under the ice to the north and west. They are not the reeds."
+        ));
+        assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
+        let dug = world.step(&[intent("ice", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(dug.results[0].message, "Ice covers the cattail roots.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Ice covers the cattail roots."));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "Ice covers the cattail roots." }));
+        }
+        assert!(world.pile_count(world.actor(near).unwrap().cell, Material::Cattail) > 0);
     }
 }

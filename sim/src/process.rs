@@ -320,6 +320,12 @@ impl World {
         {
             return;
         }
+        if self.still_frozen(cell) {
+            let next = self.time.saturating_add(1);
+            self.cattail_returns_at.insert(cell, next);
+            self.schedule(next, Wake::CattailReturn(cell));
+            return;
+        }
         self.add_pile(cell, Material::Cattail, 2, 0);
         self.emit(
             "Cattails grow again in the shallows.",

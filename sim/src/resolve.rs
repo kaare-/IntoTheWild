@@ -1725,6 +1725,12 @@ impl World {
                     if !self.water_here(actor.cell) {
                         return Err("There is no mud here to gather.".into());
                     }
+                } else if *material == Material::Cattail
+                    && self.still_frozen(actor.cell)
+                    && (self.pile_count(actor.cell, Material::Cattail) > 0
+                        || !self.ground_ids(actor.cell, Material::Cattail).is_empty())
+                {
+                    return Err("Ice covers the cattail roots.".into());
                 } else if *material == Material::Egg
                     && self.pile_count(actor.cell, Material::Egg) == 0
                     && self.ground_ids(actor.cell, Material::Egg).is_empty()
