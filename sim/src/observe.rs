@@ -9360,6 +9360,7 @@ impl World {
                     && self.bank_for_these_eyes(viewer, event).is_none()
                     && self.thatch_for_these_eyes(viewer, event).is_none()
                     && self.knap_for_these_eyes(viewer, event).is_none()
+                    && self.eat_honey_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -9543,7 +9544,6 @@ impl World {
             && rest != "the salted fish."
             && rest != "the smoked fish."
             && rest != "the smoked meat."
-            && rest != "the honeycomb."
         {
             return None;
         }
@@ -10867,6 +10867,24 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "haft", rest))
+    }
+
+    /// A honeycomb eaten. The eater already has the reply, so the event
+    /// list does not repeat it. Someone who can see keeps the third person.
+    fn eat_honey_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} eats the honeycomb.") {
+            Some(event.text.clone())
+        } else {
+            None
+        }
     }
 
     /// A successful knap. The knapper already has the reply, so the event

@@ -4834,6 +4834,12 @@ mod honey {
         let bare = world.step(&[intent("bare", near, Attempt::Eat(Material::Honey))]);
         assert_eq!(bare.results[0].message, "You are not carrying honey.");
         assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "You are not carrying honey."));
+        assert!(world
             .observe(seen)
             .unwrap()
             .events
@@ -4884,19 +4890,24 @@ mod honey {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "You eat the honeycomb."));
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| !event.text.contains("Near eats")));
+            .any(|event| event.text == "The hunger eases."));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You eat the honeycomb." && !event.text.contains("Near eats")
+        }));
         assert!(world
             .observe(seen)
             .unwrap()
             .events
             .iter()
             .any(|event| event.text == "Near eats the honeycomb."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(
+                |event| event.text != "The hunger eases." && event.text != "You eat the honeycomb."
+            ));
         assert!(world
             .observe(quiet)
             .unwrap()
