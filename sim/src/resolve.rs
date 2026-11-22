@@ -10498,31 +10498,43 @@ impl World {
 
     /// Fire, then the herb, then a pot or a bark cup, then water in that vessel.
     /// Each miss names the one thing that is missing.
-    fn steep_refusal(&self, actor: &crate::model::Actor, herb: Material) -> Option<&'static str> {
+    fn steep_refusal(&self, actor: &crate::model::Actor, herb: Material) -> Option<String> {
         if self.fire_at(actor.cell).is_none() {
-            return Some("There is no fire burning here.");
+            return Some("There is no fire burning here.".into());
         }
         if self.loose_ids(actor.id, herb).is_empty() {
-            return Some(match herb {
-                Material::Needle => "You have no pine needles to steep.",
-                Material::WillowBark => "You have no willow bark to steep.",
-                _ => "You have no mint to steep.",
-            });
+            return Some(
+                match herb {
+                    Material::Needle => "You have no pine needles to steep.",
+                    Material::WillowBark => "You have no willow bark to steep.",
+                    _ => "You have no mint to steep.",
+                }
+                .into(),
+            );
         }
         let pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
         let cup = !self.loose_ids(actor.id, Material::BarkCup).is_empty();
         if !pot && !cup {
-            return Some(match herb {
-                Material::Needle => "You need a pot or a bark cup to steep the pine needles.",
-                Material::WillowBark => "You need a pot or a bark cup to steep the willow bark.",
-                _ => "You need a pot or a bark cup to steep the mint.",
-            });
+            return Some(
+                match herb {
+                    Material::Needle => "You need a pot or a bark cup to steep the pine needles.",
+                    Material::WillowBark => {
+                        "You need a pot or a bark cup to steep the willow bark."
+                    }
+                    _ => "You need a pot or a bark cup to steep the mint.",
+                }
+                .into(),
+            );
         }
         if self.loose_ids(actor.id, Material::Water).is_empty() {
-            return Some(if pot {
+            let bare = if pot {
                 "The pot has no water."
             } else {
                 "The bark cup has no water."
+            };
+            return Some(match self.water_step_cue(actor.cell) {
+                Some(cue) => format!("{bare}{cue}"),
+                None => bare.into(),
             });
         }
         None

@@ -3442,6 +3442,53 @@ impl World {
         }
     }
 
+    /// Drinkable water one step off. The brook always counts. Still water counts
+    /// until it freezes. Water already here is not a step. One diagonal, and no
+    /// orthogonal source, is named the way look names it. This does not move anyone.
+    pub(crate) fn water_step_cue(&self, cell: CellId) -> Option<String> {
+        if self.drinkable_water(cell) {
+            return None;
+        }
+        let (x, y) = cell_xy(cell);
+        let mut ways = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.drinkable_water(dest) {
+                ways.push(dir.word());
+            }
+        }
+        match ways.len() {
+            0 => {
+                let mut diag = Vec::new();
+                for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                    let Some(dest) = cell_id(x + dx, y + dy) else {
+                        continue;
+                    };
+                    if self.drinkable_water(dest) {
+                        diag.push(self.relative(cell, dest));
+                    }
+                }
+                if diag.len() == 1 {
+                    Some(format!(" Step {}.", diag[0]))
+                } else {
+                    None
+                }
+            }
+            1 => Some(format!(" Step {}.", ways[0])),
+            _ => {
+                let last = ways.pop()?;
+                Some(format!(" Step {} or {last}.", ways.join(", ")))
+            }
+        }
+    }
+
+    fn drinkable_water(&self, cell: CellId) -> bool {
+        self.water_here(cell) && !self.still_frozen(cell)
+    }
+
     /// The ordinary miss, plus a step when the stock is one cell over.
     pub(crate) fn gather_miss(&self, cell: CellId, material: Material, bare: String) -> String {
         match self.gather_step_cue(cell, material) {
@@ -17366,6 +17413,73 @@ mod charcoal_bank {
             Attempt::SealCup,
             "There is no bark cup here.",
         );
+    }
+
+    #[test]
+    fn an_empty_pot_names_the_step_to_drinkable_water() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let bank = cell_id(2, 2).unwrap();
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        world.mint_fire(bank, 0);
+        world.mint_item(Material::Mint, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Pot, 0, bank, Some(near), Role::Loose);
+        let both = "The pot has no water. Step north or west.";
+        let step = world.step(&[intent("both", near, Attempt::Brew)]);
+        assert_eq!(step.results[0].message, both);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == both));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != both));
+        }
+        assert_eq!(world.actor(near).unwrap().cell, bank);
+        assert!(world.loose_ids(near, Material::Water).is_empty());
+        let pot = world.loose_ids(near, Material::Pot)[0];
+        world.items.remove(&pot);
+        world.mint_item(Material::BarkCup, 0, bank, Some(near), Role::Loose);
+        let cup_line = "The bark cup has no water. Step north or west.";
+        let in_cup = world.step(&[intent("cup", near, Attempt::Brew)]);
+        assert_eq!(in_cup.results[0].message, cup_line);
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != cup_line));
+        let brook = cell_id(1, 2).unwrap();
+        world.actors.get_mut(&near).unwrap().cell = brook;
+        world.mint_fire(brook, 0);
+        let here = world.step(&[intent("here", near, Attempt::Brew)]);
+        assert_eq!(here.results[0].message, "The bark cup has no water.");
+        assert!(world.loose_ids(near, Material::Water).is_empty());
+        assert_eq!(world.actor(near).unwrap().cell, brook);
+
+        let slope = cell_id(3, 0).unwrap();
+        let west = world.spawn_at("West", "w", 3, 0).unwrap();
+        world.mint_fire(slope, 0);
+        world.mint_item(Material::Pot, 0, slope, Some(west), Role::Loose);
+        world.mint_item(Material::Needle, 0, slope, Some(west), Role::Loose);
+        let diagonal = world.step(&[intent("diag", west, Attempt::SteepPine)]);
+        assert_eq!(
+            diagonal.results[0].message,
+            "The pot has no water. Step south and west."
+        );
+        assert_eq!(world.actor(west).unwrap().cell, slope);
+        world.time = world.tuning.chill_at;
+        let frozen = world.step(&[intent("ice", west, Attempt::SteepPine)]);
+        assert_eq!(frozen.results[0].message, "The pot has no water.");
+        assert_eq!(world.actor(west).unwrap().cell, slope);
+        assert!(world.loose_ids(west, Material::Water).is_empty());
     }
 
     #[test]
