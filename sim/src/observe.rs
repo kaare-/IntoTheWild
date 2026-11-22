@@ -13509,6 +13509,7 @@ impl World {
             "soaked bark cup",
             "fishing net",
             "reed mat",
+            "portion of raw meat",
         ];
         let known = NOUNS
             .iter()

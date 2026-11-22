@@ -13104,6 +13104,40 @@ mod mushroom_return {
             .iter()
             .all(|event| { event.text != "Near cooks the raw meat over the fire." }));
     }
+
+    #[test]
+    fn gather_names_a_portion_of_raw_meat() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Meat, 0, cell, None, super::Role::Loose);
+        let gathered = world.step(&[intent("portion", near, Attempt::Gather(Material::Meat))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a portion of raw meat."
+        );
+        assert!(gathered.results[0].success);
+        let arms = world.arms_line(near);
+        assert!(arms.contains("a portion of raw meat"), "{arms}");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You gather a portion of raw meat."
+                && event.text != "Near gathers a portion of raw meat."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a portion of raw meat." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near gathers a portion of raw meat." }));
+    }
 }
 
 #[cfg(test)]
