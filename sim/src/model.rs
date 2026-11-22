@@ -623,10 +623,14 @@ pub struct Actor {
     /// A smear of red ochre. It flakes off, and rain in the open washes it off.
     #[serde(default)]
     pub ochre: u32,
-    /// The sim time when bee stings leave the body. None means the skin is clear.
-    /// Mud and ochre do not change it.
+    /// The sim time when stings leave the body. None means the skin is clear.
+    /// Mud and ochre do not change it. Nettles and bees share the timer.
+    /// `nettle_sting` says which one look names.
     #[serde(default)]
     pub stings_until: Option<u64>,
+    /// The sting on `stings_until` came from nettles. Bee stings leave this false.
+    #[serde(default)]
+    pub nettle_sting: bool,
     /// When wet clothes at a fire become dry. None means they are not drying.
     /// Stepping off the fire clears it. The clothes stay as wet as they were.
     #[serde(default)]
@@ -1567,6 +1571,7 @@ impl World {
                 mud: 0,
                 ochre: 0,
                 stings_until: None,
+                nettle_sting: false,
                 clothes_dry_at: None,
                 tasted_bitter: false,
                 raw_mushroom_known: false,
@@ -16613,7 +16618,20 @@ mod nettle {
         assert!(events(&world, seen)
             .iter()
             .all(|text| !text.contains("nettle")));
-        assert!(world.observe(near).unwrap().text.contains("You are stung."));
+        let stung = world.observe(near).unwrap();
+        assert!(
+            stung.text.contains("You are stung by nettles."),
+            "{}",
+            stung.text
+        );
+        assert_eq!(stung.self_info.illness, "stung by nettles");
+        assert!(world
+            .examine(quiet, super::ExamineTarget::Person("Near".into()))
+            .contains("They are stung by nettles."));
+        assert_eq!(
+            world.examine(seen, super::ExamineTarget::Person("Near".into())),
+            "You cannot see Near from here."
+        );
         assert!(world
             .observe(near)
             .unwrap()
@@ -16624,6 +16642,7 @@ mod nettle {
         {
             let person = world.actors.get_mut(&near).unwrap();
             person.stings_until = None;
+            person.nettle_sting = false;
             person.mud = world.tuning.smear_at;
         }
         let again = world.step(&[intent("again", near, Attempt::Gather(Material::Nettle))]);

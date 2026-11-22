@@ -2301,6 +2301,7 @@ impl World {
                         let until = self.time.saturating_add(self.tuning.sting_ticks);
                         if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                             person.stings_until = Some(until);
+                            person.nettle_sting = false;
                         }
                     }
                     if material == Material::Honey {
@@ -2326,6 +2327,7 @@ impl World {
                         let until = self.time.saturating_add(self.tuning.sting_ticks);
                         if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                             person.stings_until = Some(until);
+                            person.nettle_sting = true;
                         }
                     }
                     if material == Material::Nettle {
@@ -10468,6 +10470,7 @@ impl World {
             self.items.remove(&item_id);
             if let Some(person) = self.actors.get_mut(&intent.actor_id) {
                 person.stings_until = None;
+                person.nettle_sting = false;
             }
             let cell = self
                 .actor(intent.actor_id)

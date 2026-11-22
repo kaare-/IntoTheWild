@@ -2374,11 +2374,18 @@ impl World {
             let Some(actor) = self.actors.get_mut(&id) else {
                 continue;
             };
+            let nettle = actor.nettle_sting;
             actor.stings_until = None;
+            actor.nettle_sting = false;
             let cell = actor.cell;
             let name = actor.name.clone();
+            let line = if nettle {
+                format!("The nettle stings on {name} fade.")
+            } else {
+                format!("The stings on {name} fade.")
+            };
             self.emit(
-                format!("The stings on {name} fade."),
+                line,
                 Scope::Cell(cell),
                 vec![id],
                 vec![cell],

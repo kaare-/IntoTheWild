@@ -152,7 +152,7 @@ impl World {
                 },
                 thirst: self.thirst_word(actor.thirst).into(),
                 hunger: self.hunger_word(actor.hunger).into(),
-                illness: self.body_word(actor.stings_until, actor.illness).into(),
+                illness: self.body_word(actor).into(),
                 energy: self.energy_word(actor.energy).into(),
                 cold: self.cold_word(actor.cold).into(),
                 wind: self.wind_on(actor.id).into(),
@@ -4064,12 +4064,17 @@ impl World {
         }
     }
 
-    /// Bee stings take the well word. An illness still says ill.
-    fn body_word(&self, stings_until: Option<u64>, illness: u32) -> &'static str {
-        if stings_until.is_some() && self.illness_word(illness) == "well" {
-            "stung"
+    /// Bee stings take the well word. Nettle stings name the plant.
+    /// An illness still says ill.
+    fn body_word(&self, actor: &crate::model::Actor) -> &'static str {
+        if actor.stings_until.is_some() && self.illness_word(actor.illness) == "well" {
+            if actor.nettle_sting {
+                "stung by nettles"
+            } else {
+                "stung"
+            }
         } else {
-            self.illness_word(illness)
+            self.illness_word(actor.illness)
         }
     }
 
@@ -4079,10 +4084,7 @@ impl World {
             self.clothes_line(actor_id, actor.wetness),
             format!("You are {}.", self.thirst_sentence(actor.thirst)),
             format!("You are {}.", self.hunger_word(actor.hunger)),
-            format!(
-                "You are {}.",
-                self.body_word(actor.stings_until, actor.illness)
-            ),
+            format!("You are {}.", self.body_word(actor)),
             format!("You are {}.", self.energy_word(actor.energy)),
             format!("You are {}.", self.cold_word(actor.cold)),
             format!("You are {}.", self.wind_on(actor_id)),
@@ -4263,7 +4265,7 @@ impl World {
             clothes,
             self.thirst_sentence(actor.thirst),
             self.hunger_word(actor.hunger),
-            self.body_word(actor.stings_until, actor.illness),
+            self.body_word(actor),
             self.energy_word(actor.energy)
         ) + &format!(
             " They are {}. They are {}. Their skin is {}.",
@@ -9711,6 +9713,8 @@ impl World {
         let name = self.name_of(viewer);
         if event.text == format!("The stings on {name} fade.") {
             Some("The stings fade.".into())
+        } else if event.text == format!("The nettle stings on {name} fade.") {
+            Some("The nettle stings fade.".into())
         } else {
             None
         }
