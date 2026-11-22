@@ -1691,7 +1691,7 @@ impl World {
                 let Some(item) = self.item(id).cloned() else {
                     continue;
                 };
-                if item.hardened {
+                if item.hardened || (item.flint_tip && item.pitched) {
                     continue;
                 }
                 if item.wooden_tip {

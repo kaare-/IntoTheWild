@@ -5973,21 +5973,41 @@ impl World {
         }
     }
 
-    fn flint_tip_words(&self, spear: &crate::model::Item) -> &'static str {
-        if spear.bound_nettle {
-            return if spear.hardened {
+    fn flint_tip_words(&self, spear: &crate::model::Item) -> String {
+        if spear.pitched && !spear.hardened {
+            let binding = if spear.bound_nettle {
+                " bound with nettle cordage"
+            } else if spear.bound && spear.bound_willow {
+                " bound with willow cordage"
+            } else if spear.bound {
+                " bound with hide"
+            } else {
+                ""
+            };
+            return format!("a flint tip{binding} pitched with pine resin");
+        }
+        let base = if spear.bound_nettle {
+            if spear.hardened {
                 "a fire-hardened flint tip bound with nettle cordage"
             } else {
                 "a flint tip bound with nettle cordage, not yet fire-hardened"
-            };
-        }
-        match (spear.hardened, spear.bound, spear.bound_willow) {
-            (true, true, true) => "a fire-hardened flint tip bound with willow cordage",
-            (true, true, false) => "a fire-hardened flint tip bound with hide",
-            (true, false, _) => "a fire-hardened flint tip",
-            (false, true, true) => "a flint tip bound with willow cordage, not yet fire-hardened",
-            (false, true, false) => "a flint tip bound with hide, not yet fire-hardened",
-            (false, false, _) => "a flint tip, not yet fire-hardened",
+            }
+        } else {
+            match (spear.hardened, spear.bound, spear.bound_willow) {
+                (true, true, true) => "a fire-hardened flint tip bound with willow cordage",
+                (true, true, false) => "a fire-hardened flint tip bound with hide",
+                (true, false, _) => "a fire-hardened flint tip",
+                (false, true, true) => {
+                    "a flint tip bound with willow cordage, not yet fire-hardened"
+                }
+                (false, true, false) => "a flint tip bound with hide, not yet fire-hardened",
+                (false, false, _) => "a flint tip, not yet fire-hardened",
+            }
+        };
+        if spear.pitched {
+            format!("{base}, pitched with pine resin")
+        } else {
+            base.to_string()
         }
     }
 
@@ -9259,7 +9279,11 @@ impl World {
             for id in self.ground_ids(cell, Material::Spear) {
                 let spear = self.item(id);
                 if let Some(item) = spear.filter(|item| item.flint_tip) {
-                    let comma = if item.hardened { "" } else { "," };
+                    let comma = if item.hardened || item.pitched {
+                        ""
+                    } else {
+                        ","
+                    };
                     lines.push(format!(
                         "A spear with {}{comma} lies in contact with the ground {}.",
                         self.flint_tip_words(item),
@@ -9302,7 +9326,11 @@ impl World {
                 let spear = self.item(id);
                 if let Some(item) = spear.filter(|item| item.flint_tip) {
                     let waiting = !item.hardened && item.firing_ready_at.is_some();
-                    let comma = if item.hardened { "" } else { "," };
+                    let comma = if item.hardened || item.pitched {
+                        ""
+                    } else {
+                        ","
+                    };
                     let mut line = format!(
                         "A spear with {}{comma} is carried by {who}, {}.",
                         self.flint_tip_words(item),
@@ -11496,6 +11524,7 @@ impl World {
                     && self.hook_fish_for_these_eyes(viewer, event).is_none()
                     && self.ice_break_for_these_eyes(viewer, event).is_none()
                     && self.haft_for_these_eyes(viewer, event).is_none()
+                    && self.pitch_for_these_eyes(viewer, event).is_none()
                     && self.bank_for_these_eyes(viewer, event).is_none()
                     && self.thatch_for_these_eyes(viewer, event).is_none()
                     && self.knap_for_these_eyes(viewer, event).is_none()
@@ -13299,6 +13328,20 @@ impl World {
             return Some("Your clothes dry at the fire.".into());
         }
         None
+    }
+
+    /// A pitched join, filled for the person who set it.
+    /// Anyone else keeps the stored sentence.
+    fn pitch_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} pitches "))?;
+        if rest != "the join of the spear with pine resin." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "pitch", rest))
     }
 
     /// A successful haft, filled for the person who bound it.

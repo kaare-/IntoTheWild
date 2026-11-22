@@ -13,7 +13,8 @@ drop branch|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
-haft                         a carried flint flake and a dry branch into a spear; hide strips bind the tip when carried, otherwise willow cordage, otherwise nettle cordage. Hold it at a fire
+haft                         a carried flint flake and a dry branch into a spear; hide strips bind the tip when carried, otherwise willow cordage, otherwise nettle cordage. Hold it at a fire, or pitch the join
+pitch spear                  a lump of pine resin on a hafted flint spear. The lump is spent and the tip is set, so it can hunt without the fire. glue and glue spear are the same. An unpitched tip still needs the fire. With no hafted spear, or no pine resin, only you hear which is missing. The tip already set stays with you too
 point branch                 a carried dry branch into a wooden spear. The point is still green. No flint and no stone
 harden spear                 that wooden point, held in a burning fire. It is weaker than a flint spear. The fire is not used up
 craft bow                    a dry branch and hide strips, willow cordage, or nettle cordage, from the arms if you carry them, or lying in this cell. Hide strips are spent before willow, and willow before nettle. The bow stays in the arms.
@@ -350,6 +351,20 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "launch" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => {
             Ok(Attempt::Launch)
+        }
+        "glue"
+            if rest.is_empty()
+                || rest == "spear"
+                || rest == "the spear"
+                || rest == "join"
+                || rest == "the join" =>
+        {
+            Ok(Attempt::PitchSpear)
+        }
+        "pitch"
+            if rest == "spear" || rest == "the spear" || rest == "join" || rest == "the join" =>
+        {
+            Ok(Attempt::PitchSpear)
         }
         "make" | "bind" | "pitch"
             if rest == "torch"

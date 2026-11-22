@@ -103,6 +103,7 @@ impl World {
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
         let mut hafts = Vec::new();
+        let mut pitches = Vec::new();
         let mut points = Vec::new();
         let mut hardens = Vec::new();
         let mut hunts = Vec::new();
@@ -233,6 +234,9 @@ impl World {
                     // A bone needle miss is the reply only.
                     let needle_refusal =
                         matches!(intent.attempt, Attempt::CarveNeedle | Attempt::SewNeedle);
+                    // No hafted spear, no pine resin, or a tip already set
+                    // is the reply only.
+                    let pitch_refusal = matches!(intent.attempt, Attempt::PitchSpear);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -250,7 +254,8 @@ impl World {
                             && !hammer_refusal
                             && !pierce_refusal
                             && !scrape_refusal
-                            && !needle_refusal;
+                            && !needle_refusal
+                            && !pitch_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -300,6 +305,7 @@ impl World {
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
                         Attempt::Haft => hafts.push(intent),
+                        Attempt::PitchSpear => pitches.push(intent),
                         Attempt::PointSpear => points.push(intent),
                         Attempt::HardenSpear => hardens.push(intent),
                         Attempt::Hunt => hunts.push(intent),
@@ -480,6 +486,7 @@ impl World {
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
         self.apply_hafts(hafts, &mut results);
+        self.apply_pitches(pitches, &mut results);
         self.apply_points(points, &mut results);
         self.apply_hardens(hardens, &mut results);
         self.apply_hunts(hunts, &mut results);
@@ -838,6 +845,26 @@ impl World {
                     .is_some_and(|spear| spear.firing_ready_at.is_some())
                 {
                     Err("The wooden point is already hardening.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::PitchSpear => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.hafted_spear(actor.id).is_none() {
+                    Err("You have no hafted spear to pitch.".into())
+                } else if self
+                    .item(self.hafted_spear(actor.id).unwrap())
+                    .is_some_and(|spear| spear.pitched || spear.hardened)
+                {
+                    Err("The tip is already set.".into())
+                } else if self.loose_ids(actor.id, Material::Resin).is_empty() {
+                    Err("You have no pine resin to pitch the spear.".into())
                 } else {
                     Ok(true)
                 }
@@ -6053,7 +6080,7 @@ impl World {
         }
         let flint = ids.iter().any(|id| {
             self.item(*id)
-                .is_some_and(|spear| spear.flint_tip && spear.hardened)
+                .is_some_and(|spear| spear.flint_tip && self.spear_is_set(spear))
         });
         if flint {
             return None;
@@ -6062,7 +6089,7 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
         {
-            Some("The flint tip is not fire-hardened.")
+            Some("The flint tip is not set. Pitch it with pine resin, or hold it at a fire.")
         } else {
             Some("You need a fire-hardened flint spear.")
         }
@@ -6714,6 +6741,95 @@ impl World {
         }
     }
 
+    /// The hafted flint spear that still needs pitch, or the one already set.
+    fn hafted_spear(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let ids = self.loose_ids(actor, Material::Spear);
+        ids.iter()
+            .copied()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|spear| spear.flint_tip && !spear.pitched && !spear.hardened)
+            })
+            .or_else(|| {
+                ids.into_iter()
+                    .find(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
+            })
+    }
+
+    fn spear_is_set(&self, spear: &crate::model::Item) -> bool {
+        spear.hardened || (spear.flint_tip && spear.pitched)
+    }
+
+    /// One lump of pine resin on a hafted flint spear. The tip is set.
+    /// The fire is not required. The spear stays.
+    fn apply_pitches(&mut self, pitches: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in pitches {
+            let Some(id) = self.hafted_spear(intent.actor_id) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no hafted spear to pitch.",
+                    results,
+                );
+                continue;
+            };
+            if self
+                .item(id)
+                .is_some_and(|spear| spear.pitched || spear.hardened)
+            {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "The tip is already set.",
+                    results,
+                );
+                continue;
+            }
+            let Some(lump) = self
+                .loose_ids(intent.actor_id, Material::Resin)
+                .into_iter()
+                .next()
+            else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no pine resin to pitch the spear.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&lump);
+            if let Some(spear) = self.items.get_mut(&id) {
+                spear.pitched = true;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            let rest = "the join of the spear with pine resin.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "pitch", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "pitch", rest),
+                results,
+            );
+        }
+    }
+
     fn apply_binds(&mut self, binds: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in binds {
             let stone = self
@@ -6773,7 +6889,7 @@ impl World {
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
         {
-            "The flint tip is not fire-hardened."
+            "The flint tip is not set. Pitch it with pine resin, or hold it at a fire."
         } else if self.wooden_spear(actor).is_some() {
             "The wooden point is not hardened."
         } else {
@@ -6917,7 +7033,7 @@ impl World {
     fn spear_can_hunt(&self, actor: crate::model::ActorId) -> bool {
         self.loose_ids(actor, Material::Spear)
             .iter()
-            .any(|id| self.item(*id).is_some_and(|spear| spear.hardened))
+            .any(|id| self.item(*id).is_some_and(|spear| self.spear_is_set(spear)))
     }
 
     /// The hardened spear that brought the deer down, when it is only a wooden point.
@@ -6926,7 +7042,7 @@ impl World {
         let spears = self.loose_ids(actor, Material::Spear);
         let other = spears.iter().any(|id| {
             self.item(*id)
-                .is_some_and(|spear| spear.hardened && !spear.wooden_tip)
+                .is_some_and(|spear| self.spear_is_set(spear) && !spear.wooden_tip)
         });
         if other {
             return None;
@@ -6941,7 +7057,7 @@ impl World {
     fn spear_reaches_next(&self, actor: crate::model::ActorId) -> bool {
         self.loose_ids(actor, Material::Spear).iter().any(|id| {
             self.item(*id)
-                .is_some_and(|spear| spear.hardened && !spear.wooden_tip)
+                .is_some_and(|spear| self.spear_is_set(spear) && !spear.wooden_tip)
         })
     }
 

@@ -508,6 +508,8 @@ pub enum Attempt {
     BindSpear,
     Knap,
     Haft,
+    /// Pine resin on a hafted flint spear. The tip is set. The fire is not required.
+    PitchSpear,
     /// A dry branch pointed into a wooden spear. No flint and no stone.
     PointSpear,
     /// Hold that wooden point in a burning fire until it hardens.
@@ -666,6 +668,7 @@ impl Attempt {
                 | Attempt::BindSpear
                 | Attempt::Knap
                 | Attempt::Haft
+                | Attempt::PitchSpear
                 | Attempt::PointSpear
                 | Attempt::HardenSpear
                 | Attempt::Hunt
@@ -2199,7 +2202,10 @@ impl World {
             .filter_map(|item| self.item(item))
             .filter(|spear| !spear.in_basket)
             .collect();
-        if spears.iter().any(|spear| spear.hardened) {
+        if spears
+            .iter()
+            .any(|spear| spear.hardened || (spear.flint_tip && spear.pitched))
+        {
             return None;
         }
         let waiting = |spear: &&Item| !spear.hardened && spear.firing_ready_at.is_none();
@@ -17114,7 +17120,7 @@ mod hare {
         let soft = world.step(&[intent("soft", near, Attempt::Hunt)]);
         assert_eq!(
             soft.results[0].message,
-            "The flint tip is not fire-hardened."
+            "The flint tip is not set. Pitch it with pine resin, or hold it at a fire."
         );
         assert!(world
             .observe(seen)
@@ -27159,5 +27165,116 @@ mod bone_needle {
         assert_eq!(picked.results[0].message, "You gather a bone needle.");
         assert_eq!(world.loose_ids(near, Material::BoneNeedle).len(), 1);
         assert!(world.ground_ids(cell, Material::BoneNeedle).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod pitch_spear {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: u32, line: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == line)
+    }
+
+    #[test]
+    fn pine_resin_sets_a_hafted_flint_tip_without_a_fire() {
+        assert!(matches!(
+            crate::parse::parse_attempt("glue").unwrap(),
+            Attempt::PitchSpear
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("pitch spear").unwrap(),
+            Attempt::PitchSpear
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("pitch").unwrap(),
+            Attempt::SealCanoe
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = super::cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+
+        let bare = world.step(&[intent("bare", near, Attempt::PitchSpear)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You have no hafted spear to pitch."
+        );
+        assert!(!says(&world, near, "You have no hafted spear to pitch."));
+        assert!(!says(&world, seen, "You have no hafted spear to pitch."));
+
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&spear).unwrap().flint_tip = true;
+        let dry = world.step(&[intent("dry", near, Attempt::PitchSpear)]);
+        assert_eq!(
+            dry.results[0].message,
+            "You have no pine resin to pitch the spear."
+        );
+        assert!(!says(
+            &world,
+            seen,
+            "You have no pine resin to pitch the spear."
+        ));
+        let unset = world.step(&[intent("hunt", near, Attempt::Hunt)]);
+        assert_eq!(
+            unset.results[0].message,
+            "The flint tip is not set. Pitch it with pine resin, or hold it at a fire."
+        );
+
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        let pitched = world.step(&[intent("pitch", near, Attempt::PitchSpear)]);
+        let yours = "You pitch the join of the spear with pine resin.";
+        let theirs = "Near pitches the join of the spear with pine resin.";
+        assert_eq!(pitched.results[0].message, yours);
+        assert!(world.item(spear).unwrap().pitched);
+        assert!(!world.item(spear).unwrap().hardened);
+        assert!(world.loose_ids(near, Material::Resin).is_empty());
+        assert!(!says(&world, near, yours));
+        assert!(!says(&world, near, theirs));
+        assert!(says(&world, seen, theirs));
+        assert!(!says(&world, quiet, theirs));
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("a spear with a flint tip pitched with pine resin"),
+            "{look}"
+        );
+        assert!(!look.contains("not yet fire-hardened"), "{look}");
+        assert!(!look.contains(yours));
+        let examined = world.examine(near, super::ExamineTarget::Spear);
+        assert!(
+            examined.contains("A spear with a flint tip pitched with pine resin is carried by you"),
+            "{examined}"
+        );
+
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        let again = world.step(&[intent("again", near, Attempt::PitchSpear)]);
+        assert_eq!(again.results[0].message, "The tip is already set.");
+        assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
+        assert!(!says(&world, seen, "The tip is already set."));
+
+        if let Some(deer) = world.deer.as_mut() {
+            deer.cell = cell;
+            deer.held = true;
+        }
+        let hunt = world.step(&[intent("down", near, Attempt::Hunt)]);
+        assert_eq!(
+            hunt.results[0].message,
+            "You bring the deer down with the flint spear."
+        );
     }
 }
