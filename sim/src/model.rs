@@ -19530,6 +19530,102 @@ mod charcoal_bank {
     }
 
     #[test]
+    fn a_bead_at_the_feet_hammers_without_a_gather() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let bare = world.step(&[intent("bare", near, Attempt::Hammer)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You are not carrying a copper bead."
+        );
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You are not carrying a copper bead." }));
+        }
+        world.mint_item(Material::Copper, 0, rock, None, Role::Loose);
+        world.mint_fire(rock, 0);
+        let lit = world.step(&[intent("awl", near, Attempt::Hammer)]);
+        let yours = "You hammer the copper bead into a copper awl at the fire.";
+        let witnessed = "Near hammers the copper bead into a copper awl at the fire.";
+        assert_eq!(lit.results[0].message, yours);
+        assert!(world.ground_ids(rock, Material::Copper).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Awl).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
+        world.step(&[intent("west", near, Attempt::Move(crate::Dir::West))]);
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Awl))]);
+        world.mint_item(Material::Copper, 0, rock, None, Role::Loose);
+        let off = world.step(&[intent("off", near, Attempt::Hammer)]);
+        assert_eq!(
+            off.results[0].message,
+            "You are not carrying a copper bead. Step east."
+        );
+        assert_eq!(world.actor_cell(near), Some((5, 1)));
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You are not carrying a copper bead. Step east." }));
+        }
+        world.step(&[intent("back", near, Attempt::Move(crate::Dir::East))]);
+        world.mint_item(Material::Hide, 0, rock, Some(near), Role::Loose);
+        let before = world.step(&[intent("before", near, Attempt::Pierce)]);
+        assert_eq!(
+            before.results[0].message,
+            "You are not carrying a copper awl."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You are not carrying a copper awl." }));
+        let hammered = world.step(&[intent("again", near, Attempt::Hammer)]);
+        assert_eq!(hammered.results[0].message, yours);
+        let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
+        assert_eq!(
+            pierced.results[0].message,
+            "You pierce the deer hide with the copper awl. It is ready to sew."
+        );
+        let pierce_seen = "Near pierces the deer hide with the copper awl. It is ready to sew.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == pierce_seen));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != pierce_seen
+                && event.text != "You pierce the deer hide with the copper awl. It is ready to sew."
+        }));
+    }
+
+    #[test]
     fn smelt_names_the_step_when_the_ore_is_one_cell_off() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 6, 0).unwrap();

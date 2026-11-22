@@ -217,6 +217,11 @@ impl World {
                         matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
                     // A roast miss is the reply only.
                     let roast_refusal = matches!(intent.attempt, Attempt::Roast);
+                    // A bead or an awl that is not at hand is the reply only,
+                    // and so is the step when the bead is one cell off.
+                    let hammer_refusal =
+                        matches!(intent.attempt, Attempt::Hammer | Attempt::HammerIron);
+                    let pierce_refusal = matches!(intent.attempt, Attempt::Pierce);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -229,7 +234,9 @@ impl World {
                             && !sticks_refusal
                             && !torch_refusal
                             && !mushroom_eat_refusal
-                            && !roast_refusal;
+                            && !roast_refusal
+                            && !hammer_refusal
+                            && !pierce_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -1681,7 +1688,7 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if !self.loose_ids(actor.id, Material::Copper).is_empty() {
+                } else if self.copper_bead_id(actor.id).is_some() {
                     if self.fire_at(actor.cell).is_none()
                         && self.loose_ids(actor.id, Material::Stone).is_empty()
                     {
@@ -1692,7 +1699,11 @@ impl World {
                 } else if !self.loose_ids(actor.id, Material::Iron).is_empty() {
                     self.iron_hammer_ready(actor)
                 } else {
-                    Err("You are not carrying a copper bead.".into())
+                    Err(self.gather_miss(
+                        actor.cell,
+                        Material::Copper,
+                        "You are not carrying a copper bead.".into(),
+                    ))
                 }
             }
             Attempt::HammerIron => {
@@ -12247,24 +12258,29 @@ impl World {
 
     fn apply_hammers(&mut self, hammers: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in hammers {
+            let bead = self.copper_bead_id(intent.actor_id);
             let iron = matches!(intent.attempt, Attempt::HammerIron)
                 || (matches!(intent.attempt, Attempt::Hammer)
-                    && self.loose_ids(intent.actor_id, Material::Copper).is_empty()
+                    && bead.is_none()
                     && !self.loose_ids(intent.actor_id, Material::Iron).is_empty());
             if iron {
                 self.apply_iron_hammer(intent, results);
                 continue;
             }
-            let bead = self
-                .loose_ids(intent.actor_id, Material::Copper)
-                .first()
-                .copied();
             let Some(bead) = bead else {
+                let cell = self
+                    .actor(intent.actor_id)
+                    .map(|actor| actor.cell)
+                    .unwrap_or(0);
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "You are not carrying a copper bead.",
+                    self.gather_miss(
+                        cell,
+                        Material::Copper,
+                        "You are not carrying a copper bead.".into(),
+                    ),
                     results,
                 );
                 continue;
@@ -12309,6 +12325,15 @@ impl World {
                 results,
             );
         }
+    }
+
+    /// A copper bead in the arms, or the one lying on this ground.
+    fn copper_bead_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        if let Some(id) = self.loose_ids(actor, Material::Copper).first().copied() {
+            return Some(id);
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Copper).first().copied()
     }
 
     fn apply_iron_hammer(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
