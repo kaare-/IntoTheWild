@@ -3423,15 +3423,21 @@ impl World {
                 ));
             }
         }
-        let carried = self.loose_ids(viewer, Material::Fluff).len();
-        if carried == 1 {
-            lines.push(
-                "A handful of cattail fluff is carried by you. It is not the roots. It can light a fire."
-                    .into(),
-            );
-        } else if carried > 1 {
+        let carried = self.loose_ids(viewer, Material::Fluff);
+        let word = carried
+            .iter()
+            .filter_map(|id| self.item(*id).map(|item| item.moisture))
+            .max()
+            .map(|moisture| self.condition_word(moisture))
+            .unwrap_or("dry");
+        if carried.len() == 1 {
             lines.push(format!(
-                "{carried} handfuls of cattail fluff are carried by you. They are not the roots."
+                "A {word} handful of cattail fluff is carried by you. It is not the roots. It can light a fire."
+            ));
+        } else if carried.len() > 1 {
+            lines.push(format!(
+                "{} {word} handfuls of cattail fluff are carried by you. They are not the roots.",
+                count_word(carried.len() as u32)
             ));
         }
         if lines.is_empty() {
@@ -4562,9 +4568,13 @@ impl World {
         } else if item.material == "willow bark" {
             format!("{} strips of willow bark", count_word(item.count))
         } else if item.material == "cattail fluff" && item.count == 1 {
-            "a handful of cattail fluff".into()
+            format!("a {} handful of cattail fluff", item.condition)
         } else if item.material == "cattail fluff" {
-            format!("{} handfuls of cattail fluff", count_word(item.count))
+            format!(
+                "{} {} handfuls of cattail fluff",
+                count_word(item.count),
+                item.condition
+            )
         } else if item.material == "willow" && item.count == 1 {
             "a bundle of willow cordage".into()
         } else if item.material == "willow" {

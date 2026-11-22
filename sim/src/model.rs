@@ -18505,7 +18505,7 @@ mod cattail {
             .observe(near)
             .unwrap()
             .text
-            .contains("You have a handful of cattail fluff."));
+            .contains("You have a dry handful of cattail fluff."));
         let roots_taken = world.step(&[intent("roots", near, Attempt::Gather(Material::Cattail))]);
         assert_eq!(roots_taken.results[0].message, "You gather cattail roots.");
         assert!(world.pile_count(stand, Material::Cattail) > 0);
@@ -18595,6 +18595,24 @@ mod cattail {
             Some(near),
             super::Role::Loose,
         );
+        let damp_look = damp.observe(near).unwrap();
+        assert!(
+            damp_look.text.contains("a damp handful of cattail fluff"),
+            "{}",
+            damp_look.text
+        );
+        assert!(!damp_look.text.contains("a dry handful of cattail fluff"));
+        assert!(damp_look
+            .events
+            .iter()
+            .all(|event| !event.text.contains("handful of cattail fluff")));
+        let named = damp.examine(near, super::ExamineTarget::Fluff);
+        assert!(
+            named.contains(
+                "A damp handful of cattail fluff is carried by you. It is not the roots."
+            ),
+            "{named}"
+        );
         let caught = damp.step(&[intent("damp", near, Attempt::Light)]);
         let yours = "You light a fire with the cattail fluff and the branch from the arms.";
         let theirs = "Near lights a fire with the cattail fluff and the branch from the arms.";
@@ -18625,6 +18643,11 @@ mod cattail {
             super::Role::Loose,
         );
         soaked.mint_item(Material::Branch, 0, floor, Some(near), super::Role::Loose);
+        assert!(soaked
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a soaked handful of cattail fluff"));
         let refused = soaked.step(&[intent("soaked", near, Attempt::Light)]);
         assert_eq!(
             refused.results[0].message,
