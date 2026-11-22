@@ -429,6 +429,9 @@ impl World {
             if let Some(moss) = self.seen_moss(actor_id) {
                 lines.push(moss);
             }
+            if let Some(worms) = self.seen_worms(actor_id) {
+                lines.push(worms);
+            }
             if let Some(mint) = self.seen_mint(actor_id) {
                 lines.push(mint);
             }
@@ -1343,6 +1346,13 @@ impl World {
             parts.push("The shade here has no moss.".into());
         } else if self.moss_bare(actor.cell) {
             parts.push("The damp bank here is bare.".into());
+        }
+        if self.pile_count(actor.cell, Material::Worm) > 0
+            || !self.ground_ids(actor.cell, Material::Worm).is_empty()
+        {
+            parts.push("Worms are in the damp earth here.".into());
+        } else if self.worm_beds.contains(&actor.cell) || self.damp_earth(actor.cell) {
+            parts.push("The damp earth here has no worms.".into());
         }
         if self.pile_count(actor.cell, Material::Mint) > 0
             || !self.ground_ids(actor.cell, Material::Mint).is_empty()
@@ -2866,6 +2876,30 @@ impl World {
                 lines.push(format!("The shade to the {way} has no moss."));
             } else if self.moss_bare(cell) {
                 lines.push(format!("The damp bank to the {way} is bare."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// Worms in damp earth this person can see but is not standing on.
+    fn seen_worms(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.worm_beds.contains(&cell) {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::Worm) > 0
+                || !self.ground_ids(cell, Material::Worm).is_empty()
+            {
+                lines.push(format!("Worms are in the damp earth to the {way}."));
+            } else {
+                lines.push(format!("The damp earth to the {way} has no worms."));
             }
         }
         if lines.is_empty() {
@@ -4722,6 +4756,10 @@ impl World {
             }
         } else if item.material == "bone" && item.count == 1 {
             "a bone".into()
+        } else if item.material == "worm" && item.count == 1 {
+            "a worm".into()
+        } else if item.material == "worm" {
+            format!("{} worms", count_word(item.count))
         } else if item.material == "fish hook" && item.count == 1 {
             "a bone fish hook".into()
         } else if item.material == "fish hook" {
@@ -9465,6 +9503,7 @@ impl World {
                 Material::Hook => "bone fish hook",
                 Material::WillowBark => "willow bark",
                 Material::Fluff => "cattail fluff",
+                Material::Worm => "worm",
             };
             format!("You see no {name} from here.")
         } else {
@@ -11504,6 +11543,12 @@ impl World {
         if rest != "a fish from the brook with the bone fish hook. The hide strips are spent."
             && rest != "a fish from the brook with the bone fish hook. The willow cordage is spent."
             && rest != "a fish from the brook with the bone fish hook. The nettle cordage is spent."
+            && rest
+                != "a fish from the brook with the bone fish hook and a worm. The hide strips are spent."
+            && rest
+                != "a fish from the brook with the bone fish hook and a worm. The willow cordage is spent."
+            && rest
+                != "a fish from the brook with the bone fish hook and a worm. The nettle cordage is spent."
         {
             return None;
         }
@@ -12074,7 +12119,7 @@ impl World {
         let splash = event.text.contains(" spears a fish from the brook.")
             || event
                 .text
-                .contains(" catches a fish from the brook with the bone fish hook.")
+                .contains(" catches a fish from the brook with the bone fish hook")
             || event.text == "The fishing net catches a fish."
             || event.text.contains("splashes away");
         if !splash {
@@ -12489,6 +12534,7 @@ impl World {
             "bundle of nettle cordage",
             "cattail roots",
             "handful of cattail fluff",
+            "worm",
             "cattail flour",
             "cattail flatbread",
             "bark cup",
@@ -14462,6 +14508,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::WillowBark, false) => "strips of willow bark",
         (Material::Fluff, true) => "handful of cattail fluff",
         (Material::Fluff, false) => "handfuls of cattail fluff",
+        (Material::Worm, true) => "worm",
+        (Material::Worm, false) => "worms",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

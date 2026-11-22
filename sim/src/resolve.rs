@@ -1881,6 +1881,17 @@ impl World {
                         || !self.ground_ids(actor.cell, Material::Cattail).is_empty())
                 {
                     return Err("Ice covers the cattail roots.".into());
+                } else if *material == Material::Worm {
+                    let here = self.pile_count(actor.cell, Material::Worm) > 0
+                        || !self.ground_ids(actor.cell, Material::Worm).is_empty();
+                    if !here {
+                        let bare = if self.damp_earth(actor.cell) {
+                            "The damp earth here has no worms.".to_string()
+                        } else {
+                            "There are no worms here to dig.".to_string()
+                        };
+                        return Err(self.gather_miss(actor.cell, *material, bare));
+                    }
                 } else if *material == Material::Fluff {
                     let plants = self.pile_count(actor.cell, Material::Cattail) > 0;
                     if plants && self.still_frozen(actor.cell) {
@@ -2407,6 +2418,7 @@ impl World {
                     | Material::Mat
                     | Material::Paddle
                     | Material::Hook
+                    | Material::Worm
                     | Material::Willow
                     | Material::Nettle
                     | Material::BarkCup
@@ -2528,6 +2540,8 @@ impl World {
                         "cattail roots.".to_string()
                     } else if material == Material::Fluff {
                         "a handful of cattail fluff.".to_string()
+                    } else if material == Material::Worm {
+                        "a worm.".to_string()
                     } else if material == Material::Flour {
                         if self.item(item).is_some_and(|flour| flour.cooked) {
                             "a cattail flatbread.".to_string()
@@ -5247,8 +5261,17 @@ impl World {
             return;
         };
         self.items.remove(&line);
+        let worm_id = self
+            .loose_ids(intent.actor_id, Material::Worm)
+            .first()
+            .copied();
+        if let Some(id) = worm_id {
+            self.items.remove(&id);
+        }
+        let wormed = worm_id.is_some();
         if let Some(stretch) = self.brook_stretch(cell) {
-            let until = self.time.saturating_add(self.tuning.clay_ticks);
+            let ticks = if wormed { 1 } else { self.tuning.clay_ticks };
+            let until = self.time.saturating_add(ticks);
             self.brook_quiet.insert(stretch, until);
         }
         let into_basket = self.carry_count(intent.actor_id) >= self.tuning.carry_slots
@@ -5266,7 +5289,12 @@ impl World {
             }
         }
         let name = self.name_of(intent.actor_id);
-        let rest = format!("a fish from the brook with the bone fish hook. {spent}");
+        let with = if wormed {
+            "the bone fish hook and a worm"
+        } else {
+            "the bone fish hook"
+        };
+        let rest = format!("a fish from the brook with {with}. {spent}");
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "catch", &rest),
             Scope::Cell(cell),

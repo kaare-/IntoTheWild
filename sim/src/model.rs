@@ -149,6 +149,9 @@ pub enum Material {
     /// Seed-head down from the cattails. It is not the roots.
     /// A handful in the arms is tinder, and it catches when bark would not.
     Fluff,
+    /// One worm from damp earth. On a bone fish hook it is spent,
+    /// and that stretch of the brook is quiet for one tick.
+    Worm,
 }
 
 impl Material {
@@ -208,6 +211,7 @@ impl Material {
             Material::Drill => "bow drill",
             Material::WillowBark => "willow bark",
             Material::Fluff => "cattail fluff",
+            Material::Worm => "worm",
         }
     }
 
@@ -267,6 +271,7 @@ impl Material {
             Material::Drill => "bow drill",
             Material::WillowBark => "strip of willow bark",
             Material::Fluff => "handful of cattail fluff",
+            Material::Worm => "worm",
         }
     }
 
@@ -1259,6 +1264,10 @@ pub struct World {
     /// Damp banks where moss grows. Bare once the handful is taken.
     #[serde(default)]
     pub(crate) moss_banks: BTreeSet<CellId>,
+    /// Damp earth that holds worms: the damp bank and the wet bank.
+    /// Look names them until the handful is dug.
+    #[serde(default)]
+    pub(crate) worm_beds: BTreeSet<CellId>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1510,6 +1519,7 @@ impl World {
             bird_nests: BTreeSet::new(),
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
+            worm_beds: BTreeSet::new(),
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -1652,6 +1662,10 @@ impl World {
         let bank = cell_id(1, 3).unwrap();
         world.add_pile(bank, Material::Moss, 1, 0);
         world.moss_banks.insert(bank);
+        world.add_pile(bank, Material::Worm, 1, 0);
+        world.worm_beds.insert(bank);
+        world.add_pile(clay, Material::Worm, 1, 0);
+        world.worm_beds.insert(clay);
         // Shade under the rock. This handful stays dry, and it lights a fire the way bark does.
         let shade = cell_id(6, 1).unwrap();
         world.add_pile(shade, Material::Moss, 1, 0);
@@ -3820,6 +3834,13 @@ impl World {
     pub(crate) fn clear_set_net(&mut self, cell: CellId) {
         self.set_nets.remove(&cell);
         self.net_catches_at.remove(&cell);
+    }
+
+    /// The damp bank, the wet bank, or a cell with mud on it.
+    pub(crate) fn damp_earth(&self, cell: CellId) -> bool {
+        self.worm_beds.contains(&cell)
+            || self.pile_count(cell, Material::Mud) > 0
+            || !self.ground_ids(cell, Material::Mud).is_empty()
     }
 
     /// In the flowing brook, or on a cell that touches it. Still water is not the brook.
@@ -20941,5 +20962,185 @@ mod signal {
             far,
             "You lay green pine needles on the fire. A column of smoke rises."
         ));
+    }
+}
+
+#[cfg(test)]
+mod worms {
+    use super::*;
+
+    fn intent(id: &str, actor: ActorId, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: ActorId, text: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == text)
+    }
+
+    #[test]
+    fn worms_from_damp_earth_let_the_hook_fish_again_sooner() {
+        assert!(matches!(
+            crate::parse::parse_attempt("dig worms").unwrap(),
+            Attempt::Gather(Material::Worm)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather worms").unwrap(),
+            Attempt::Gather(Material::Worm)
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let bank = cell_id(2, 2).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(missed.results[0].message, "There are no worms here to dig.");
+        assert!(says(&world, near, "There are no worms here to dig."));
+        assert!(!says(&world, seen, "There are no worms here to dig."));
+        assert!(!says(&world, quiet, "There are no worms here to dig."));
+        let far = world.observe(near).unwrap().text;
+        assert!(
+            far.contains("Worms are in the damp earth to the north and west."),
+            "{far}"
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("damp earth")));
+
+        world.step(&[intent("n", near, Attempt::Move(Dir::North))]);
+        world.step(&[intent("w", near, Attempt::Move(Dir::West))]);
+        world.step(&[intent("w2", near, Attempt::Move(Dir::West))]);
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Worms are in the damp earth here."), "{here}");
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(dug.results[0].message, "You gather a worm.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You have a worm."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Near gathers a worm."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a worm."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Near gathers a worm."));
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The damp earth here has no worms."), "{bare}");
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            again.results[0].message,
+            "The damp earth here has no worms."
+        );
+        assert!(says(&world, near, "The damp earth here has no worms."));
+        assert!(!says(&world, seen, "The damp earth here has no worms."));
+
+        world.mint_item(Material::Hook, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Cord, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Cord, 0, bank, Some(near), Role::Loose);
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Worm))]);
+        let caught = world.step(&[intent("bare", near, Attempt::FishHook)]);
+        assert_eq!(
+            caught.results[0].message,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+        assert_eq!(world.loose_ids(near, Material::Worm).len(), 0);
+        let gone = world.step(&[intent("soon", near, Attempt::FishHook)]);
+        assert_eq!(
+            gone.results[0].message,
+            "The fish are gone from this stretch of the brook."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "The fish are gone from this stretch of the brook."
+        ));
+
+        let picked = world.step(&[intent("pick", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(picked.results[0].message, "You gather a worm.");
+        world.step(&[intent("west", near, Attempt::Move(Dir::West))]);
+        world.step(&[intent("brook", near, Attempt::Move(Dir::West))]);
+        assert_eq!(world.actor_cell(near), Some((0, 2)));
+        let wormed = world.step(&[intent("worm", near, Attempt::FishHook)]);
+        assert_eq!(
+            wormed.results[0].message,
+            "You catch a fish from the brook with the bone fish hook and a worm. The hide strips are spent."
+        );
+        assert_eq!(world.loose_ids(near, Material::Worm).len(), 0);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("You catch") && !event.text.contains("Near catches")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You hear a splash to the north and west." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("and a worm") }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("and a worm") && event.text != "Near gathers a worm."
+        }));
+        world.mint_item(
+            Material::Cord,
+            0,
+            cell_id(0, 2).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let next = world.step(&[intent("next", near, Attempt::FishHook)]);
+        assert_eq!(
+            next.results[0].message,
+            "You catch a fish from the brook with the bone fish hook. The hide strips are spent."
+        );
+
+        let mud = cell_id(4, 4).unwrap();
+        world.spawn_at("Mud", "m", 4, 4).unwrap();
+        let mud_id = world
+            .actors
+            .values()
+            .find(|actor| actor.name == "Mud")
+            .unwrap()
+            .id;
+        world.add_pile(mud, Material::Mud, 1, 0);
+        let empty = world.step(&[intent("mud", mud_id, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            empty.results[0].message,
+            "The damp earth here has no worms."
+        );
+        assert!(world
+            .observe(mud_id)
+            .unwrap()
+            .text
+            .contains("The damp earth here has no worms."));
     }
 }
