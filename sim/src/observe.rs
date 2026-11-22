@@ -4089,7 +4089,7 @@ impl World {
             format!("You are {}.", self.cold_word(actor.cold)),
             format!("You are {}.", self.wind_on(actor_id)),
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
-            format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
+            self.skin_sentence(actor, true),
         ];
         if let Some(held) = self.sun_held_off(actor.ochre) {
             parts.push(held.into());
@@ -4268,10 +4268,10 @@ impl World {
             self.body_word(actor),
             self.energy_word(actor.energy)
         ) + &format!(
-            " They are {}. They are {}. Their skin is {}.",
+            " They are {}. They are {}. {}",
             self.cold_word(actor.cold),
             self.wind_on(actor_id),
-            self.skin_cover(actor.mud, actor.ochre)
+            self.skin_sentence(actor, false)
         ) + &self
             .sun_held_off(actor.ochre)
             .map(|line| format!(" {line}"))
@@ -4287,6 +4287,24 @@ impl World {
             Some("The red ochre holds the sun off.")
         } else {
             None
+        }
+    }
+
+    /// Bare skin that is stinging does not also say it is bare.
+    /// Mud and ochre still name the cover. The sting timer is unchanged.
+    fn skin_sentence(&self, actor: &crate::model::Actor, yours: bool) -> String {
+        let cover = self.skin_cover(actor.mud, actor.ochre);
+        if actor.stings_until.is_some() && cover == "bare skin" {
+            return if yours {
+                "Your skin stings.".into()
+            } else {
+                "Their skin stings.".into()
+            };
+        }
+        if yours {
+            format!("Your skin is {cover}.")
+        } else {
+            format!("Their skin is {cover}.")
         }
     }
 

@@ -5805,6 +5805,8 @@ mod moss {
         }
         let stung = world.observe(near).unwrap().text;
         assert!(stung.contains("You are stung."), "{stung}");
+        assert!(stung.contains("Your skin stings."), "{stung}");
+        assert!(!stung.contains("bare skin"), "{stung}");
         let seen_body = world.examine(seen, ExamineTarget::Person("Near".into()));
         assert!(seen_body.contains("They are stung."), "{seen_body}");
         let dressed = world.step(&[intent("dress", near, Attempt::DressSting)]);
@@ -16624,10 +16626,16 @@ mod nettle {
             "{}",
             stung.text
         );
+        assert!(stung.text.contains("Your skin stings."), "{}", stung.text);
+        assert!(!stung.text.contains("bare skin"), "{}", stung.text);
         assert_eq!(stung.self_info.illness, "stung by nettles");
-        assert!(world
-            .examine(quiet, super::ExamineTarget::Person("Near".into()))
-            .contains("They are stung by nettles."));
+        let quiet_look = world.examine(quiet, super::ExamineTarget::Person("Near".into()));
+        assert!(
+            quiet_look.contains("They are stung by nettles."),
+            "{quiet_look}"
+        );
+        assert!(quiet_look.contains("Their skin stings."), "{quiet_look}");
+        assert!(!quiet_look.contains("bare skin"), "{quiet_look}");
         assert_eq!(
             world.examine(seen, super::ExamineTarget::Person("Near".into())),
             "You cannot see Near from here."
