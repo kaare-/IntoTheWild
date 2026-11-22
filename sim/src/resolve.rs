@@ -3814,9 +3814,14 @@ impl World {
     pub(crate) fn light_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
         let person = self.actor(actor)?;
         let resin = !self.loose_ids(actor, Material::Resin).is_empty();
+        let dry_moss = self.moss_tinder_in_arms(actor);
+        let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
+        let dry_bark = self.has_dry(actor, Material::Bark);
         if self.raining && self.exposure_millis(person.cell) >= 1000 {
             return Some(if resin {
                 "The rain puts the resin out before it catches.".into()
+            } else if dry_moss || (carried_moss && !dry_bark) {
+                "The rain puts the moss out before it catches.".into()
             } else {
                 "The rain puts the bark out before it catches.".into()
             });
@@ -3825,10 +3830,13 @@ impl World {
             return Some("A fire already burns here.".into());
         }
         // A lump of pine resin in the arms is tinder. It is spent before
-        // bark when both are held, and it stands in when bark is absent.
+        // moss and bark when it is held. Dry moss from the shade is tinder
+        // the way bark is, and it is spent before bark. Wet moss is not.
         // Resin on the ground is not tinder.
-        if !resin && !self.has_dry(actor, Material::Bark) {
-            return Some(if self.has_material_at_hand(actor, Material::Bark) {
+        if !resin && !dry_moss && !dry_bark {
+            return Some(if carried_moss {
+                "The moss is too damp to catch.".into()
+            } else if self.has_material_at_hand(actor, Material::Bark) {
                 "The bark is too damp to catch.".into()
             } else {
                 "You need dry loose bark for tinder.".into()
@@ -3952,12 +3960,28 @@ impl World {
                 let name = self.name_of(intent.actor_id);
                 let use_charcoal = self.charcoal_in_arms(intent.actor_id)
                     || self.charcoal_on_ground(intent.actor_id);
-                let (tinder_item, resin, bark_arms) = if let Some(resin_id) = resin_id {
+                let (tinder_item, resin, moss_arms, bark_arms) = if let Some(resin_id) = resin_id {
                     self.items.remove(&resin_id);
-                    (Some(resin_id), true, true)
+                    (Some(resin_id), true, None, true)
+                } else if self.moss_tinder_in_arms(intent.actor_id) {
+                    match self.consume_dry(intent.actor_id, Material::Moss) {
+                        Ok((moss_item, moss_from_arms)) => {
+                            (moss_item, false, Some(moss_from_arms), false)
+                        }
+                        Err(()) => {
+                            self.finish(
+                                intent.command_id,
+                                intent.actor_id,
+                                false,
+                                "The moss is too damp to catch.",
+                                results,
+                            );
+                            continue;
+                        }
+                    }
                 } else {
                     match self.consume_dry(intent.actor_id, Material::Bark) {
-                        Ok((bark_item, bark_arms)) => (bark_item, false, bark_arms),
+                        Ok((bark_item, bark_from_arms)) => (bark_item, false, None, bark_from_arms),
                         Err(()) => {
                             self.finish(
                                 intent.command_id,
@@ -3992,7 +4016,7 @@ impl World {
                                 intent.command_id,
                                 intent.actor_id,
                                 false,
-                                if resin {
+                                if resin || moss_arms.is_some() {
                                     "You need a dry branch or a lump of charcoal for the fire."
                                 } else {
                                     "You need dry loose bark and a dry branch."
@@ -4011,12 +4035,33 @@ impl World {
                         charcoal_light_line(
                             Some(&name),
                             resin,
+                            moss_arms,
                             bark_arms,
                             brand.is_some(),
                             charcoal_arms,
                         ),
-                        charcoal_light_line(None, resin, bark_arms, brand.is_some(), charcoal_arms),
+                        charcoal_light_line(
+                            None,
+                            resin,
+                            moss_arms,
+                            bark_arms,
+                            brand.is_some(),
+                            charcoal_arms,
+                        ),
                     )
+                } else if moss_arms.is_some() {
+                    let from_arms = moss_arms.unwrap_or(false);
+                    if brand.is_some() {
+                        (
+                            moss_brand_light_line(Some(&name), from_arms, branch_arms),
+                            moss_brand_light_line(None, from_arms, branch_arms),
+                        )
+                    } else {
+                        (
+                            moss_light_line(Some(&name), from_arms, branch_arms),
+                            moss_light_line(None, from_arms, branch_arms),
+                        )
+                    }
                 } else if resin {
                     if brand.is_some() {
                         (
@@ -12063,10 +12108,39 @@ fn brand_light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> St
     )
 }
 
-/// Charcoal stands in for the branch. Bark or resin is still the tinder.
+fn moss_fuel(moss_arms: bool, branch_arms: bool) -> &'static str {
+    match (moss_arms, branch_arms) {
+        (true, true) => "the moss and the branch from the arms",
+        (false, false) => "moss and a dry branch from the pile at the feet",
+        (true, false) => "the moss from the arms and a dry branch from the pile at the feet",
+        (false, true) => "moss from the pile at the feet and the branch from the arms",
+    }
+}
+
+fn moss_light_line(who: Option<&str>, moss_arms: bool, branch_arms: bool) -> String {
+    crate::model::spoken_act(
+        who,
+        "light",
+        &format!("a fire with {}.", moss_fuel(moss_arms, branch_arms)),
+    )
+}
+
+fn moss_brand_light_line(who: Option<&str>, moss_arms: bool, branch_arms: bool) -> String {
+    crate::model::spoken_act(
+        who,
+        "light",
+        &format!(
+            "a fire with the burning brand and {}.",
+            moss_fuel(moss_arms, branch_arms)
+        ),
+    )
+}
+
+/// Charcoal stands in for the branch. Resin, dry moss, or bark is still the tinder.
 fn charcoal_light_line(
     who: Option<&str>,
     resin: bool,
+    moss_arms: Option<bool>,
     bark_arms: bool,
     brand: bool,
     charcoal_arms: bool,
@@ -12078,6 +12152,10 @@ fn charcoal_light_line(
     };
     let tinder = if resin {
         "the pine resin"
+    } else if let Some(true) = moss_arms {
+        "the moss"
+    } else if let Some(false) = moss_arms {
+        "moss from the pile at the feet"
     } else if bark_arms {
         "the bark"
     } else {

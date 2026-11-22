@@ -1242,7 +1242,13 @@ impl World {
         if self.pile_count(actor.cell, Material::Moss) > 0
             || !self.ground_ids(actor.cell, Material::Moss).is_empty()
         {
-            parts.push("Moss grows on the damp bank here.".into());
+            if self.shade_moss.contains(&actor.cell) {
+                parts.push("Dry moss grows in the shade here.".into());
+            } else {
+                parts.push("Moss grows on the damp bank here.".into());
+            }
+        } else if self.shade_bare(actor.cell) {
+            parts.push("The shade here has no moss.".into());
         } else if self.moss_bare(actor.cell) {
             parts.push("The damp bank here is bare.".into());
         }
@@ -2713,7 +2719,13 @@ impl World {
             if self.pile_count(cell, Material::Moss) > 0
                 || !self.ground_ids(cell, Material::Moss).is_empty()
             {
-                lines.push(format!("Moss grows on the damp bank to the {way}."));
+                if self.shade_moss.contains(&cell) {
+                    lines.push(format!("Dry moss grows in the shade to the {way}."));
+                } else {
+                    lines.push(format!("Moss grows on the damp bank to the {way}."));
+                }
+            } else if self.shade_bare(cell) {
+                lines.push(format!("The shade to the {way} has no moss."));
             } else if self.moss_bare(cell) {
                 lines.push(format!("The damp bank to the {way} is bare."));
             }
@@ -2808,14 +2820,24 @@ impl World {
         for cell in self.visible_cell_ids(viewer) {
             let holds = self.pile_count(cell, Material::Moss) > 0
                 || !self.ground_ids(cell, Material::Moss).is_empty();
-            if !holds && !self.moss_bare(cell) {
+            if !holds && !self.moss_bare(cell) && !self.shade_bare(cell) {
                 continue;
             }
-            if holds {
+            if holds && self.shade_moss.contains(&cell) {
+                lines.push(format!(
+                    "Dry moss grows in the shade {}. It can light a fire.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if holds {
                 lines.push(format!(
                     "Moss grows on the damp bank {}. It can be pressed on a sting.",
                     self.place_phrase(origin, cell)
                 ));
+            } else if self.shade_bare(cell) && cell == origin {
+                lines.push("The shade here has no moss.".into());
+            } else if self.shade_bare(cell) {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The shade to the {way} has no moss."));
             } else if cell == origin {
                 lines.push("The damp bank here is bare.".into());
             } else {
@@ -3650,6 +3672,13 @@ impl World {
 
     fn moss_bare(&self, cell: crate::model::CellId) -> bool {
         self.moss_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Moss) == 0
+            && self.ground_ids(cell, Material::Moss).is_empty()
+    }
+
+    /// The shade under the rock held moss, and that handful is gone.
+    fn shade_bare(&self, cell: crate::model::CellId) -> bool {
+        self.shade_moss.contains(&cell)
             && self.pile_count(cell, Material::Moss) == 0
             && self.ground_ids(cell, Material::Moss).is_empty()
     }
@@ -5342,7 +5371,13 @@ impl World {
         if self.pile_count(dest, Material::Moss) > 0
             || !self.ground_ids(dest, Material::Moss).is_empty()
         {
-            bits.push("moss".into());
+            if self.shade_moss.contains(&dest) {
+                bits.push("dry moss".into());
+            } else {
+                bits.push("moss".into());
+            }
+        } else if self.shade_bare(dest) {
+            bits.push("no moss".into());
         } else if self.moss_bare(dest) {
             bits.push("a bare bank".into());
         }

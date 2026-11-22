@@ -1230,6 +1230,9 @@ pub struct World {
     /// Damp banks where moss grows. Bare once the handful is taken.
     #[serde(default)]
     pub(crate) moss_banks: BTreeSet<CellId>,
+    /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
+    #[serde(default)]
+    pub(crate) shade_moss: BTreeSet<CellId>,
     /// When a bare bank grows moss again. Look says the bank is bare until then.
     #[serde(default)]
     pub(crate) moss_returns_at: BTreeMap<CellId, u64>,
@@ -1467,6 +1470,7 @@ impl World {
             bird_nests: BTreeSet::new(),
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
+            shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
             mint_returns_at: BTreeMap::new(),
@@ -1604,6 +1608,10 @@ impl World {
         let bank = cell_id(1, 3).unwrap();
         world.add_pile(bank, Material::Moss, 1, 0);
         world.moss_banks.insert(bank);
+        // Shade under the rock. This handful stays dry, and it lights a fire the way bark does.
+        let shade = cell_id(6, 1).unwrap();
+        world.add_pile(shade, Material::Moss, 1, 0);
+        world.shade_moss.insert(shade);
         // A pine on the dry floor south of the trail. Two lumps of pitch.
         // A handful of needles lies there too. Pitch and needles are not the same gather.
         let pine = cell_id(2, 4).unwrap();
@@ -2528,6 +2536,11 @@ impl World {
                     .is_some_and(|item| self.is_dry(item.moisture))
             })
             .collect()
+    }
+
+    /// A dry handful of moss in the arms. Moss still on the ground is not tinder yet.
+    pub(crate) fn moss_tinder_in_arms(&self, actor: ActorId) -> bool {
+        !self.dry_loose_ids(actor, Material::Moss).is_empty()
     }
 
     /// Dry branches lying on this cell, pile and loose. Carried wood stays in the arms.
@@ -6079,7 +6092,12 @@ mod moss {
             west.contains("Moss grows on the damp bank to the west."),
             "{west}"
         );
-        assert!(!world.observe(quiet).unwrap().text.contains("moss"));
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(
+            quiet_look.contains("Dry moss grows in the shade"),
+            "{quiet_look}"
+        );
+        assert!(!quiet_look.contains("damp bank"), "{quiet_look}");
         let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Moss))]);
         assert_eq!(none.results[0].message, "There is no moss here to gather.");
         assert!(world
@@ -6215,10 +6233,13 @@ mod moss {
             near_before.contains("Two handfuls of moss are carried by you"),
             "{near_before}"
         );
-        assert_eq!(
-            world.examine(quiet, ExamineTarget::Moss),
-            "You see no moss from here."
+        let quiet_moss = world.examine(quiet, ExamineTarget::Moss);
+        assert!(
+            quiet_moss.contains("Dry moss grows in the shade"),
+            "{quiet_moss}"
         );
+        assert!(!quiet_moss.contains("damp bank"), "{quiet_moss}");
+        assert!(!quiet_moss.contains("carried"), "{quiet_moss}");
         if let Some(person) = world.actors.get_mut(&near) {
             person.stings_until = Some(world.time.saturating_add(4));
         }
@@ -6259,10 +6280,13 @@ mod moss {
             .any(|event| event.text == "Near presses moss on the stings."));
         let seen_body = world.examine(seen, ExamineTarget::Person("Near".into()));
         assert!(seen_body.contains("They are well."), "{seen_body}");
-        assert_eq!(
-            world.examine(quiet, ExamineTarget::Moss),
-            "You see no moss from here."
+        let quiet_after = world.examine(quiet, ExamineTarget::Moss);
+        assert!(
+            quiet_after.contains("Dry moss grows in the shade"),
+            "{quiet_after}"
         );
+        assert!(!quiet_after.contains("damp bank"), "{quiet_after}");
+        assert!(!quiet_after.contains("carried"), "{quiet_after}");
         assert!(world
             .observe(quiet)
             .unwrap()
@@ -6369,10 +6393,13 @@ mod moss {
             seen_two.contains("Two handfuls of moss are carried by Near"),
             "{seen_two}"
         );
-        assert_eq!(
-            world.examine(quiet, super::ExamineTarget::Moss),
-            "You see no moss from here."
+        let quiet_moss = world.examine(quiet, super::ExamineTarget::Moss);
+        assert!(
+            quiet_moss.contains("Dry moss grows in the shade"),
+            "{quiet_moss}"
         );
+        assert!(!quiet_moss.contains("damp bank"), "{quiet_moss}");
+        assert!(!quiet_moss.contains("carried"), "{quiet_moss}");
         assert!(taken
             .events
             .iter()
@@ -6389,6 +6416,140 @@ mod moss {
             .events
             .iter()
             .all(|event| !event.text.contains("gathers")));
+    }
+
+    #[test]
+    fn dry_moss_in_the_shade_lights_a_fire_and_wet_moss_does_not() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = super::cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let bark = world.pile_count(rock, Material::Bark);
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Dry moss grows in the shade here."), "{here}");
+        assert!(!here.contains("damp bank"), "{here}");
+        let named = world.examine(near, ExamineTarget::Moss);
+        assert!(
+            named.contains("Dry moss grows in the shade here, under the rock overhang.")
+                && named.contains("It can light a fire."),
+            "{named}"
+        );
+        assert!(!named.contains("damp bank"), "{named}");
+        let distant = world.observe(quiet).unwrap().text;
+        assert!(
+            distant.contains("Dry moss grows in the shade to the"),
+            "{distant}"
+        );
+        assert!(!distant.contains("damp bank"), "{distant}");
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Moss))]);
+        assert_eq!(gathered.results[0].message, "You gather a handful of moss.");
+        let taken = world.observe(near).unwrap();
+        assert!(
+            taken.text.contains("The shade here has no moss."),
+            "{}",
+            taken.text
+        );
+        assert!(
+            taken.text.contains("You have a handful of moss."),
+            "{}",
+            taken.text
+        );
+        assert!(taken
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a handful of moss." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        let yours =
+            "You light a fire with the moss from the arms and a dry branch from the pile at the feet.";
+        let theirs =
+            "Near lights a fire with the moss from the arms and a dry branch from the pile at the feet.";
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert_eq!(lit.results[0].message, yours);
+        assert_eq!(world.pile_count(rock, Material::Bark), bark);
+        let after = world.observe(near).unwrap();
+        assert!(
+            after.text.contains("A small fire burns here."),
+            "{}",
+            after.text
+        );
+        assert!(after.text.contains("A pile of bark lies here.") || after.text.contains("bark"),);
+        assert!(after.events.iter().all(|event| event.text != theirs));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == theirs));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != theirs));
+
+        let mut wet = World::valley(crate::tuning::Tuning::evening(), 1);
+        let floor = super::cell_id(4, 3).unwrap();
+        let near = wet.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = wet.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = wet.spawn_at("Quiet", "q", 5, 3).unwrap();
+        wet.mint_item(Material::Moss, 1000, floor, Some(near), super::Role::Loose);
+        wet.mint_item(Material::Branch, 0, floor, Some(near), super::Role::Loose);
+        let refused = wet.step(&[intent("wet", near, Attempt::Light)]);
+        assert_eq!(refused.results[0].message, "The moss is too damp to catch.");
+        for person in [near, seen, quiet] {
+            assert!(wet
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "The moss is too damp to catch." }));
+        }
+        assert!(wet.fire_at(floor).is_none());
+        wet.mint_item(Material::Bark, 0, floor, Some(near), super::Role::Loose);
+        let bark_still = wet.step(&[intent("bark", near, Attempt::Light)]);
+        assert_eq!(
+            bark_still.results[0].message,
+            "You light a fire with the bark and the branch from the arms."
+        );
+        assert_eq!(wet.loose_ids(near, Material::Moss).len(), 1);
+
+        let mut rain = World::valley(crate::tuning::Tuning::evening(), 1);
+        rain.raining = true;
+        let open = super::cell_id(4, 4).unwrap();
+        let near = rain.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = rain.spawn_at("Seen", "s", 4, 2).unwrap();
+        rain.mint_item(Material::Moss, 0, open, Some(near), super::Role::Loose);
+        rain.mint_item(Material::Branch, 0, open, Some(near), super::Role::Loose);
+        let soaked = rain.step(&[intent("rain", near, Attempt::Light)]);
+        assert_eq!(
+            soaked.results[0].message,
+            "The rain puts the moss out before it catches."
+        );
+        assert!(rain
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The rain puts the moss out before it catches." }));
+        assert!(rain
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The rain puts the moss out before it catches." }));
+        assert_eq!(rain.loose_ids(near, Material::Moss).len(), 1);
     }
 }
 
