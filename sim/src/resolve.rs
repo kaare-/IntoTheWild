@@ -2182,12 +2182,18 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if self.fire_at(actor.cell).is_none() {
                     Err("There is no fire burning here.".into())
-                } else if self.raw_mushroom_id(actor.id).is_none()
-                    && self.pile_count(actor.cell, Material::Mushroom) == 0
+                } else if self.raw_meat_at(actor.cell).is_some()
+                    || self.raw_fish_id(actor.id).is_some()
+                    || self.raw_mushroom_id(actor.id).is_some()
+                    || self.pile_count(actor.cell, Material::Mushroom) > 0
                 {
-                    Err("There is nothing here to roast.".into())
-                } else {
                     Ok(true)
+                } else if self.spoiled_meat_near(actor.id) {
+                    Err("The meat has spoiled.".into())
+                } else if self.spoiled_fish_near(actor.id) {
+                    Err("The fish has spoiled.".into())
+                } else {
+                    Err("There is nothing here to roast.".into())
                 }
             }
             Attempt::Release => {
@@ -5024,7 +5030,7 @@ impl World {
         let mut piles: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
         for intent in cooks {
             if matches!(intent.attempt, Attempt::Roast) {
-                self.heat_mushroom(intent, results, "roast");
+                self.roast_food(intent, results);
                 continue;
             }
             let cell = self
@@ -5032,11 +5038,11 @@ impl World {
                 .map(|actor| actor.cell)
                 .unwrap_or(0);
             if self.raw_meat_at(cell).is_some() {
-                self.cook_meat(intent, results);
+                self.cook_meat(intent, results, "cook");
                 continue;
             }
             if self.raw_fish_id(intent.actor_id).is_some() {
-                self.cook_fish(intent, results);
+                self.cook_fish(intent, results, "cook");
                 continue;
             }
             if self.raw_egg_id(intent.actor_id).is_some()
@@ -5181,6 +5187,24 @@ impl World {
             crate::model::spoken_act(None, "cook", rest),
             results,
         );
+    }
+
+    /// Meat on the ground, then a raw fish, then a mushroom. The same food
+    /// `cook` would take, and the line says roast.
+    fn roast_food(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        if self.raw_meat_at(cell).is_some() {
+            self.cook_meat(intent, results, "roast");
+            return;
+        }
+        if self.raw_fish_id(intent.actor_id).is_some() {
+            self.cook_fish(intent, results, "roast");
+            return;
+        }
+        self.heat_mushroom(intent, results, "roast");
     }
 
     /// Heat leaves the mushroom in the arms, or on the ground if it was a pile.
@@ -5418,11 +5442,12 @@ impl World {
     }
 
     /// Raw meat on the fire's own cell. It stays on the ground and is not eaten.
-    fn cook_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+    fn cook_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>, stem: &str) {
         if self.cook_refusal(intent.actor_id).is_some() {
             let message = self
                 .cook_refusal(intent.actor_id)
                 .unwrap_or_else(|| "There is no fire burning here.".into());
+            let message = self.roast_word(stem, message);
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         }
@@ -5435,7 +5460,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "There is nothing here to cook.",
+                self.roast_word(stem, "There is nothing here to cook.".into()),
                 results,
             );
             return;
@@ -5453,7 +5478,7 @@ impl World {
             .into_iter()
             .collect();
         self.emit(
-            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            crate::model::spoken_act(Some(name.as_str()), stem, rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -5465,9 +5490,17 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            crate::model::spoken_act(None, "cook", rest),
+            crate::model::spoken_act(None, stem, rest),
             results,
         );
+    }
+
+    fn roast_word(&self, stem: &str, message: String) -> String {
+        if stem == "roast" && message == "There is nothing here to cook." {
+            "There is nothing here to roast.".into()
+        } else {
+            message
+        }
     }
 
     fn cook_for(
@@ -6341,11 +6374,12 @@ impl World {
         }
     }
 
-    fn cook_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+    fn cook_fish(&mut self, intent: Intent, results: &mut Vec<CommandResult>, stem: &str) {
         if self.cook_refusal(intent.actor_id).is_some() {
             let message = self
                 .cook_refusal(intent.actor_id)
                 .unwrap_or_else(|| "There is no fire burning here.".into());
+            let message = self.roast_word(stem, message);
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         }
@@ -6354,7 +6388,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "There is nothing here to cook.",
+                self.roast_word(stem, "There is nothing here to cook.".into()),
                 results,
             );
             return;
@@ -6376,7 +6410,7 @@ impl World {
             .into_iter()
             .collect();
         self.emit(
-            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            crate::model::spoken_act(Some(name.as_str()), stem, rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -6388,7 +6422,7 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            crate::model::spoken_act(None, "cook", rest),
+            crate::model::spoken_act(None, stem, rest),
             results,
         );
     }

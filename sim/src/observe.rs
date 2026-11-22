@@ -11577,11 +11577,19 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
+        let cooked = event.text.strip_prefix(&format!("{name} cooks "));
+        let roasted = event.text.strip_prefix(&format!("{name} roasts "));
+        let (stem, rest) = if let Some(rest) = cooked {
+            ("cook", rest)
+        } else if let Some(rest) = roasted {
+            ("roast", rest)
+        } else {
+            return None;
+        };
         if rest != "the raw meat over the fire." && rest != "the fish over the fire." {
             return None;
         }
-        Some(crate::model::spoken_act(None, "cook", rest))
+        Some(crate::model::spoken_act(None, stem, rest))
     }
 
     /// A mushroom held over the fire, filled for the person who cooked it.
