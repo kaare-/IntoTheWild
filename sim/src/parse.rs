@@ -37,7 +37,7 @@ raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
-light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of charcoal you carry stands in for the branch, even when a dry branch lies here. A lump only on the ground does when no dry branch is at hand. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
+light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
 cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
 hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, an otter on its cell or the next, a beaver on its cell or the next, a fox on its cell or the next, or a hare on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, the otter, the beaver, the fox, or the hare comes down. A refusal leaves it. The bow stays.
@@ -69,7 +69,7 @@ weave mat                    two bundles of reeds, from the arms or the pile at 
 set mat                      a carried reed mat, on this ground. It leaves the arms. rest works on it, as under a lean-to.
 make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
-bank                         dry branches lying on a burning fire, covered with a handful of mud. After a short wait the wood chars into charcoal and the fire goes out. The branches in your arms stay there. smother and cover fire are the same
+bank                         dry branches lying on a burning fire, covered with a handful of mud. After a short wait the wood chars into charcoal and the fire goes out. A fire that would burn out first is held until that wait. If the fire is put out, the wood comes back and does not char. The branches in your arms stay there. smother and cover fire are the same
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
 wear hide                    a carried deer hide, against the cold

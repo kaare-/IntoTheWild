@@ -3757,7 +3757,8 @@ impl World {
         None
     }
 
-    /// A lump you are holding. It is the fuel, even when a dry branch lies here.
+    /// A lump you are holding, or one on this ground. Either is the fuel,
+    /// even when a dry branch lies here.
     fn charcoal_in_arms(&self, actor: crate::model::ActorId) -> bool {
         !self.loose_ids(actor, Material::Charcoal).is_empty()
     }
@@ -3860,8 +3861,7 @@ impl World {
                     .copied();
                 let name = self.name_of(intent.actor_id);
                 let use_charcoal = self.charcoal_in_arms(intent.actor_id)
-                    || (!self.has_dry(intent.actor_id, Material::Branch)
-                        && self.charcoal_on_ground(intent.actor_id));
+                    || self.charcoal_on_ground(intent.actor_id);
                 let (tinder_item, resin, bark_arms) = if let Some(resin_id) = resin_id {
                     self.items.remove(&resin_id);
                     (Some(resin_id), true, true)
@@ -9488,6 +9488,7 @@ impl World {
             let spent = self.take_dry_wood_on_ground(cell);
             self.banks.insert(cell, spent);
             let ready = self.time.saturating_add(self.tuning.clay_ticks);
+            self.hold_banked_fire(cell, ready);
             self.schedule(ready, Wake::Charcoal(cell));
             let name = self.name_of(actor.id);
             let rest = "the branches on the fire and cover them with mud.";

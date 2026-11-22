@@ -2565,6 +2565,29 @@ impl World {
         self.mint_burning(cell, lit_event, true)
     }
 
+    /// The wood chars on the step that starts at `until`. A fire due then, or
+    /// sooner, would burn down first and the bank would fail. Hold it one tick
+    /// past that step. Rain, or anything else that puts the fire out, still wins.
+    pub(crate) fn hold_banked_fire(&mut self, cell: CellId, until: u64) {
+        let Some(id) = self.fire_at(cell).map(|fire| fire.id) else {
+            return;
+        };
+        let goes = self
+            .fires
+            .get(&id)
+            .map(|fire| fire.goes_out_at)
+            .unwrap_or(0);
+        if goes > until {
+            return;
+        }
+        let hold = until.saturating_add(1);
+        if let Some(fire) = self.fires.get_mut(&id) {
+            fire.goes_out_at = hold;
+        }
+        self.schedule.retain(|entry| entry.wake != Wake::Fire(id));
+        self.schedule(hold, Wake::Fire(id));
+    }
+
     fn mint_burning(&mut self, cell: CellId, lit_event: EventId, charcoal: bool) -> FireId {
         let id = self.next_fire;
         self.next_fire += 1;
@@ -16191,7 +16214,7 @@ mod wooden_spear {
 
 #[cfg(test)]
 mod charcoal_bank {
-    use super::{cell_id, Attempt, ExamineTarget, Intent, Material, Role, World};
+    use super::{cell_id, Attempt, ExamineTarget, Intent, Material, Role, Wake, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
         Intent {
@@ -16399,6 +16422,96 @@ mod charcoal_bank {
             .events
             .iter()
             .any(|event| { event.text == "The banked wood did not char. The fire is out." }));
+    }
+
+    #[test]
+    fn a_dying_fire_is_held_until_the_banked_wood_chars() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        world.mint_fire(cell, 0);
+        let id = world.fire_at(cell).unwrap().id;
+        world.fires.get_mut(&id).unwrap().goes_out_at = world.time;
+        world.schedule.retain(|entry| entry.wake != Wake::Fire(id));
+        world.schedule(world.time, Wake::Fire(id));
+        world.add_pile(cell, Material::Branch, 2, 0);
+        world.mint_item(Material::Mud, 0, cell, Some(near), Role::Loose);
+        let banked = world.step(&[intent("banked", near, Attempt::Bank)]);
+        let yours = "You bank the branches on the fire and cover them with mud.";
+        assert_eq!(banked.results[0].message, yours);
+        assert!(world.fire_at(cell).is_some());
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != yours
+                && event.text != "Near banks the branches on the fire and cover them with mud."
+        }));
+        let mut charred = false;
+        for _ in 0..8 {
+            world.step(&[]);
+            if world
+                .observe(near)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == "The banked wood chars into charcoal. The fire is out.")
+            {
+                charred = true;
+                break;
+            }
+        }
+        assert!(charred);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The banked wood did not char. The fire is out." }));
+        assert_eq!(world.ground_ids(cell, Material::Charcoal).len(), 2);
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "The banked wood chars into charcoal. The fire is out."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != "The banked wood chars into charcoal. The fire is out."
+        }));
+    }
+
+    #[test]
+    fn charcoal_on_the_ground_lights_hot_even_when_a_branch_is_here() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        world.add_pile(cell, Material::Bark, 1, 0);
+        world.add_pile(cell, Material::Branch, 2, 0);
+        world.mint_item(Material::Charcoal, 0, cell, None, Role::Loose);
+        let lit = world.step(&[intent("lit", near, Attempt::Light)]);
+        let yours = "You light a fire with bark from the pile at the feet and a lump of charcoal from the ground.";
+        let witnessed = "Near lights a fire with bark from the pile at the feet and a lump of charcoal from the ground.";
+        assert_eq!(lit.results[0].message, yours);
+        let fire = world.fire_at(cell).unwrap();
+        assert!(fire.hot && fire.charcoal);
+        assert_eq!(world.ground_ids(cell, Material::Charcoal).len(), 0);
+        assert_eq!(world.pile_count(cell, Material::Branch), 2);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != yours && event.text != witnessed }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != witnessed && event.text != yours));
     }
 
     #[test]
