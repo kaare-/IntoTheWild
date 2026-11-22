@@ -17598,6 +17598,53 @@ mod bark_cup {
     }
 
     #[test]
+    fn a_sealed_bark_cup_is_named_when_it_is_dropped() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("fold", near, Attempt::FoldCup)]);
+        if let Some(cup) = world
+            .items
+            .values_mut()
+            .find(|item| item.material == Material::BarkCup)
+        {
+            cup.moisture = world.tuning.soaked_at;
+        }
+        let sealed = world.step(&[intent("seal", near, Attempt::SealCup)]);
+        assert_eq!(
+            sealed.results[0].message,
+            "You seal the bark cup with pine resin."
+        );
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::BarkCup))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop a sealed bark cup. It is in contact with the ground."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drops") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near drops a sealed bark cup. It is in contact with the ground."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drops") }));
+        let ground = world.observe(near).unwrap().text;
+        assert!(ground.contains("A sealed bark cup lies here."), "{ground}");
+        assert!(!ground.contains("A soaked bark cup"));
+    }
+
+    #[test]
     fn pine_resin_seals_a_bark_cup_and_an_unsealed_one_leaks() {
         assert!(matches!(
             crate::parse::parse_attempt("seal bark cup"),

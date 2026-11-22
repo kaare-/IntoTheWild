@@ -2516,12 +2516,17 @@ impl World {
             }
             let bone_awl =
                 material == Material::Awl && self.item(item_id).is_some_and(|awl| awl.bone);
+            let sealed_cup =
+                material == Material::BarkCup && self.item(item_id).is_some_and(|cup| cup.pitched);
             let soaked_cup = material == Material::BarkCup
+                && !sealed_cup
                 && self
                     .item(item_id)
-                    .is_some_and(|cup| !cup.pitched && cup.moisture >= self.tuning.soaked_at);
+                    .is_some_and(|cup| cup.moisture >= self.tuning.soaked_at);
             let noun = if bone_awl {
                 "bone awl"
+            } else if sealed_cup {
+                "sealed bark cup"
             } else if soaked_cup {
                 "soaked bark cup"
             } else {
