@@ -811,6 +811,7 @@ impl Tuning {
             Material::Sinew => 0,
             Material::Sticks => 0,
             Material::Torch => 0,
+            Material::BoneNeedle => 0,
         }
     }
 }

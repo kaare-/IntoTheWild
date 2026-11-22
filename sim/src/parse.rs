@@ -57,6 +57,7 @@ butcher                      a carcass at your feet into three portions; a flint
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
 carve awl                    a bone, with a flint flake or an iron knife, into a bone awl. The tool is not used up. The awl can pierce hide.
+carve needle                 a bone, with a flint flake or an iron knife, into a bone needle. The tool is not used up. It is not a bone awl, a bone fish hook, or a bone whistle. sew with needle spends cordage or sinew on a pierced hide. The needle stays. The awl still only pierces. With no bone, no flake or knife, no needle, or no thread, only you hear which is missing
 carve paddle                 a dry branch, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The wooden paddle stays in the arms. Holding it names the paddle when you paddle. Bare hands still paddle.
 carve hook                   a bone, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The bone fish hook stays in the arms.
 carve whistle                a bone the same way, into a bone whistle. One bone lies under the rock, and it lies there again after the same wait as salt. The tool is not used up. With no bone, or no flake or knife, only you hear which is missing
@@ -182,6 +183,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "sinew" if rest.is_empty() => Ok(Attempt::NameSinew),
         "torch" if rest.is_empty() => Ok(Attempt::NameTorch),
         "mushroom" | "mushrooms" if rest.is_empty() => Ok(Attempt::NameMushroom),
+        "needle" if rest.is_empty() => Ok(Attempt::NameNeedle),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)
@@ -476,6 +478,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             if rest == "awl" || rest == "an awl" || rest == "bone awl" || rest == "a bone awl" =>
         {
             Ok(Attempt::CarveAwl)
+        }
+        "carve" | "make"
+            if rest == "needle"
+                || rest == "a needle"
+                || rest == "bone needle"
+                || rest == "a bone needle" =>
+        {
+            Ok(Attempt::CarveNeedle)
         }
         "carve"
             if rest == "paddle"
@@ -912,6 +922,19 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Pierce)
         }
         "sew"
+            if rest == "needle"
+                || rest == "bone needle"
+                || rest == "with needle"
+                || rest == "with the needle"
+                || rest == "with bone needle"
+                || rest == "with the bone needle"
+                || rest == "with a bone needle"
+                || rest == "hide with needle"
+                || rest == "hide with the bone needle" =>
+        {
+            Ok(Attempt::SewNeedle)
+        }
+        "sew"
             if rest.is_empty()
                 || rest == "hide"
                 || rest == "deer hide"
@@ -965,6 +988,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "copper ore" | "ore" => Ok(Material::CopperOre),
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
         "awl" | "copper awl" | "bone awl" => Ok(Material::Awl),
+        "bone needle" | "a bone needle" => Ok(Material::BoneNeedle),
         "bone" => Ok(Material::Bone),
         "whistle" | "bone whistle" | "a bone whistle" | "the bone whistle" => {
             Ok(Material::Whistle)
@@ -1135,6 +1159,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "mat" | "reed mat" | "a reed mat" => ExamineTarget::Mat,
         "canoe" | "dugout" | "dugout canoe" => ExamineTarget::Canoe,
         "bone" => ExamineTarget::Bone,
+        "needle" | "bone needle" | "a bone needle" | "the bone needle" => ExamineTarget::BoneNeedle,
         "salt" | "salt crust" => ExamineTarget::Salt,
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,

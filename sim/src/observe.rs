@@ -233,6 +233,7 @@ impl World {
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
+            ExamineTarget::BoneNeedle => self.examine_bone_needle(actor_id),
             ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Mat => self.examine_mat(actor_id),
             ExamineTarget::Canoe => self.examine_canoe(actor_id),
@@ -443,6 +444,9 @@ impl World {
             }
             if let Some(hook) = self.seen_hook(actor_id) {
                 lines.push(hook);
+            }
+            if let Some(needle) = self.seen_bone_needle(actor_id) {
+                lines.push(needle);
             }
             if let Some(salt) = self.seen_salt(actor_id) {
                 lines.push(salt);
@@ -1618,6 +1622,9 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|awl| awl.bone))
         {
             parts.push("A bone awl lies here. It can pierce hide.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::BoneNeedle).is_empty() {
+            parts.push("A bone needle lies here. It can sew a pierced hide.".into());
         }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty() {
             parts.push("A bone lies here.".into());
@@ -4615,6 +4622,95 @@ impl World {
         }
     }
 
+    /// A bone needle on a cell this person can see but is not standing on.
+    fn seen_bone_needle(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || self.ground_ids(cell, Material::BoneNeedle).is_empty() {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("under the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            let count = self.ground_ids(cell, Material::BoneNeedle).len() as u32;
+            if count == 1 {
+                lines.push(format!(
+                    "A bone needle lies {place}. It can sew a pierced hide."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bone needles lie {place}. Each can sew a pierced hide.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_bone_needle(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::BoneNeedle).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!(
+                    "A bone needle lies {place}. It can sew a pierced hide. It is not a bone awl."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bone needles lie {place}. Each can sew a pierced hide. They are not bone awls.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::BoneNeedle).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A bone needle is carried by {who} {cover}. It can sew a pierced hide. It is not a bone awl."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bone needles are carried by {who} {cover}. Each can sew a pierced hide.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no bone needle from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     fn examine_bone(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -5311,6 +5407,10 @@ impl World {
             "a bone fish hook".into()
         } else if item.material == "fish hook" {
             format!("{} bone fish hooks", count_word(item.count))
+        } else if item.material == "bone needle" && item.count == 1 {
+            "a bone needle".into()
+        } else if item.material == "bone needle" {
+            format!("{} bone needles", count_word(item.count))
         } else if item.material == "whistle" && item.count == 1 {
             "a bone whistle".into()
         } else if item.material == "whistle" {
@@ -10269,6 +10369,7 @@ impl World {
                 Material::Sticks => "rhythm sticks",
                 Material::Sinew => "sinew",
                 Material::Torch => "pitch torch",
+                Material::BoneNeedle => "bone needle",
             };
             format!("You see no {name} from here.")
         } else {
@@ -11346,6 +11447,7 @@ impl World {
                     && self.set_net_for_these_eyes(viewer, event).is_none()
                     && self.weir_for_these_eyes(viewer, event).is_none()
                     && self.carve_for_these_eyes(viewer, event).is_none()
+                    && self.needle_sew_for_these_eyes(viewer, event).is_none()
                     && self.blow_for_these_eyes(viewer, event).is_none()
                     && self.drum_for_these_eyes(viewer, event).is_none()
                     && self.sticks_for_these_eyes(viewer, event).is_none()
@@ -13345,6 +13447,8 @@ impl World {
             && rest != "the spent bow drill anew with one dry branch."
             && rest != "a bone into a bone whistle with the iron knife."
             && rest != "a bone into a bone whistle with the flint flake."
+            && rest != "a bone into a bone needle with the iron knife."
+            && rest != "a bone into a bone needle with the flint flake."
             && rest != "a bundle of reeds into a reed flute with the iron knife."
             && rest != "a bundle of reeds into a reed flute with the flint flake."
             && rest != "two dry branches into rhythm sticks with the iron knife."
@@ -13439,6 +13543,23 @@ impl World {
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} sews "))?;
         if rest != "the pierced deer hide into a cloak." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "sew", rest))
+    }
+
+    /// A pierced hide sewn with a bone needle. The stitcher already has the reply.
+    fn needle_sew_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} sews "))?;
+        if !rest.contains("with the bone needle and ") {
             return None;
         }
         Some(crate::model::spoken_act(None, "sew", rest))
@@ -14334,6 +14455,9 @@ impl World {
             return line;
         }
         if let Some(line) = self.sew_for_these_eyes(viewer, event) {
+            return line;
+        }
+        if let Some(line) = self.needle_sew_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.rest_for_these_eyes(viewer, event) {
@@ -15752,6 +15876,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Paddle, false) => "wooden paddles",
         (Material::Hook, true) => "bone fish hook",
         (Material::Hook, false) => "bone fish hooks",
+        (Material::BoneNeedle, true) => "bone needle",
+        (Material::BoneNeedle, false) => "bone needles",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

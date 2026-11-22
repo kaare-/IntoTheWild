@@ -139,6 +139,8 @@ impl World {
         let mut disembarks = Vec::new();
         let mut beaches = Vec::new();
         let mut carves = Vec::new();
+        let mut needle_carves = Vec::new();
+        let mut needle_sews = Vec::new();
         let mut paddle_carves = Vec::new();
         let mut hook_carves = Vec::new();
         let mut whistle_carves = Vec::new();
@@ -228,6 +230,9 @@ impl World {
                     // A scrape with no flake, flint, stone, or clear stone is
                     // the reply only, and so is any other scrape miss.
                     let scrape_refusal = matches!(intent.attempt, Attempt::Scrape);
+                    // A bone needle miss is the reply only.
+                    let needle_refusal =
+                        matches!(intent.attempt, Attempt::CarveNeedle | Attempt::SewNeedle);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -244,7 +249,8 @@ impl World {
                             && !cook_fire_refusal
                             && !hammer_refusal
                             && !pierce_refusal
-                            && !scrape_refusal;
+                            && !scrape_refusal
+                            && !needle_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -260,7 +266,8 @@ impl World {
                         | Attempt::NameCanoe
                         | Attempt::NameSinew
                         | Attempt::NameTorch
-                        | Attempt::NameMushroom => hints.push(intent),
+                        | Attempt::NameMushroom
+                        | Attempt::NameNeedle => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -329,6 +336,8 @@ impl World {
                         Attempt::SetNet => set_nets.push(intent),
                         Attempt::SetWeir => weirs.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
+                        Attempt::CarveNeedle => needle_carves.push(intent),
+                        Attempt::SewNeedle => needle_sews.push(intent),
                         Attempt::CarvePaddle => paddle_carves.push(intent),
                         Attempt::CarveHook => hook_carves.push(intent),
                         Attempt::CarveWhistle => whistle_carves.push(intent),
@@ -435,6 +444,7 @@ impl World {
                 Attempt::NameSinew => "Pull sinew from a carcass.",
                 Attempt::NameTorch => "Make a pitch torch, or light one.",
                 Attempt::NameMushroom => "Gather mushrooms, or cook them.",
+                Attempt::NameNeedle => "Carve a bone needle.",
                 _ => "Board, carve canoe, or paddle.",
             };
             self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
@@ -507,6 +517,8 @@ impl World {
         self.apply_set_nets(set_nets, &mut results);
         self.apply_weirs(weirs, &mut results);
         self.apply_carves(carves, &mut results);
+        self.apply_needle_carves(needle_carves, &mut results);
+        self.apply_needle_sews(needle_sews, &mut results);
         self.apply_paddle_carves(paddle_carves, &mut results);
         self.apply_hook_carves(hook_carves, &mut results);
         self.apply_whistle_carves(whistle_carves, &mut results);
@@ -557,7 +569,8 @@ impl World {
             | Attempt::NameCanoe
             | Attempt::NameSinew
             | Attempt::NameTorch
-            | Attempt::NameMushroom => Ok(false),
+            | Attempt::NameMushroom
+            | Attempt::NameNeedle => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -1029,6 +1042,34 @@ impl World {
                     Err("You have no bone to carve.".into())
                 } else if !self.has_carve_tool(actor.id) {
                     Err("You need a flint flake or an iron knife to carve the bone.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarveNeedle => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.has_bone(actor.id) {
+                    Err("You have no bone to carve a needle.".into())
+                } else if !self.has_carve_tool(actor.id) {
+                    Err("You need a flint flake or an iron knife to carve a needle.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SewNeedle => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(message) = self.needle_sew_refusal(actor.id) {
+                    Err(message.into())
                 } else {
                     Ok(true)
                 }
@@ -2346,6 +2387,7 @@ impl World {
                             | Material::Cattail
                             | Material::BarkCup
                             | Material::Bone
+                            | Material::BoneNeedle
                             | Material::Berry
                             | Material::Flute
                             | Material::Drum
@@ -2810,6 +2852,7 @@ impl World {
                     | Material::Brand
                     | Material::Charcoal
                     | Material::Bone
+                    | Material::BoneNeedle
                     | Material::Salt
                     | Material::Honey
                     | Material::Egg
@@ -9349,6 +9392,217 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_needle_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self.has_bone(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no bone to carve a needle.",
+                    results,
+                );
+                continue;
+            }
+            let with_knife = !self.loose_ids(actor.id, Material::Knife).is_empty();
+            if !with_knife && self.loose_ids(actor.id, Material::Flake).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve a needle.",
+                    results,
+                );
+                continue;
+            }
+            if !self.take_one_bone(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no bone to carve a needle.",
+                    results,
+                );
+                continue;
+            }
+            let id = self.mint_item(
+                Material::BoneNeedle,
+                0,
+                actor.cell,
+                Some(actor.id),
+                Role::Loose,
+            );
+            let name = self.name_of(actor.id);
+            let rest = if with_knife {
+                "a bone into a bone needle with the iron knife."
+            } else {
+                "a bone into a bone needle with the flint flake."
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
+    /// The stitch, not the pierce. A pierced scraped hide, a bone needle, and
+    /// cordage or sinew. The needle stays. The thread is spent.
+    fn needle_sew_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
+        if self.loose_ids(actor, Material::Hide).is_empty() {
+            return Some(
+                self.hide_missing(actor, "You are not carrying a deer hide.")
+                    .to_string(),
+            );
+        }
+        let hides = self.loose_ids(actor, Material::Hide);
+        let ready = hides.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| hide.pierced && hide.scraped && !hide.sewn)
+        });
+        if ready {
+            if !self.has_bone_needle(actor) {
+                return Some("You are not carrying a bone needle.".into());
+            }
+            if !self.has_snare_line(actor) {
+                return Some("You have no cordage or sinew to sew with.".into());
+            }
+            return None;
+        }
+        if hides.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| !hide.scraped && !hide.sewn)
+        }) {
+            return Some(
+                self.hide_line(
+                    actor,
+                    "The deer hide is not scraped.",
+                    "The wolf hide is not scraped.",
+                    "The otter hide is not scraped.",
+                    "The fox hide is not scraped.",
+                )
+                .to_string(),
+            );
+        }
+        if hides
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|hide| hide.sewn))
+        {
+            return Some(
+                self.hide_line(
+                    actor,
+                    "The deer hide is already a cloak.",
+                    "The wolf hide is already a cloak.",
+                    "The otter hide is already a cloak.",
+                    "The fox hide is already a cloak.",
+                )
+                .to_string(),
+            );
+        }
+        Some(self.unpierced_sew_line(actor))
+    }
+
+    fn has_bone_needle(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::BoneNeedle).is_empty()
+            || !self.ground_ids(cell, Material::BoneNeedle).is_empty()
+    }
+
+    fn apply_needle_sews(&mut self, sews: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in sews {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if let Some(message) = self.needle_sew_refusal(actor.id) {
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            }
+            let Some(line) = self.take_snare_line(actor.id, actor.cell) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no cordage or sinew to sew with.",
+                    results,
+                );
+                continue;
+            };
+            let hide = self
+                .loose_ids(actor.id, Material::Hide)
+                .into_iter()
+                .find(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| hide.pierced && hide.scraped && !hide.sewn)
+                });
+            let Some(hide) = hide else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a deer hide.",
+                    results,
+                );
+                continue;
+            };
+            let kind = if self.item(hide).is_some_and(|hide| hide.beaver) {
+                "beaver"
+            } else if self.item(hide).is_some_and(|hide| hide.hare) {
+                "hare"
+            } else if self.item(hide).is_some_and(|hide| hide.otter) {
+                "otter"
+            } else if self.item(hide).is_some_and(|hide| hide.fox) {
+                "fox"
+            } else if self.item(hide).is_some_and(|hide| hide.wolf) {
+                "wolf"
+            } else {
+                "deer"
+            };
+            let thread = match line {
+                Line::Hide => "hide strips",
+                Line::Willow => "willow cordage",
+                Line::Nettle => "nettle cordage",
+                Line::Sinew => "sinew",
+            };
+            if let Some(item) = self.items.get_mut(&hide) {
+                item.pierced = false;
+                item.sewn = true;
+            }
+            let rest =
+                format!("the pierced {kind} hide into a cloak with the bone needle and {thread}.");
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "sew", &rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![hide],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "sew", &rest),
                 results,
             );
         }

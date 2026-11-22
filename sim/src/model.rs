@@ -176,6 +176,10 @@ pub enum Material {
     /// Pine resin on a dry branch, or wrapped in a sheet of bark.
     /// Unlit until a fire or tinder lights it. `bound` means the bark wrap.
     Torch,
+    /// Carved from a bone with a flint flake or an iron knife.
+    /// It is not a bone awl, a bone fish hook, or a bone whistle.
+    /// With cordage or sinew it sews a pierced hide. The awl still pierces.
+    BoneNeedle,
 }
 
 impl Material {
@@ -243,6 +247,7 @@ impl Material {
             Material::Sinew => "sinew",
             Material::Sticks => "sticks",
             Material::Torch => "torch",
+            Material::BoneNeedle => "bone needle",
         }
     }
 
@@ -310,6 +315,7 @@ impl Material {
             Material::Sinew => "length of sinew",
             Material::Sticks => "pair of rhythm sticks",
             Material::Torch => "pitch torch",
+            Material::BoneNeedle => "bone needle",
         }
     }
 
@@ -461,6 +467,8 @@ pub enum ExamineTarget {
     Sinew,
     /// A pair of rhythm sticks. They are not a drum.
     Sticks,
+    /// A bone needle. It is not a bone awl, and it is not pine needles.
+    BoneNeedle,
     /// A pitch torch. Lit or still dark.
     Torch,
 }
@@ -625,6 +633,14 @@ pub enum Attempt {
     /// A stone, a bone, or an iron knife opens a hole in ice on the still.
     /// The tool is not used up. A baited bone hook can fish through the hole.
     BreakIce,
+    /// A bone, with a flint flake or an iron knife, into a bone needle.
+    /// The tool is not used up. It is not an awl, a hook, or a whistle.
+    CarveNeedle,
+    /// Sew a pierced hide with a bone needle and cordage or sinew.
+    /// The needle stays. The thread is spent. The awl is not this stitch.
+    SewNeedle,
+    /// Bare `needle`. Names the carve. Does not carve one.
+    NameNeedle,
 }
 
 impl Attempt {
@@ -726,6 +742,8 @@ impl Attempt {
                 | Attempt::LightTorch
                 | Attempt::BreakIce
                 | Attempt::PullSinew
+                | Attempt::CarveNeedle
+                | Attempt::SewNeedle
         )
     }
 }
@@ -27031,5 +27049,115 @@ mod pitch_torch {
             .events
             .iter()
             .all(|event| event.text != fluff_seen));
+    }
+}
+
+#[cfg(test)]
+mod bone_needle {
+    use super::{Attempt, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: u32, line: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == line)
+    }
+
+    #[test]
+    fn a_flint_flake_carves_a_bone_needle_and_it_sews_with_sinew() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = super::cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        world.mint_item(Material::Bone, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let carved = world.step(&[intent("carve", near, Attempt::CarveNeedle)]);
+        let carve_you = "You carve a bone into a bone needle with the flint flake.";
+        let carve_them = "Near carves a bone into a bone needle with the flint flake.";
+        assert_eq!(carved.results[0].message, carve_you);
+        assert_eq!(world.loose_ids(near, Material::BoneNeedle).len(), 1);
+        assert!(world.loose_ids(near, Material::Awl).is_empty());
+        assert!(world.loose_ids(near, Material::Hook).is_empty());
+        assert!(world.loose_ids(near, Material::Whistle).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(!says(&world, near, carve_you));
+        assert!(!says(&world, near, carve_them));
+        assert!(says(&world, seen, carve_them));
+        assert!(!says(&world, quiet, carve_them));
+        assert!(world.observe(near).unwrap().text.contains("a bone needle"));
+        let named = world.step(&[intent("name", near, Attempt::NameNeedle)]);
+        assert_eq!(named.results[0].message, "Carve a bone needle.");
+        assert_eq!(world.loose_ids(near, Material::BoneNeedle).len(), 1);
+        assert!(!says(&world, near, "Carve a bone needle."));
+
+        let miss = world.step(&[intent("sew", near, Attempt::SewNeedle)]);
+        assert_eq!(miss.results[0].message, "You are not carrying a deer hide.");
+        assert!(!says(&world, near, "You are not carrying a deer hide."));
+        assert!(!says(&world, seen, "You are not carrying a deer hide."));
+
+        let hide = world.mint_item(Material::Hide, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&hide).unwrap().scraped = true;
+        world.items.get_mut(&hide).unwrap().pierced = true;
+        let bare = world.step(&[intent("thread", near, Attempt::SewNeedle)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You have no cordage or sinew to sew with."
+        );
+        assert!(!says(
+            &world,
+            seen,
+            "You have no cordage or sinew to sew with."
+        ));
+        assert!(!world.items.get(&hide).unwrap().sewn);
+
+        world.mint_item(Material::Sinew, 0, cell, Some(near), Role::Loose);
+        let sewn = world.step(&[intent("stitch", near, Attempt::SewNeedle)]);
+        let sew_you = "You sew the pierced deer hide into a cloak with the bone needle and sinew.";
+        let sew_them =
+            "Near sews the pierced deer hide into a cloak with the bone needle and sinew.";
+        assert_eq!(sewn.results[0].message, sew_you);
+        assert!(world.items.get(&hide).unwrap().sewn);
+        assert!(!world.items.get(&hide).unwrap().pierced);
+        assert_eq!(world.loose_ids(near, Material::BoneNeedle).len(), 1);
+        assert!(world.loose_ids(near, Material::Sinew).is_empty());
+        assert!(!says(&world, near, sew_you));
+        assert!(!says(&world, near, sew_them));
+        assert!(says(&world, seen, sew_them));
+        assert!(!says(&world, quiet, sew_them));
+        let examined = world.examine(near, super::ExamineTarget::BoneNeedle);
+        assert!(examined.contains("It is not a bone awl."));
+        assert!(examined.contains("It can sew a pierced hide."));
+
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::BoneNeedle))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop a bone needle. It is in contact with the ground."
+        );
+        assert!(world.loose_ids(near, Material::BoneNeedle).is_empty());
+        assert_eq!(world.ground_ids(cell, Material::BoneNeedle).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A bone needle lies here. It can sew a pierced hide."));
+        let picked = world.step(&[intent(
+            "gather",
+            near,
+            Attempt::Gather(Material::BoneNeedle),
+        )]);
+        assert_eq!(picked.results[0].message, "You gather a bone needle.");
+        assert_eq!(world.loose_ids(near, Material::BoneNeedle).len(), 1);
+        assert!(world.ground_ids(cell, Material::BoneNeedle).is_empty());
     }
 }

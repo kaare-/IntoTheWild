@@ -194,6 +194,13 @@ impl Host {
                 true,
                 "Make a pitch torch, or light one.".into(),
             ),
+            Attempt::NameNeedle => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Carve a bone needle.".into(),
+            ),
             Attempt::NameMushroom => self.settle(
                 command_id,
                 false,
@@ -430,6 +437,9 @@ mod tests {
         let hint = host.submit(&near.token, "sinew", "sinew", None);
         assert!(hint.immediate, "{}", hint.message);
         assert_eq!(hint.message, "Pull sinew from a carcass.");
+        let needle = host.submit(&near.token, "needle", "needle", None);
+        assert!(needle.immediate, "{}", needle.message);
+        assert_eq!(needle.message, "Carve a bone needle.");
         for (id, line) in [("m1", "n"), ("m2", "n"), ("m3", "n")] {
             let queued = host.submit(&near.token, id, line, None);
             assert!(
