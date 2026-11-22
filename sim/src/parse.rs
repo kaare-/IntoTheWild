@@ -56,6 +56,7 @@ shape clay                   a lump in your arms or at your feet into an unfired
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
 gather reeds                 a bundle at the brook's edge
+gather cattail               cattail roots from the shallows of the still. dig cattail roots is the same. They are not the reeds. Raw roots do not feed until they are cooked.
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
@@ -93,6 +94,7 @@ smoke fish                   a raw fish at a lit fire, from the arms or the grou
 smoke meat                   a portion of raw meat at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the meat is the same
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
 eat mushrooms                mushrooms
+eat cattail roots            cooked cattail roots. Raw roots do not feed.
 eat carcass                  a carcass must be cooked
 eat bark                     bark does not feed you. The sheet stays. It still lights a fire
 smear mud                    mud on skin against the sun
@@ -219,6 +221,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "nettle cordage" =>
         {
             Ok(Attempt::Gather(Material::Nettle))
+        }
+        "dig"
+            if rest == "cattail"
+                || rest == "cattails"
+                || rest == "roots"
+                || rest == "cattail roots"
+                || rest == "the cattail roots" =>
+        {
+            Ok(Attempt::Gather(Material::Cattail))
         }
         "strip"
             if rest == "willow"
@@ -661,6 +672,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "basket" | "bark basket" => Ok(Material::Basket),
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
+        "cattail" | "cattails" | "cattail root" | "cattail roots" | "roots" => {
+            Ok(Material::Cattail)
+        }
         "net" | "fishing net" | "a fishing net" => Ok(Material::Net),
         "mat" | "reed mat" | "a reed mat" => Ok(Material::Mat),
         "canoe" | "dugout" | "dugout canoe" => Ok(Material::Canoe),
@@ -678,6 +692,9 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
     match text.trim() {
         "" | "berry" | "berries" | "sweet" | "sweet berries" => Ok(Attempt::Eat(Material::Berry)),
         "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
+        "cattail" | "cattails" | "cattail root" | "cattail roots" | "roots" => {
+            Ok(Attempt::Eat(Material::Cattail))
+        }
         "pale" | "pale berry" | "pale berries" => Ok(Attempt::Eat(Material::PaleBerry)),
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
         | "poison berries" | "dark" | "dark berry" | "dark berries" => {
@@ -746,6 +763,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "basket" | "bark basket" => ExamineTarget::Basket,
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
+        "cattail" | "cattails" | "cattail root" | "cattail roots" => ExamineTarget::Cattail,
         "net" | "fishing net" | "a fishing net" => ExamineTarget::Net,
         "mat" | "reed mat" | "a reed mat" => ExamineTarget::Mat,
         "canoe" | "dugout" | "dugout canoe" => ExamineTarget::Canoe,

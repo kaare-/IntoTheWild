@@ -1440,6 +1440,16 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else {
                     match material {
+                        Material::Cattail => {
+                            if self.cooked_cattail_id(actor.id).is_some() {
+                                Ok(true)
+                            } else if self.raw_cattail_near(actor.id) {
+                                Err("Raw cattail roots do not feed you. They must be cooked."
+                                    .into())
+                            } else {
+                                Err("There are no cattail roots here to eat.".into())
+                            }
+                        }
                         Material::Mushroom => {
                             if self.cooked_mushroom_id(actor.id).is_some() {
                                 Ok(true)
@@ -1753,6 +1763,7 @@ impl World {
                             | Material::Resin
                             | Material::Willow
                             | Material::Nettle
+                            | Material::Cattail
                             | Material::Bone
                             | Material::Berry
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -2281,6 +2292,8 @@ impl World {
                         "a bundle of nettle cordage. The nettles sting.".to_string()
                     } else if material == Material::Nettle {
                         "a bundle of nettle cordage.".to_string()
+                    } else if material == Material::Cattail {
+                        "cattail roots.".to_string()
                     } else if noun == "otter hide" {
                         format!("an otter hide{from}.")
                     } else if noun == "fox hide" {
@@ -3799,6 +3812,12 @@ impl World {
                 self.cook_mushroom(intent, results);
                 continue;
             }
+            if self.raw_cattail_id(intent.actor_id).is_some()
+                || self.pile_count(cell, Material::Cattail) > 0
+            {
+                self.cook_cattail(intent, results);
+                continue;
+            }
             if self.raw_pale_id(intent.actor_id).is_some()
                 || self.pile_count(cell, Material::PaleBerry) > 0
             {
@@ -3957,6 +3976,64 @@ impl World {
             return;
         };
         let rest = "the mushroom over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
+    }
+
+    /// Heat leaves the roots in the arms, or on the ground if they were a pile.
+    /// They do not feed anyone until they are eaten.
+    fn cook_cattail(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if let Some(message) = self.cook_refusal(intent.actor_id) {
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let id = if let Some(id) = self.raw_cattail_id(intent.actor_id) {
+            if let Some(root) = self.items.get_mut(&id) {
+                root.cooked = true;
+            }
+            id
+        } else if self.pile_count(cell, Material::Cattail) > 0 {
+            let moisture = self.take_from_pile(cell, Material::Cattail, 1).unwrap_or(0);
+            let id = self.mint_item(Material::Cattail, moisture, cell, None, Role::Loose);
+            if let Some(root) = self.items.get_mut(&id) {
+                root.cooked = true;
+            }
+            id
+        } else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        let rest = "the cattail roots over the fire.";
         let name = self.name_of(intent.actor_id);
         let fire_event = self
             .fire_at(cell)
@@ -9762,6 +9839,10 @@ impl World {
                 self.eat_mushroom(intent, results);
                 continue;
             }
+            if material == Material::Cattail {
+                self.eat_cattail(intent, results);
+                continue;
+            }
             if material == Material::Honey {
                 self.eat_honey(intent, results);
                 continue;
@@ -10069,6 +10150,60 @@ impl World {
             .unwrap_or(0);
         let name = self.name_of(intent.actor_id);
         let rest = "the cooked mushroom.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+            self.emit(
+                "The hunger eases.",
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    fn eat_cattail(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_cattail_id(intent.actor_id) else {
+            let message = if self.raw_cattail_near(intent.actor_id) {
+                "Raw cattail roots do not feed you. They must be cooked."
+            } else {
+                "There are no cattail roots here to eat."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cooked cattail roots.";
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "eat", rest),
             Scope::Cell(cell),

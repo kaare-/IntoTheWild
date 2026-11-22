@@ -773,6 +773,7 @@ impl Tuning {
             Material::Resin => 0,
             Material::Willow => 0,
             Material::Nettle => 0,
+            Material::Cattail => 0,
         }
     }
 }

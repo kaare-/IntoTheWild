@@ -127,6 +127,9 @@ pub enum Material {
     /// A bundle is cordage, spent where hide strips or willow cordage are spent
     /// when neither of those is at hand. Bare hands sting. Mud on the skin does not.
     Nettle,
+    /// Roots from the cattails in the shallows of the still.
+    /// They are not the reeds at the brook. Raw roots do not feed until cooked.
+    Cattail,
 }
 
 impl Material {
@@ -178,6 +181,7 @@ impl Material {
             Material::Resin => "resin",
             Material::Willow => "willow",
             Material::Nettle => "nettle",
+            Material::Cattail => "cattail",
         }
     }
 
@@ -229,6 +233,7 @@ impl Material {
             Material::Resin => "lump of pine resin",
             Material::Willow => "bundle of willow cordage",
             Material::Nettle => "bundle of nettle cordage",
+            Material::Cattail => "cattail roots",
         }
     }
 
@@ -369,6 +374,7 @@ pub enum ExamineTarget {
     Resin,
     Willow,
     Nettle,
+    Cattail,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1174,6 +1180,10 @@ pub struct World {
     /// When bare nettles have grown again. Look says the nettles are bare until then.
     #[serde(default)]
     pub(crate) nettle_returns_at: BTreeMap<CellId, u64>,
+    /// The cattails in the shallows of the still. Not the reeds at the brook.
+    /// Bare once the last roots are dug. They do not grow back.
+    #[serde(default)]
+    pub(crate) cattail_stands: BTreeSet<CellId>,
     /// Slope cells where a flint nodule lies again after it is taken.
     #[serde(default)]
     pub(crate) flint_beds: BTreeSet<CellId>,
@@ -1378,6 +1388,7 @@ impl World {
             willow_returns_at: BTreeMap::new(),
             nettle_stands: BTreeSet::new(),
             nettle_returns_at: BTreeMap::new(),
+            cattail_stands: BTreeSet::new(),
             flint_beds: BTreeSet::new(),
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
@@ -1480,6 +1491,9 @@ impl World {
         let reeds = cell_id(0, 3).unwrap();
         world.add_pile(reeds, Material::Reed, 4, 0);
         world.reed_beds.insert(reeds, 4);
+        let cattails = cell_id(2, 1).unwrap();
+        world.add_pile(cattails, Material::Cattail, 2, 0);
+        world.cattail_stands.insert(cattails);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
         world.salt_licks.insert(cell_id(0, 0).unwrap());
@@ -2927,6 +2941,42 @@ impl World {
             || self.raw_egg_id(actor).is_some()
             || !self.loose_ids(actor, Material::Berry).is_empty()
             || self.raw_pale_id(actor).is_some()
+            || self.raw_cattail_id(actor).is_some()
+    }
+
+    /// Raw cattail roots in the arms. Cooked roots are already food.
+    pub(crate) fn raw_cattail_id(&self, actor: ActorId) -> Option<ItemId> {
+        self.loose_ids(actor, Material::Cattail)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|root| !root.cooked))
+    }
+
+    /// Cooked cattail roots, from the arms before the ground.
+    pub(crate) fn cooked_cattail_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Cattail)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|root| root.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Cattail)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|root| root.cooked))
+    }
+
+    pub(crate) fn raw_cattail_near(&self, actor: ActorId) -> bool {
+        self.raw_cattail_id(actor).is_some()
+            || self
+                .actor(actor)
+                .is_some_and(|person| self.pile_count(person.cell, Material::Cattail) > 0)
+    }
+
+    pub(crate) fn cattail_bare(&self, cell: CellId) -> bool {
+        self.cattail_stands.contains(&cell)
+            && self.pile_count(cell, Material::Cattail) == 0
+            && self.ground_ids(cell, Material::Cattail).is_empty()
     }
 
     /// A raw handful of pale berries in the arms. A cooked one is already food.
@@ -3043,6 +3093,7 @@ impl World {
             Material::Berry,
             Material::PaleBerry,
             Material::Egg,
+            Material::Cattail,
         ]
         .into_iter()
         .map(|material| self.pile_count(cell, material))
@@ -16789,5 +16840,228 @@ mod owl {
         assert!(world.night());
         assert!(!world.observe(near).unwrap().text.contains("owl"));
         assert!(!world.observe(rock).unwrap().text.contains("owl"));
+    }
+}
+
+#[cfg(test)]
+mod cattail {
+    use super::{Attempt, Dir, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn go(world: &mut World, id: &str, actor: u32, dir: Dir) {
+        let moved = world.step(&[intent(id, actor, Attempt::Move(dir))]);
+        assert!(
+            moved.results[0].message.contains("You walk"),
+            "{}",
+            moved.results[0].message
+        );
+    }
+
+    #[test]
+    fn cattail_roots_are_not_reeds_and_need_cooking() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let reeds = world.spawn_at("Reed", "r", 0, 3).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("gather cattail").unwrap(),
+            Attempt::Gather(Material::Cattail)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("dig roots").unwrap(),
+            Attempt::Gather(Material::Cattail)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("gather reeds").unwrap(),
+            Attempt::Gather(Material::Reed)
+        );
+        let reed_look = world.observe(reeds).unwrap().text;
+        assert!(reed_look.contains("Reeds grow here"), "{reed_look}");
+        assert!(!reed_look.contains("Cattails grow here"), "{reed_look}");
+        let before = world.material_tally(Material::Reed);
+        let missed = world.step(&[intent(
+            "dig-reeds",
+            reeds,
+            Attempt::Gather(Material::Cattail),
+        )]);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no cattail here to gather."
+        );
+        assert_eq!(world.material_tally(Material::Reed), before);
+        assert!(world
+            .observe(reeds)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no cattail here to gather." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no cattail here to gather."));
+
+        let trail = world.observe(near).unwrap().text;
+        assert!(!trail.contains("Cattails grow here"), "{trail}");
+        let miss = world.step(&[intent("miss", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There is no cattail here to gather."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no cattail here to gather." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is no cattail here to gather." }));
+        }
+
+        go(&mut world, "n1", near, Dir::North);
+        go(&mut world, "w1", near, Dir::West);
+        go(&mut world, "w2", near, Dir::West);
+        go(&mut world, "n2", near, Dir::North);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains(
+                "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
+            ),
+            "{here}"
+        );
+        assert!(!here.contains("Reeds grow here"), "{here}");
+        assert!(world.observe(seen).unwrap().text.contains(
+            "Cattails grow in the shallows to the north and west. They are not the reeds."
+        ));
+        assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
+
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(dug.results[0].message, "You gather cattail roots.");
+        let near_events = world.observe(near).unwrap();
+        assert!(near_events
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers cattail roots")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers cattail roots."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cattail")));
+        assert!(world.observe(near).unwrap().text.contains("cattail roots"));
+
+        let raw = world.step(&[intent("raw", near, Attempt::Eat(Material::Cattail))]);
+        assert_eq!(
+            raw.results[0].message,
+            "Raw cattail roots do not feed you. They must be cooked."
+        );
+        assert!(world.observe(near).unwrap().events.iter().any(|event| {
+            event.text == "Raw cattail roots do not feed you. They must be cooked."
+        }));
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "Raw cattail roots do not feed you. They must be cooked."
+            }));
+        }
+
+        for (id, dir) in [
+            ("e1", Dir::East),
+            ("e2", Dir::East),
+            ("e3", Dir::East),
+            ("e4", Dir::East),
+        ] {
+            go(&mut world, id, near, dir);
+        }
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(
+            lit.results[0].message.contains("You light a fire"),
+            "{}",
+            lit.results[0].message
+        );
+        let cooked = world.step(&[intent("cook", near, Attempt::Cook)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the cattail roots over the fire."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cooks the cattail roots")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near cooks the cattail roots over the fire." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cooks the cattail roots")));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("cooked cattail roots"));
+
+        world.actors.get_mut(&near).unwrap().hunger = world.tuning.hungry_at;
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Cattail))]);
+        assert_eq!(
+            eaten.results[0].message,
+            "You eat the cooked cattail roots. The hunger eases."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("eats the cooked cattail roots")));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "The hunger eases."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near eats the cooked cattail roots."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The hunger eases."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("eats the cooked cattail roots")));
     }
 }

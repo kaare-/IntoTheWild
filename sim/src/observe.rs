@@ -220,6 +220,7 @@ impl World {
             ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Willow => self.examine_willow(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
+            ExamineTarget::Cattail => self.examine_cattail(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
@@ -430,6 +431,9 @@ impl World {
             }
             if let Some(nettles) = self.seen_nettle(actor_id) {
                 lines.push(nettles);
+            }
+            if let Some(cattails) = self.seen_cattail(actor_id) {
+                lines.push(cattails);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -1036,6 +1040,20 @@ impl World {
             parts.push("Bundles of reeds lie here.".into());
         } else if self.reed_bare(actor.cell) {
             parts.push("The brook's edge has no reeds.".into());
+        }
+        let cattails_here = self.pile_count(actor.cell, Material::Cattail)
+            + self.ground_ids(actor.cell, Material::Cattail).len() as u32;
+        if cattails_here > 0 && self.cattail_stands.contains(&actor.cell) {
+            parts.push(
+                "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
+                    .into(),
+            );
+        } else if cattails_here == 1 {
+            parts.push("Cattail roots lie here.".into());
+        } else if cattails_here > 1 {
+            parts.push("Cattail roots lie here.".into());
+        } else if self.cattail_bare(actor.cell) {
+            parts.push("The shallows here have no cattails.".into());
         }
         let mats_here = self.ground_ids(actor.cell, Material::Mat).len();
         if mats_here == 1 {
@@ -2888,6 +2906,60 @@ impl World {
         }
     }
 
+    fn seen_cattail(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            let count = self.pile_count(cell, Material::Cattail);
+            if count > 0 {
+                lines.push(format!(
+                    "Cattails grow in the shallows to the {way}. They are not the reeds."
+                ));
+            } else if self.cattail_bare(cell) {
+                lines.push(format!("The shallows to the {way} have no cattails."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_cattail(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::Cattail)
+                + self.ground_ids(cell, Material::Cattail).len() as u32;
+            if count == 0 && !self.cattail_bare(cell) {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if self.cattail_stands.contains(&cell) && self.pile_count(cell, Material::Cattail) > 0 {
+                lines.push(format!(
+                    "Cattails grow {place}, in the shallows. The roots can be dug. They are not the reeds."
+                ));
+            } else if count > 0 {
+                lines.push(format!("Cattail roots are {place}."));
+            } else if cell == origin {
+                lines.push("The shallows here have no cattails.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The shallows to the {way} have no cattails."));
+            }
+        }
+        if lines.is_empty() {
+            "There are no cattails in sight.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     fn examine_nettle(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3891,6 +3963,17 @@ impl World {
             "a bundle of nettle cordage".into()
         } else if item.material == "nettle" {
             format!("{} bundles of nettle cordage", count_word(item.count))
+        } else if item.material == "cattail" {
+            let ids = self.loose_ids(actor_id, Material::Cattail);
+            let cooked = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|root| root.cooked))
+                .count();
+            if cooked > 0 && cooked == ids.len() {
+                "cooked cattail roots".into()
+            } else {
+                "cattail roots".into()
+            }
         } else if item.material == "net" && item.count == 1 {
             "a fishing net".into()
         } else if item.material == "net" {
@@ -4991,6 +5074,9 @@ impl World {
         }
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
+        }
+        if self.pile_count(dest, Material::Cattail) > 0 || self.cattail_bare(dest) {
+            bits.push("cattails".into());
         }
         if self.deer.as_ref().is_some_and(|deer| deer.cell == dest)
             && !deer_on_this_wood
@@ -8548,6 +8634,7 @@ impl World {
                 Material::Resin => "resin",
                 Material::Willow => "willow",
                 Material::Nettle => "nettles",
+                Material::Cattail => "cattail roots",
                 Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
@@ -9888,6 +9975,7 @@ impl World {
         if rest != "the mushroom over the fire."
             && rest != "the eggs over the fire."
             && rest != "the pale berries over the fire."
+            && rest != "the cattail roots over the fire."
         {
             return None;
         }
@@ -11195,6 +11283,7 @@ impl World {
             "the salted fish.",
             "the smoked fish.",
             "the cooked mushroom.",
+            "the cooked cattail roots.",
             "the cooked eggs.",
             "the cooked pale berries.",
             "a handful of pale berries.",
@@ -11475,6 +11564,7 @@ impl World {
             "lump of pine resin",
             "bundle of willow cordage",
             "bundle of nettle cordage",
+            "cattail roots",
             "fishing net",
             "reed mat",
         ];
@@ -13344,6 +13434,7 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Willow, false) => "bundles of willow cordage",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
+        (Material::Cattail, _) => "cattail roots",
         (Material::Bow, true) => "bow",
         (Material::Bow, false) => "bows",
         (Material::Net, true) => "fishing net",
