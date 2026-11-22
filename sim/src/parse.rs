@@ -59,6 +59,7 @@ gather reeds                 a bundle at the brook's edge
 gather cattail               cattail roots from the shallows of the still. dig cattail roots is the same. They are not the reeds. Raw roots do not feed until they are cooked.
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
+fold bark                    a sheet of bark into a bark cup. make bark cup is the same. The cup holds water. A clay pot is still a pot.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
 set weir                     one bundle of reeds and cordage, hide strips or willow or nettle, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
@@ -294,6 +295,36 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Thatch)
         }
         "craft" | "make" if rest == "bow" || rest == "a bow" => Ok(Attempt::CraftBow),
+        "fold"
+            if rest == "bark"
+                || rest == "the bark"
+                || rest == "birch bark"
+                || rest == "a sheet of bark"
+                || rest == "sheet of bark"
+                || rest == "bark cup"
+                || rest == "a bark cup"
+                || rest == "birch bark cup" =>
+        {
+            Ok(Attempt::FoldCup)
+        }
+        "make"
+            if rest == "bark cup"
+                || rest == "a bark cup"
+                || rest == "birch bark cup"
+                || rest == "bark cup from bark"
+                || rest == "a bark cup from bark" =>
+        {
+            Ok(Attempt::FoldCup)
+        }
+        "sew"
+            if rest == "bark"
+                || rest == "bark cup"
+                || rest == "a bark cup"
+                || rest == "birch bark"
+                || rest == "birch bark cup" =>
+        {
+            Ok(Attempt::FoldCup)
+        }
         "weave" | "make" if rest == "basket" || rest == "a basket" || rest == "bark basket" => {
             Ok(Attempt::WeaveBasket)
         }
@@ -619,7 +650,8 @@ fn parse_dir(text: &str) -> Result<Dir, String> {
 fn parse_material(text: &str) -> Result<Material, String> {
     match text.trim() {
         "branch" | "branches" | "wood" | "firewood" => Ok(Material::Branch),
-        "bark" => Ok(Material::Bark),
+        "bark cup" | "a bark cup" | "birch bark cup" => Ok(Material::BarkCup),
+        "bark" | "birch" | "birch bark" | "sheet of birch bark" => Ok(Material::Bark),
         "log" => Ok(Material::Log),
         "berry" | "berries" | "sweet berries" => Ok(Material::Berry),
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"
@@ -721,6 +753,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "" | "here" | "ground" | "around" => ExamineTarget::Here,
         "self" | "me" | "myself" => ExamineTarget::SelfBody,
         "wood" | "branch" | "branches" | "firewood" => ExamineTarget::Wood,
+        "bark cup" | "birch bark cup" => ExamineTarget::BarkCup,
         "bark" => ExamineTarget::Bark,
         "berry" | "berries" | "fruit" | "sweet berries" => ExamineTarget::Berries,
         "bitter" | "bitter berries" | "bitter berry" | "poison" | "poison berries"

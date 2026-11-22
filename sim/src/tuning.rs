@@ -785,6 +785,7 @@ impl Tuning {
             Material::Willow => 0,
             Material::Nettle => 0,
             Material::Cattail => 0,
+            Material::BarkCup => 0,
         }
     }
 }

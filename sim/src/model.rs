@@ -130,6 +130,9 @@ pub enum Material {
     /// Roots from the cattails in the shallows of the still.
     /// They are not the reeds at the brook. Raw roots do not feed until cooked.
     Cattail,
+    /// A sheet of bark folded into a cup. It holds a drink the way a clay pot does.
+    /// It is not a pot, and it is not the bark basket.
+    BarkCup,
 }
 
 impl Material {
@@ -182,6 +185,7 @@ impl Material {
             Material::Willow => "willow",
             Material::Nettle => "nettle",
             Material::Cattail => "cattail",
+            Material::BarkCup => "bark cup",
         }
     }
 
@@ -234,6 +238,7 @@ impl Material {
             Material::Willow => "bundle of willow cordage",
             Material::Nettle => "bundle of nettle cordage",
             Material::Cattail => "cattail roots",
+            Material::BarkCup => "bark cup",
         }
     }
 
@@ -375,6 +380,7 @@ pub enum ExamineTarget {
     Willow,
     Nettle,
     Cattail,
+    BarkCup,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -439,6 +445,8 @@ pub enum Attempt {
     FishHook,
     TakeBrand,
     WeaveBasket,
+    /// A sheet of bark folded into a cup that holds water. Not a clay pot.
+    FoldCup,
     PutFish,
     Thatch,
     SetSnare,
@@ -519,6 +527,7 @@ impl Attempt {
                 | Attempt::FishHook
                 | Attempt::TakeBrand
                 | Attempt::WeaveBasket
+                | Attempt::FoldCup
                 | Attempt::PutFish
                 | Attempt::Thatch
                 | Attempt::SetSnare
@@ -17278,5 +17287,201 @@ mod cattail {
                 .all(|event| { event.text != "Ice covers the cattail roots." }));
         }
         assert!(world.pile_count(world.actor(near).unwrap().cell, Material::Cattail) > 0);
+    }
+}
+
+#[cfg(test)]
+mod bark_cup {
+    use super::*;
+
+    fn intent(id: &str, actor: ActorId, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_bark_cup_holds_water_beside_a_clay_pot() {
+        assert!(matches!(
+            crate::parse::parse_attempt("fold bark"),
+            Ok(Attempt::FoldCup)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("make bark cup"),
+            Ok(Attempt::FoldCup)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("sew bark"),
+            Ok(Attempt::FoldCup)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("sew"),
+            Ok(Attempt::Sew)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather birch bark"),
+            Ok(Attempt::Gather(Material::Bark))
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("weave basket"),
+            Ok(Attempt::WeaveBasket)
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let miss = world.step(&[intent("miss", near, Attempt::FoldCup)]);
+        assert_eq!(
+            miss.results[0].message,
+            "You need a sheet of bark to fold a cup."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You need a sheet of bark to fold a cup." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You need a sheet of bark to fold a cup." }));
+        }
+
+        for (i, dir) in [Dir::North, Dir::East, Dir::North, Dir::East]
+            .into_iter()
+            .enumerate()
+        {
+            world.step(&[intent(&format!("to-rock-{i}"), near, Attempt::Move(dir))]);
+        }
+        assert_eq!(world.actor(near).unwrap().cell, cell_id(6, 1).unwrap());
+        let gathered = world.step(&[intent("bark", near, Attempt::Gather(Material::Bark))]);
+        assert_eq!(gathered.results[0].message, "You gather a sheet of bark.");
+        let folded = world.step(&[intent("fold", near, Attempt::FoldCup)]);
+        assert_eq!(
+            folded.results[0].message,
+            "You fold a sheet of bark into a bark cup."
+        );
+        let near_fold = world.observe(near).unwrap();
+        assert!(near_fold.text.contains("a bark cup"), "{}", near_fold.text);
+        assert!(near_fold
+            .events
+            .iter()
+            .all(|event| !event.text.contains("bark cup")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near folds a sheet of bark into a bark cup." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("bark cup") }));
+
+        for i in 0..4 {
+            world.step(&[intent(
+                &format!("to-still-{i}"),
+                near,
+                Attempt::Move(Dir::West),
+            )]);
+        }
+        assert_eq!(world.actor(near).unwrap().cell, cell_id(2, 1).unwrap());
+        assert!(world.time < world.tuning.chill_at);
+        let water = world.step(&[intent("water", near, Attempt::Gather(Material::Water))]);
+        assert_eq!(
+            water.results[0].message,
+            "You gather a drink of water from the still water into the bark cup."
+        );
+        let held = world.observe(near).unwrap();
+        assert!(
+            held.text.contains("a bark cup with a drink of water in it"),
+            "{}",
+            held.text
+        );
+        assert!(!held.text.contains("a pot with"));
+        assert!(held
+            .events
+            .iter()
+            .all(|event| { !event.text.starts_with("Near gathers a drink of water") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near gathers a drink of water from the still water into the bark cup."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("into the bark cup") }));
+
+        for i in 0..4 {
+            world.step(&[intent(&format!("back-{i}"), near, Attempt::Move(Dir::East))]);
+        }
+        assert_eq!(world.actor(near).unwrap().cell, cell_id(6, 1).unwrap());
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        let boiled = world.step(&[intent("boil", near, Attempt::Boil)]);
+        assert!(
+            boiled.results[0]
+                .message
+                .starts_with("You boil the drink in the bark cup over the fire and drink it."),
+            "{}",
+            boiled.results[0].message
+        );
+        assert!(!boiled.results[0].message.contains("pot"));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("boils the drink in the bark cup") }));
+        assert!(world.observe(quiet).unwrap().events.iter().any(|event| {
+            event
+                .text
+                .starts_with("Near boils the drink in the bark cup over the fire and drinks it.")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("boils the drink") }));
+
+        let mut pots = World::valley(crate::tuning::Tuning::evening(), 1);
+        let potter = pots.spawn_at("Potter", "p", 1, 1).unwrap();
+        let cell = pots.actor(potter).unwrap().cell;
+        pots.mint_item(Material::Bark, 0, cell, Some(potter), Role::Loose);
+        let cup = pots.step(&[intent("fold-pot", potter, Attempt::FoldCup)]);
+        assert_eq!(
+            cup.results[0].message,
+            "You fold a sheet of bark into a bark cup."
+        );
+        pots.mint_item(Material::Pot, 0, cell, Some(potter), Role::Loose);
+        pots.mint_fire(cell, 0);
+        let into = pots.step(&[intent(
+            "pot-water",
+            potter,
+            Attempt::Gather(Material::Water),
+        )]);
+        assert_eq!(
+            into.results[0].message,
+            "You gather a drink of water from the brook into the pot."
+        );
+        let boiled_pot = pots.step(&[intent("pot-boil", potter, Attempt::Boil)]);
+        assert!(
+            boiled_pot.results[0]
+                .message
+                .starts_with("You boil the drink in the pot over the fire and drink it."),
+            "{}",
+            boiled_pot.results[0].message
+        );
+        assert!(!boiled_pot.results[0].message.contains("bark cup"));
     }
 }

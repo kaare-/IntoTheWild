@@ -221,6 +221,7 @@ impl World {
             ExamineTarget::Willow => self.examine_willow(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
             ExamineTarget::Cattail => self.examine_cattail(actor_id),
+            ExamineTarget::BarkCup => self.examine_bark_cup(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
@@ -1023,6 +1024,9 @@ impl World {
         }
         for _id in self.ground_ids(actor.cell, Material::Basket) {
             parts.push("A bark basket lies here.".into());
+        }
+        for _id in self.ground_ids(actor.cell, Material::BarkCup) {
+            parts.push("A bark cup lies here.".into());
         }
         let charcoal_here = self.ground_ids(actor.cell, Material::Charcoal).len();
         if charcoal_here == 1 {
@@ -3865,6 +3869,8 @@ impl World {
             )
         } else if item.material == "basket" && item.count == 1 {
             self.basket_arm_phrase(actor_id)
+        } else if item.material == "bark cup" && item.count == 1 {
+            "a bark cup".into()
         } else if item.material == "pot" && item.count == 1 {
             format!("a {} pot", item.condition)
         } else if item.material == "clay" {
@@ -4380,14 +4386,22 @@ impl World {
             && carrying
                 .iter()
                 .any(|item| item.material == "pot" && item.count == 1);
+        let cup_holds_the_drink = !pot_holds_the_drink
+            && drinks > 0
+            && carrying
+                .iter()
+                .any(|item| item.material == "bark cup" && item.count == 1);
         let bits: Vec<String> = carrying
             .iter()
             .filter_map(|item| {
-                if pot_holds_the_drink && item.material == "water" {
+                if (pot_holds_the_drink || cup_holds_the_drink) && item.material == "water" {
                     return None;
                 }
                 if pot_holds_the_drink && item.material == "pot" {
                     return Some(pot_drink_phrase(drinks, raw_drinks));
+                }
+                if cup_holds_the_drink && item.material == "bark cup" {
+                    return Some(cup_drink_phrase(drinks, raw_drinks));
                 }
                 Some(self.arm_bit(actor_id, item))
             })
@@ -8658,6 +8672,7 @@ impl World {
                 Material::Willow => "willow",
                 Material::Nettle => "nettles",
                 Material::Cattail => "cattail roots",
+                Material::BarkCup => "bark cup",
                 Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
@@ -9684,6 +9699,7 @@ impl World {
                 self.event_visible(viewer, origin, event)
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
+                    && self.fold_for_these_eyes(viewer, event).is_none()
                     && self.smoke_for_these_eyes(viewer, event).is_none()
                     && self.walk_for_these_eyes(viewer, event).is_none()
                     && self.smear_for_these_eyes(viewer, event).is_none()
@@ -10305,6 +10321,41 @@ impl World {
         }
     }
 
+    /// A bark cup is a folded sheet, not a clay pot and not a bark basket.
+    fn examine_bark_cup(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if !self.ground_ids(cell, Material::BarkCup).is_empty() {
+                lines.push(format!(
+                    "A bark cup lies {}. It is folded from a sheet of birch bark. It can hold water. {}",
+                    self.place_phrase(origin, cell),
+                    self.rain_reaches_phrase(cell)
+                ));
+            }
+        }
+        for other in self.visible_actor_ids(viewer) {
+            if self.loose_ids(other, Material::BarkCup).is_empty() {
+                continue;
+            }
+            let who = if other == viewer {
+                "You carry".to_string()
+            } else {
+                format!("{} carries", self.name_of(other))
+            };
+            let cell = self.actor(other).unwrap().cell;
+            lines.push(format!(
+                "{who} a bark cup, {}. It is folded from a sheet of birch bark. It can hold water.",
+                self.cover_phrase(cell)
+            ));
+        }
+        if lines.is_empty() {
+            "You see no bark cup from here.".into()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     /// A raw fish set into the bark basket, filled for the person who put it there.
     fn put_fish_for_these_eyes(
         &self,
@@ -10686,6 +10737,19 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "weave", rest))
+    }
+
+    /// A bark cup folded from a sheet of bark. The folder already read the sentence.
+    fn fold_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} folds "))?;
+        if rest != "a sheet of bark into a bark cup." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "fold", rest))
     }
 
     /// A dry branch pointed into a wooden spear. The person who pointed it
@@ -11588,6 +11652,7 @@ impl World {
             "bundle of willow cordage",
             "bundle of nettle cordage",
             "cattail roots",
+            "bark cup",
             "fishing net",
             "reed mat",
         ];
@@ -11670,6 +11735,9 @@ impl World {
         let you_rest = match rest {
             "the drink in the pot over the fire and drinks it." => {
                 "the drink in the pot over the fire and drink it."
+            }
+            "the drink in the bark cup over the fire and drinks it." => {
+                "the drink in the bark cup over the fire and drink it."
             }
             "a drink of water over the fire and drinks it." => {
                 "a drink of water over the fire and drink it."
@@ -13244,6 +13312,20 @@ fn cell_span(count: u32) -> String {
 }
 
 /// Brook water in the pot is raw. Any other drink in that pot is not.
+fn cup_drink_phrase(drinks: u32, raw_drinks: u32) -> String {
+    let boiled = drinks.saturating_sub(raw_drinks);
+    match (boiled > 0, raw_drinks > 0, drinks == 1) {
+        (true, false, true) => "a bark cup with a drink of water in it".into(),
+        (false, true, true) => "a bark cup with a drink of raw water in it".into(),
+        (true, false, false) => format!("a bark cup with {drinks} drinks of water in it"),
+        (false, true, false) => format!("a bark cup with {drinks} drinks of raw water in it"),
+        (true, true, _) => format!(
+            "a bark cup with {boiled} drinks of water and {raw_drinks} drinks of raw water in it"
+        ),
+        (false, false, _) => "a bark cup".into(),
+    }
+}
+
 fn pot_drink_phrase(drinks: u32, raw_drinks: u32) -> String {
     let raw = raw_drinks.min(drinks);
     let plain = drinks.saturating_sub(raw);
@@ -13458,6 +13540,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",
+        (Material::BarkCup, true) => "bark cup",
+        (Material::BarkCup, false) => "bark cups",
         (Material::Bow, true) => "bow",
         (Material::Bow, false) => "bows",
         (Material::Net, true) => "fishing net",

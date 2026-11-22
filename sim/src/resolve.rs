@@ -99,6 +99,7 @@ impl World {
         let mut fishes = Vec::new();
         let mut brands = Vec::new();
         let mut baskets = Vec::new();
+        let mut cups = Vec::new();
         let mut nets = Vec::new();
         let mut mats = Vec::new();
         let mut puts = Vec::new();
@@ -221,6 +222,7 @@ impl World {
                         Attempt::Fish | Attempt::FishHook => fishes.push(intent),
                         Attempt::TakeBrand => brands.push(intent),
                         Attempt::WeaveBasket => baskets.push(intent),
+                        Attempt::FoldCup => cups.push(intent),
                         Attempt::WeaveNet => nets.push(intent),
                         Attempt::WeaveMat => mats.push(intent),
                         Attempt::SetMat => set_mats.push(intent),
@@ -374,6 +376,7 @@ impl World {
         self.apply_fishes(fishes, &mut results);
         self.apply_brands(brands, &mut results);
         self.apply_baskets(baskets, &mut results);
+        self.apply_cups(cups, &mut results);
         self.apply_nets(nets, &mut results);
         self.apply_mats(mats, &mut results);
         self.apply_set_mats(set_mats, &mut results);
@@ -466,6 +469,7 @@ impl World {
                     Err("You have no water to boil.".into())
                 } else if self.loose_ids(actor.id, Material::Pot).is_empty()
                     && self.loose_ids(actor.id, Material::Bowl).is_empty()
+                    && self.loose_ids(actor.id, Material::BarkCup).is_empty()
                 {
                     if self.loose_ids(actor.id, Material::Clay).is_empty() {
                         Err("You have no pot to boil it in.".into())
@@ -1770,6 +1774,7 @@ impl World {
                             | Material::Willow
                             | Material::Nettle
                             | Material::Cattail
+                            | Material::BarkCup
                             | Material::Bone
                             | Material::Berry
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -2103,6 +2108,23 @@ impl World {
                     Err(self.beach_miss(actor.id).into())
                 }
             }
+            Attempt::FoldCup => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if !self.loose_ids(actor.id, Material::BarkCup).is_empty() {
+                    return Err("You are already carrying a bark cup.".into());
+                }
+                let carried_bark = !self.loose_ids(actor.id, Material::Bark).is_empty();
+                let piled_bark = self.pile_count(actor.cell, Material::Bark) > 0;
+                if !carried_bark && !piled_bark {
+                    return Err("You need a sheet of bark to fold a cup.".into());
+                }
+                if !carried_bark && self.carry_count(actor.id) >= self.tuning.carry_slots {
+                    return Err(ARMS_FULL.into());
+                }
+                Ok(true)
+            }
             Attempt::PutFish => {
                 if gripping {
                     return Err("Your hands are on the log.".into());
@@ -2187,6 +2209,7 @@ impl World {
                     | Material::Hook
                     | Material::Willow
                     | Material::Nettle
+                    | Material::BarkCup
                     | Material::Berry
             ) {
                 self.ground_ids(cell, material)
@@ -4306,7 +4329,17 @@ impl World {
             "the still water"
         };
         let into_pot = !self.loose_ids(intent.actor_id, Material::Pot).is_empty();
-        let pot = if into_pot { " into the pot" } else { "" };
+        let into_cup = !into_pot
+            && !self
+                .loose_ids(intent.actor_id, Material::BarkCup)
+                .is_empty();
+        let pot = if into_pot {
+            " into the pot"
+        } else if into_cup {
+            " into the bark cup"
+        } else {
+            ""
+        };
         let rest = format!("a drink of water from {source}{pot}.");
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "gather", &rest),
@@ -8387,6 +8420,58 @@ impl World {
         }
     }
 
+    /// One sheet of bark, from the arms first and then the pile, becomes a bark cup.
+    /// The cup stays in the arms. A clay pot is left where it is.
+    fn apply_cups(&mut self, folds: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in folds {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let bark = if let Some(id) = self.loose_ids(actor.id, Material::Bark).first().copied() {
+                self.items.remove(&id);
+                vec![id]
+            } else if self.take_from_pile(actor.cell, Material::Bark, 1).is_some() {
+                Vec::new()
+            } else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a sheet of bark to fold a cup.",
+                    results,
+                );
+                continue;
+            };
+            let id = self.mint_item(
+                Material::BarkCup,
+                0,
+                actor.cell,
+                Some(actor.id),
+                Role::Loose,
+            );
+            let name = self.name_of(actor.id);
+            let rest = "a sheet of bark into a bark cup.";
+            let mut affected = bark;
+            affected.push(id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "fold", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                affected,
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "fold", rest),
+                results,
+            );
+        }
+    }
+
     /// Three bundles of reeds, from the arms first and then the pile at the
     /// feet, become one fishing net. The net stays in the arms.
     fn apply_nets(&mut self, weaves: Vec<Intent>, results: &mut Vec<CommandResult>) {
@@ -9682,6 +9767,7 @@ impl World {
             };
             if self.loose_ids(actor.id, Material::Pot).is_empty()
                 && self.loose_ids(actor.id, Material::Bowl).is_empty()
+                && self.loose_ids(actor.id, Material::BarkCup).is_empty()
             {
                 let message = if self.loose_ids(actor.id, Material::Clay).is_empty() {
                     "You have no pot to boil it in."
@@ -9703,6 +9789,7 @@ impl World {
                 .into_iter()
                 .collect();
             let in_pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
+            let in_cup = !in_pot && !self.loose_ids(actor.id, Material::BarkCup).is_empty();
             let coda = if self.thirst_word(before) == "not thirsty" {
                 ""
             } else if self.thirst_word(after) == "not thirsty" {
@@ -9715,7 +9802,7 @@ impl World {
                 crate::model::spoken_act(
                     Some(actor.name.as_str()),
                     "boil",
-                    boil_witness_rest(in_pot)
+                    boil_witness_rest(in_pot, in_cup)
                 )
             );
             self.emit(
@@ -9729,7 +9816,7 @@ impl World {
             );
             let message = format!(
                 "{}{coda}",
-                crate::model::spoken_act(None, "boil", boil_actor_rest(in_pot))
+                crate::model::spoken_act(None, "boil", boil_actor_rest(in_pot, in_cup))
             );
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
@@ -10924,17 +11011,21 @@ fn attempt_dir(attempt: &Attempt) -> Option<Dir> {
 
 /// The witness rest of one boil. The actor's rest names the same fire and
 /// says "drink".
-fn boil_witness_rest(in_pot: bool) -> &'static str {
+fn boil_witness_rest(in_pot: bool, in_cup: bool) -> &'static str {
     if in_pot {
         "the drink in the pot over the fire and drinks it."
+    } else if in_cup {
+        "the drink in the bark cup over the fire and drinks it."
     } else {
         "a drink of water over the fire and drinks it."
     }
 }
 
-fn boil_actor_rest(in_pot: bool) -> &'static str {
+fn boil_actor_rest(in_pot: bool, in_cup: bool) -> &'static str {
     if in_pot {
         "the drink in the pot over the fire and drink it."
+    } else if in_cup {
+        "the drink in the bark cup over the fire and drink it."
     } else {
         "a drink of water over the fire and drink it."
     }
