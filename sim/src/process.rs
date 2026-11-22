@@ -2158,6 +2158,37 @@ impl World {
         }
     }
 
+    /// A whistle within ordinary hearing. The hare bolts the same way it does
+    /// when someone steps close. The blow's reply does not carry this line.
+    pub(crate) fn whistle_frighten_hare(&mut self, blower: CellId) {
+        let Some(hare) = self.hare.clone() else {
+            return;
+        };
+        if chebyshev(blower, hare.cell) > self.tuning.hearing {
+            return;
+        }
+        let Some(next) = self.hare_away(hare.cell, blower, blower) else {
+            return;
+        };
+        if next == hare.cell {
+            return;
+        }
+        let dir = step_dir(hare.cell, next);
+        let from = hare.cell;
+        self.emit(
+            format!("A hare startles and bolts to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(hare) = self.hare.as_mut() {
+            hare.cell = next;
+        }
+    }
+
     /// A missed throw. The hare bolts to a dry neighbor farther from the hunter.
     /// None when it has nowhere to go.
     pub(crate) fn bolt_hunted_hare(&mut self, hunter: CellId) -> Option<&'static str> {

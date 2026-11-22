@@ -21507,6 +21507,65 @@ mod whistle {
         assert_eq!(played.results[0].message, "You blow the bone whistle.");
         assert!(world.observe(seen).unwrap().text.contains(heard));
     }
+
+    #[test]
+    fn a_whistle_within_hearing_bolts_the_hare() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 3).unwrap();
+        let far = world.spawn_at("Far", "f", 1, 1).unwrap();
+        let missed = world.step(&[intent("none", near, Attempt::BlowWhistle)]);
+        assert_eq!(
+            missed.results[0].message,
+            "You are not carrying a bone whistle."
+        );
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert!(!says(&world, heard, "You are not carrying a bone whistle."));
+        world.mint_item(
+            Material::Whistle,
+            0,
+            cell_id(4, 3).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let blown = world.step(&[intent("blow", near, Attempt::BlowWhistle)]);
+        assert_eq!(blown.results[0].message, "You blow the bone whistle.");
+        assert!(!blown.results[0].message.contains("hare"));
+        assert!(!says(&world, near, "Near blows the bone whistle."));
+        assert_eq!(world.hare_cell(), Some((1, 4)));
+        assert!(says(&world, near, "A hare startles and bolts to the west."));
+        assert!(says(
+            &world,
+            heard,
+            "You hear a hare to the south and west."
+        ));
+        assert!(!says(
+            &world,
+            quiet,
+            "A hare startles and bolts to the west."
+        ));
+        assert!(!says(
+            &world,
+            quiet,
+            "You hear a hare to the south and west."
+        ));
+        let far_look = world.observe(far).unwrap().text;
+        assert!(
+            far_look.contains("You hear a whistle to the south and east."),
+            "{far_look}"
+        );
+        assert!(!far_look.contains("smoke"), "{far_look}");
+        assert!(says(&world, far, "You hear a hare to the south and east."));
+        assert!(!says(&world, far, "Near blows the bone whistle."));
+        assert!(!says(&world, far, "A hare startles and bolts to the west."));
+        world.actors.get_mut(&near).unwrap().cell = cell_id(6, 0).unwrap();
+        let again = world.step(&[intent("far", near, Attempt::BlowWhistle)]);
+        assert_eq!(again.results[0].message, "You blow the bone whistle.");
+        assert!(!again.results[0].message.contains("hare"));
+        assert_eq!(world.hare_cell(), Some((1, 4)));
+    }
 }
 
 #[cfg(test)]
