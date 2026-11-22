@@ -1054,6 +1054,8 @@ pub enum Wake {
     BoneReturn(CellId),
     /// A raw fish hung by a fire, or set on the next cell. It smokes on this tick if a fire is still near.
     SmokeFish(ItemId),
+    /// A portion of raw meat hung by a fire, or set on the next cell. It smokes on this tick if a fire is still near.
+    SmokeMeat(ItemId),
 }
 
 /// A seeded berry patch. Emptying it, by gathering or by the deer, arms the same wait.
@@ -5315,7 +5317,7 @@ mod smoke_fish {
 
 #[cfg(test)]
 mod smoke_meat {
-    use super::{Attempt, ExamineTarget, Intent, Material, Role, World};
+    use super::{Attempt, Dir, ExamineTarget, Intent, Material, Role, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
         Intent {
@@ -5370,43 +5372,104 @@ mod smoke_meat {
         }
         let ground = world.mint_item(Material::Meat, 0, cell, None, Role::Loose);
         let from_ground = world.step(&[intent("ground", near, Attempt::SmokeMeat)]);
-        assert_eq!(
-            from_ground.results[0].message,
-            "You smoke a portion of raw meat. It will keep, and it can be eaten cold."
-        );
-        assert!(world.item(ground).unwrap().smoked);
-        assert!(world.item(ground).unwrap().spoils_at.is_none());
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .text
-            .contains("A portion of smoked meat lies here. It can be eaten cold."));
-        world.items.remove(&ground);
-        let yours = "You smoke a portion of raw meat. It will keep, and it can be eaten cold.";
-        let kept = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
-        let smoked = world.step(&[intent("smoke", near, Attempt::SmokeMeat)]);
-        assert_eq!(smoked.results[0].message, yours);
-        assert!(world.item(kept).unwrap().smoked);
-        assert!(world.item(kept).unwrap().spoils_at.is_none());
-        let arms = world.observe(near).unwrap();
+        let hung = "You hang a portion of raw meat by the fire. It is not smoked yet.";
+        assert_eq!(from_ground.results[0].message, hung);
+        assert!(!world.item(ground).unwrap().smoked);
+        assert!(world.item(ground).unwrap().carrier.is_none());
+        assert!(world.item(ground).unwrap().firing_ready_at.is_some());
+        let waiting = world.observe(near).unwrap();
         assert!(
-            arms.text.contains("You have a portion of smoked meat."),
+            waiting
+                .text
+                .contains("A portion of raw meat hangs by the fire. It is not smoked yet."),
             "{}",
-            arms.text
+            waiting.text
         );
-        assert!(arms.events.iter().all(|event| {
-            event.text != yours && !event.text.contains("Near smokes a portion of raw meat")
+        assert!(waiting.events.iter().all(|event| {
+            event.text != hung && !event.text.contains("Near hangs a portion of raw meat")
         }));
-        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
-            event.text
-                == "Near smokes a portion of raw meat. It will keep, and it can be eaten cold."
-        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near hangs a portion of raw meat by the fire." }));
         assert!(world
             .observe(quiet)
             .unwrap()
             .events
             .iter()
-            .all(|event| !event.text.contains("smokes a portion of raw meat")));
+            .all(|event| { !event.text.contains("hangs a portion of raw meat") }));
+        let early = world.step(&[intent("early", near, Attempt::SmokeMeat)]);
+        assert_eq!(
+            early.results[0].message,
+            "A portion of raw meat is already hanging by the fire."
+        );
+        for id in [near, seen, quiet] {
+            assert!(world.observe(id).unwrap().events.iter().all(|event| {
+                event.text != "A portion of raw meat is already hanging by the fire."
+            }));
+        }
+        for _ in 0..2 {
+            world.step(&[]);
+            let still = world.observe(near).unwrap().text;
+            assert!(
+                still.contains("A portion of raw meat hangs by the fire. It is not smoked yet."),
+                "{still}"
+            );
+            assert!(!world.item(ground).unwrap().smoked);
+        }
+        world.step(&[]);
+        assert!(world.item(ground).unwrap().smoked);
+        assert!(world.item(ground).unwrap().spoils_at.is_none());
+        let done = world.observe(near).unwrap();
+        assert!(
+            done.text
+                .contains("A portion of smoked meat lies here. It can be eaten cold."),
+            "{}",
+            done.text
+        );
+        assert!(done.events.iter().any(|event| {
+            event.text == "The meat is smoked. It will keep, and it can be eaten cold."
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "The meat is smoked. It will keep, and it can be eaten cold."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != "The meat is smoked. It will keep, and it can be eaten cold."
+        }));
+        world.items.remove(&ground);
+        let kept = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
+        let smoked = world.step(&[intent("smoke", near, Attempt::SmokeMeat)]);
+        assert_eq!(smoked.results[0].message, hung);
+        assert!(world.item(kept).unwrap().carrier.is_none());
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        assert!(world.item(kept).unwrap().smoked);
+        assert!(world.item(kept).unwrap().spoils_at.is_none());
+        let arms = world.observe(near).unwrap();
+        assert!(
+            arms.text
+                .contains("A portion of smoked meat lies here. It can be eaten cold."),
+            "{}",
+            arms.text
+        );
+        assert!(arms.events.iter().all(|event| {
+            event.text != hung && !event.text.contains("Near hangs a portion of raw meat")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near hangs a portion of raw meat by the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("hangs a portion of raw meat") }));
         let again = world.step(&[intent("again", near, Attempt::SmokeMeat)]);
         assert_eq!(again.results[0].message, "The meat is already smoked.");
         for id in [near, seen, quiet] {
@@ -5420,7 +5483,8 @@ mod smoke_meat {
         let raw = world.mint_item(Material::Meat, 0, cell, Some(near), Role::Loose);
         let before = world.observe(near).unwrap().text;
         assert!(
-            before.contains("a portion of smoked meat") && before.contains("a portion of raw meat"),
+            before.contains("A portion of smoked meat lies here. It can be eaten cold.")
+                && before.contains("a portion of raw meat"),
             "{before}"
         );
         assert!(!before.contains("going bad"), "{before}");
@@ -5430,13 +5494,14 @@ mod smoke_meat {
         }
         let mixed = world.observe(near).unwrap().text;
         assert!(
-            mixed.contains("a portion of raw meat that is going bad, a portion of smoked meat"),
+            mixed.contains("You have a portion of raw meat that is going bad.")
+                && mixed.contains("A portion of smoked meat lies here. It can be eaten cold."),
             "{mixed}"
         );
         assert!(!mixed.contains(", going bad"), "{mixed}");
         let examined = world.examine(seen, ExamineTarget::Meat);
         assert!(
-            examined.contains("A portion of smoked meat is carried by Near"),
+            examined.contains("A portion of smoked meat lies"),
             "{examined}"
         );
         assert!(examined.contains("It can be eaten cold."), "{examined}");
@@ -5509,6 +5574,69 @@ mod smoke_meat {
             .events
             .iter()
             .all(|event| event.text != "The meat has spoiled."));
+    }
+
+    #[test]
+    fn a_portion_set_near_a_fire_smokes_and_a_dead_fire_leaves_it_raw() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        let east = world.step(&[intent("east", near, Attempt::Move(Dir::East))]);
+        assert!(east.results[0].success, "{}", east.results[0].message);
+        let beside = world.actor(near).unwrap().cell;
+        let meat = world.mint_item(Material::Meat, 0, beside, Some(near), Role::Loose);
+        let set = world.step(&[intent("set", near, Attempt::SmokeMeat)]);
+        assert_eq!(
+            set.results[0].message,
+            "You set a portion of raw meat near the fire. It is not smoked yet."
+        );
+        assert!(!world.item(meat).unwrap().smoked);
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text
+                .contains("A portion of raw meat is set near the fire. It is not smoked yet."),
+            "{}",
+            here.text
+        );
+        assert!(here
+            .events
+            .iter()
+            .all(|event| !event.text.contains("Near sets a portion")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near sets a portion of raw meat near the fire." }));
+        assert!(world
+            .observe(far)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("sets a portion") }));
+        world.fires.clear();
+        for _ in 0..4 {
+            world.step(&[]);
+        }
+        assert!(!world.item(meat).unwrap().smoked);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The meat is still raw. The fire is out." }));
+        assert!(world
+            .observe(far)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The meat is still raw. The fire is out." }));
     }
 }
 

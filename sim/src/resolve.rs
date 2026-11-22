@@ -926,10 +926,12 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if gripping {
                     Err("Your hands are on the log.".into())
-                } else if self.fire_at(actor.cell).is_none() {
+                } else if !self.fire_near(actor.cell) {
                     Err("There is no fire burning here.".into())
-                } else if self.raw_portion_to_salt(actor.id).is_none() {
-                    if self.smoked_meat_id(actor.id).is_some() {
+                } else if self.meat_to_hang(actor.id).is_none() {
+                    if self.meat_already_hanging(actor.id) {
+                        Err("A portion of raw meat is already hanging by the fire.".into())
+                    } else if self.smoked_meat_id(actor.id).is_some() {
                         Err("The meat is already smoked.".into())
                     } else if self.spoiled_meat_near(actor.id) {
                         Err("The meat has spoiled.".into())
@@ -8550,14 +8552,50 @@ impl World {
         }
     }
 
-    /// Hang a portion of raw meat in the smoke. The fire is not used up.
-    /// The meat keeps, and it can be eaten cold.
+    /// A raw portion that can be hung or set. One already waiting by the fire is not it.
+    fn meat_to_hang(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let ready = |id: crate::model::ItemId| {
+            self.item(id).is_some_and(|meat| {
+                !meat.cooked
+                    && !meat.salted
+                    && !meat.smoked
+                    && !meat.spoiled
+                    && meat.firing_ready_at.is_none()
+            })
+        };
+        if let Some(id) = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .find(|id| ready(*id))
+        {
+            return Some(id);
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Meat)
+            .into_iter()
+            .find(|id| ready(*id))
+    }
+
+    /// A raw portion already waiting on this cell. A second smoke does not start another wait.
+    fn meat_already_hanging(&self, actor: crate::model::ActorId) -> bool {
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.ground_ids(cell, Material::Meat).into_iter().any(|id| {
+            self.item(id).is_some_and(|meat| {
+                !meat.smoked && !meat.cooked && !meat.spoiled && meat.firing_ready_at.is_some()
+            })
+        })
+    }
+
+    /// Hang a portion of raw meat in the smoke, or set it on the next cell. It is not smoked yet.
+    /// The fire is not used up. When the wait ends, the meat keeps and can be eaten cold.
     fn apply_smoke_meat(&mut self, smokes: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in smokes {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            if self.fire_at(actor.cell).is_none() {
+            if !self.fire_near(actor.cell) {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -8567,8 +8605,10 @@ impl World {
                 );
                 continue;
             }
-            let Some(meat_id) = self.raw_portion_to_salt(actor.id) else {
-                let message = if self.smoked_meat_id(actor.id).is_some() {
+            let Some(meat_id) = self.meat_to_hang(actor.id) else {
+                let message = if self.meat_already_hanging(actor.id) {
+                    "A portion of raw meat is already hanging by the fire."
+                } else if self.smoked_meat_id(actor.id).is_some() {
                     "The meat is already smoked."
                 } else if self.spoiled_meat_near(actor.id) {
                     "The meat has spoiled."
@@ -8579,19 +8619,43 @@ impl World {
                 continue;
             };
             let small = self.item(meat_id).is_some_and(|meat| meat.small);
+            let on_the_fire = self.fire_at(actor.cell).is_some();
+            let ready = self.time.saturating_add(self.tuning.clay_ticks);
             if let Some(meat) = self.items.get_mut(&meat_id) {
-                meat.smoked = true;
-                meat.spoiled = false;
-                meat.spoils_at = None;
+                meat.carrier = None;
+                meat.cell = actor.cell;
+                meat.in_basket = false;
+                meat.firing_ready_at = Some(ready);
             }
+            self.schedule(ready, crate::model::Wake::SmokeMeat(meat_id));
             let name = self.name_of(actor.id);
-            let rest = if small {
-                "a smaller piece of raw meat. It will keep, and it can be eaten cold."
+            let (verb, rest, reply) = if on_the_fire && small {
+                (
+                    "hang",
+                    "a smaller piece of raw meat by the fire.",
+                    "You hang a smaller piece of raw meat by the fire. It is not smoked yet.",
+                )
+            } else if on_the_fire {
+                (
+                    "hang",
+                    "a portion of raw meat by the fire.",
+                    "You hang a portion of raw meat by the fire. It is not smoked yet.",
+                )
+            } else if small {
+                (
+                    "set",
+                    "a smaller piece of raw meat near the fire.",
+                    "You set a smaller piece of raw meat near the fire. It is not smoked yet.",
+                )
             } else {
-                "a portion of raw meat. It will keep, and it can be eaten cold."
+                (
+                    "set",
+                    "a portion of raw meat near the fire.",
+                    "You set a portion of raw meat near the fire. It is not smoked yet.",
+                )
             };
             self.emit(
-                crate::model::spoken_act(Some(name.as_str()), "smoke", rest),
+                crate::model::spoken_act(Some(name.as_str()), verb, rest),
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
@@ -8599,13 +8663,7 @@ impl World {
                 vec![],
                 None,
             );
-            self.finish(
-                intent.command_id,
-                actor.id,
-                true,
-                crate::model::spoken_act(None, "smoke", rest),
-                results,
-            );
+            self.finish(intent.command_id, actor.id, true, reply, results);
         }
     }
 

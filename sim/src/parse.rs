@@ -111,7 +111,7 @@ eat eggs                     cooked eggs. Raw eggs are not food. Hunger eases on
 salt meat                    salt on a portion of raw meat. The salt is spent. The meat can be eaten cold.
 salt fish                    salt on a raw fish. The salt is spent. The fish can be eaten cold, and it does not spoil.
 smoke fish                   a raw fish hung by a lit fire, or set on the next cell, from the arms or the ground. It is not smoked yet. When the wait ends it can be eaten cold, and it does not spoil. smoke is the same
-smoke meat                   a portion of raw meat at a lit fire, from the arms or the ground. It can be eaten cold, and it does not spoil. smoke the meat is the same
+smoke meat                   a portion of raw meat hung by a lit fire, or set on the next cell, from the arms or the ground. It is not smoked yet. When the wait ends it can be eaten cold, and it does not spoil. smoke the meat is the same
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
 eat mushrooms                mushrooms
 eat cattail roots            cooked cattail roots. Raw roots do not feed.
@@ -223,7 +223,13 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "raw meat"
                 || rest == "the raw meat"
                 || rest == "a portion of meat"
-                || rest == "a portion of raw meat" =>
+                || rest == "a portion of raw meat"
+                || rest == "the portion"
+                || rest == "portion"
+                || rest == "a smaller piece"
+                || rest == "a smaller piece of meat"
+                || rest == "a smaller piece of raw meat"
+                || rest == "the smaller piece" =>
         {
             Ok(Attempt::SmokeMeat)
         }

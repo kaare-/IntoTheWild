@@ -59,6 +59,7 @@ impl World {
                 Wake::WormReturn(cell) => self.return_worms(cell),
                 Wake::BoneReturn(cell) => self.return_bone(cell),
                 Wake::SmokeFish(id) => self.smoke_fish(id),
+                Wake::SmokeMeat(id) => self.smoke_meat(id),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -1163,6 +1164,51 @@ impl World {
         }
         self.emit(
             "The fish is smoked. It will keep, and it can be eaten cold.",
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// A portion of raw meat has waited by a fire. If a fire is still on that
+    /// cell or the next, the meat is smoked. It keeps, and it can be eaten cold.
+    /// A fire that has gone out leaves it raw. Someone who cannot see the cell hears nothing.
+    fn smoke_meat(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Meat || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        let still_raw = !item.smoked && !item.cooked && !item.spoiled && !item.salted;
+        if !still_raw || item.carrier.is_some() || !self.fire_near(item.cell) {
+            if let Some(lying) = self.items.get_mut(&id) {
+                lying.firing_ready_at = None;
+            }
+            if still_raw && item.carrier.is_none() && !self.fire_near(item.cell) {
+                self.emit(
+                    "The meat is still raw. The fire is out.",
+                    Scope::Cell(item.cell),
+                    vec![],
+                    vec![item.cell],
+                    vec![id],
+                    vec![],
+                    None,
+                );
+            }
+            return;
+        }
+        if let Some(lying) = self.items.get_mut(&id) {
+            lying.smoked = true;
+            lying.spoiled = false;
+            lying.spoils_at = None;
+            lying.firing_ready_at = None;
+        }
+        self.emit(
+            "The meat is smoked. It will keep, and it can be eaten cold.",
             Scope::Cell(item.cell),
             vec![],
             vec![item.cell],

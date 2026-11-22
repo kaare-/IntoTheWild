@@ -10907,6 +10907,10 @@ impl World {
         let hung = format!("{name} hangs a raw fish by the fire.");
         let set = format!("{name} sets a raw fish near the fire.");
         let fish = format!("{name} smokes a raw fish. It will keep, and it can be eaten cold.");
+        let hang_meat = format!("{name} hangs a portion of raw meat by the fire.");
+        let hang_piece = format!("{name} hangs a smaller piece of raw meat by the fire.");
+        let set_meat = format!("{name} sets a portion of raw meat near the fire.");
+        let set_piece = format!("{name} sets a smaller piece of raw meat near the fire.");
         let portion =
             format!("{name} smokes a portion of raw meat. It will keep, and it can be eaten cold.");
         let piece = format!(
@@ -10916,6 +10920,10 @@ impl World {
             || event.text == hung
             || event.text == set
             || event.text == fish
+            || event.text == hang_meat
+            || event.text == hang_piece
+            || event.text == set_meat
+            || event.text == set_piece
             || event.text == portion
             || event.text == piece
         {
@@ -11071,7 +11079,9 @@ impl World {
 
     fn meat_place_lines(&self, ids: &[crate::model::ItemId], place: &str) -> Vec<String> {
         let mut lines = Vec::new();
-        for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
+        for face in [
+            "hanging", "set", "raw", "going", "spoiled", "salted", "smoked", "cooked",
+        ] {
             let full = self.meat_tally(ids, face, false);
             let small = self.meat_tally(ids, face, true);
             if full > 0 {
@@ -11092,6 +11102,12 @@ impl World {
             "spoiled"
         } else if meat.smoked {
             "smoked"
+        } else if meat.firing_ready_at.is_some() {
+            if self.fire_at(meat.cell).is_some() {
+                "hanging"
+            } else {
+                "set"
+            }
         } else if meat.salted {
             "salted"
         } else if meat.spoils_at == Some(self.time) {
@@ -11116,7 +11132,9 @@ impl World {
             return None;
         }
         let mut parts = Vec::new();
-        for face in ["raw", "going", "spoiled", "salted", "smoked", "cooked"] {
+        for face in [
+            "hanging", "set", "raw", "going", "spoiled", "salted", "smoked", "cooked",
+        ] {
             let full = self.meat_tally(&ids, face, false);
             let small = self.meat_tally(&ids, face, true);
             if full > 0 {
@@ -14673,6 +14691,40 @@ fn meat_kind_name(face: &str) -> &'static str {
 }
 
 fn meat_lie(face: &str, count: u32, place: &str, small: bool) -> String {
+    if face == "hanging" || face == "set" {
+        let noun = if small {
+            if count == 1 {
+                "A smaller piece of raw meat".to_string()
+            } else {
+                format!(
+                    "{} smaller pieces of raw meat",
+                    capitalize(&count_word(count))
+                )
+            }
+        } else if count == 1 {
+            "A portion of raw meat".to_string()
+        } else {
+            format!("{} portions of raw meat", capitalize(&count_word(count)))
+        };
+        let (verb, spot) = if face == "hanging" {
+            (if count == 1 { "hangs" } else { "hang" }, "by the fire")
+        } else {
+            (
+                if count == 1 { "is set" } else { "are set" },
+                "near the fire",
+            )
+        };
+        let yet = if count == 1 {
+            "It is not smoked yet."
+        } else {
+            "They are not smoked yet."
+        };
+        return if place == "here" {
+            format!("{noun} {verb} {spot}. {yet}")
+        } else {
+            format!("{noun} {verb} {spot} {place}. {yet}")
+        };
+    }
     let kind = meat_kind_name(face);
     let line = if small {
         if count == 1 {
