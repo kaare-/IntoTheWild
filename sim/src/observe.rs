@@ -568,7 +568,7 @@ impl World {
                 && self.pile_moisture(cell, Material::BitterBerry) >= self.tuning.soaked_at
             {
                 lines.push(format!(
-                    "The {} to the {way} are soaked.",
+                    "The {} to the {way} are soaked. They taste bitter. They are poisonous.",
                     self.bitter_kind(viewer)
                 ));
             }
@@ -1137,16 +1137,10 @@ impl World {
             }
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
-            let known = if self.bitter_known(actor_id) {
-                " They taste bitter. They are poisonous."
-            } else {
-                ""
-            };
             parts.push(format!(
-                "{} lie here, {}.{}",
+                "{} lie here, {}. They taste bitter. They are poisonous.",
                 self.bitter_kind_cap(actor_id),
                 self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry)),
-                known
             ));
         } else if self.berry_patch_bare(actor.cell, Material::BitterBerry) {
             parts.push(format!(
@@ -6241,7 +6235,11 @@ impl World {
             bits.push("berries".into());
         }
         if self.pile_count(dest, Material::BitterBerry) > 0 {
-            bits.push(self.bitter_kind(viewer).into());
+            if self.bitter_known(viewer) {
+                bits.push(self.bitter_kind(viewer).into());
+            } else {
+                bits.push("poisonous dark berries".into());
+            }
         }
         if self.pile_count(dest, Material::PaleBerry) > 0 {
             bits.push("pale berries".into());
@@ -9811,10 +9809,11 @@ impl World {
         self.actor(viewer).is_some_and(|actor| actor.bark_known)
     }
 
-    /// Bitter berries keep their answer until this person has tasted them.
+    /// Dark berries name the bitterness before anyone eats them.
     /// A raw mushroom keeps its warning until this person has tried to eat one.
+    /// Pale berries stay unnamed until a raw bite.
     fn food_clause_for(&self, viewer: ActorId, material: Material) -> &'static str {
-        if material == Material::BitterBerry && self.bitter_known(viewer) {
+        if material == Material::BitterBerry {
             " They taste bitter. They are poisonous."
         } else if material == Material::Mushroom && self.raw_mushroom_known(viewer) {
             " They must be cooked. Raw mushrooms do not feed you."

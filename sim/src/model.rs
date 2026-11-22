@@ -12661,9 +12661,16 @@ mod berry_return {
         let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
         let here = world.observe(near).unwrap().text;
         assert!(here.contains("Dark berries lie here"), "{here}");
-        assert!(!here.contains("poison"), "{here}");
+        assert!(
+            here.contains("They taste bitter. They are poisonous."),
+            "{here}"
+        );
         assert!(world.observe(seen).unwrap().text.contains("dark berries"));
-        assert!(!world.observe(seen).unwrap().text.contains("poison"));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("poisonous dark berries"));
         empty_patch(&mut world, near, Material::BitterBerry);
         let gone = world.observe(near).unwrap().text;
         assert!(
@@ -12695,7 +12702,13 @@ mod berry_return {
             "{}",
             again.text
         );
-        assert!(!again.text.contains("poison"), "{}", again.text);
+        assert!(
+            again
+                .text
+                .contains("They taste bitter. They are poisonous."),
+            "{}",
+            again.text
+        );
         assert!(!again.text.contains("are gone"), "{}", again.text);
         assert!(again.events.iter().any(|event| event.text == back));
         let seen_back = world.observe(seen).unwrap();
@@ -12742,6 +12755,8 @@ mod berry_return {
             "{here}"
         );
         assert!(here.contains("The dark berries are dry."), "{here}");
+        assert!(here.contains("They taste bitter."), "{here}");
+        assert!(here.contains("They are poisonous."), "{here}");
         assert!(!here.contains("sweet"), "{here}");
         assert!(!here.contains("deer"), "{here}");
         assert!(!here.contains("under the rock"), "{here}");
