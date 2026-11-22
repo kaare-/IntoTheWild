@@ -815,7 +815,11 @@ impl World {
             }
             Some(false) if deer_here => parts.push(self.eating_handful_line(actor.cell, true)),
             _ if deer_here && berries_here => {
-                parts.push("A deer stands on these branches.".into());
+                if self.branches_lying(actor.cell) {
+                    parts.push("A deer stands on these branches.".into());
+                } else if !self.deer_on_empty_rock_ground(actor.cell) {
+                    parts.push("A deer stands here.".into());
+                }
             }
             _ if berries_here => {
                 parts.push(format!(
@@ -828,38 +832,41 @@ impl World {
         let leftover = self.leftover_handful(actor.cell);
         if !berries_here && self.spent_berries.contains(&actor.cell) && !leftover {
             if self.deer_ate_berries.contains(&actor.cell) {
-                if deer_here {
+                if deer_here && !self.deer_on_empty_rock_ground(actor.cell) {
                     parts
                         .push("A deer stands here after eating the berries that were here.".into());
-                } else if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
-                    (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
-                }) {
-                    if self.deer_on_the_named_floor_ate(actor.cell).is_none() {
-                        if self.direction_names_deer(actor.cell, deer_cell)
-                            || self.neighbor_line_names_deer(actor.cell, deer_cell)
-                            || self.south_line_stands_the_deer(actor.cell)
-                        {
-                            parts.push("The berries that were here are gone.".into());
-                        } else if self.open_loose_branches(deer_cell) {
-                            let place = self.cell_offset(actor.cell, deer_cell);
-                            let way = self.relative(actor.cell, deer_cell);
-                            parts.push(format!(
+                } else if !deer_here {
+                    if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
+                        (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
+                    }) {
+                        if self.deer_on_the_named_floor_ate(actor.cell).is_none() {
+                            if self.direction_names_deer(actor.cell, deer_cell)
+                                || self.neighbor_line_names_deer(actor.cell, deer_cell)
+                                || self.south_line_stands_the_deer(actor.cell)
+                            {
+                                parts.push("The berries that were here are gone.".into());
+                            } else if self.open_loose_branches(deer_cell) {
+                                let place = self.cell_offset(actor.cell, deer_cell);
+                                let way = self.relative(actor.cell, deer_cell);
+                                parts.push(format!(
                                 "The berries that were here are gone. The deer {place} ate them and stands to the {way}."
                             ));
-                        } else if self.deer_stands_past_the_wood(actor.cell) {
-                            parts.push(
-                                "The berries that were here are gone. The deer ate them.".into(),
-                            );
-                        } else {
-                            let place = self.cell_offset(actor.cell, deer_cell);
-                            let cover = self.cover_phrase(deer_cell);
-                            parts.push(format!(
+                            } else if self.deer_stands_past_the_wood(actor.cell) {
+                                parts.push(
+                                    "The berries that were here are gone. The deer ate them."
+                                        .into(),
+                                );
+                            } else {
+                                let place = self.cell_offset(actor.cell, deer_cell);
+                                let cover = self.cover_phrase(deer_cell);
+                                parts.push(format!(
                                 "The berries that were here are gone. The deer {place} ate them and stands there, {cover}."
                             ));
+                            }
                         }
+                    } else if !self.meal_follows_the_prints(actor.cell) {
+                        parts.push("A deer ate the berries that were here.".into());
                     }
-                } else if !self.meal_follows_the_prints(actor.cell) {
-                    parts.push("A deer ate the berries that were here.".into());
                 }
             } else {
                 parts.push("The berries that were here are gone.".into());
@@ -880,11 +887,15 @@ impl World {
             && !berries_here
             && self.spent_berries.contains(&actor.cell)
             && self.deer_ate_berries.contains(&actor.cell);
+        if self.deer_on_empty_rock_ground(actor.cell) {
+            parts.push("A deer stands on the rock ground.".into());
+        }
         if deer_here
             && !berries_here
             && !self.open_loose_branches(actor.cell)
             && !still_eating
             && !deer_named_standing_here
+            && !self.deer_on_empty_rock_ground(actor.cell)
         {
             // A hoofprint is stored on the cell the deer leaves. While the
             // deer stands on a trail, the marks underfoot, if any, were stored
@@ -996,7 +1007,7 @@ impl World {
             } else {
                 parts.push(format!("A {word} branch lies here."));
             }
-        } else if self.branch_bare(actor.cell) {
+        } else if self.branch_bare(actor.cell) && !self.deer_on_empty_rock_ground(actor.cell) {
             parts.push("There are no branches under the rock.".into());
         }
         if self.loose_ids(actor_id, Material::Branch).iter().any(|id| {
@@ -3263,6 +3274,20 @@ impl World {
         } else {
             lines.join(" ")
         }
+    }
+
+    /// A branch in the pile, or one lying loose. The rock's shelter does not count.
+    fn branches_lying(&self, cell: crate::model::CellId) -> bool {
+        self.pile_count(cell, Material::Branch) > 0
+            || !self.ground_ids(cell, Material::Branch).is_empty()
+    }
+
+    /// The deer is standing on this rock and no branch is under it.
+    /// Look names that ground and does not also say the pile is gone.
+    fn deer_on_empty_rock_ground(&self, cell: crate::model::CellId) -> bool {
+        self.cell(cell).rock
+            && !self.branches_lying(cell)
+            && self.deer.as_ref().is_some_and(|deer| deer.cell == cell)
     }
 
     /// The rock's dry branches were taken and have not lain there again.
