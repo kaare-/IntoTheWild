@@ -5898,9 +5898,9 @@ impl World {
 
     /// Once while this deer stays in sight. Not an event. Not a hunt.
     fn spear_reach_hint(&self, viewer: ActorId) -> Option<String> {
-        self.actor(viewer)?
-            .spear_hint_show
-            .then(|| "A hafted spear could reach the deer.".into())
+        self.actor(viewer)?.spear_hint_show.then(|| {
+            "Haft the flint flake and a dry branch into a spear that could reach the deer.".into()
+        })
     }
 
     fn deer_look_line(&self, viewer: ActorId) -> Option<String> {

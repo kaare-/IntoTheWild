@@ -25206,7 +25206,8 @@ mod sticks {
 mod spear_hint {
     use super::{cell_id, Material, Role, World};
 
-    const HINT: &str = "A hafted spear could reach the deer.";
+    const HINT: &str =
+        "Haft the flint flake and a dry branch into a spear that could reach the deer.";
 
     fn hold(world: &mut World) {
         if let Some(deer) = world.deer.as_mut() {
