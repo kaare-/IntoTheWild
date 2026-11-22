@@ -38,7 +38,8 @@ lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of charcoal you carry stands in for the branch, even when a dry branch lies here. A lump only on the ground does when no dry branch is at hand. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
-cook                         heat a mushroom, or cook berries, a carcass, or raw meat
+cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
+grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
 hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, an otter on its cell or the next, a beaver on its cell or the next, a fox on its cell or the next, or a hare on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, the otter, the beaver, the fox, or the hare comes down. A refusal leaves it. The bow stays.
 fish                         a fire-hardened flint spear, or a fishing net, or a bone fish hook with hide strips, in the brook or beside it, and from a dugout on the brook. The spear and the net are not used up. The hide strips are spent as the line. That stretch is quiet for a short wait
 fish with hook               the same cast with a bone fish hook and hide strips in the arms. The hook stays. The strips are spent.
@@ -97,6 +98,7 @@ smoke meat                   a portion of raw meat at a lit fire, from the arms 
 eat fish                     a cooked fish, or salted fish, or smoked fish; raw fish is not food
 eat mushrooms                mushrooms
 eat cattail roots            cooked cattail roots. Raw roots do not feed.
+eat flatbread                a cattail flatbread cooked from cattail flour. Raw flour does not feed.
 eat carcass                  a carcass must be cooked
 eat bark                     bark does not feed you. The sheet stays. It still lights a fire
 smear mud                    mud on skin against the sun
@@ -305,6 +307,19 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::Thatch)
         }
         "craft" | "make" if rest == "bow" || rest == "a bow" => Ok(Attempt::CraftBow),
+        "grind"
+            if rest.is_empty()
+                || rest == "cattail"
+                || rest == "cattails"
+                || rest == "roots"
+                || rest == "cattail root"
+                || rest == "cattail roots"
+                || rest == "the cattail roots"
+                || rest == "flour"
+                || rest == "cattail flour" =>
+        {
+            Ok(Attempt::Grind)
+        }
         "fold"
             if rest == "bark"
                 || rest == "the bark"
@@ -714,6 +729,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "basket" | "bark basket" => Ok(Material::Basket),
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
+        "flour" | "cattail flour" | "flatbread" | "cattail flatbread" => Ok(Material::Flour),
         "cattail" | "cattails" | "cattail root" | "cattail roots" | "roots" => {
             Ok(Material::Cattail)
         }
@@ -736,6 +752,9 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
         "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
         "cattail" | "cattails" | "cattail root" | "cattail roots" | "roots" => {
             Ok(Attempt::Eat(Material::Cattail))
+        }
+        "flour" | "cattail flour" | "flatbread" | "cattail flatbread" | "the flatbread" => {
+            Ok(Attempt::Eat(Material::Flour))
         }
         "pale" | "pale berry" | "pale berries" => Ok(Attempt::Eat(Material::PaleBerry)),
         "bitter" | "bitter berry" | "bitter berries" | "poison" | "poison berry"

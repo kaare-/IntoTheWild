@@ -112,6 +112,7 @@ impl World {
         let mut launches = Vec::new();
         let mut seals = Vec::new();
         let mut cup_seals = Vec::new();
+        let mut grinds = Vec::new();
         let mut boards = Vec::new();
         let mut paddles = Vec::new();
         let mut disembarks = Vec::new();
@@ -232,6 +233,7 @@ impl World {
                         Attempt::Launch => launches.push(intent),
                         Attempt::SealCanoe => seals.push(intent),
                         Attempt::SealCup => cup_seals.push(intent),
+                        Attempt::Grind => grinds.push(intent),
                         Attempt::Board => boards.push(intent),
                         Attempt::Paddle(_) => paddles.push(intent),
                         Attempt::Disembark => disembarks.push(intent),
@@ -387,6 +389,7 @@ impl World {
         self.apply_launches(launches, &mut results);
         self.apply_seals(seals, &mut results);
         self.apply_cup_seals(cup_seals, &mut results);
+        self.apply_grinds(grinds, &mut results);
         self.apply_boards(boards, &mut results);
         self.apply_paddles(paddles, &mut results);
         self.apply_disembarks(disembarks, &mut results);
@@ -1457,6 +1460,16 @@ impl World {
                                 Err("There are no cattail roots here to eat.".into())
                             }
                         }
+                        Material::Flour => {
+                            if self.cooked_flour_id(actor.id).is_some() {
+                                Ok(true)
+                            } else if self.raw_flour_id(actor.id).is_some() {
+                                Err("Raw cattail flour does not feed you. It must be cooked."
+                                    .into())
+                            } else {
+                                Err("There is no cattail flour here to eat.".into())
+                            }
+                        }
                         Material::Mushroom => {
                             if self.cooked_mushroom_id(actor.id).is_some() {
                                 Ok(true)
@@ -2131,6 +2144,21 @@ impl World {
                     Err(self.beach_miss(actor.id).into())
                 }
             }
+            Attempt::Grind => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if let Err(message) = self.grind_root(actor.id) {
+                    return Err(message.into());
+                }
+                if self.loose_ids(actor.id, Material::Stone).is_empty() {
+                    return Err("You need a stone to grind on.".into());
+                }
+                if !self.stone_under(actor.id) {
+                    return Err("You need a stone on stone to grind.".into());
+                }
+                Ok(true)
+            }
             Attempt::FoldCup => {
                 if gripping {
                     return Err("Your hands are on the log.".into());
@@ -2346,6 +2374,12 @@ impl World {
                         "a bundle of nettle cordage.".to_string()
                     } else if material == Material::Cattail {
                         "cattail roots.".to_string()
+                    } else if material == Material::Flour {
+                        if self.item(item).is_some_and(|flour| flour.cooked) {
+                            "a cattail flatbread.".to_string()
+                        } else {
+                            "cattail flour.".to_string()
+                        }
                     } else if noun == "otter hide" {
                         format!("an otter hide{from}.")
                     } else if noun == "fox hide" {
@@ -2535,12 +2569,19 @@ impl World {
                 && self
                     .item(item_id)
                     .is_some_and(|cup| cup.moisture >= self.tuning.soaked_at);
+            let flatbread =
+                material == Material::Flour && self.item(item_id).is_some_and(|flour| flour.cooked);
+            let flour = material == Material::Flour && !flatbread;
             let noun = if bone_awl {
                 "bone awl"
             } else if sealed_cup {
                 "sealed bark cup"
             } else if soaked_cup {
                 "soaked bark cup"
+            } else if flatbread {
+                "cattail flatbread"
+            } else if flour {
+                "cattail flour"
             } else {
                 material.gather_noun()
             };
@@ -2548,6 +2589,8 @@ impl World {
                 format!("{name} drops hide strips. They are in contact with the ground.")
             } else if material == Material::Egg {
                 format!("{name} drops the eggs. They are in contact with the ground.")
+            } else if flour {
+                format!("{name} drops the cattail flour. It is in contact with the ground.")
             } else {
                 format!(
                     "{name} drops {} {noun}. It is in contact with the ground.",
@@ -2567,6 +2610,8 @@ impl World {
                 "You drop hide strips. They are in contact with the ground.".to_string()
             } else if material == Material::Egg {
                 "You drop the eggs. They are in contact with the ground.".to_string()
+            } else if flour {
+                "You drop the cattail flour. It is in contact with the ground.".to_string()
             } else {
                 format!(
                     "You drop {} {noun}. It is in contact with the ground.",
@@ -3958,6 +4003,10 @@ impl World {
                 self.cook_cattail(intent, results);
                 continue;
             }
+            if self.raw_flour_id(intent.actor_id).is_some() {
+                self.cook_flour(intent, results);
+                continue;
+            }
             if self.raw_pale_id(intent.actor_id).is_some()
                 || self.pile_count(cell, Material::PaleBerry) > 0
             {
@@ -4174,6 +4223,54 @@ impl World {
             return;
         };
         let rest = "the cattail roots over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, "cook", rest),
+            results,
+        );
+    }
+
+    /// Heat turns cattail flour into a flatbread. It does not feed anyone until it is eaten.
+    fn cook_flour(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if let Some(message) = self.cook_refusal(intent.actor_id) {
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        }
+        let Some(id) = self.raw_flour_id(intent.actor_id) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is nothing here to cook.",
+                results,
+            );
+            return;
+        };
+        if let Some(flour) = self.items.get_mut(&id) {
+            flour.cooked = true;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let rest = "the flour into a flatbread over the fire.";
         let name = self.name_of(intent.actor_id);
         let fire_event = self
             .fire_at(cell)
@@ -8538,6 +8635,55 @@ impl World {
         }
     }
 
+    /// A stone in the hands, on a stone or on the rock. The roots become flour. The stones stay.
+    fn apply_grinds(&mut self, grinds: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in grinds {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Ok(root) = self.grind_root(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You have no cattail roots to grind.",
+                    results,
+                );
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Stone).is_empty() || !self.stone_under(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need a stone on stone to grind.",
+                    results,
+                );
+                continue;
+            }
+            self.items.remove(&root);
+            let flour = self.mint_item(Material::Flour, 0, actor.cell, Some(actor.id), Role::Loose);
+            let rest = "the cattail roots into flour on the stone.";
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "grind", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![flour],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "grind", rest),
+                results,
+            );
+        }
+    }
+
     /// One sheet of bark, from the arms first and then the pile, becomes a bark cup.
     /// The cup stays in the arms. A clay pot is left where it is.
     fn apply_cups(&mut self, folds: Vec<Intent>, results: &mut Vec<CommandResult>) {
@@ -10062,6 +10208,10 @@ impl World {
                 self.eat_cattail(intent, results);
                 continue;
             }
+            if material == Material::Flour {
+                self.eat_flour(intent, results);
+                continue;
+            }
             if material == Material::Honey {
                 self.eat_honey(intent, results);
                 continue;
@@ -10423,6 +10573,60 @@ impl World {
             .unwrap_or(0);
         let name = self.name_of(intent.actor_id);
         let rest = "the cooked cattail roots.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        let eased = self.hunger_word(before) != "not hungry"
+            && self.hunger_word(after) != self.hunger_word(before);
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if eased {
+            message.push_str(" The hunger eases.");
+            self.emit(
+                "The hunger eases.",
+                Scope::Personal(intent.actor_id),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        } else {
+            message.push_str(&format!(" You are {}.", self.hunger_word(after)));
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    fn eat_flour(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_flour_id(intent.actor_id) else {
+            let message = if self.raw_flour_id(intent.actor_id).is_some() {
+                "Raw cattail flour does not feed you. It must be cooked."
+            } else {
+                "There is no cattail flour here to eat."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cattail flatbread.";
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "eat", rest),
             Scope::Cell(cell),

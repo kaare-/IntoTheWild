@@ -133,6 +133,9 @@ pub enum Material {
     /// A sheet of bark folded into a cup. It holds a drink the way a clay pot does.
     /// It is not a pot, and it is not the bark basket.
     BarkCup,
+    /// Cattail roots pounded with a stone on a stone. Raw flour does not feed.
+    /// Cooked, it is a flatbread.
+    Flour,
 }
 
 impl Material {
@@ -186,6 +189,7 @@ impl Material {
             Material::Nettle => "nettle",
             Material::Cattail => "cattail",
             Material::BarkCup => "bark cup",
+            Material::Flour => "flour",
         }
     }
 
@@ -239,6 +243,7 @@ impl Material {
             Material::Nettle => "bundle of nettle cordage",
             Material::Cattail => "cattail roots",
             Material::BarkCup => "bark cup",
+            Material::Flour => "cattail flour",
         }
     }
 
@@ -479,6 +484,8 @@ pub enum Attempt {
     SealCanoe,
     /// A lump of pine resin spent on a bark cup. Not a dugout.
     SealCup,
+    /// Cattail roots pounded with a stone on a stone. The stones stay.
+    Grind,
 }
 
 impl Attempt {
@@ -558,6 +565,7 @@ impl Attempt {
                 | Attempt::CarveHook
                 | Attempt::SealCanoe
                 | Attempt::SealCup
+                | Attempt::Grind
         )
     }
 }
@@ -3006,6 +3014,7 @@ impl World {
             || !self.loose_ids(actor, Material::Berry).is_empty()
             || self.raw_pale_id(actor).is_some()
             || self.raw_cattail_id(actor).is_some()
+            || self.raw_flour_id(actor).is_some()
     }
 
     /// Raw cattail roots in the arms. Cooked roots are already food.
@@ -3035,6 +3044,71 @@ impl World {
             || self
                 .actor(actor)
                 .is_some_and(|person| self.pile_count(person.cell, Material::Cattail) > 0)
+    }
+
+    /// Roots dry enough to pound. Raw first, then cooked. A soaked handful is not flour.
+    pub(crate) fn grind_root(&self, actor: ActorId) -> Result<ItemId, &'static str> {
+        let ids = self.loose_ids(actor, Material::Cattail);
+        let pick = |cooked: bool| {
+            ids.iter().copied().find(|id| {
+                self.item(*id).is_some_and(|root| {
+                    root.cooked == cooked && root.moisture < self.tuning.soaked_at
+                })
+            })
+        };
+        if let Some(id) = pick(false) {
+            return Ok(id);
+        }
+        if let Some(id) = pick(true) {
+            return Ok(id);
+        }
+        if ids.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|root| root.moisture >= self.tuning.soaked_at)
+        }) {
+            return Err("The cattail roots are too wet to grind.");
+        }
+        Err("You have no cattail roots to grind.")
+    }
+
+    /// A stone under the handstone. One on the ground, one in the pile, or the rock itself.
+    pub(crate) fn stone_under(&self, actor: ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        self.pile_count(person.cell, Material::Stone) > 0
+            || !self.ground_ids(person.cell, Material::Stone).is_empty()
+            || self.cell(person.cell).rock
+    }
+
+    /// Cattail flour that has not been cooked. The arms, then the ground.
+    pub(crate) fn raw_flour_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Flour)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|flour| !flour.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Flour)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|flour| !flour.cooked))
+    }
+
+    /// A cattail flatbread. The arms, then the ground.
+    pub(crate) fn cooked_flour_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Flour)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|flour| flour.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Flour)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|flour| flour.cooked))
     }
 
     pub(crate) fn cattail_bare(&self, cell: CellId) -> bool {
@@ -17863,5 +17937,184 @@ mod bark_cup {
             "{}",
             kept.text
         );
+    }
+}
+
+#[cfg(test)]
+mod flour {
+    use super::*;
+
+    fn intent(id: &str, actor: ActorId, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn cattail_roots_grind_to_flour_and_cook_to_flatbread() {
+        assert!(matches!(
+            crate::parse::parse_attempt("grind"),
+            Ok(Attempt::Grind)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("grind cattail roots"),
+            Ok(Attempt::Grind)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("eat flatbread"),
+            Ok(Attempt::Eat(Material::Flour))
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let rock = cell_id(6, 1).unwrap();
+
+        let miss = world.step(&[intent("miss", near, Attempt::Grind)]);
+        assert_eq!(
+            miss.results[0].message,
+            "You have no cattail roots to grind."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You have no cattail roots to grind." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You have no cattail roots to grind." }));
+        }
+
+        let cell = world.actor(near).unwrap().cell;
+        let wet = world.mint_item(
+            Material::Cattail,
+            world.tuning.soaked_at,
+            cell,
+            Some(near),
+            Role::Loose,
+        );
+        let too_wet = world.step(&[intent("wet", near, Attempt::Grind)]);
+        assert_eq!(
+            too_wet.results[0].message,
+            "The cattail roots are too wet to grind."
+        );
+        world.items.remove(&wet);
+
+        world.mint_item(Material::Cattail, 0, cell, Some(near), Role::Loose);
+        let no_stone = world.step(&[intent("nostone", near, Attempt::Grind)]);
+        assert_eq!(no_stone.results[0].message, "You need a stone to grind on.");
+        world.mint_item(Material::Stone, 0, cell, Some(near), Role::Loose);
+        let no_under = world.step(&[intent("nounder", near, Attempt::Grind)]);
+        assert_eq!(
+            no_under.results[0].message,
+            "You need a stone on stone to grind."
+        );
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "You need a stone to grind on."
+                    && event.text != "You need a stone on stone to grind."
+                    && event.text != "The cattail roots are too wet to grind."
+            }));
+        }
+
+        world.actors.get_mut(&near).unwrap().cell = rock;
+        let ground = world.step(&[intent("grind", near, Attempt::Grind)]);
+        assert_eq!(
+            ground.results[0].message,
+            "You grind the cattail roots into flour on the stone."
+        );
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("cattail flour"), "{arms}");
+        assert!(arms.contains("a dry stone"), "{arms}");
+        assert!(world.loose_ids(near, Material::Cattail).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Stone).len(), 1);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "Near grinds the cattail roots into flour on the stone."
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().any(|event| {
+            event.text == "Near grinds the cattail roots into flour on the stone."
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            event.text != "Near grinds the cattail roots into flour on the stone."
+        }));
+
+        let raw = world.step(&[intent("rawflour", near, Attempt::Eat(Material::Flour))]);
+        assert_eq!(
+            raw.results[0].message,
+            "Raw cattail flour does not feed you. It must be cooked."
+        );
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            event.text != "Raw cattail flour does not feed you. It must be cooked."
+        }));
+
+        let cold = world.step(&[intent("cold", near, Attempt::Cook)]);
+        assert_eq!(cold.results[0].message, "There is no fire burning here.");
+
+        world.mint_fire(rock, 0);
+        let cooked = world.step(&[intent("cook", near, Attempt::Cook)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the flour into a flatbread over the fire."
+        );
+        let baked = world.observe(near).unwrap().text;
+        assert!(baked.contains("a cattail flatbread"), "{baked}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near cooks the flour into a flatbread over the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near cooks the flour into a flatbread over the fire." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near cooks the flour into a flatbread over the fire." }));
+
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Flour))]);
+        assert!(
+            eaten.results[0]
+                .message
+                .starts_with("You eat the cattail flatbread."),
+            "{}",
+            eaten.results[0].message
+        );
+        assert!(world.loose_ids(near, Material::Flour).is_empty());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near eats the cattail flatbread." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near eats the cattail flatbread." }));
+
+        let cooked_root = world.mint_item(Material::Cattail, 0, rock, Some(near), Role::Loose);
+        world.items.get_mut(&cooked_root).unwrap().cooked = true;
+        let again = world.step(&[intent("cooked-root", near, Attempt::Grind)]);
+        assert_eq!(
+            again.results[0].message,
+            "You grind the cattail roots into flour on the stone."
+        );
+        assert!(world.loose_ids(near, Material::Flour).len() == 1);
+        assert!(world.loose_ids(near, Material::Cattail).is_empty());
     }
 }

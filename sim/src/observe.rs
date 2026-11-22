@@ -1068,6 +1068,20 @@ impl World {
         } else if self.cattail_bare(actor.cell) {
             parts.push("The shallows here have no cattails.".into());
         }
+        let flour_ids = self.ground_ids(actor.cell, Material::Flour);
+        let flatbreads = flour_ids
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|flour| flour.cooked))
+            .count();
+        let raw_flour = flour_ids.len() - flatbreads;
+        if raw_flour > 0 {
+            parts.push("Cattail flour lies here.".into());
+        }
+        if flatbreads == 1 {
+            parts.push("A cattail flatbread lies here.".into());
+        } else if flatbreads > 1 {
+            parts.push("Cattail flatbreads lie here.".into());
+        }
         let mats_here = self.ground_ids(actor.cell, Material::Mat).len();
         if mats_here == 1 {
             parts.push("A reed mat lies here.".into());
@@ -3990,6 +4004,21 @@ impl World {
             "a bundle of nettle cordage".into()
         } else if item.material == "nettle" {
             format!("{} bundles of nettle cordage", count_word(item.count))
+        } else if item.material == "flour" {
+            let ids = self.loose_ids(actor_id, Material::Flour);
+            let cooked = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|flour| flour.cooked))
+                .count();
+            if cooked > 0 && cooked == ids.len() {
+                if cooked == 1 {
+                    "a cattail flatbread".into()
+                } else {
+                    "cattail flatbreads".into()
+                }
+            } else {
+                "cattail flour".into()
+            }
         } else if item.material == "cattail" {
             let ids = self.loose_ids(actor_id, Material::Cattail);
             let cooked = ids
@@ -8677,6 +8706,7 @@ impl World {
                 Material::Nettle => "nettles",
                 Material::Cattail => "cattail roots",
                 Material::BarkCup => "bark cup",
+                Material::Flour => "cattail flour",
                 Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
@@ -9705,6 +9735,7 @@ impl World {
                     && self.gather_for_these_eyes(viewer, event).is_none()
                     && self.drop_for_these_eyes(viewer, event).is_none()
                     && self.fold_for_these_eyes(viewer, event).is_none()
+                    && self.grind_for_these_eyes(viewer, event).is_none()
                     && self.seal_cup_for_these_eyes(viewer, event).is_none()
                     && self.smoke_for_these_eyes(viewer, event).is_none()
                     && self.walk_for_these_eyes(viewer, event).is_none()
@@ -10021,6 +10052,7 @@ impl World {
             && rest != "the eggs over the fire."
             && rest != "the pale berries over the fire."
             && rest != "the cattail roots over the fire."
+            && rest != "the flour into a flatbread over the fire."
         {
             return None;
         }
@@ -10760,6 +10792,19 @@ impl World {
         Some(crate::model::spoken_act(None, "fold", rest))
     }
 
+    /// Roots pounded into flour. The person who ground them already read the sentence.
+    fn grind_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} grinds "))?;
+        if rest != "the cattail roots into flour on the stone." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "grind", rest))
+    }
+
     /// A bark cup sealed with pine resin. The person who sealed it already read the sentence.
     fn seal_cup_for_these_eyes(
         &self,
@@ -11396,6 +11441,7 @@ impl World {
             "the smoked fish.",
             "the cooked mushroom.",
             "the cooked cattail roots.",
+            "the cattail flatbread.",
             "the cooked eggs.",
             "the cooked pale berries.",
             "a handful of pale berries.",
@@ -11691,6 +11737,8 @@ impl World {
             "bundle of willow cordage",
             "bundle of nettle cordage",
             "cattail roots",
+            "cattail flour",
+            "cattail flatbread",
             "bark cup",
             "sealed bark cup",
             "soaked bark cup",
@@ -13628,6 +13676,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",
+        (Material::Flour, true) => "cattail flour",
+        (Material::Flour, false) => "cattail flour",
         (Material::BarkCup, true) => "bark cup",
         (Material::BarkCup, false) => "bark cups",
         (Material::Bow, true) => "bow",
