@@ -2249,6 +2249,39 @@ impl World {
         }
     }
 
+    /// A whistle within ordinary hearing. The otter splashes the same way it
+    /// does when someone steps into its water. The blow's reply does not
+    /// carry this line.
+    pub(crate) fn whistle_frighten_otter(&mut self, blower: CellId) {
+        let Some(otter) = self.otter.clone() else {
+            return;
+        };
+        if chebyshev(blower, otter.cell) > self.tuning.hearing {
+            return;
+        }
+        let Some((next_at, next)) = self.otter_away(otter.route_at, blower) else {
+            return;
+        };
+        if next == otter.cell {
+            return;
+        }
+        let dir = step_dir(otter.cell, next);
+        let from = otter.cell;
+        self.emit(
+            format!("An otter splashes away to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(otter) = self.otter.as_mut() {
+            otter.cell = next;
+            otter.route_at = next_at;
+        }
+    }
+
     /// A missed throw. The hare bolts to a dry neighbor farther from the hunter.
     /// None when it has nowhere to go.
     pub(crate) fn bolt_hunted_hare(&mut self, hunter: CellId) -> Option<&'static str> {

@@ -21836,6 +21836,86 @@ mod whistle {
     }
 
     #[test]
+    fn a_whistle_within_hearing_splashes_the_otter_and_a_flute_does_not() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        let near = world.spawn_at("Near", "n", 4, 0).unwrap();
+        let heard = world.spawn_at("Heard", "h", 2, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let missed = world.step(&[intent("none", near, Attempt::BlowWhistle)]);
+        assert_eq!(
+            missed.results[0].message,
+            "You are not carrying a bone whistle."
+        );
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        assert!(!says(&world, heard, "You are not carrying a bone whistle."));
+        assert!(!says(&world, quiet, "You are not carrying a bone whistle."));
+        world.mint_item(
+            Material::Flute,
+            0,
+            cell_id(4, 0).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let flute = world.step(&[intent("flute", near, Attempt::BlowFlute)]);
+        assert_eq!(flute.results[0].message, "You blow the reed flute.");
+        assert!(!flute.results[0].message.contains("otter"));
+        assert!(!says(&world, near, "Near blows the reed flute."));
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert!(!says(
+            &world,
+            near,
+            "You hear a splash to the south and west."
+        ));
+        assert!(!says(&world, heard, "An otter splashes away to the west."));
+        world.mint_item(
+            Material::Whistle,
+            0,
+            cell_id(4, 0).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let blown = world.step(&[intent("blow", near, Attempt::BlowWhistle)]);
+        assert_eq!(blown.results[0].message, "You blow the bone whistle.");
+        assert!(!blown.results[0].message.contains("otter"));
+        assert!(!says(&world, near, "Near blows the bone whistle."));
+        assert_eq!(world.otter_cell(), Some((0, 1)));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert!(says(
+            &world,
+            near,
+            "You hear a splash to the south and west."
+        ));
+        assert!(!says(&world, near, "An otter splashes away to the west."));
+        assert!(says(&world, heard, "An otter splashes away to the west."));
+        assert!(says(&world, heard, "Near blows the bone whistle."));
+        assert!(!says(
+            &world,
+            quiet,
+            "You hear a splash to the south and west."
+        ));
+        assert!(!says(&world, quiet, "An otter splashes away to the west."));
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(
+            quiet_look.contains("You hear a whistle to the north and west."),
+            "{quiet_look}"
+        );
+        assert!(!says(
+            &world,
+            quiet,
+            "You hear a whistle to the north and west."
+        ));
+        world.actors.get_mut(&near).unwrap().cell = cell_id(6, 0).unwrap();
+        let far = world.step(&[intent("past", near, Attempt::BlowWhistle)]);
+        assert_eq!(far.results[0].message, "You blow the bone whistle.");
+        assert!(!far.results[0].message.contains("otter"));
+        assert_eq!(world.otter_cell(), Some((0, 1)));
+    }
+
+    #[test]
     fn a_reed_flute_is_heard_like_the_whistle_and_the_hare_stays() {
         assert!(matches!(
             crate::parse::parse_attempt("carve a reed flute").unwrap(),
@@ -21923,6 +22003,7 @@ mod whistle {
         assert!(!says(&world, near, "Near blows the reed flute."));
         assert!(!says(&world, quiet, "A fox slips away to the east."));
         assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert_eq!(world.otter_cell(), Some((1, 1)));
         assert!(says(&world, quiet, "Near blows the reed flute."));
         assert!(!world
             .observe(quiet)
@@ -21959,6 +22040,7 @@ mod whistle {
         assert_eq!(whistle.results[0].message, "You blow the bone whistle.");
         assert_eq!(world.hare_cell(), Some((1, 4)));
         assert_eq!(world.fox_cell(), Some((6, 4)));
+        assert_eq!(world.otter_cell(), Some((0, 1)));
 
         let mut bed = World::valley(crate::tuning::Tuning::evening(), 1);
         let reeds = cell_id(0, 3).unwrap();
@@ -21976,6 +22058,7 @@ mod whistle {
         assert_eq!(stayed.results[0].message, "You blow the reed flute.");
         assert_eq!(bed.hare_cell(), Some((2, 4)));
         assert_eq!(bed.fox_cell(), Some((5, 4)));
+        assert_eq!(bed.otter_cell(), Some((1, 1)));
     }
 }
 
