@@ -4469,7 +4469,7 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         place_sixteen,
-        "You stand on the outside floor. Hoofprints mark the ground. The rock overhang is the next square east. The last branch is the next square south."
+        "You stand on the outside floor. Hoofprints mark the ground. The rock overhang is the next square east. The last branch is the next square south. Worms are in the dry ground here. Carve an antler into an antler pick to dig them."
     );
     let opening = at_sixteen.text.lines().nth(1).unwrap_or("");
     assert_eq!(opening, "The last branch is rotting to the south.");
@@ -6504,7 +6504,7 @@ fn deer_stands_on_the_trail_already_there() {
     assert!(world.hoofprints_at(3, 3));
     assert_eq!(
         world.examine(far, ExamineTarget::Here),
-        "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
     );
     let at_ten = world.observe(far).unwrap();
     let east_ten = at_ten
@@ -6599,7 +6599,7 @@ fn deer_stands_on_the_trail_already_there() {
     let step = world.spawn_at("Step", "s", 4, 1).unwrap();
     assert_eq!(
         world.examine(far, ExamineTarget::Here),
-        "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
     );
     let at_fourteen = world.observe(far).unwrap();
     assert!(at_fourteen
@@ -6677,7 +6677,7 @@ fn deer_stands_on_the_trail_already_there() {
     let here = world.examine(far, ExamineTarget::Here);
     assert_eq!(
         here,
-        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
     );
     assert!(!here.contains("fresh"), "{here}");
     assert!(!here.contains("new hoofprints"), "{here}");
@@ -6694,7 +6694,7 @@ fn deer_stands_on_the_trail_already_there() {
         .unwrap_or("");
     assert_eq!(
         far_place,
-        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
     );
     assert!(!far_place.contains("the outside floor"), "{far_place}");
     assert!(!far_place.contains("the south floor"), "{far_place}");
@@ -7551,7 +7551,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         place,
-        "You stand on the outside floor. Hoofprints mark the ground. The rock overhang is the next square east. The rotting wood is the next square south."
+        "You stand on the outside floor. Hoofprints mark the ground. The rock overhang is the next square east. The rotting wood is the next square south. Worms are in the dry ground here. Carve an antler into an antler pick to dig them."
     );
     let square_east = square_look
         .text
@@ -7703,7 +7703,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_place,
-        "You are on the valley floor, in the open. The outside floor is the next square east. Dark berries lie here, dry. They taste bitter. They are poisonous."
+        "You are on the valley floor, in the open. The outside floor is the next square east. Dark berries lie here, dry. They taste bitter. They are poisonous. Worms are in the dry ground here. Carve an antler into an antler pick to dig them."
     );
     assert!(aside_place.starts_with("You are on the valley floor, in the open."));
     assert!(!aside_place.contains("rock"), "{aside_place}");
@@ -8217,7 +8217,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         aside_place_later,
-        "You are on the valley floor, in the open. The outside floor is the next square east. Dark berries lie here, dry. They taste bitter. They are poisonous."
+        "You are on the valley floor, in the open. The outside floor is the next square east. Dark berries lie here, dry. They taste bitter. They are poisonous. Worms are in the dry ground here. Carve an antler into an antler pick to dig them."
     );
     assert!(
         aside_place_later.starts_with("You are on the valley floor, in the open."),

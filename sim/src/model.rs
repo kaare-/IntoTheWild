@@ -1682,6 +1682,10 @@ fn spear_said_bit(kind: SpearReach) -> u8 {
 /// Looks that still name pitch after the tick it first appears.
 const PITCH_LOOK_TICKS: u8 = 3;
 
+/// Look, and a dig with no pick, on dry ground that still has worms.
+pub(crate) const DRY_WORM_CARVE: &str =
+    "Worms are in the dry ground here. Carve an antler into an antler pick to dig them.";
+
 impl World {
     pub fn valley(tuning: Tuning, seed: u64) -> Self {
         let mut cells = Vec::with_capacity((WIDTH * HEIGHT) as usize);
@@ -4525,6 +4529,17 @@ impl World {
         self.worm_beds.contains(&cell)
             || self.pile_count(cell, Material::Mud) > 0
             || !self.ground_ids(cell, Material::Mud).is_empty()
+    }
+
+    /// Dry floor or slope, not water, not rock, and not a damp worm bed.
+    pub(crate) fn dry_pick_ground(&self, cell: CellId) -> bool {
+        let place = self.cell(cell);
+        !place.rock && !self.water_here(cell) && !self.damp_earth(cell)
+    }
+
+    /// Worms a pick can take. The wait after a dig is not this.
+    pub(crate) fn dry_worms_open(&self, cell: CellId) -> bool {
+        self.dry_pick_ground(cell) && !self.dry_worm_returns_at.contains_key(&cell)
     }
 
     /// In the flowing brook, or on a cell that touches it. Still water is not the brook.
@@ -23013,7 +23028,13 @@ mod gather_step {
 
         world.actors.get_mut(&near).unwrap().cell = cell_id(2, 0).unwrap();
         let slope = world.step(&[intent("slope", near, Attempt::Gather(Material::Worm))]);
-        assert_eq!(slope.results[0].message, "There are no worms here to dig.");
+        assert_eq!(slope.results[0].message, super::DRY_WORM_CARVE);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != super::DRY_WORM_CARVE));
 
         world.actors.get_mut(&near).unwrap().cell = cell_id(4, 0).unwrap();
         let taken = world.step(&[intent("taken", near, Attempt::Gather(Material::Flint))]);
@@ -25378,10 +25399,15 @@ mod worms {
         let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
         let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Worm))]);
-        assert_eq!(missed.results[0].message, "There are no worms here to dig.");
-        assert!(says(&world, near, "There are no worms here to dig."));
-        assert!(!says(&world, seen, "There are no worms here to dig."));
-        assert!(!says(&world, quiet, "There are no worms here to dig."));
+        assert_eq!(missed.results[0].message, super::DRY_WORM_CARVE);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains(super::DRY_WORM_CARVE));
+        assert!(!says(&world, near, super::DRY_WORM_CARVE));
+        assert!(!says(&world, seen, super::DRY_WORM_CARVE));
+        assert!(!says(&world, quiet, super::DRY_WORM_CARVE));
         let far = world.observe(near).unwrap().text;
         assert!(
             far.contains("Worms are in the damp earth to the north and west."),
@@ -27642,9 +27668,15 @@ mod antler_pick {
         assert!(world.loose_ids(bank, Material::Pick).is_empty());
 
         let bare = world.step(&[intent("bare", near, Attempt::Gather(Material::Worm))]);
-        assert_eq!(bare.results[0].message, "There are no worms here to dig.");
-        assert!(!says(&world, seen, "There are no worms here to dig."));
-        assert!(!says(&world, quiet, "There are no worms here to dig."));
+        assert_eq!(bare.results[0].message, super::DRY_WORM_CARVE);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains(super::DRY_WORM_CARVE));
+        assert!(!says(&world, near, super::DRY_WORM_CARVE));
+        assert!(!says(&world, seen, super::DRY_WORM_CARVE));
+        assert!(!says(&world, quiet, super::DRY_WORM_CARVE));
 
         let spear = world.mint_item(Material::Spear, 0, cell, Some(near), Role::Loose);
         world.items.get_mut(&spear).unwrap().flint_tip = true;
@@ -27737,20 +27769,9 @@ mod antler_pick {
         let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Pick))]);
         assert!(dropped.results[0].success);
         let hands = world.step(&[intent("hands", near, Attempt::Gather(Material::Worm))]);
-        assert_eq!(
-            hands.results[0].message,
-            "You need an antler pick to dig the dry ground."
-        );
-        assert!(!says(
-            &world,
-            near,
-            "You need an antler pick to dig the dry ground."
-        ));
-        assert!(!says(
-            &world,
-            seen,
-            "You need an antler pick to dig the dry ground."
-        ));
+        assert_eq!(hands.results[0].message, super::DRY_WORM_CARVE);
+        assert!(!says(&world, near, super::DRY_WORM_CARVE));
+        assert!(!says(&world, seen, super::DRY_WORM_CARVE));
 
         let looked = world.examine(near, ExamineTarget::Pick);
         assert!(looked.contains("An antler pick lies here."));

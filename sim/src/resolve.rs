@@ -240,7 +240,7 @@ impl World {
                     // A dry-ground dig that needs the pick, or finds the ground empty, is the reply only.
                     let dry_dig_refusal = matches!(intent.attempt, Attempt::Gather(Material::Worm))
                         && (message == "The dry ground here has no worms."
-                            || message == "You need an antler pick to dig the dry ground.");
+                            || message == crate::model::DRY_WORM_CARVE);
                     // No hafted spear, no pine resin, or a tip already set
                     // is the reply only.
                     let pitch_refusal = matches!(intent.attempt, Attempt::PitchSpear);
@@ -2396,8 +2396,11 @@ impl World {
                             && self.has_antler_pick(actor.id)
                         {
                             "The dry ground here has no worms.".to_string()
-                        } else if self.dry_worm_ready.contains(&actor.cell) {
-                            "You need an antler pick to dig the dry ground.".to_string()
+                        } else if self.dry_worms_open(actor.cell)
+                            && !self.has_antler_pick(actor.id)
+                            && self.gather_step_cue(actor.cell, Material::Worm).is_none()
+                        {
+                            crate::model::DRY_WORM_CARVE.to_string()
                         } else {
                             "There are no worms here to dig.".to_string()
                         };
@@ -9895,17 +9898,9 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|pick| !pick.in_basket))
     }
 
-    /// Dry floor or slope, not water, not rock, and not a damp worm bed.
     /// A pick can dig here when the ground is not waiting out a previous dig.
     fn pick_can_dig_dry(&self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
-        self.has_antler_pick(actor)
-            && self.dry_pick_ground(cell)
-            && !self.dry_worm_returns_at.contains_key(&cell)
-    }
-
-    fn dry_pick_ground(&self, cell: crate::model::CellId) -> bool {
-        let place = self.cell(cell);
-        !place.rock && !self.water_here(cell) && !self.damp_earth(cell)
+        self.has_antler_pick(actor) && self.dry_worms_open(cell)
     }
 
     pub(crate) fn has_carve_tool(&self, actor: crate::model::ActorId) -> bool {
