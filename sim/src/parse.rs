@@ -54,11 +54,12 @@ fish                         a fire-hardened flint spear, or a fishing net, or a
 fish with hook               the same cast with a bone fish hook and hide strips in the arms. A worm baits the hook. In the still shallows the worm is the bait and the line is not required. The hook stays. The strips are spent when they are the line. A hole in the ice lets that cast through while the still is frozen. With no hole, the reply names the ice before the worm. With no hook, no worm in the shallows, or no water, only you hear it
 break ice                    a stone, a bone, or an iron knife on frozen still water. A hole opens, and the tool stays. break and chop are the same. With no ice, no tool, or a hole already open, only you hear it
 spear fish                   the same cast with the spear
-butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up. An otter, a fox, a hare, or a beaver is one portion of raw meat, that animal's hide, and a bone.
+butcher                      a carcass at your feet into three portions; a flint spear or an iron knife in your arms. With both, the knife cuts. Neither is used up. An otter, a fox, a hare, or a beaver is one portion of raw meat, that animal's hide, and a bone. A deer also leaves an antler. A wolf does not.
 cut meat                     one portion of raw or cooked meat into two smaller pieces; an iron knife in your arms. The knife is not used up.
 cut hide                     a whole deer hide into hide strips, with an iron knife. The knife is not used up.
 carve awl                    a bone, with a flint flake or an iron knife, into a bone awl. The tool is not used up. The awl can pierce hide.
 carve needle                 a bone, with a flint flake or an iron knife, into a bone needle. The tool is not used up. It is not a bone awl, a bone fish hook, or a bone whistle. sew with needle spends cordage or sinew on a pierced hide. The needle stays. The awl still only pierces. With no bone, no flake or knife, no needle, or no thread, only you hear which is missing
+carve pick|carve antler       an antler, with a flint flake or an iron knife, into an antler pick. The tool is not used up. antler and pick name that carve. dig worms on dry ground needs the pick. Damp earth still yields to bare hands. With no antler, or no flake or knife, only you hear which is missing
 carve paddle                 a dry branch, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The wooden paddle stays in the arms. Holding it names the paddle when you paddle. Bare hands still paddle.
 carve hook                   a bone, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The bone fish hook stays in the arms.
 carve whistle                a bone the same way, into a bone whistle. One bone lies under the rock, and it lies there again after the same wait as salt. The tool is not used up. With no bone, or no flake or knife, only you hear which is missing
@@ -104,7 +105,7 @@ gather salt                  a salt crust from the slope, or from the dry margin
 gather honey                 a honeycomb from the bees' nest in the tree on the east slope. The bees sting.
 gather eggs                  eggs from the bird's nest in the tree on the west slope. They must be cooked.
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
-dig worms                    a worm from damp earth, the bank or a place with mud. gather worms is the same. The damp earth has no worms once it is dug, then they are there again after 24 ticks. On a bone fish hook the worm is spent, and that stretch of the brook can be fished again on the next tick. Without a worm the hook is unchanged. One cell off, on a side or a corner, the reply names that step and does not move you. A miss stays with you
+dig worms                    a worm from damp earth, the bank or a place with mud. gather worms is the same. The damp earth has no worms once it is dug, then they are there again after 24 ticks. On dry ground an antler pick is required. Bare hands still hear there are no worms there until a pick has opened that ground. Once dug, that dry ground has no worms until the same wait, and only the pick takes them again. On a bone fish hook the worm is spent, and that stretch of the brook can be fished again on the next tick. Without a worm the hook is unchanged. One cell off, on a side or a corner, the reply names that step and does not move you. A miss stays with you
 gather flint                  a flint nodule from the slope. One cell off, on a side or a corner, the reply names that step and does not move you. Farther than one cell, it does not invent a step. gather stone names that same step when a stone is one cell off, on a side or a corner, including from the rock. A miss stays with you
 gather quartz                a clear stone from the rock face. gather clear stone is the same. It can spark. It does not grow back. strike flint on it makes sparks jump. With dry bark, dry moss, or dry cattail fluff in the arms, and a dry branch, the sparks catch and a fire burns. The stone and the flint stay. Without that tinder, the sparks stay sparks. A miss stays with you.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
@@ -185,6 +186,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "torch" if rest.is_empty() => Ok(Attempt::NameTorch),
         "mushroom" | "mushrooms" if rest.is_empty() => Ok(Attempt::NameMushroom),
         "needle" if rest.is_empty() => Ok(Attempt::NameNeedle),
+        "antler" if rest.is_empty() || rest == "pick" => Ok(Attempt::NameAntler),
+        "pick" if rest.is_empty() => Ok(Attempt::NamePick),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)
@@ -501,6 +504,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "a bone needle" =>
         {
             Ok(Attempt::CarveNeedle)
+        }
+        "carve" | "make"
+            if rest == "pick"
+                || rest == "a pick"
+                || rest == "antler pick"
+                || rest == "an antler pick"
+                || rest == "antler"
+                || rest == "an antler" =>
+        {
+            Ok(Attempt::CarvePick)
         }
         "carve"
             if rest == "paddle"
@@ -1004,6 +1017,8 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "copper" | "copper bead" | "bead" => Ok(Material::Copper),
         "awl" | "copper awl" | "bone awl" => Ok(Material::Awl),
         "bone needle" | "a bone needle" => Ok(Material::BoneNeedle),
+        "antler pick" | "an antler pick" | "pick" => Ok(Material::Pick),
+        "antler" | "an antler" | "antlers" => Ok(Material::Antler),
         "bone" => Ok(Material::Bone),
         "whistle" | "bone whistle" | "a bone whistle" | "the bone whistle" => {
             Ok(Material::Whistle)
@@ -1175,6 +1190,8 @@ fn parse_target(text: &str) -> ExamineTarget {
         "canoe" | "dugout" | "dugout canoe" => ExamineTarget::Canoe,
         "bone" => ExamineTarget::Bone,
         "needle" | "bone needle" | "a bone needle" | "the bone needle" => ExamineTarget::BoneNeedle,
+        "antler pick" | "an antler pick" | "the antler pick" | "pick" => ExamineTarget::Pick,
+        "antler" | "an antler" | "the antler" | "antlers" => ExamineTarget::Antler,
         "salt" | "salt crust" => ExamineTarget::Salt,
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,

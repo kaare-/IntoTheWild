@@ -180,6 +180,12 @@ pub enum Material {
     /// It is not a bone awl, a bone fish hook, or a bone whistle.
     /// With cordage or sinew it sews a pierced hide. The awl still pierces.
     BoneNeedle,
+    /// One antler from a butchered deer. It is not a bone.
+    /// A flint flake or an iron knife carves it into an antler pick.
+    Antler,
+    /// Carved from an antler. It digs worms from dry ground.
+    /// Bare hands still dig damp earth. It is not a flint flake.
+    Pick,
 }
 
 impl Material {
@@ -248,6 +254,8 @@ impl Material {
             Material::Sticks => "sticks",
             Material::Torch => "torch",
             Material::BoneNeedle => "bone needle",
+            Material::Antler => "antler",
+            Material::Pick => "antler pick",
         }
     }
 
@@ -316,6 +324,8 @@ impl Material {
             Material::Sticks => "pair of rhythm sticks",
             Material::Torch => "pitch torch",
             Material::BoneNeedle => "bone needle",
+            Material::Antler => "antler",
+            Material::Pick => "antler pick",
         }
     }
 
@@ -333,7 +343,7 @@ impl Material {
 
     pub fn article(self) -> &'static str {
         match self {
-            Material::Knife => "an",
+            Material::Knife | Material::Antler | Material::Pick => "an",
             _ => "a",
         }
     }
@@ -469,6 +479,10 @@ pub enum ExamineTarget {
     Sticks,
     /// A bone needle. It is not a bone awl, and it is not pine needles.
     BoneNeedle,
+    /// An antler from a butchered deer. It is not a bone.
+    Antler,
+    /// An antler pick. It digs worms from dry ground.
+    Pick,
     /// A pitch torch. Lit or still dark.
     Torch,
 }
@@ -643,6 +657,13 @@ pub enum Attempt {
     SewNeedle,
     /// Bare `needle`. Names the carve. Does not carve one.
     NameNeedle,
+    /// An antler, with a flint flake or an iron knife, into an antler pick.
+    /// The tool is not used up. The pick digs worms from dry ground.
+    CarvePick,
+    /// Bare `antler`. Names the carve. Does not carve one.
+    NameAntler,
+    /// Bare `pick`. Names the dry-ground dig. Does not dig.
+    NamePick,
 }
 
 impl Attempt {
@@ -747,6 +768,7 @@ impl Attempt {
                 | Attempt::PullSinew
                 | Attempt::CarveNeedle
                 | Attempt::SewNeedle
+                | Attempt::CarvePick
         )
     }
 }
@@ -1164,6 +1186,8 @@ pub enum Wake {
     Charcoal(CellId),
     /// Worms are in this damp earth again.
     WormReturn(CellId),
+    /// Worms are in this dry ground again. Only an antler pick can dig them.
+    DryWormReturn(CellId),
     /// A scavenged bone lies under the rock on this cell again.
     BoneReturn(CellId),
     /// A raw fish hung by a fire, or set on the next cell. It smokes on this tick if a fire is still near.
@@ -1461,6 +1485,12 @@ pub struct World {
     /// When a dug bed has worms again. Look says the damp earth has none until then.
     #[serde(default)]
     pub(crate) worm_returns_at: BTreeMap<CellId, u64>,
+    /// Dry ground an antler pick has opened. Look names the worms until they are dug.
+    #[serde(default)]
+    pub(crate) dry_worm_ready: BTreeSet<CellId>,
+    /// When that dry ground has worms again. Look says it has none until then.
+    #[serde(default)]
+    pub(crate) dry_worm_returns_at: BTreeMap<CellId, u64>,
     /// The rock face where a clear stone of quartz lies. It does not grow back.
     #[serde(default)]
     pub(crate) quartz_faces: BTreeSet<CellId>,
@@ -1760,6 +1790,8 @@ impl World {
             moss_banks: BTreeSet::new(),
             worm_beds: BTreeSet::new(),
             worm_returns_at: BTreeMap::new(),
+            dry_worm_ready: BTreeSet::new(),
+            dry_worm_returns_at: BTreeMap::new(),
             quartz_faces: BTreeSet::new(),
             bone_caches: BTreeSet::new(),
             bone_returns_at: BTreeMap::new(),
@@ -2763,6 +2795,18 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.worm_returns_at.insert(cell, at);
         self.schedule(at, Wake::WormReturn(cell));
+    }
+
+    /// Dry ground an antler pick just opened. Worms return after the same wait
+    /// as damp earth, and only a pick can dig them. The cell is not a worm bed.
+    pub(crate) fn arm_dry_worms(&mut self, cell: CellId) {
+        if self.dry_worm_returns_at.contains_key(&cell) {
+            return;
+        }
+        self.dry_worm_ready.remove(&cell);
+        let at = self.time.saturating_add(self.tuning.moss_ticks);
+        self.dry_worm_returns_at.insert(cell, at);
+        self.schedule(at, Wake::DryWormReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -14397,7 +14441,7 @@ mod carve_hook {
         );
         assert_eq!(
             say(&mut world, "butcher", near, Attempt::Butcher),
-            "You butcher the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+            "You butcher the carcass with the iron knife into three portions of raw meat, a hide, a bone, and an antler."
         );
         assert!(world
             .observe(near)
@@ -27549,5 +27593,175 @@ mod pitch_spear {
             hunt.results[0].message,
             "You bring the deer down with the flint spear."
         );
+    }
+}
+
+#[cfg(test)]
+mod antler_pick {
+    use super::{Attempt, ExamineTarget, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: u32, line: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == line)
+    }
+
+    #[test]
+    fn a_butchered_deer_leaves_an_antler_and_a_pick_digs_dry_ground() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        if let Some(deer) = world.deer.as_mut() {
+            deer.held = true;
+        }
+        let cell = super::cell_id(5, 3).unwrap();
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let bank = world.spawn_at("Bank", "b", 1, 3).unwrap();
+
+        let named = world.step(&[
+            intent("antler", near, Attempt::NameAntler),
+            intent("pick", near, Attempt::NamePick),
+        ]);
+        assert_eq!(named.results[0].message, "Carve an antler pick.");
+        assert_eq!(named.results[1].message, "Dig worms from dry ground.");
+        assert!(named.results.iter().all(|result| result.success));
+
+        let damp = world.step(&[intent("damp", bank, Attempt::Gather(Material::Worm))]);
+        assert_eq!(damp.results[0].message, "You gather a worm.");
+        assert!(world.loose_ids(bank, Material::Pick).is_empty());
+
+        let bare = world.step(&[intent("bare", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(bare.results[0].message, "There are no worms here to dig.");
+        assert!(!says(&world, seen, "There are no worms here to dig."));
+        assert!(!says(&world, quiet, "There are no worms here to dig."));
+
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&spear).unwrap().flint_tip = true;
+        world.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        let butchered = world.step(&[intent("butcher", near, Attempt::Butcher)]);
+        let yours = "You butcher the carcass into three portions of raw meat, a hide, a bone, and an antler.";
+        let theirs = "Near butchers the carcass into three portions of raw meat, a hide, a bone, and an antler.";
+        assert_eq!(butchered.results[0].message, yours);
+        assert_eq!(world.ground_ids(cell, Material::Antler).len(), 1);
+        assert!(!says(&world, near, yours));
+        assert!(!says(&world, near, theirs));
+        assert!(says(&world, seen, theirs));
+        assert!(!says(&world, quiet, theirs));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("An antler lies here. It came from the deer."));
+
+        let wolf = world.mint_item(Material::Carcass, 0, cell, None, Role::Loose);
+        world.items.get_mut(&wolf).unwrap().wolf = true;
+        let wolfed = world.step(&[intent("wolf", near, Attempt::Butcher)]);
+        assert!(wolfed.results[0].message.contains("wolf carcass"));
+        assert!(!wolfed.results[0].message.contains("antler"));
+        assert_eq!(world.ground_ids(cell, Material::Antler).len(), 1);
+
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let no_tool = world.step(&[intent("soon", seen, Attempt::CarvePick)]);
+        assert_eq!(no_tool.results[0].message, "You have no antler to carve.");
+        assert!(!says(&world, seen, "You have no antler to carve."));
+        assert!(!says(&world, near, "You have no antler to carve."));
+
+        let carved = world.step(&[intent("carve", near, Attempt::CarvePick)]);
+        let carve_you = "You carve an antler into an antler pick with the flint flake.";
+        let carve_them = "Near carves an antler into an antler pick with the flint flake.";
+        assert_eq!(carved.results[0].message, carve_you);
+        assert_eq!(world.loose_ids(near, Material::Pick).len(), 1);
+        assert!(world.ground_ids(cell, Material::Antler).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(!says(&world, near, carve_you));
+        assert!(!says(&world, near, carve_them));
+        assert!(says(&world, seen, carve_them));
+        assert!(!says(&world, quiet, carve_them));
+
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Worm))]);
+        let dig_you = "You gather a worm from the dry ground with the antler pick.";
+        let dig_them = "Near gathers a worm from the dry ground with the antler pick.";
+        assert_eq!(dug.results[0].message, dig_you);
+        assert_eq!(world.loose_ids(near, Material::Worm).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Pick).len(), 1);
+        assert!(!says(&world, near, dig_you));
+        assert!(!says(&world, near, dig_them));
+        assert!(says(&world, seen, dig_them));
+        assert!(!says(&world, quiet, dig_them));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The dry ground here has no worms."));
+
+        let empty = world.step(&[intent("again", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            empty.results[0].message,
+            "The dry ground here has no worms."
+        );
+        assert!(!empty.results[0].success);
+        assert!(!says(&world, near, "The dry ground here has no worms."));
+        assert!(!says(&world, seen, "The dry ground here has no worms."));
+
+        let mut returned = false;
+        for _ in 0..30 {
+            world.step(&[]);
+            if says(&world, near, "Worms are in the dry ground again.") {
+                returned = true;
+                break;
+            }
+        }
+        assert!(returned);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("Worms are in the dry ground here."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Worms are in the dry ground to the east."));
+
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Pick))]);
+        assert!(dropped.results[0].success);
+        let hands = world.step(&[intent("hands", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            hands.results[0].message,
+            "You need an antler pick to dig the dry ground."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "You need an antler pick to dig the dry ground."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "You need an antler pick to dig the dry ground."
+        ));
+
+        let looked = world.examine(near, ExamineTarget::Pick);
+        assert!(looked.contains("An antler pick lies here."));
+        assert!(looked.contains("dry ground"));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("An antler pick lies here. It digs worms from dry ground."));
+        assert!(crate::parse::parse_attempt("carve antler").is_ok());
+        assert!(crate::parse::parse_attempt("antler").is_ok());
+        assert!(crate::parse::parse_attempt("pick").is_ok());
     }
 }

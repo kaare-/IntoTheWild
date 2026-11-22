@@ -141,6 +141,7 @@ impl World {
         let mut beaches = Vec::new();
         let mut carves = Vec::new();
         let mut needle_carves = Vec::new();
+        let mut pick_carves = Vec::new();
         let mut needle_sews = Vec::new();
         let mut paddle_carves = Vec::new();
         let mut hook_carves = Vec::new();
@@ -234,6 +235,12 @@ impl World {
                     // A bone needle miss is the reply only.
                     let needle_refusal =
                         matches!(intent.attempt, Attempt::CarveNeedle | Attempt::SewNeedle);
+                    // An antler pick miss is the reply only.
+                    let pick_refusal = matches!(intent.attempt, Attempt::CarvePick);
+                    // A dry-ground dig that needs the pick, or finds the ground empty, is the reply only.
+                    let dry_dig_refusal = matches!(intent.attempt, Attempt::Gather(Material::Worm))
+                        && (message == "The dry ground here has no worms."
+                            || message == "You need an antler pick to dig the dry ground.");
                     // No hafted spear, no pine resin, or a tip already set
                     // is the reply only.
                     let pitch_refusal = matches!(intent.attempt, Attempt::PitchSpear);
@@ -255,6 +262,8 @@ impl World {
                             && !pierce_refusal
                             && !scrape_refusal
                             && !needle_refusal
+                            && !pick_refusal
+                            && !dry_dig_refusal
                             && !pitch_refusal;
                     failures.push((intent, message, personal));
                 }
@@ -272,7 +281,9 @@ impl World {
                         | Attempt::NameSinew
                         | Attempt::NameTorch
                         | Attempt::NameMushroom
-                        | Attempt::NameNeedle => hints.push(intent),
+                        | Attempt::NameNeedle
+                        | Attempt::NameAntler
+                        | Attempt::NamePick => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -343,6 +354,7 @@ impl World {
                         Attempt::SetWeir => weirs.push(intent),
                         Attempt::CarveAwl => carves.push(intent),
                         Attempt::CarveNeedle => needle_carves.push(intent),
+                        Attempt::CarvePick => pick_carves.push(intent),
                         Attempt::SewNeedle => needle_sews.push(intent),
                         Attempt::CarvePaddle => paddle_carves.push(intent),
                         Attempt::CarveHook => hook_carves.push(intent),
@@ -451,6 +463,8 @@ impl World {
                 Attempt::NameTorch => "Make a pitch torch, or light one.",
                 Attempt::NameMushroom => "Gather mushrooms, or cook them.",
                 Attempt::NameNeedle => "Carve a bone needle.",
+                Attempt::NameAntler => "Carve an antler pick.",
+                Attempt::NamePick => "Dig worms from dry ground.",
                 _ => "Board, carve canoe, or paddle.",
             };
             self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
@@ -525,6 +539,7 @@ impl World {
         self.apply_weirs(weirs, &mut results);
         self.apply_carves(carves, &mut results);
         self.apply_needle_carves(needle_carves, &mut results);
+        self.apply_pick_carves(pick_carves, &mut results);
         self.apply_needle_sews(needle_sews, &mut results);
         self.apply_paddle_carves(paddle_carves, &mut results);
         self.apply_hook_carves(hook_carves, &mut results);
@@ -577,7 +592,9 @@ impl World {
             | Attempt::NameSinew
             | Attempt::NameTorch
             | Attempt::NameMushroom
-            | Attempt::NameNeedle => Ok(false),
+            | Attempt::NameNeedle
+            | Attempt::NameAntler
+            | Attempt::NamePick => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -1084,6 +1101,21 @@ impl World {
                     Err("You have no bone to carve a needle.".into())
                 } else if !self.has_carve_tool(actor.id) {
                     Err("You need a flint flake or an iron knife to carve a needle.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarvePick => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if !self.has_antler(actor.id) {
+                    Err("You have no antler to carve.".into())
+                } else if !self.has_carve_tool(actor.id) {
+                    Err("You need a flint flake or an iron knife to carve an antler pick.".into())
                 } else {
                     Ok(true)
                 }
@@ -2350,8 +2382,22 @@ impl World {
                     let here = self.pile_count(actor.cell, Material::Worm) > 0
                         || !self.ground_ids(actor.cell, Material::Worm).is_empty();
                     if !here {
+                        if self.pick_can_dig_dry(actor.id, actor.cell) {
+                            if self.carry_count(actor.id) >= self.tuning.carry_slots
+                                && !self.gather_overflows_into_basket(actor.id, Material::Worm)
+                            {
+                                return Err(ARMS_FULL.into());
+                            }
+                            return Ok(true);
+                        }
                         let bare = if self.damp_earth(actor.cell) {
                             "The damp earth here has no worms.".to_string()
+                        } else if self.dry_worm_returns_at.contains_key(&actor.cell)
+                            && self.has_antler_pick(actor.id)
+                        {
+                            "The dry ground here has no worms.".to_string()
+                        } else if self.dry_worm_ready.contains(&actor.cell) {
+                            "You need an antler pick to dig the dry ground.".to_string()
                         } else {
                             "There are no worms here to dig.".to_string()
                         };
@@ -2415,6 +2461,8 @@ impl World {
                             | Material::BarkCup
                             | Material::Bone
                             | Material::BoneNeedle
+                            | Material::Antler
+                            | Material::Pick
                             | Material::Berry
                             | Material::Flute
                             | Material::Drum
@@ -2880,6 +2928,8 @@ impl World {
                     | Material::Charcoal
                     | Material::Bone
                     | Material::BoneNeedle
+                    | Material::Antler
+                    | Material::Pick
                     | Material::Salt
                     | Material::Honey
                     | Material::Egg
@@ -2940,6 +2990,17 @@ impl World {
                 } else {
                     material.gather_noun()
                 };
+            let dry_winner = if material == Material::Worm && available == 0 {
+                claims
+                    .iter()
+                    .filter(|intent| self.pick_can_dig_dry(intent.actor_id, cell))
+                    .min_by_key(|intent| {
+                        contest_hash(self.seed, self.time, "gather", &subject, intent.actor_id)
+                    })
+                    .map(|intent| intent.actor_id)
+            } else {
+                None
+            };
             for intent in claims {
                 let hash = contest_hash(self.seed, self.time, "gather", &subject, intent.actor_id);
                 let draw = Some(Draw {
@@ -2948,6 +3009,30 @@ impl World {
                     value: hash,
                 });
                 let name = self.name_of(intent.actor_id);
+                if dry_winner == Some(intent.actor_id) {
+                    let item =
+                        self.mint_item(Material::Worm, 0, cell, Some(intent.actor_id), Role::Loose);
+                    self.tuck_overflow_into_basket(intent.actor_id, item);
+                    self.arm_dry_worms(cell);
+                    let rest = "a worm from the dry ground with the antler pick.";
+                    self.emit(
+                        crate::model::spoken_act(Some(name.as_str()), "gather", rest),
+                        Scope::Cell(cell),
+                        vec![intent.actor_id],
+                        vec![cell],
+                        vec![item],
+                        vec![],
+                        draw,
+                    );
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        true,
+                        crate::model::spoken_act(None, "gather", rest),
+                        results,
+                    );
+                    continue;
+                }
                 if winners.contains(&intent.actor_id) {
                     let item = if self.pile_count(cell, material) > 0 {
                         let moisture = self.take_from_pile(cell, material, 1).unwrap_or(0);
@@ -8793,6 +8878,9 @@ impl World {
             } else if beaver {
                 "the beaver carcass into a portion of raw meat, a beaver hide, and a bone."
             } else {
+                if !wolf {
+                    ids.push(self.mint_item(Material::Antler, 0, actor.cell, None, Role::Loose));
+                }
                 match (wolf, with_knife) {
                     (true, true) => {
                         "the wolf carcass with the iron knife into three portions of raw meat, a hide, and a bone."
@@ -8801,10 +8889,10 @@ impl World {
                         "the wolf carcass into three portions of raw meat, a hide, and a bone."
                     }
                     (false, true) => {
-                        "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+                        "the carcass with the iron knife into three portions of raw meat, a hide, a bone, and an antler."
                     }
                     (false, false) => {
-                        "the carcass into three portions of raw meat, a hide, and a bone."
+                        "the carcass into three portions of raw meat, a hide, a bone, and an antler."
                     }
                 }
             };
@@ -9581,6 +9669,69 @@ impl World {
         }
     }
 
+    /// An antler into an antler pick. The flake or the knife stays. The antler is spent.
+    fn apply_pick_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if !self.has_antler(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no antler to carve.",
+                    results,
+                );
+                continue;
+            }
+            let with_knife = !self.loose_ids(actor.id, Material::Knife).is_empty();
+            if !with_knife && self.loose_ids(actor.id, Material::Flake).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve an antler pick.",
+                    results,
+                );
+                continue;
+            }
+            if !self.take_one_antler(actor.id, actor.cell) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no antler to carve.",
+                    results,
+                );
+                continue;
+            }
+            let id = self.mint_item(Material::Pick, 0, actor.cell, Some(actor.id), Role::Loose);
+            let name = self.name_of(actor.id);
+            let rest = if with_knife {
+                "an antler into an antler pick with the iron knife."
+            } else {
+                "an antler into an antler pick with the flint flake."
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
     /// The stitch, not the pierce. A pierced scraped hide, a bone needle, and
     /// cordage or sinew. The needle stays. The thread is spent.
     fn needle_sew_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
@@ -9728,6 +9879,33 @@ impl World {
         let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
         !self.loose_ids(actor, Material::Bone).is_empty()
             || !self.ground_ids(cell, Material::Bone).is_empty()
+    }
+
+    /// An antler in the arms, else one lying here. It is not a bone.
+    pub(crate) fn has_antler(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Antler).is_empty()
+            || !self.ground_ids(cell, Material::Antler).is_empty()
+    }
+
+    /// An antler pick in the arms. One on the ground is not in the hands.
+    fn has_antler_pick(&self, actor: crate::model::ActorId) -> bool {
+        self.loose_ids(actor, Material::Pick)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|pick| !pick.in_basket))
+    }
+
+    /// Dry floor or slope, not water, not rock, and not a damp worm bed.
+    /// A pick can dig here when the ground is not waiting out a previous dig.
+    fn pick_can_dig_dry(&self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
+        self.has_antler_pick(actor)
+            && self.dry_pick_ground(cell)
+            && !self.dry_worm_returns_at.contains_key(&cell)
+    }
+
+    fn dry_pick_ground(&self, cell: crate::model::CellId) -> bool {
+        let place = self.cell(cell);
+        !place.rock && !self.water_here(cell) && !self.damp_earth(cell)
     }
 
     pub(crate) fn has_carve_tool(&self, actor: crate::model::ActorId) -> bool {
@@ -10769,6 +10947,22 @@ impl World {
                 results,
             );
         }
+    }
+
+    fn take_one_antler(
+        &mut self,
+        actor: crate::model::ActorId,
+        cell: crate::model::CellId,
+    ) -> bool {
+        if let Some(id) = self.loose_ids(actor, Material::Antler).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Antler).first().copied() {
+            self.items.remove(&id);
+            return true;
+        }
+        false
     }
 
     fn take_one_bone(&mut self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {

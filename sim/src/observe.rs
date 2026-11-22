@@ -234,6 +234,8 @@ impl World {
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
             ExamineTarget::BoneNeedle => self.examine_bone_needle(actor_id),
+            ExamineTarget::Antler => self.examine_antler(actor_id),
+            ExamineTarget::Pick => self.examine_pick(actor_id),
             ExamineTarget::Net => self.examine_net(actor_id),
             ExamineTarget::Mat => self.examine_mat(actor_id),
             ExamineTarget::Canoe => self.examine_canoe(actor_id),
@@ -447,6 +449,12 @@ impl World {
             }
             if let Some(needle) = self.seen_bone_needle(actor_id) {
                 lines.push(needle);
+            }
+            if let Some(antler) = self.seen_antler(actor_id) {
+                lines.push(antler);
+            }
+            if let Some(pick) = self.seen_pick(actor_id) {
+                lines.push(pick);
             }
             if let Some(salt) = self.seen_salt(actor_id) {
                 lines.push(salt);
@@ -1502,6 +1510,10 @@ impl World {
             parts.push("Worms are in the damp earth here.".into());
         } else if self.worm_beds.contains(&actor.cell) || self.damp_earth(actor.cell) {
             parts.push("The damp earth here has no worms.".into());
+        } else if self.dry_worm_returns_at.contains_key(&actor.cell) {
+            parts.push("The dry ground here has no worms.".into());
+        } else if self.dry_worm_ready.contains(&actor.cell) {
+            parts.push("Worms are in the dry ground here.".into());
         }
         if self.pile_count(actor.cell, Material::Mint) > 0
             || !self.ground_ids(actor.cell, Material::Mint).is_empty()
@@ -1625,6 +1637,12 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::BoneNeedle).is_empty() {
             parts.push("A bone needle lies here. It can sew a pierced hide.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Antler).is_empty() {
+            parts.push("An antler lies here. It came from the deer.".into());
+        }
+        if !self.ground_ids(actor.cell, Material::Pick).is_empty() {
+            parts.push("An antler pick lies here. It digs worms from dry ground.".into());
         }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty() {
             parts.push("A bone lies here.".into());
@@ -3198,16 +3216,22 @@ impl World {
         let origin = self.actor(viewer)?.cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || !self.worm_beds.contains(&cell) {
+            if cell == origin {
                 continue;
             }
             let way = self.relative(origin, cell);
-            if self.pile_count(cell, Material::Worm) > 0
-                || !self.ground_ids(cell, Material::Worm).is_empty()
-            {
-                lines.push(format!("Worms are in the damp earth to the {way}."));
-            } else {
-                lines.push(format!("The damp earth to the {way} has no worms."));
+            if self.worm_beds.contains(&cell) {
+                if self.pile_count(cell, Material::Worm) > 0
+                    || !self.ground_ids(cell, Material::Worm).is_empty()
+                {
+                    lines.push(format!("Worms are in the damp earth to the {way}."));
+                } else {
+                    lines.push(format!("The damp earth to the {way} has no worms."));
+                }
+            } else if self.dry_worm_returns_at.contains_key(&cell) {
+                lines.push(format!("The dry ground to the {way} has no worms."));
+            } else if self.dry_worm_ready.contains(&cell) {
+                lines.push(format!("Worms are in the dry ground to the {way}."));
             }
         }
         if lines.is_empty() {
@@ -4653,6 +4677,156 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// An antler on a cell this person can see but is not standing on.
+    fn seen_antler(&self, viewer: ActorId) -> Option<String> {
+        self.seen_ground_tool(
+            viewer,
+            Material::Antler,
+            "An antler lies",
+            "antlers lie",
+            "It came from the deer.",
+            "Each came from the deer.",
+        )
+    }
+
+    /// An antler pick on a cell this person can see but is not standing on.
+    fn seen_pick(&self, viewer: ActorId) -> Option<String> {
+        self.seen_ground_tool(
+            viewer,
+            Material::Pick,
+            "An antler pick lies",
+            "antler picks lie",
+            "It digs worms from dry ground.",
+            "Each digs worms from dry ground.",
+        )
+    }
+
+    fn seen_ground_tool(
+        &self,
+        viewer: ActorId,
+        material: Material,
+        one: &str,
+        many: &str,
+        one_note: &str,
+        many_note: &str,
+    ) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let count = self.ground_ids(cell, material).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if self.cell(cell).rock {
+                format!("under the rock to the {}", self.relative(origin, cell))
+            } else {
+                let region = self.cell(cell).region.word();
+                format!("on the {region} to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!("{one} {place}. {one_note}"));
+            } else {
+                lines.push(format!(
+                    "{} {many} {place}. {many_note}",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_carried_or_ground(
+        &self,
+        viewer: ActorId,
+        material: Material,
+        one: &str,
+        many: &str,
+        note: &str,
+        missing: &str,
+    ) -> String {
+        let Some(person) = self.actor(viewer) else {
+            return "You cannot see.".into();
+        };
+        let origin = person.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, material).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = if origin == cell {
+                "here".to_string()
+            } else {
+                format!("to the {}", self.relative(origin, cell))
+            };
+            if count == 1 {
+                lines.push(format!("{one} lies {place}. {note}"));
+            } else {
+                lines.push(format!(
+                    "{} {many} lie {place}. {note}",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, material).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!("{one} is carried by {who} {cover}. {note}"));
+            } else {
+                lines.push(format!(
+                    "{} {many} are carried by {who} {cover}. {note}",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            missing.into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    fn examine_antler(&self, viewer: ActorId) -> String {
+        self.examine_carried_or_ground(
+            viewer,
+            Material::Antler,
+            "An antler",
+            "antlers",
+            "It came from the deer. A flint flake or an iron knife can carve it into an antler pick. It is not a bone.",
+            "You see no antler.",
+        )
+    }
+
+    fn examine_pick(&self, viewer: ActorId) -> String {
+        self.examine_carried_or_ground(
+            viewer,
+            Material::Pick,
+            "An antler pick",
+            "antler picks",
+            "It digs worms from dry ground, where bare hands find none. It is not a flint flake.",
+            "You see no antler pick.",
+        )
     }
 
     fn examine_bone_needle(&self, viewer: ActorId) -> String {
@@ -10400,6 +10574,8 @@ impl World {
                 Material::Sinew => "sinew",
                 Material::Torch => "pitch torch",
                 Material::BoneNeedle => "bone needle",
+                Material::Antler => "antler",
+                Material::Pick => "antler pick",
             };
             format!("You see no {name} from here.")
         } else {
@@ -11966,9 +12142,9 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} butchers "))?;
-        if rest != "the carcass into three portions of raw meat, a hide, and a bone."
+        if rest != "the carcass into three portions of raw meat, a hide, a bone, and an antler."
             && rest
-                != "the carcass with the iron knife into three portions of raw meat, a hide, and a bone."
+                != "the carcass with the iron knife into three portions of raw meat, a hide, a bone, and an antler."
             && rest != "the wolf carcass into three portions of raw meat, a hide, and a bone."
             && rest
                 != "the wolf carcass with the iron knife into three portions of raw meat, a hide, and a bone."
@@ -13494,6 +13670,8 @@ impl World {
             && rest != "a bone into a bone whistle with the flint flake."
             && rest != "a bone into a bone needle with the iron knife."
             && rest != "a bone into a bone needle with the flint flake."
+            && rest != "an antler into an antler pick with the iron knife."
+            && rest != "an antler into an antler pick with the flint flake."
             && rest != "a bundle of reeds into a reed flute with the iron knife."
             && rest != "a bundle of reeds into a reed flute with the flint flake."
             && rest != "two dry branches into rhythm sticks with the iron knife."
@@ -15923,6 +16101,10 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Hook, false) => "bone fish hooks",
         (Material::BoneNeedle, true) => "bone needle",
         (Material::BoneNeedle, false) => "bone needles",
+        (Material::Antler, true) => "antler",
+        (Material::Antler, false) => "antlers",
+        (Material::Pick, true) => "antler pick",
+        (Material::Pick, false) => "antler picks",
         (Material::Bowl, _) => "bowl",
         (Material::Spear, _) => "spear",
         (Material::Carcass, _) => "carcass",

@@ -59,6 +59,7 @@ impl World {
                 Wake::CattailReturn(cell) => self.return_cattail(cell),
                 Wake::FluffReturn(cell) => self.return_fluff(cell),
                 Wake::WormReturn(cell) => self.return_worms(cell),
+                Wake::DryWormReturn(cell) => self.return_dry_worms(cell),
                 Wake::BoneReturn(cell) => self.return_bone(cell),
                 Wake::SmokeFish(id) => self.smoke_fish(id),
                 Wake::SmokeMeat(id) => self.smoke_meat(id),
@@ -340,6 +341,28 @@ impl World {
         self.add_pile(cell, Material::Worm, 1, 0);
         self.emit(
             "Worms are in the damp earth again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// Dry ground a pick opened. The worms are there again for the pick only.
+    /// Someone who cannot see the cell hears nothing. Bare hands still cannot dig them.
+    fn return_dry_worms(&mut self, cell: CellId) {
+        let Some(at) = self.dry_worm_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.dry_worm_returns_at.remove(&cell);
+        self.dry_worm_ready.insert(cell);
+        self.emit(
+            "Worms are in the dry ground again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

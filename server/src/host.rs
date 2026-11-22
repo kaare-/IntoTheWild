@@ -201,6 +201,20 @@ impl Host {
                 true,
                 "Carve a bone needle.".into(),
             ),
+            Attempt::NameAntler => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Carve an antler pick.".into(),
+            ),
+            Attempt::NamePick => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Dig worms from dry ground.".into(),
+            ),
             Attempt::NameMushroom => self.settle(
                 command_id,
                 false,

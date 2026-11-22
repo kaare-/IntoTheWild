@@ -10036,9 +10036,10 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
     assert_eq!(world.material_tally(Material::Carcass), 1);
 
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
-    let sentence = "You butcher the carcass into three portions of raw meat, a hide, and a bone.";
+    let sentence =
+        "You butcher the carcass into three portions of raw meat, a hide, a bone, and an antler.";
     let witnessed =
-        "Near butchers the carcass into three portions of raw meat, a hide, and a bone.";
+        "Near butchers the carcass into three portions of raw meat, a hide, a bone, and an antler.";
     assert_eq!(cut.results[0].message, sentence);
     let yours: Vec<_> = world
         .observe(near)
@@ -12845,9 +12846,9 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
         .iter()
         .all(|event| !event.text.contains("no bone")));
     let yours =
-        "You butcher the carcass with the iron knife into three portions of raw meat, a hide, and a bone.";
+        "You butcher the carcass with the iron knife into three portions of raw meat, a hide, a bone, and an antler.";
     let seen =
-        "Near butchers the carcass with the iron knife into three portions of raw meat, a hide, and a bone.";
+        "Near butchers the carcass with the iron knife into three portions of raw meat, a hide, a bone, and an antler.";
     let cut = world.step(&[cmd("butcher", near, Attempt::Butcher)]);
     assert_eq!(cut.results[0].message, yours);
     assert!(world
