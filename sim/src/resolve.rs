@@ -3160,7 +3160,24 @@ impl World {
             let flatbread =
                 material == Material::Flour && self.item(item_id).is_some_and(|flour| flour.cooked);
             let flour = material == Material::Flour && !flatbread;
-            let noun = if bone_awl {
+            let meat_portion = if material == Material::Meat {
+                self.item(item_id).and_then(|meat| {
+                    if meat.small {
+                        None
+                    } else if meat.cooked {
+                        Some("portion of cooked meat")
+                    } else if !meat.salted && !meat.smoked && !meat.spoiled {
+                        Some("portion of raw meat")
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            };
+            let noun = if let Some(portion) = meat_portion {
+                portion
+            } else if bone_awl {
                 "bone awl"
             } else if sealed_cup {
                 "sealed bark cup"

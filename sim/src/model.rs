@@ -13177,6 +13177,66 @@ mod mushroom_return {
             .iter()
             .all(|event| { event.text != "Near gathers a portion of cooked meat." }));
     }
+
+    #[test]
+    fn drop_names_a_portion_of_raw_meat_and_of_cooked_meat() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let raw = world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        let raw_drop = world.step(&[intent("raw", near, Attempt::Drop(Material::Meat))]);
+        let raw_line = "You drop a portion of raw meat. It is in contact with the ground.";
+        let raw_seen = "Near drops a portion of raw meat. It is in contact with the ground.";
+        assert_eq!(raw_drop.results[0].message, raw_line);
+        assert!(world.item(raw).unwrap().carrier.is_none());
+        assert!(!world.item(raw).unwrap().cooked);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != raw_line && event.text != raw_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == raw_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != raw_seen));
+        let cooked = world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        world.items.get_mut(&cooked).unwrap().cooked = true;
+        let cooked_drop = world.step(&[intent("cooked", near, Attempt::Drop(Material::Meat))]);
+        let cooked_line = "You drop a portion of cooked meat. It is in contact with the ground.";
+        let cooked_seen = "Near drops a portion of cooked meat. It is in contact with the ground.";
+        assert_eq!(cooked_drop.results[0].message, cooked_line);
+        assert!(world.item(cooked).unwrap().carrier.is_none());
+        assert!(world.item(cooked).unwrap().cooked);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != cooked_line && event.text != cooked_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == cooked_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != cooked_seen));
+    }
 }
 
 #[cfg(test)]
