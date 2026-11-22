@@ -24248,3 +24248,88 @@ mod worms {
         assert!(!damp.loose_ids(near, Material::Fluff).is_empty());
     }
 }
+
+#[cfg(test)]
+mod night_marks {
+    use super::{cell_id, World};
+
+    #[test]
+    fn night_keeps_a_fire_a_column_and_the_rock() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let rock = cell_id(6, 1).unwrap();
+        while world.time < world.tuning.night_at {
+            world.step(&[]);
+        }
+        assert!(world.night());
+        let fire = world.mint_fire(rock, 0);
+        world.fires.get_mut(&fire).unwrap().column = true;
+        let on_the_ice = world.observe(near).unwrap().text;
+        assert!(
+            on_the_ice.contains("You see smoke to the east. Someone is signaling with smoke."),
+            "{on_the_ice}"
+        );
+        assert!(
+            on_the_ice.contains("East: you cannot make out the ground."),
+            "{on_the_ice}"
+        );
+        assert!(
+            on_the_ice.contains("The dark hides what lies farther off."),
+            "{on_the_ice}"
+        );
+        assert!(!on_the_ice.contains("A deer stands"), "{on_the_ice}");
+        assert!(
+            !on_the_ice.contains("The rock overhang is to"),
+            "{on_the_ice}"
+        );
+        for person in [near, seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                !event.text.contains("You see smoke") && !event.text.contains("rock overhang")
+            }));
+        }
+        let from_sight = world.observe(seen).unwrap().text;
+        assert!(
+            from_sight.contains("Smoke rises to the north and east."),
+            "{from_sight}"
+        );
+        assert!(
+            from_sight.contains("you cannot make out the ground"),
+            "{from_sight}"
+        );
+        let past = world.observe(quiet).unwrap().text;
+        assert!(!past.contains("Smoke rises"), "{past}");
+        assert!(!past.contains("You see smoke"), "{past}");
+        assert!(!past.contains("rock overhang"), "{past}");
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(4, 1).unwrap();
+        let nearer = world.observe(near).unwrap().text;
+        assert!(
+            nearer.contains(
+                "A small fire burns under the rock overhang to the east. A column of smoke rises from the fire."
+            ),
+            "{nearer}"
+        );
+        assert!(
+            nearer.contains("East: you cannot make out the ground."),
+            "{nearer}"
+        );
+        assert!(!nearer.contains("a pot"), "{nearer}");
+
+        world.extinguish(fire, "The fire goes out.", None);
+        world.actors.get_mut(&near).unwrap().cell = cell_id(5, 1).unwrap();
+        let beside = world.observe(near).unwrap().text;
+        assert!(beside.contains("East: the rock overhang."), "{beside}");
+        assert!(
+            beside.contains("North: you cannot make out the ground."),
+            "{beside}"
+        );
+        assert!(
+            !beside
+                .lines()
+                .any(|line| line.starts_with("East:") && line.contains("pot")),
+            "{beside}"
+        );
+    }
+}

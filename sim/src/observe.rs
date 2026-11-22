@@ -315,6 +315,15 @@ impl World {
             {
                 lines.push("Wolf tracks mark the ground here.".into());
             }
+            if let Some(marks) = self.night_far_landmarks(actor_id) {
+                lines.push(marks);
+            }
+            if let Some(smoke) = self.seen_smoke(actor_id) {
+                lines.push(smoke);
+            }
+            if let Some(column) = self.seen_signal(actor_id) {
+                lines.push(column);
+            }
             lines.push("The dark hides what lies farther off.".into());
         } else {
             if let Some(deer) = self.deer_look_line(actor_id) {
@@ -790,6 +799,65 @@ impl World {
 
     fn dark_from(&self, cell: CellId) -> bool {
         self.night() && !self.fire_nearby(cell)
+    }
+
+    /// The next cell is the rock, and no fire is close enough to light the ground.
+    /// The rest of that cell stays dark.
+    fn night_compass_mark(&self, origin: CellId, dir: Dir) -> Option<String> {
+        let (x, y) = cell_xy(origin);
+        let (dx, dy) = dir.delta();
+        let dest = cell_id(x + dx, y + dy)?;
+        if !self.cell(dest).rock {
+            return None;
+        }
+        Some(format!("{}: the rock overhang.", capitalize(dir.word())))
+    }
+
+    /// A rock or a burning fire inside sight, farther than the next cell.
+    /// The compass already names a rock on the next cell. The ground stays dark.
+    fn night_far_landmarks(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || orthogonal_neighbor(origin, cell) {
+                continue;
+            }
+            let rock = self.cell(cell).rock;
+            let fire = self.fire_at(cell).cloned();
+            if !rock && fire.is_none() {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            let mut line = match (&fire, rock) {
+                (Some(fire), true) if fire.charcoal => {
+                    format!("A hot charcoal fire burns under the rock overhang to the {way}.")
+                }
+                (Some(fire), true) if fire.hot => {
+                    format!("A fire burns hotter under the rock overhang to the {way}.")
+                }
+                (Some(_), true) => {
+                    format!("A small fire burns under the rock overhang to the {way}.")
+                }
+                (None, true) => format!("The rock overhang is to the {way}."),
+                (Some(fire), false) if fire.charcoal => {
+                    format!("A hot charcoal fire burns to the {way}.")
+                }
+                (Some(fire), false) if fire.hot => format!("A fire burns hotter to the {way}."),
+                (Some(_), false) => format!("A small fire burns to the {way}."),
+                (None, false) => continue,
+            };
+            if fire.is_some_and(|fire| fire.column) {
+                line.push_str(" A column of smoke rises from the fire.");
+            }
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
     }
 
     fn dark_for(&self, viewer: ActorId) -> bool {
@@ -5718,6 +5786,9 @@ impl World {
         let line = self.adjacent_detail(viewer, origin, dir);
         if !self.dark_from(origin) || line.ends_with("the valley ends.") {
             return line;
+        }
+        if let Some(mark) = self.night_compass_mark(origin, dir) {
+            return mark;
         }
         format!(
             "{}: you cannot make out the ground.",
