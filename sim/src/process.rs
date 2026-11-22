@@ -452,6 +452,11 @@ impl World {
             return;
         }
         self.add_pile(cell, Material::Cattail, 2, 0);
+        if self.pile_count(cell, Material::Fluff) == 0
+            && self.ground_ids(cell, Material::Fluff).is_empty()
+        {
+            self.add_pile(cell, Material::Fluff, 1, 0);
+        }
         self.emit(
             "Cattails grow again in the shallows.",
             Scope::Cell(cell),

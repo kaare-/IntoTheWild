@@ -63,6 +63,7 @@ fire pot                     an unfired pot at a burning fire; it hardens and ca
 build lean-to                three dry branches into a lean-to in this cell. It breaks the wind.
 gather reeds                 a bundle at the brook's edge
 gather cattail               cattail roots from the shallows of the still. dig cattail roots is the same. They are not the reeds. Raw roots do not feed until they are cooked.
+gather cattail fluff         a handful of fluff from those cattails, when they are not under the ice. gather fluff is the same. It is not the roots. It still lights a fire when it is damp, where moss does not. The open rain puts it out.
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 fold bark                    a sheet of bark into a bark cup. make bark cup is the same. The cup holds water. A clay pot is still a pot.
@@ -808,6 +809,11 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "charcoal" | "lump of charcoal" => Ok(Material::Charcoal),
         "reed" | "reeds" | "bundle of reeds" => Ok(Material::Reed),
         "flour" | "cattail flour" | "flatbread" | "cattail flatbread" => Ok(Material::Flour),
+        "fluff"
+        | "cattail fluff"
+        | "handful of cattail fluff"
+        | "down"
+        | "cattail down" => Ok(Material::Fluff),
         "cattail" | "cattails" | "cattail root" | "cattail roots" | "roots" => {
             Ok(Material::Cattail)
         }
@@ -904,6 +910,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "basket" | "bark basket" => ExamineTarget::Basket,
         "charcoal" | "lump of charcoal" => ExamineTarget::Charcoal,
         "reed" | "reeds" | "bundle of reeds" => ExamineTarget::Reeds,
+        "fluff" | "cattail fluff" | "down" | "cattail down" => ExamineTarget::Fluff,
         "cattail" | "cattails" | "cattail root" | "cattail roots" => ExamineTarget::Cattail,
         "net" | "fishing net" | "a fishing net" => ExamineTarget::Net,
         "mat" | "reed mat" | "a reed mat" => ExamineTarget::Mat,

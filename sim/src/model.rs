@@ -146,6 +146,9 @@ pub enum Material {
     /// Bark from the willow, not the withies. Steeped, it eases a sunburn a little.
     /// It is not cordage, and it does not settle a stomach or a chill.
     WillowBark,
+    /// Seed-head down from the cattails. It is not the roots.
+    /// A handful in the arms is tinder, and it catches when bark would not.
+    Fluff,
 }
 
 impl Material {
@@ -204,6 +207,7 @@ impl Material {
             Material::Needle => "pine needles",
             Material::Drill => "bow drill",
             Material::WillowBark => "willow bark",
+            Material::Fluff => "cattail fluff",
         }
     }
 
@@ -262,6 +266,7 @@ impl Material {
             Material::Needle => "handful of pine needles",
             Material::Drill => "bow drill",
             Material::WillowBark => "strip of willow bark",
+            Material::Fluff => "handful of cattail fluff",
         }
     }
 
@@ -408,6 +413,7 @@ pub enum ExamineTarget {
     Needle,
     Drill,
     WillowBark,
+    Fluff,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1613,6 +1619,7 @@ impl World {
         world.reed_beds.insert(reeds, 4);
         let cattails = cell_id(2, 1).unwrap();
         world.add_pile(cattails, Material::Cattail, 2, 0);
+        world.add_pile(cattails, Material::Fluff, 1, 0);
         world.cattail_stands.insert(cattails);
         world.add_pile(cell_id(3, 2).unwrap(), Material::Log, 1, 0);
         world.add_pile(cell_id(0, 0).unwrap(), Material::Salt, 1, 0);
@@ -2583,6 +2590,17 @@ impl World {
     /// A dry handful of moss in the arms. Moss still on the ground is not tinder yet.
     pub(crate) fn moss_tinder_in_arms(&self, actor: ActorId) -> bool {
         !self.dry_loose_ids(actor, Material::Moss).is_empty()
+    }
+
+    /// Cattail fluff in the arms that can still catch. Slightly damp is enough.
+    /// Soaked fluff cannot. Fluff still on the cattails is not tinder yet.
+    pub(crate) fn fluff_tinder_in_arms(&self, actor: ActorId) -> bool {
+        self.loose_ids(actor, Material::Fluff)
+            .into_iter()
+            .any(|id| {
+                self.item(id)
+                    .is_some_and(|item| item.moisture < self.tuning.soaked_at)
+            })
     }
 
     /// Dry branches lying on this cell, pile and loose. Carried wood stays in the arms.
@@ -18391,6 +18409,234 @@ mod cattail {
                 .all(|event| { event.text != "Ice covers the cattail roots." }));
         }
         assert!(world.pile_count(world.actor(near).unwrap().cell, Material::Cattail) > 0);
+    }
+
+    #[test]
+    fn cattail_fluff_is_not_the_roots_and_it_catches_in_the_rain() {
+        assert_eq!(
+            crate::parse::parse_attempt("gather fluff").unwrap(),
+            Attempt::Gather(Material::Fluff)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("gather cattail fluff").unwrap(),
+            Attempt::Gather(Material::Fluff)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("gather cattail").unwrap(),
+            Attempt::Gather(Material::Cattail)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("dig roots").unwrap(),
+            Attempt::Gather(Material::Cattail)
+        );
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let stand = super::cell_id(2, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let roots = world.pile_count(stand, Material::Cattail);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains(
+                "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
+            ),
+            "{here}"
+        );
+        assert!(
+            here.contains("Cattail fluff hangs on them. It is not the roots."),
+            "{here}"
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Cattail fluff hangs on the cattails to the north. It is not the roots."));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("fluff"));
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::Fluff))]);
+        assert_eq!(
+            none.results[0].message,
+            "There is no cattail fluff here to gather."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no cattail fluff here to gather." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no cattail fluff here to gather." }));
+        let gathered = world.step(&[intent("fluff", near, Attempt::Gather(Material::Fluff))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a handful of cattail fluff."
+        );
+        assert_eq!(world.pile_count(stand, Material::Cattail), roots);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a handful of cattail fluff." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near gathers a handful of cattail fluff." }));
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The cattails here have no fluff."), "{bare}");
+        assert!(bare.contains("The roots can be dug."), "{bare}");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You have a handful of cattail fluff."));
+        let roots_taken = world.step(&[intent("roots", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(roots_taken.results[0].message, "You gather cattail roots.");
+        assert!(world.pile_count(stand, Material::Cattail) > 0);
+
+        world.time = world.tuning.chill_at;
+        let iced = world.observe(near).unwrap().text;
+        assert!(
+            iced.contains("Cattails stand under the ice. The roots cannot be dug."),
+            "{iced}"
+        );
+        assert!(!iced.contains("fluff hangs"), "{iced}");
+        let frozen = world.step(&[intent("ice", near, Attempt::Gather(Material::Fluff))]);
+        assert_eq!(
+            frozen.results[0].message,
+            "The cattails stand under the ice."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The cattails stand under the ice." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The cattails stand under the ice." }));
+
+        let mut rain = World::valley(crate::tuning::Tuning::evening(), 1);
+        rain.raining = true;
+        let open = super::cell_id(4, 4).unwrap();
+        let near = rain.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = rain.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = rain.spawn_at("Quiet", "q", 0, 4).unwrap();
+        rain.mint_item(Material::Bark, 0, open, Some(near), super::Role::Loose);
+        rain.mint_item(Material::Branch, 0, open, Some(near), super::Role::Loose);
+        let bark = rain.step(&[intent("bark", near, Attempt::Light)]);
+        assert_eq!(
+            bark.results[0].message,
+            "The rain puts the bark out before it catches."
+        );
+        rain.mint_item(
+            Material::Fluff,
+            rain.tuning.damp_at,
+            open,
+            Some(near),
+            super::Role::Loose,
+        );
+        let open_rain = rain.step(&[intent("open", near, Attempt::Light)]);
+        assert_eq!(
+            open_rain.results[0].message,
+            "The rain puts the cattail fluff out before it catches."
+        );
+        assert!(rain.fire_at(open).is_none());
+        for person in [seen, quiet] {
+            assert!(rain.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "The rain puts the cattail fluff out before it catches."
+            }));
+        }
+        assert_eq!(rain.loose_ids(near, Material::Fluff).len(), 1);
+
+        let mut damp = World::valley(crate::tuning::Tuning::evening(), 1);
+        let floor = super::cell_id(4, 3).unwrap();
+        let near = damp.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = damp.spawn_at("Seen", "s", 3, 3).unwrap();
+        damp.mint_item(
+            Material::Moss,
+            damp.tuning.damp_at,
+            floor,
+            Some(near),
+            super::Role::Loose,
+        );
+        damp.mint_item(Material::Branch, 0, floor, Some(near), super::Role::Loose);
+        let moss = damp.step(&[intent("moss", near, Attempt::Light)]);
+        assert_eq!(moss.results[0].message, "The moss is too damp to catch.");
+        assert!(damp
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The moss is too damp to catch."));
+        damp.mint_item(
+            Material::Fluff,
+            damp.tuning.damp_at,
+            floor,
+            Some(near),
+            super::Role::Loose,
+        );
+        let caught = damp.step(&[intent("damp", near, Attempt::Light)]);
+        let yours = "You light a fire with the cattail fluff and the branch from the arms.";
+        let theirs = "Near lights a fire with the cattail fluff and the branch from the arms.";
+        assert_eq!(caught.results[0].message, yours);
+        assert!(damp.fire_at(floor).is_some());
+        assert!(damp
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != theirs));
+        assert!(damp
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == theirs));
+
+        let mut soaked = World::valley(crate::tuning::Tuning::evening(), 1);
+        let floor = super::cell_id(4, 3).unwrap();
+        let near = soaked.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = soaked.spawn_at("Seen", "s", 3, 3).unwrap();
+        soaked.mint_item(
+            Material::Fluff,
+            soaked.tuning.soaked_at,
+            floor,
+            Some(near),
+            super::Role::Loose,
+        );
+        soaked.mint_item(Material::Branch, 0, floor, Some(near), super::Role::Loose);
+        let refused = soaked.step(&[intent("soaked", near, Attempt::Light)]);
+        assert_eq!(
+            refused.results[0].message,
+            "The cattail fluff is too damp to catch."
+        );
+        assert!(soaked
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "The cattail fluff is too damp to catch."));
+        assert!(soaked.fire_at(floor).is_none());
     }
 }
 

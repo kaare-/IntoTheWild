@@ -802,6 +802,7 @@ impl Tuning {
             Material::Needle => 0,
             Material::Drill => 0,
             Material::WillowBark => 0,
+            Material::Fluff => self.bark_rain,
         }
     }
 }

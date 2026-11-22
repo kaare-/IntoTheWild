@@ -223,6 +223,7 @@ impl World {
             ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Willow => self.examine_willow(actor_id),
             ExamineTarget::WillowBark => self.examine_willow_bark(actor_id),
+            ExamineTarget::Fluff => self.examine_fluff(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
             ExamineTarget::Cattail => self.examine_cattail(actor_id),
             ExamineTarget::BarkCup => self.examine_bark_cup(actor_id),
@@ -1146,11 +1147,23 @@ impl World {
                     "Cattails stand under the ice. The roots cannot be dug. They are not the reeds."
                         .into(),
                 );
+                if self.pile_count(actor.cell, Material::Fluff) == 0
+                    && self.ground_ids(actor.cell, Material::Fluff).is_empty()
+                {
+                    parts.push("The cattails here have no fluff.".into());
+                }
             } else {
                 parts.push(
                     "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
                         .into(),
                 );
+                if self.pile_count(actor.cell, Material::Fluff) > 0
+                    || !self.ground_ids(actor.cell, Material::Fluff).is_empty()
+                {
+                    parts.push("Cattail fluff hangs on them. It is not the roots.".into());
+                } else {
+                    parts.push("The cattails here have no fluff.".into());
+                }
             }
         } else if cattails_here > 0 && self.still_frozen(actor.cell) {
             parts.push("Cattail roots lie under the ice.".into());
@@ -3329,6 +3342,15 @@ impl World {
                 lines.push(format!(
                     "Cattails grow in the shallows to the {way}. They are not the reeds."
                 ));
+                if self.pile_count(cell, Material::Fluff) > 0
+                    || !self.ground_ids(cell, Material::Fluff).is_empty()
+                {
+                    lines.push(format!(
+                        "Cattail fluff hangs on the cattails to the {way}. It is not the roots."
+                    ));
+                } else {
+                    lines.push(format!("The cattails to the {way} have no fluff."));
+                }
             } else if self.cattail_bare(cell) {
                 lines.push(format!("The shallows to the {way} have no cattails."));
             }
@@ -3373,6 +3395,47 @@ impl World {
         }
         if lines.is_empty() {
             "There are no cattails in sight.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    fn examine_fluff(&self, viewer: ActorId) -> String {
+        let actor = self.actor(viewer).unwrap();
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if self.pile_count(cell, Material::Cattail) == 0 || self.still_frozen(cell) {
+                continue;
+            }
+            let place = self.place_phrase(actor.cell, cell);
+            if self.pile_count(cell, Material::Fluff) > 0
+                || !self.ground_ids(cell, Material::Fluff).is_empty()
+            {
+                lines.push(format!(
+                    "Cattail fluff hangs on the cattails {place}. It is not the roots. It can light a fire."
+                ));
+            } else if cell == actor.cell {
+                lines.push("The cattails here have no fluff. The roots can still be dug.".into());
+            } else {
+                let way = self.relative(actor.cell, cell);
+                lines.push(format!(
+                    "The cattails to the {way} have no fluff. The roots can still be dug."
+                ));
+            }
+        }
+        let carried = self.loose_ids(viewer, Material::Fluff).len();
+        if carried == 1 {
+            lines.push(
+                "A handful of cattail fluff is carried by you. It is not the roots. It can light a fire."
+                    .into(),
+            );
+        } else if carried > 1 {
+            lines.push(format!(
+                "{carried} handfuls of cattail fluff are carried by you. They are not the roots."
+            ));
+        }
+        if lines.is_empty() {
+            "You see no cattail fluff from here.".into()
         } else {
             lines.join(" ")
         }
@@ -4498,6 +4561,10 @@ impl World {
             "a strip of willow bark".into()
         } else if item.material == "willow bark" {
             format!("{} strips of willow bark", count_word(item.count))
+        } else if item.material == "cattail fluff" && item.count == 1 {
+            "a handful of cattail fluff".into()
+        } else if item.material == "cattail fluff" {
+            format!("{} handfuls of cattail fluff", count_word(item.count))
         } else if item.material == "willow" && item.count == 1 {
             "a bundle of willow cordage".into()
         } else if item.material == "willow" {
@@ -9345,6 +9412,7 @@ impl World {
                 Material::Paddle => "wooden paddle",
                 Material::Hook => "bone fish hook",
                 Material::WillowBark => "willow bark",
+                Material::Fluff => "cattail fluff",
             };
             format!("You see no {name} from here.")
         } else {
@@ -12368,6 +12436,7 @@ impl World {
             "strip of willow bark",
             "bundle of nettle cordage",
             "cattail roots",
+            "handful of cattail fluff",
             "cattail flour",
             "cattail flatbread",
             "bark cup",
@@ -14339,6 +14408,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Willow, false) => "bundles of willow cordage",
         (Material::WillowBark, true) => "strip of willow bark",
         (Material::WillowBark, false) => "strips of willow bark",
+        (Material::Fluff, true) => "handful of cattail fluff",
+        (Material::Fluff, false) => "handfuls of cattail fluff",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

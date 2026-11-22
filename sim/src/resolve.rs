@@ -1855,6 +1855,18 @@ impl World {
                         || !self.ground_ids(actor.cell, Material::Cattail).is_empty())
                 {
                     return Err("Ice covers the cattail roots.".into());
+                } else if *material == Material::Fluff {
+                    let plants = self.pile_count(actor.cell, Material::Cattail) > 0;
+                    if plants && self.still_frozen(actor.cell) {
+                        return Err("The cattails stand under the ice.".into());
+                    }
+                    if !plants || self.pile_count(actor.cell, Material::Fluff) == 0 {
+                        return Err(self.gather_miss(
+                            actor.cell,
+                            *material,
+                            "There is no cattail fluff here to gather.".to_string(),
+                        ));
+                    }
                 } else if *material == Material::Egg
                     && self.pile_count(actor.cell, Material::Egg) == 0
                     && self.ground_ids(actor.cell, Material::Egg).is_empty()
@@ -2488,6 +2500,8 @@ impl World {
                         "a bundle of nettle cordage.".to_string()
                     } else if material == Material::Cattail {
                         "cattail roots.".to_string()
+                    } else if material == Material::Fluff {
+                        "a handful of cattail fluff.".to_string()
                     } else if material == Material::Flour {
                         if self.item(item).is_some_and(|flour| flour.cooked) {
                             "a cattail flatbread.".to_string()
@@ -3841,14 +3855,20 @@ impl World {
     pub(crate) fn light_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
         let person = self.actor(actor)?;
         let resin = !self.loose_ids(actor, Material::Resin).is_empty();
+        let fluff = self.fluff_tinder_in_arms(actor);
+        let carried_fluff = !self.loose_ids(actor, Material::Fluff).is_empty();
         let dry_moss = self.moss_tinder_in_arms(actor);
         let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
         let dry_bark = self.has_dry(actor, Material::Bark);
         if self.raining && self.exposure_millis(person.cell) >= 1000 {
             return Some(if resin {
                 "The rain puts the resin out before it catches.".into()
+            } else if fluff {
+                "The rain puts the cattail fluff out before it catches.".into()
             } else if dry_moss || (carried_moss && !dry_bark) {
                 "The rain puts the moss out before it catches.".into()
+            } else if carried_fluff {
+                "The cattail fluff is too damp to catch.".into()
             } else {
                 "The rain puts the bark out before it catches.".into()
             });
@@ -3857,11 +3877,15 @@ impl World {
             return Some("A fire already burns here.".into());
         }
         // A lump of pine resin in the arms is tinder. It is spent before
-        // moss and bark when it is held. Dry moss from the shade is tinder
-        // the way bark is, and it is spent before bark. Wet moss is not.
+        // fluff, moss, and bark when it is held. Cattail fluff in the arms
+        // still catches when it is only slightly damp. Soaked fluff does not.
+        // The open rain puts it out, the same as bark. Dry moss is tinder the
+        // way bark is, and it is spent before bark. Wet moss is not.
         // Resin on the ground is not tinder.
-        if !resin && !dry_moss && !dry_bark {
-            return Some(if carried_moss {
+        if !resin && !fluff && !dry_moss && !dry_bark {
+            return Some(if carried_fluff {
+                "The cattail fluff is too damp to catch.".into()
+            } else if carried_moss {
                 "The moss is too damp to catch.".into()
             } else if self.has_material_at_hand(actor, Material::Bark) {
                 "The bark is too damp to catch.".into()
@@ -3987,40 +4011,53 @@ impl World {
                 let name = self.name_of(intent.actor_id);
                 let use_charcoal = self.charcoal_in_arms(intent.actor_id)
                     || self.charcoal_on_ground(intent.actor_id);
-                let (tinder_item, resin, moss_arms, bark_arms) = if let Some(resin_id) = resin_id {
-                    self.items.remove(&resin_id);
-                    (Some(resin_id), true, None, true)
-                } else if self.moss_tinder_in_arms(intent.actor_id) {
-                    match self.consume_dry(intent.actor_id, Material::Moss) {
-                        Ok((moss_item, moss_from_arms)) => {
-                            (moss_item, false, Some(moss_from_arms), false)
+                let fluff_id = self
+                    .loose_ids(intent.actor_id, Material::Fluff)
+                    .into_iter()
+                    .find(|id| {
+                        self.item(*id)
+                            .is_some_and(|item| item.moisture < self.tuning.soaked_at)
+                    });
+                let (tinder_item, resin, moss_arms, bark_arms, fluff_arms) =
+                    if let Some(resin_id) = resin_id {
+                        self.items.remove(&resin_id);
+                        (Some(resin_id), true, None, true, None)
+                    } else if let Some(fluff_id) = fluff_id {
+                        self.items.remove(&fluff_id);
+                        (Some(fluff_id), false, None, false, Some(true))
+                    } else if self.moss_tinder_in_arms(intent.actor_id) {
+                        match self.consume_dry(intent.actor_id, Material::Moss) {
+                            Ok((moss_item, moss_from_arms)) => {
+                                (moss_item, false, Some(moss_from_arms), false, None)
+                            }
+                            Err(()) => {
+                                self.finish(
+                                    intent.command_id,
+                                    intent.actor_id,
+                                    false,
+                                    "The moss is too damp to catch.",
+                                    results,
+                                );
+                                continue;
+                            }
                         }
-                        Err(()) => {
-                            self.finish(
-                                intent.command_id,
-                                intent.actor_id,
-                                false,
-                                "The moss is too damp to catch.",
-                                results,
-                            );
-                            continue;
+                    } else {
+                        match self.consume_dry(intent.actor_id, Material::Bark) {
+                            Ok((bark_item, bark_from_arms)) => {
+                                (bark_item, false, None, bark_from_arms, None)
+                            }
+                            Err(()) => {
+                                self.finish(
+                                    intent.command_id,
+                                    intent.actor_id,
+                                    false,
+                                    "You need dry loose bark and a dry branch.",
+                                    results,
+                                );
+                                continue;
+                            }
                         }
-                    }
-                } else {
-                    match self.consume_dry(intent.actor_id, Material::Bark) {
-                        Ok((bark_item, bark_from_arms)) => (bark_item, false, None, bark_from_arms),
-                        Err(()) => {
-                            self.finish(
-                                intent.command_id,
-                                intent.actor_id,
-                                false,
-                                "You need dry loose bark and a dry branch.",
-                                results,
-                            );
-                            continue;
-                        }
-                    }
-                };
+                    };
                 let (fuel_item, from_charcoal, charcoal_arms, branch_arms) = if use_charcoal {
                     match self.take_charcoal(intent.actor_id) {
                         Ok((lump, charcoal_arms)) => (lump, true, charcoal_arms, false),
@@ -4043,7 +4080,7 @@ impl World {
                                 intent.command_id,
                                 intent.actor_id,
                                 false,
-                                if resin || moss_arms.is_some() {
+                                if resin || moss_arms.is_some() || fluff_arms.is_some() {
                                     "You need a dry branch or a lump of charcoal for the fire."
                                 } else {
                                     "You need dry loose bark and a dry branch."
@@ -4064,6 +4101,7 @@ impl World {
                             resin,
                             moss_arms,
                             bark_arms,
+                            fluff_arms.is_some(),
                             brand.is_some(),
                             charcoal_arms,
                         ),
@@ -4072,9 +4110,15 @@ impl World {
                             resin,
                             moss_arms,
                             bark_arms,
+                            fluff_arms.is_some(),
                             brand.is_some(),
                             charcoal_arms,
                         ),
+                    )
+                } else if fluff_arms.is_some() {
+                    (
+                        fluff_light_line(Some(&name), branch_arms, brand.is_some()),
+                        fluff_light_line(None, branch_arms, brand.is_some()),
                     )
                 } else if moss_arms.is_some() {
                     let from_arms = moss_arms.unwrap_or(false);
@@ -12232,6 +12276,20 @@ fn moss_fuel(moss_arms: bool, branch_arms: bool) -> &'static str {
     }
 }
 
+fn fluff_light_line(who: Option<&str>, branch_arms: bool, brand: bool) -> String {
+    let fuel = if branch_arms {
+        "the cattail fluff and the branch from the arms"
+    } else {
+        "the cattail fluff from the arms and a dry branch from the pile at the feet"
+    };
+    let rest = if brand {
+        format!("a fire with the burning brand and {fuel}.")
+    } else {
+        format!("a fire with {fuel}.")
+    };
+    crate::model::spoken_act(who, "light", &rest)
+}
+
 fn moss_light_line(who: Option<&str>, moss_arms: bool, branch_arms: bool) -> String {
     crate::model::spoken_act(
         who,
@@ -12257,6 +12315,7 @@ fn charcoal_light_line(
     resin: bool,
     moss_arms: Option<bool>,
     bark_arms: bool,
+    fluff: bool,
     brand: bool,
     charcoal_arms: bool,
 ) -> String {
@@ -12267,6 +12326,8 @@ fn charcoal_light_line(
     };
     let tinder = if resin {
         "the pine resin"
+    } else if fluff {
+        "the cattail fluff"
     } else if let Some(true) = moss_arms {
         "the moss"
     } else if let Some(false) = moss_arms {
