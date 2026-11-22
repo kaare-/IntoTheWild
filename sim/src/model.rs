@@ -17623,8 +17623,18 @@ mod birdsong {
             world.step(&[]);
         }
         assert!(world.morning());
-        assert_eq!(world.sim_time() % 3, 2);
+        assert!(world.raining);
+        let wet = world.observe(near).unwrap().text;
+        assert!(wet.contains("Rain is falling"), "{wet}");
+        assert!(!wet.contains("birdsong"), "{wet}");
+        assert!(!world.observe(quiet).unwrap().text.contains("birdsong"));
+        assert!(!world.observe(thatch).unwrap().text.contains("birdsong"));
+        world.step(&[]);
+        assert!(world.morning());
+        assert!(!world.raining);
         let open = world.observe(near).unwrap().text;
+        assert!(open.contains("The sky is clear."), "{open}");
+        assert!(!open.contains("Rain is falling"), "{open}");
         assert!(open.contains("You hear birdsong."), "{open}");
         assert!(!open.contains("faint"), "{open}");
         assert!(!open.contains("owl"), "{open}");
@@ -17662,7 +17672,13 @@ mod birdsong {
         }
         world.step(&[]);
         assert!(world.morning());
-        assert!(!world.observe(near).unwrap().text.contains("birdsong"));
+        assert!(!world.raining);
+        let quiet_morning = world.observe(near).unwrap().text;
+        assert!(
+            quiet_morning.contains("The sky is clear."),
+            "{quiet_morning}"
+        );
+        assert!(!quiet_morning.contains("birdsong"), "{quiet_morning}");
         assert!(!world.observe(quiet).unwrap().text.contains("birdsong"));
         assert!(!world.observe(thatch).unwrap().text.contains("birdsong"));
     }

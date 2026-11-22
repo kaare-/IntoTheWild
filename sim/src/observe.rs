@@ -732,11 +732,20 @@ impl World {
         Some(format!("You hear frogs croak to the {way}."))
     }
 
-    /// Dawn and morning, some ticks and not others. Night and evening are quiet.
-    /// The valley sings. It is not an owl, and it is not the frogs.
+    /// Clear morning, some ticks and not others. The first look after the dawn
+    /// lets the rain up is one of them. A morning look that still says the rain
+    /// is falling stays quiet, and so do night and evening.
     /// Under the rock or a thatched lean-to it is faint. The line is look, not a tick event.
     fn birds_sing(&self) -> bool {
-        self.morning() && self.time % 3 == 2
+        if !self.morning() || self.raining {
+            return false;
+        }
+        let first_clear = self
+            .tuning
+            .night_at
+            .saturating_add(self.tuning.night_len)
+            .saturating_add(1);
+        self.time == first_clear || self.time % 3 == 0
     }
 
     fn bird_line(&self, actor_id: ActorId) -> Option<String> {
