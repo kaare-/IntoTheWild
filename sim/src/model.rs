@@ -4098,7 +4098,7 @@ mod salt_fish {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "You eat the salted fish."));
+            .all(|event| event.text != "You eat the salted fish."));
         assert!(world
             .observe(near)
             .unwrap()
@@ -4294,7 +4294,7 @@ mod smoke_fish {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "You eat the smoked fish."));
+            .all(|event| event.text != "You eat the smoked fish."));
         assert!(world.observe(near).unwrap().events.iter().all(|event| {
             !event.text.contains("Near eats the smoked") && !event.text.contains("Near smokes")
         }));
@@ -4547,7 +4547,7 @@ mod smoke_meat {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "You eat the smoked meat."));
+            .all(|event| event.text != "You eat the smoked meat."));
         assert!(world
             .observe(near)
             .unwrap()
@@ -5475,7 +5475,10 @@ mod eggs {
         assert!(fed
             .events
             .iter()
-            .any(|event| event.text == "You eat the cooked eggs."));
+            .any(|event| event.text == "The hunger eases."));
+        assert!(fed.events.iter().all(|event| {
+            event.text != "You eat the cooked eggs." && !event.text.contains("Near eats")
+        }));
         assert!(world
             .observe(seen)
             .unwrap()

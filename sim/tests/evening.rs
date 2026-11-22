@@ -2757,6 +2757,10 @@ fn poison_berry_illness_fades_and_rest_under_the_rock_hurries_it() {
         .events
         .iter()
         .any(|event| event.text == "Your stomach turns."));
+    assert!(ill.events.iter().all(|event| {
+        !event.text.contains("eats a handful")
+            && event.text != "You eat a handful of poison berries."
+    }));
     assert!(open
         .observe(far)
         .unwrap()
@@ -3461,14 +3465,21 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     }
     let hunger = world.observe(sera).unwrap().self_info.hunger.clone();
     assert_eq!(hunger, "hungry");
-    world.step(&[cmd("eat", sera, Attempt::Eat(Material::Berry))]);
+    let eaten = world.step(&[cmd("eat", sera, Attempt::Eat(Material::Berry))]);
+    assert!(
+        eaten.results[0]
+            .message
+            .starts_with("You eat a handful of berries."),
+        "{}",
+        eaten.results[0].message
+    );
     let ate = world.observe(sera).unwrap();
     assert_eq!(ate.self_info.energy, "rested");
     assert_eq!(ate.self_info.hunger, hunger);
-    assert!(ate
-        .events
-        .iter()
-        .any(|event| event.text.contains("eats a handful of berries")));
+    assert!(ate.events.iter().all(|event| {
+        event.text != "You eat a handful of berries."
+            && event.text != "Sera eats a handful of berries."
+    }));
     assert!(!ate.text.contains("energy:"));
 
     world.step(&[cmd("pick", nils, Attempt::Gather(Material::Mushroom))]);
@@ -3507,6 +3518,15 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
         "You eat the cooked mushroom. The hunger eases."
     );
     assert_eq!(world.observe(nils).unwrap().self_info.hunger, "not hungry");
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "The hunger eases."));
+    assert!(world.observe(nils).unwrap().events.iter().all(|event| {
+        event.text != "You eat the cooked mushroom." && !event.text.contains("Nils eats")
+    }));
     assert_eq!(world.material_tally(Material::Mushroom), 1);
     assert!(world
         .observe(sera)
@@ -3556,7 +3576,7 @@ fn pale_berries_do_not_feed_until_they_are_cooked() {
     assert!(after
         .events
         .iter()
-        .any(|event| event.text == "You eat a handful of pale berries."));
+        .all(|event| event.text != "You eat a handful of pale berries."));
     assert!(after.events.iter().all(|event| {
         !event.text.contains("Near eats")
             && !event.text.contains("do not feed")
@@ -3637,7 +3657,13 @@ fn pale_berries_do_not_feed_until_they_are_cooked() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "You eat the cooked pale berries."));
+        .any(|event| event.text == "The hunger eases."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "You eat the cooked pale berries."));
     assert!(world
         .observe(near)
         .unwrap()
@@ -10153,7 +10179,7 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .filter(|text| text.contains("eat the cooked meat") || text == "The hunger eases.")
         .collect();
     assert!(
-        yours.iter().any(|text| text == "You eat the cooked meat."),
+        yours.iter().all(|text| text != "You eat the cooked meat."),
         "{yours:?}"
     );
     if tail.contains("eases") {

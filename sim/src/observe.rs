@@ -9360,7 +9360,7 @@ impl World {
                     && self.bank_for_these_eyes(viewer, event).is_none()
                     && self.thatch_for_these_eyes(viewer, event).is_none()
                     && self.knap_for_these_eyes(viewer, event).is_none()
-                    && self.eat_honey_for_these_eyes(viewer, event).is_none()
+                    && self.eat_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -10869,18 +10869,31 @@ impl World {
         Some(crate::model::spoken_act(None, "haft", rest))
     }
 
-    /// A honeycomb eaten. The eater already has the reply, so the event
-    /// list does not repeat it. Someone who can see keeps the third person.
-    fn eat_honey_for_these_eyes(
-        &self,
-        viewer: ActorId,
-        event: &crate::model::Event,
-    ) -> Option<String> {
+    /// Food eaten. The eater already has the reply, so the event list does
+    /// not repeat it. Someone who can see keeps the third person. A hunger
+    /// line is a different event and stays with the eater.
+    fn eat_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
         }
         let name = self.name_of(viewer);
-        if event.text == format!("{name} eats the honeycomb.") {
+        let rest = event.text.strip_prefix(&format!("{name} eats "))?;
+        const RESTS: &[&str] = &[
+            "the honeycomb.",
+            "the cooked meat.",
+            "the salted meat.",
+            "the smoked meat.",
+            "the cooked fish.",
+            "the salted fish.",
+            "the smoked fish.",
+            "the cooked mushroom.",
+            "the cooked eggs.",
+            "the cooked pale berries.",
+            "a handful of pale berries.",
+            "a handful of berries.",
+            "a handful of dark berries.",
+        ];
+        if RESTS.contains(&rest) {
             Some(event.text.clone())
         } else {
             None
