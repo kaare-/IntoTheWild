@@ -194,6 +194,13 @@ impl Host {
                 true,
                 "Make a pitch torch, or light one.".into(),
             ),
+            Attempt::NameMushroom => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Gather mushrooms, or cook them.".into(),
+            ),
             Attempt::Look => {
                 let text = self
                     .world

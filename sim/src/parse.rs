@@ -44,7 +44,8 @@ light fire                   dry bark and a dry branch, from the arms if you car
 signal                       a column of smoke from a burning fire here. smoke signal is the same. It lasts while the fire burns. Someone who cannot see the fire, past the ordinary smoke, reads which way, and that someone is signaling with smoke. One cell farther, they smell it, and the same words. The ordinary plume stays Smoke rises, without that cue. Green reeds or pine needles may be laid on the fire. They do not change the column. With no fire, with nothing green when you asked for it, or with the column already rising, only you hear it
 carve drill                  two dry branches and cordage into a bow drill. One branch is the spindle, one is the fireboard. Hide strips, then willow, then nettle. A spent bow drill in the arms is carved anew with one dry branch
 light fire with drill        the bow drill stays in the arms, and the line names it spent. No bark, no resin, and no charcoal. light fire still wants tinder
-cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
+cook|roast                   heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread. roast is the same as cook
+mushroom                     gather mushrooms, or cook them. A raw one does not feed until it is cooked. It does not gather, cook, or eat one
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
 hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, an otter on its cell or the next, a beaver on its cell or the next, a fox on its cell or the next, or a hare on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, the otter, the beaver, the fox, or the hare comes down. A refusal leaves it. The bow stays.
 fish                         a fire-hardened flint spear, or a fishing net, or a bone fish hook with hide strips, in the brook or beside it, and from a dugout on the brook. A bone fish hook and a worm, with no spear and no net, is the same cast as fish with hook, in the brook or in the still shallows. The spear and the net are not used up. The hide strips are spent as the line. The worm is spent as the bait. That stretch is quiet for a short wait. On frozen shallows with no hole, the reply names the ice before the worm
@@ -179,6 +180,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "canoe" | "dugout" if rest.is_empty() => Ok(Attempt::NameCanoe),
         "sinew" if rest.is_empty() => Ok(Attempt::NameSinew),
         "torch" if rest.is_empty() => Ok(Attempt::NameTorch),
+        "mushroom" | "mushrooms" if rest.is_empty() => Ok(Attempt::NameMushroom),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)
@@ -832,7 +834,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::LightTorch)
         }
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
-        "cook" => Ok(Attempt::Cook),
+        "cook" | "roast" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
         "smear" if rest.is_empty() || rest == "mud" => Ok(Attempt::Smear),
         "smear" if rest == "ochre" => Ok(Attempt::SmearOchre),

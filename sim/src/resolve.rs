@@ -212,6 +212,9 @@ impl World {
                     // A pitch torch miss is the reply only.
                     let torch_refusal =
                         matches!(intent.attempt, Attempt::MakeTorch | Attempt::LightTorch);
+                    // A mushroom bite that does not feed is the reply only.
+                    let mushroom_eat_refusal =
+                        matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -222,7 +225,8 @@ impl World {
                             && !ice_refusal
                             && !sinew_refusal
                             && !sticks_refusal
-                            && !torch_refusal;
+                            && !torch_refusal
+                            && !mushroom_eat_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -237,7 +241,8 @@ impl World {
                         Attempt::NameSnare
                         | Attempt::NameCanoe
                         | Attempt::NameSinew
-                        | Attempt::NameTorch => hints.push(intent),
+                        | Attempt::NameTorch
+                        | Attempt::NameMushroom => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -410,6 +415,8 @@ impl World {
             let line = match intent.attempt {
                 Attempt::NameSnare => "Set a snare.",
                 Attempt::NameSinew => "Pull sinew from a carcass.",
+                Attempt::NameTorch => "Make a pitch torch, or light one.",
+                Attempt::NameMushroom => "Gather mushrooms, or cook them.",
                 _ => "Board, carve canoe, or paddle.",
             };
             self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
@@ -531,7 +538,8 @@ impl World {
             | Attempt::NameSnare
             | Attempt::NameCanoe
             | Attempt::NameSinew
-            | Attempt::NameTorch => Ok(false),
+            | Attempt::NameTorch
+            | Attempt::NameMushroom => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {

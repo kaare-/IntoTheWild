@@ -613,6 +613,8 @@ pub enum Attempt {
     BeatSticks,
     /// Bare `torch`. Names the verbs. Does not bind or light one.
     NameTorch,
+    /// Bare `mushroom`. Names the verbs. Does not gather, cook, or eat one.
+    NameMushroom,
     /// Pine resin and a dry branch, or a sheet of bark, into a pitch torch.
     MakeTorch,
     /// Light a carried pitch torch from a fire here, or with tinder.
@@ -12673,6 +12675,146 @@ mod mushroom_return {
             world.pile_count(world.actor(near).unwrap().cell, Material::Mushroom),
             1
         );
+    }
+
+    #[test]
+    fn roast_cooks_a_gathered_mushroom_and_a_raw_bite_stays_private() {
+        assert_eq!(
+            crate::parse::parse_attempt("mushroom"),
+            Ok(Attempt::NameMushroom)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("mushrooms"),
+            Ok(Attempt::NameMushroom)
+        );
+        assert_eq!(crate::parse::parse_attempt("roast"), Ok(Attempt::Cook));
+        assert_eq!(
+            crate::parse::parse_attempt("roast mushrooms"),
+            Ok(Attempt::Cook)
+        );
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let named = world.step(&[intent("name", near, Attempt::NameMushroom)]);
+        assert_eq!(named.results[0].message, "Gather mushrooms, or cook them.");
+        assert!(named.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Gather mushrooms, or cook them."));
+        let none = world.step(&[intent("none", quiet, Attempt::Eat(Material::Mushroom))]);
+        assert_eq!(
+            none.results[0].message,
+            "There is no cooked mushroom here to eat."
+        );
+        assert!(!none.results[0].success);
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no cooked mushroom here to eat." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no cooked mushroom here to eat."));
+        let took = world.step(&[intent("gather", near, Attempt::Gather(Material::Mushroom))]);
+        assert_eq!(took.results[0].message, "You gather a mushroom.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You gather a mushroom."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a mushroom."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "Near gathers a mushroom."));
+        let raw = world.step(&[intent("raw", near, Attempt::Eat(Material::Mushroom))]);
+        assert_eq!(
+            raw.results[0].message,
+            "Raw mushrooms do not feed you. They must be cooked."
+        );
+        assert!(!raw.results[0].success);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Raw mushrooms do not feed you. They must be cooked." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Raw mushrooms do not feed you. They must be cooked." }));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_fire(cell, 0);
+        let roasted = world.step(&[intent("roast", near, Attempt::Cook)]);
+        assert_eq!(
+            roasted.results[0].message,
+            "You cook the mushroom over the fire."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You cook the mushroom over the fire."
+                && event.text != "Near cooks the mushroom over the fire."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near cooks the mushroom over the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near cooks the mushroom over the fire." }));
+        let arms = world.arms_line(near);
+        assert!(arms.contains("a cooked mushroom"), "{arms}");
+        assert!(!arms.contains("dry mushroom"), "{arms}");
+        let carrying = world.observe(near).unwrap().self_info.carrying;
+        assert!(carrying.iter().any(|item| {
+            item.material == "mushroom" && item.condition == "cooked" && item.count == 1
+        }));
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Mushroom))]);
+        assert!(
+            eaten.results[0]
+                .message
+                .starts_with("You eat the cooked mushroom."),
+            "{}",
+            eaten.results[0].message
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You eat the cooked mushroom."
+                && event.text != "Near eats the cooked mushroom."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near eats the cooked mushroom."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near eats the cooked mushroom." }));
     }
 }
 

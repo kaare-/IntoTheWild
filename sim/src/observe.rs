@@ -5332,24 +5332,16 @@ impl World {
                 })
                 .collect();
             bits.join(", ")
-        } else if item.material == "mushroom" {
-            let ids = self.loose_ids(actor_id, Material::Mushroom);
-            let cooked = ids
-                .iter()
-                .filter(|id| self.item(**id).is_some_and(|mushroom| mushroom.cooked))
-                .count() as u32;
-            let raw = ids.len() as u32 - cooked;
-            if cooked > 0 && raw == 0 {
-                if cooked == 1 {
-                    "a cooked mushroom".into()
-                } else {
-                    format!("{} cooked mushrooms", count_word(cooked))
-                }
-            } else if item.count == 1 {
-                format!("a {} mushroom", item.condition)
+        } else if item.material == "mushroom" && item.condition == "cooked" {
+            if item.count == 1 {
+                "a cooked mushroom".into()
             } else {
-                format!("{} {} mushrooms", count_word(item.count), item.condition)
+                format!("{} cooked mushrooms", count_word(item.count))
             }
+        } else if item.material == "mushroom" && item.count == 1 {
+            format!("a {} mushroom", item.condition)
+        } else if item.material == "mushroom" {
+            format!("{} {} mushrooms", count_word(item.count), item.condition)
         } else if item.material == "pale berry" {
             let ids = self.loose_ids(actor_id, Material::PaleBerry);
             let cooked = ids
@@ -11177,6 +11169,19 @@ impl World {
                     group.1 += 1;
                 } else {
                     groups.push((Material::Torch, 1, item.moisture, Some(word)));
+                }
+                continue;
+            }
+            if item.material == Material::Mushroom {
+                let word = item.cooked.then_some("cooked");
+                if let Some(group) = groups
+                    .iter_mut()
+                    .find(|(material, _, _, flag)| *material == Material::Mushroom && *flag == word)
+                {
+                    group.1 += 1;
+                    group.2 = group.2.max(item.moisture);
+                } else {
+                    groups.push((Material::Mushroom, 1, item.moisture, word));
                 }
                 continue;
             }
