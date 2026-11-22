@@ -13701,9 +13701,15 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
         assert!(got.results[0].success, "{}", got.results[0].message);
         assert!(got.results[1].success, "{}", got.results[1].message);
     }
+    let filled = world.step(&[
+        cmd("pot", near, Attempt::Gather(Material::Pot)),
+        cmd("bark", far, Attempt::Gather(Material::Bark)),
+    ]);
+    assert!(filled.results[0].success, "{}", filled.results[0].message);
+    assert!(filled.results[1].success, "{}", filled.results[1].message);
     let berry = world.step(&[
         cmd("berries", near, Attempt::Gather(Material::Berry)),
-        cmd("bark", far, Attempt::Gather(Material::Bark)),
+        cmd("ochre", far, Attempt::Gather(Material::Ochre)),
     ]);
     assert!(berry.results[0].success, "{}", berry.results[0].message);
     assert!(berry.results[1].success, "{}", berry.results[1].message);
@@ -13776,6 +13782,8 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     assert!(branch.results[0].success, "{}", branch.results[0].message);
     let pot = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
     assert!(pot.results[0].success, "{}", pot.results[0].message);
+    let extra = world.step(&[cmd("ochre", near, Attempt::Gather(Material::Ochre))]);
+    assert!(extra.results[0].success, "{}", extra.results[0].message);
     for (id, dir) in [
         ("w1", Dir::West),
         ("w2", Dir::West),
@@ -13915,6 +13923,8 @@ fn full_arms_name_drop_and_the_refusal_stays_with_that_person() {
     world.step(&[cmd("east", near, Attempt::Move(Dir::East))]);
     world.step(&[cmd("north", near, Attempt::Move(Dir::North))]);
     assert_eq!(world.actor_cell(near), Some((6, 1)));
+    let fifth = world.step(&[cmd("fifth", near, Attempt::Gather(Material::Branch))]);
+    assert!(fifth.results[0].success, "{}", fifth.results[0].message);
     let sentence = "Your arms are full. Drop something first.";
     let gather = world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
     assert_eq!(gather.results[0].message, sentence);

@@ -233,7 +233,9 @@ smear_at = 0.50
 mud_fade = 0.04
 mud_wash = 0.20
 mud_sun = 0.25
-carry_slots = 4
+# Five things. Charcoal, ore, tinder, and one tool fit, and one more still fits.
+# A worn cloak still counts. The next gather is still the drop hint.
+carry_slots = 5
 sight = 2
 
 [forces]

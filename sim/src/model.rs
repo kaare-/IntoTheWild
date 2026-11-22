@@ -18437,3 +18437,63 @@ mod gather_step {
         assert_eq!(cell_xy(world.actor(near).unwrap().cell), (5, 1));
     }
 }
+
+#[cfg(test)]
+mod arms {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn five_slots_hold_charcoal_ore_tinder_and_a_tool() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        assert_eq!(world.tuning.carry_slots, 5);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        for material in [
+            Material::Charcoal,
+            Material::IronOre,
+            Material::Bark,
+            Material::Stone,
+        ] {
+            world.mint_item(material, 0, cell, Some(near), Role::Loose);
+        }
+        assert_eq!(world.carry_count(near), 4);
+        world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        let fifth = world.step(&[intent("fifth", near, Attempt::Gather(Material::Branch))]);
+        assert_eq!(fifth.results[0].message, "You gather a branch.");
+        assert_eq!(world.carry_count(near), 5);
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("charcoal"), "{arms}");
+        assert!(arms.contains("iron ore"), "{arms}");
+        assert!(arms.contains("bark"), "{arms}");
+        assert!(arms.contains("stone"), "{arms}");
+        world.mint_item(Material::Berry, 0, cell, None, Role::Loose);
+        let full = world.step(&[intent("full", near, Attempt::Gather(Material::Berry))]);
+        let sentence = "Your arms are full. Drop something first.";
+        assert_eq!(full.results[0].message, sentence);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == sentence));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != sentence));
+        }
+        assert_eq!(world.carry_count(near), 5);
+    }
+}
