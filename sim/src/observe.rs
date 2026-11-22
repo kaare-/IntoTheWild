@@ -9361,6 +9361,7 @@ impl World {
                     && self.thatch_for_these_eyes(viewer, event).is_none()
                     && self.knap_for_these_eyes(viewer, event).is_none()
                     && self.eat_for_these_eyes(viewer, event).is_none()
+                    && self.cook_reply_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -9569,6 +9570,25 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "eat", rest))
+    }
+
+    /// Food cooked over a fire. The cook already has the reply, so the event
+    /// list does not repeat it. Someone who can see keeps the third person.
+    fn cook_reply_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} cooks "))?;
+        if rest.ends_with(" over the fire.") {
+            Some(event.text.clone())
+        } else {
+            None
+        }
     }
 
     /// Raw meat held over the fire, filled for the person who cooked it.

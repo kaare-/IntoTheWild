@@ -5438,14 +5438,10 @@ mod eggs {
             "You cook the eggs over the fire."
         );
         let cooked_look = world.observe(near).unwrap();
-        assert!(cooked_look
-            .events
-            .iter()
-            .any(|event| event.text == "You cook the eggs over the fire."));
-        assert!(cooked_look
-            .events
-            .iter()
-            .all(|event| !event.text.starts_with("Near cooks")));
+        assert!(cooked_look.events.iter().all(|event| {
+            event.text != "You cook the eggs over the fire."
+                && !event.text.starts_with("Near cooks")
+        }));
         assert!(
             cooked_look.text.contains("cooked eggs"),
             "{}",

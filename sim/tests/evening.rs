@@ -506,10 +506,11 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     world.step(&[cmd("meal", sera, Attempt::Cook)]);
     let eased = world.observe(sera).unwrap();
     assert_eq!(eased.self_info.hunger, "not hungry");
-    assert!(eased
-        .events
-        .iter()
-        .any(|event| event.text.contains("cooks a handful of berries")));
+    assert!(eased.events.iter().all(|event| {
+        !event.text.contains("Sera cooks a handful of berries")
+            && event.text != "You cook a handful of berries. You are not hungry."
+            && !event.text.contains("You cook a handful of berries")
+    }));
     assert_eq!(
         world.material_tally(Material::Berry),
         5,
@@ -3491,10 +3492,9 @@ fn sweet_berries_give_energy_and_the_other_food_must_be_cooked() {
     let hunger_before = world.observe(nils).unwrap().self_info.hunger.clone();
     world.step(&[cmd("meal", nils, Attempt::Cook)]);
     let cooked = world.observe(nils).unwrap();
-    assert!(cooked
-        .events
-        .iter()
-        .any(|event| event.text == "You cook the mushroom over the fire."));
+    assert!(cooked.events.iter().all(|event| {
+        event.text != "You cook the mushroom over the fire." && !event.text.contains("Nils cooks")
+    }));
     assert_eq!(cooked.self_info.hunger, hunger_before);
     assert_eq!(world.material_tally(Material::Mushroom), 2);
     assert!(world
@@ -3625,10 +3625,10 @@ fn pale_berries_do_not_feed_until_they_are_cooked() {
         "You cook the pale berries over the fire."
     );
     let cooked_look = world.observe(near).unwrap();
-    assert!(cooked_look
-        .events
-        .iter()
-        .any(|event| event.text == "You cook the pale berries over the fire."));
+    assert!(cooked_look.events.iter().all(|event| {
+        event.text != "You cook the pale berries over the fire."
+            && !event.text.contains("Near cooks")
+    }));
     assert!(cooked_look
         .events
         .iter()
@@ -10130,7 +10130,7 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("cook the raw meat"))
         .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+    assert!(yours.is_empty(), "{yours:?}");
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
