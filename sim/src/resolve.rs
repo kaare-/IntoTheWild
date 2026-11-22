@@ -147,6 +147,8 @@ impl World {
         let mut flute_blows = Vec::new();
         let mut drum_stretches = Vec::new();
         let mut drum_beats = Vec::new();
+        let mut stick_carves = Vec::new();
+        let mut stick_beats = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smoke_fish = Vec::new();
@@ -203,6 +205,8 @@ impl World {
                         && message == "You have no hide strips or willow cordage to set a snare.";
                     let ice_refusal = matches!(intent.attempt, Attempt::BreakIce);
                     let sinew_refusal = matches!(intent.attempt, Attempt::PullSinew);
+                    let sticks_refusal =
+                        matches!(intent.attempt, Attempt::CarveSticks | Attempt::BeatSticks);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -211,7 +215,8 @@ impl World {
                             && !light_refusal
                             && !snare_line_refusal
                             && !ice_refusal
-                            && !sinew_refusal;
+                            && !sinew_refusal
+                            && !sticks_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -302,6 +307,8 @@ impl World {
                         Attempt::BlowFlute => flute_blows.push(intent),
                         Attempt::StretchDrum => drum_stretches.push(intent),
                         Attempt::BeatDrum => drum_beats.push(intent),
+                        Attempt::CarveSticks => stick_carves.push(intent),
+                        Attempt::BeatSticks => stick_beats.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeFish => smoke_fish.push(intent),
@@ -474,6 +481,8 @@ impl World {
         self.apply_flute_blows(flute_blows, &mut results);
         self.apply_drum_stretches(drum_stretches, &mut results);
         self.apply_drum_beats(drum_beats, &mut results);
+        self.apply_stick_carves(stick_carves, &mut results);
+        self.apply_stick_beats(stick_beats, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smoke_fish(smoke_fish, &mut results);
@@ -1096,6 +1105,36 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Drum).is_empty() {
                     Err("You are not carrying a drum.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarveSticks => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.sticks_tool_rest(actor.id).is_none() {
+                    Err("You need a flint flake or an iron knife to carve rhythm sticks.".into())
+                } else if let Some(miss) = self.sticks_branch_miss(actor.id) {
+                    Err(miss.into())
+                } else if self.sticks_arms_full(actor.id) {
+                    Err(ARMS_FULL.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::BeatSticks => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Sticks).is_empty() {
+                    Err("You are not carrying rhythm sticks.".into())
                 } else {
                     Ok(true)
                 }
@@ -9592,6 +9631,169 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "sew", &rest),
+                results,
+            );
+        }
+    }
+
+    /// A flint flake or an iron knife. The tool stays. The rest names it.
+    fn sticks_tool_rest(&self, actor: ActorId) -> Option<&'static str> {
+        let cell = self.bow_cell(actor);
+        let knife = !self.loose_ids(actor, Material::Knife).is_empty()
+            || !self.ground_ids(cell, Material::Knife).is_empty();
+        let flake = !self.loose_ids(actor, Material::Flake).is_empty()
+            || !self.ground_ids(cell, Material::Flake).is_empty();
+        if knife {
+            Some("two dry branches into rhythm sticks with the iron knife.")
+        } else if flake {
+            Some("two dry branches into rhythm sticks with the flint flake.")
+        } else {
+            None
+        }
+    }
+
+    /// Two dry branches, from the arms and then the ground.
+    fn rhythm_branch_ids(&self, actor: ActorId) -> Vec<ItemId> {
+        let mut ids = self.dry_loose_ids(actor, Material::Branch);
+        if let Some(person) = self.actor(actor) {
+            for id in self.ground_ids(person.cell, Material::Branch) {
+                if ids.len() >= 2 {
+                    break;
+                }
+                if self.item(id).is_some_and(|item| self.is_dry(item.moisture))
+                    && !ids.contains(&id)
+                {
+                    ids.push(id);
+                }
+            }
+        }
+        ids.truncate(2);
+        ids
+    }
+
+    /// A damp branch is named before a short count. None at all asks for two.
+    fn sticks_branch_miss(&self, actor: ActorId) -> Option<&'static str> {
+        if self.rhythm_branch_ids(actor).len() >= 2 {
+            return None;
+        }
+        let damp = self
+            .loose_ids(actor, Material::Branch)
+            .into_iter()
+            .any(|id| {
+                self.item(id)
+                    .is_some_and(|item| !self.is_dry(item.moisture))
+            })
+            || self.actor(actor).is_some_and(|person| {
+                self.ground_ids(person.cell, Material::Branch)
+                    .into_iter()
+                    .any(|id| {
+                        self.item(id)
+                            .is_some_and(|item| !self.is_dry(item.moisture))
+                    })
+            });
+        if damp {
+            Some("The branch is not dry.")
+        } else {
+            Some("You need two dry branches to carve rhythm sticks.")
+        }
+    }
+
+    /// Both branches on the ground need a free hand. A carried branch frees one.
+    fn sticks_arms_full(&self, actor: ActorId) -> bool {
+        let ids = self.rhythm_branch_ids(actor);
+        if ids.len() < 2 {
+            return false;
+        }
+        let carried = ids.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|item| item.carrier == Some(actor))
+        });
+        !carried && self.carry_count(actor) >= self.tuning.carry_slots
+    }
+
+    fn apply_stick_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(rest) = self.sticks_tool_rest(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a flint flake or an iron knife to carve rhythm sticks.",
+                    results,
+                );
+                continue;
+            };
+            if let Some(miss) = self.sticks_branch_miss(actor.id) {
+                self.finish(intent.command_id, actor.id, false, miss, results);
+                continue;
+            }
+            if self.sticks_arms_full(actor.id) {
+                self.finish(intent.command_id, actor.id, false, ARMS_FULL, results);
+                continue;
+            }
+            let branches = self.rhythm_branch_ids(actor.id);
+            for id in &branches {
+                self.items.remove(id);
+            }
+            let id = self.mint_item(Material::Sticks, 0, actor.cell, Some(actor.id), Role::Loose);
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_stick_beats(&mut self, beats: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in beats {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Sticks).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying rhythm sticks.",
+                    results,
+                );
+                continue;
+            }
+            self.sticks = Some(crate::model::WhistleSound {
+                cell: actor.cell,
+                until: self.time.saturating_add(1),
+            });
+            let name = self.name_of(actor.id);
+            let rest = "the rhythm sticks.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "click", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "click", rest),
                 results,
             );
         }

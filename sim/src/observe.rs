@@ -226,6 +226,7 @@ impl World {
             ExamineTarget::Fluff => self.examine_fluff(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
             ExamineTarget::Sinew => self.examine_sinew(actor_id),
+            ExamineTarget::Sticks => self.examine_sticks(actor_id),
             ExamineTarget::Cattail => self.examine_cattail(actor_id),
             ExamineTarget::BarkCup => self.examine_bark_cup(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
@@ -489,6 +490,9 @@ impl World {
             }
             if let Some(drum) = self.seen_drum(actor_id) {
                 lines.push(drum);
+            }
+            if let Some(sticks) = self.seen_sticks(actor_id) {
+                lines.push(sticks);
             }
         }
         lines.push("Around you:".into());
@@ -1687,6 +1691,9 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Sinew).is_empty() {
             parts.push("Sinew lies here. It is cordage.".into());
         }
+        if !self.ground_ids(actor.cell, Material::Sticks).is_empty() {
+            parts.push("A pair of rhythm sticks lies here.".into());
+        }
         let bows_here = self.ground_ids(actor.cell, Material::Bow);
         if !bows_here.is_empty() {
             let willow = bows_here
@@ -2059,6 +2066,23 @@ impl World {
         Some(format!(
             "You hear a drum to the {way}. Someone is beating a drum as a signal."
         ))
+    }
+
+    /// Rhythm sticks just clicked, one cell past sight. Someone who can see
+    /// the person already has the click. It is not a drum signal.
+    fn seen_sticks(&self, viewer: ActorId) -> Option<String> {
+        let sound = self.sticks?;
+        if self.time > sound.until {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let distance = chebyshev(origin, sound.cell);
+        let near = self.tuning.sight.saturating_add(1);
+        if distance != near {
+            return None;
+        }
+        let way = self.relative(origin, sound.cell);
+        Some(format!("You hear sticks click to the {way}."))
     }
 
     /// Smoke from a fire past sight, still inside the smoke range.
@@ -3801,6 +3825,58 @@ impl World {
         }
     }
 
+    fn examine_sticks(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.ground_ids(cell, Material::Sticks).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A pair of rhythm sticks lies {place}. They click when beaten. They are not a drum."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} pairs of rhythm sticks lie {place}. They click when beaten. They are not a drum.",
+                    count_word(count)
+                ));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Sticks).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A pair of rhythm sticks is carried by {who}, {cover}. They click when beaten. They are not a drum."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} pairs of rhythm sticks are carried by {who}, {cover}. They click when beaten. They are not a drum.",
+                    count_word(count)
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no rhythm sticks from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// A pull of sinew. The person who pulled it already has the reply.
     fn sinew_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -5101,6 +5177,10 @@ impl World {
             "a drum".into()
         } else if item.material == "drum" {
             format!("{} drums", count_word(item.count))
+        } else if item.material == "sticks" && item.count == 1 {
+            "a pair of rhythm sticks".into()
+        } else if item.material == "sticks" {
+            format!("{} pairs of rhythm sticks", count_word(item.count))
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -9970,6 +10050,7 @@ impl World {
                 Material::Whistle => "bone whistle",
                 Material::Flute => "reed flute",
                 Material::Drum => "drum",
+                Material::Sticks => "rhythm sticks",
                 Material::Sinew => "sinew",
             };
             format!("You see no {name} from here.")
@@ -11005,6 +11086,7 @@ impl World {
                     && self.carve_for_these_eyes(viewer, event).is_none()
                     && self.blow_for_these_eyes(viewer, event).is_none()
                     && self.drum_for_these_eyes(viewer, event).is_none()
+                    && self.sticks_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.scrape_for_these_eyes(viewer, event).is_none()
                     && self.sinew_for_these_eyes(viewer, event).is_none()
@@ -12914,6 +12996,8 @@ impl World {
             && rest != "a bone into a bone whistle with the flint flake."
             && rest != "a bundle of reeds into a reed flute with the iron knife."
             && rest != "a bundle of reeds into a reed flute with the flint flake."
+            && rest != "two dry branches into rhythm sticks with the iron knife."
+            && rest != "two dry branches into rhythm sticks with the flint flake."
         {
             return None;
         }
@@ -12947,6 +13031,23 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} sews "))?;
         if rest.contains("over a hoop of dry branch") {
             Some(format!("You sew {rest}"))
+        } else {
+            None
+        }
+    }
+
+    /// The person who carved or clicked the rhythm sticks already has the reply.
+    fn sticks_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} clicks the rhythm sticks.") {
+            Some("You click the rhythm sticks.".into())
         } else {
             None
         }
@@ -15260,6 +15361,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Drum, false) => "drums",
         (Material::Sinew, true) => "length of sinew",
         (Material::Sinew, false) => "lengths of sinew",
+        (Material::Sticks, true) => "pair of rhythm sticks",
+        (Material::Sticks, false) => "pairs of rhythm sticks",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

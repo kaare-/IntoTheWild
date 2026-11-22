@@ -169,6 +169,10 @@ pub enum Material {
     /// It is not willow, and it is not nettle. A snare or a drum can spend it
     /// when hide strips, willow, and nettle are not at hand.
     Sinew,
+    /// A pair of rhythm sticks carved from two dry branches. Beaten, the
+    /// click is heard in sight and one cell past sight. It is not a drum
+    /// signal, and it does not startle game.
+    Sticks,
 }
 
 impl Material {
@@ -234,6 +238,7 @@ impl Material {
             Material::Flute => "flute",
             Material::Drum => "drum",
             Material::Sinew => "sinew",
+            Material::Sticks => "sticks",
         }
     }
 
@@ -299,6 +304,7 @@ impl Material {
             Material::Flute => "reed flute",
             Material::Drum => "drum",
             Material::Sinew => "length of sinew",
+            Material::Sticks => "pair of rhythm sticks",
         }
     }
 
@@ -448,6 +454,8 @@ pub enum ExamineTarget {
     Fluff,
     /// Sinew pulled from a carcass or from raw meat. It is not willow cordage.
     Sinew,
+    /// A pair of rhythm sticks. They are not a drum.
+    Sticks,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -590,6 +598,12 @@ pub enum Attempt {
     /// Beat the drum in the arms. Heard one cell farther than the bone whistle.
     /// The hare does not bolt. A deer within hearing lifts its head.
     BeatDrum,
+    /// Two dry branches, with a flint flake or an iron knife, into a pair of
+    /// rhythm sticks. The tool is not used up.
+    CarveSticks,
+    /// Beat the rhythm sticks in the arms. Heard in sight, and one cell past
+    /// sight. It is not a drum signal. Game is not startled.
+    BeatSticks,
     /// A stone, a bone, or an iron knife opens a hole in ice on the still.
     /// The tool is not used up. A baited bone hook can fish through the hole.
     BreakIce,
@@ -687,6 +701,8 @@ impl Attempt {
                 | Attempt::BlowFlute
                 | Attempt::StretchDrum
                 | Attempt::BeatDrum
+                | Attempt::CarveSticks
+                | Attempt::BeatSticks
                 | Attempt::BreakIce
                 | Attempt::PullSinew
         )
@@ -1388,6 +1404,9 @@ pub struct World {
     /// A drum just beaten. One cell farther than the whistle. Not a bolt.
     #[serde(default)]
     pub(crate) drum: Option<WhistleSound>,
+    /// Rhythm sticks just clicked. One cell past sight, and not a signal.
+    #[serde(default)]
+    pub(crate) sticks: Option<WhistleSound>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1650,6 +1669,7 @@ impl World {
             whistle: None,
             flute: None,
             drum: None,
+            sticks: None,
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -24768,5 +24788,287 @@ mod sinew {
             |event| event.text == "Near sews a deer hide over a hoop of dry branch with sinew."
         ));
         let _ = cell_id(0, 0);
+    }
+}
+
+#[cfg(test)]
+mod sticks {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn quiet(world: &World, people: &[u32], line: &str) {
+        for person in people {
+            assert!(
+                world
+                    .observe(*person)
+                    .unwrap()
+                    .events
+                    .iter()
+                    .all(|event| event.text != line),
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn rhythm_sticks_click_nearby_and_do_not_startle() {
+        assert_eq!(
+            crate::parse::parse_attempt("carve sticks"),
+            Ok(Attempt::CarveSticks)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("carve rhythm sticks"),
+            Ok(Attempt::CarveSticks)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("beat sticks"),
+            Ok(Attempt::BeatSticks)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("click sticks"),
+            Ok(Attempt::BeatSticks)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("clack sticks"),
+            Ok(Attempt::BeatSticks)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("play sticks"),
+            Ok(Attempt::BeatSticks)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("carve flute"),
+            Ok(Attempt::CarveFlute)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("beat drum"),
+            Ok(Attempt::BeatDrum)
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("play drum"),
+            Ok(Attempt::BeatDrum)
+        );
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 4).unwrap();
+        let close = world.spawn_at("Close", "c", 3, 4).unwrap();
+        let far = world.spawn_at("Far", "f", 4, 4).unwrap();
+        let past = world.spawn_at("Past", "p", 5, 0).unwrap();
+        let people = [near, seen, close, far, past];
+        let cell = world.actor(near).unwrap().cell;
+
+        let bare = world.step(&[intent("carve", near, Attempt::CarveSticks)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You need a flint flake or an iron knife to carve rhythm sticks."
+        );
+        quiet(&world, &people, bare.results[0].message.as_str());
+
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let none = world.step(&[intent("none", near, Attempt::CarveSticks)]);
+        assert_eq!(
+            none.results[0].message,
+            "You need two dry branches to carve rhythm sticks."
+        );
+        quiet(&world, &people, none.results[0].message.as_str());
+
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let one = world.step(&[intent("one", near, Attempt::CarveSticks)]);
+        assert_eq!(
+            one.results[0].message,
+            "You need two dry branches to carve rhythm sticks."
+        );
+        quiet(&world, &people, one.results[0].message.as_str());
+
+        let damp = world.mint_item(
+            Material::Branch,
+            world.tuning.damp_at,
+            cell,
+            Some(near),
+            Role::Loose,
+        );
+        let wet = world.step(&[intent("wet", near, Attempt::CarveSticks)]);
+        assert_eq!(wet.results[0].message, "The branch is not dry.");
+        quiet(&world, &people, "The branch is not dry.");
+        world.items.remove(&damp);
+
+        let empty = world.step(&[intent("beat", near, Attempt::BeatSticks)]);
+        assert_eq!(
+            empty.results[0].message,
+            "You are not carrying rhythm sticks."
+        );
+        quiet(&world, &people, "You are not carrying rhythm sticks.");
+
+        for id in world.loose_ids(near, Material::Branch) {
+            world.items.remove(&id);
+        }
+        while world.carry_count(near) < world.tuning.carry_slots {
+            world.mint_item(Material::Stone, 0, cell, Some(near), Role::Loose);
+        }
+        world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        let full = world.step(&[intent("full", near, Attempt::CarveSticks)]);
+        assert_eq!(
+            full.results[0].message,
+            "Your arms are full. Drop something first."
+        );
+        quiet(&world, &people, "Your arms are full. Drop something first.");
+        for id in world.loose_ids(near, Material::Stone) {
+            world.items.remove(&id);
+        }
+        for id in world.ground_ids(cell, Material::Branch) {
+            world.items.remove(&id);
+        }
+
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let carved = world.step(&[intent("carved", near, Attempt::CarveSticks)]);
+        assert_eq!(
+            carved.results[0].message,
+            "You carve two dry branches into rhythm sticks with the flint flake."
+        );
+        assert!(!carved.results[0].message.contains("Near"));
+        assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
+        assert!(world.loose_ids(near, Material::Branch).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Sticks).len(), 1);
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text.contains("carves two dry branches") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near carves two dry branches into rhythm sticks with the flint flake."
+        }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a pair of rhythm sticks"));
+
+        let looked = world.examine(near, super::ExamineTarget::Sticks);
+        assert!(
+            looked.contains("A pair of rhythm sticks is carried by you"),
+            "{looked}"
+        );
+        assert!(looked.contains("not a drum"), "{looked}");
+
+        for id in world.loose_ids(near, Material::Flake) {
+            world.items.remove(&id);
+        }
+        for id in world.loose_ids(near, Material::Sticks) {
+            world.items.remove(&id);
+        }
+        world.mint_item(Material::Knife, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let knife = world.step(&[intent("knife", near, Attempt::CarveSticks)]);
+        assert_eq!(
+            knife.results[0].message,
+            "You carve two dry branches into rhythm sticks with the iron knife."
+        );
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text.contains("carves two dry branches") }));
+        assert_eq!(world.loose_ids(near, Material::Knife).len(), 1);
+
+        let played = world.step(&[intent("play", near, Attempt::BeatSticks)]);
+        assert_eq!(played.results[0].message, "You click the rhythm sticks.");
+        assert!(!played.results[0].message.contains("Near"));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near clicks the rhythm sticks."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near clicks the rhythm sticks."));
+        let close_look = world.observe(close).unwrap();
+        assert!(
+            close_look
+                .text
+                .contains("You hear sticks click to the west."),
+            "{}",
+            close_look.text
+        );
+        assert!(!close_look
+            .text
+            .contains("Someone is beating a drum as a signal."));
+        assert!(!close_look.events.iter().any(|event| {
+            event.text.contains("You hear sticks click") || event.text.contains("as a signal")
+        }));
+        assert!(!world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("You hear sticks click"));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You hear sticks click"));
+        assert!(!world
+            .observe(far)
+            .unwrap()
+            .text
+            .contains("You hear sticks click"));
+        assert!(!world
+            .observe(past)
+            .unwrap()
+            .text
+            .contains("You hear sticks click"));
+        assert!(!world
+            .observe(far)
+            .unwrap()
+            .text
+            .contains("Someone is beating a drum as a signal."));
+        assert!(!world
+            .observe(past)
+            .unwrap()
+            .text
+            .contains("Someone is beating a drum as a signal."));
+        for person in people {
+            assert!(!world.observe(person).unwrap().events.iter().any(|event| {
+                event.text.contains("lifts its head")
+                    || event.text.contains("bolts")
+                    || event.text.contains("splashes")
+                    || event.text.contains("slips")
+            }));
+        }
+
+        world.step(&[]);
+        assert!(!world
+            .observe(close)
+            .unwrap()
+            .text
+            .contains("You hear sticks click"));
+
+        world.mint_item(
+            Material::Sticks,
+            0,
+            cell_id(5, 0).unwrap(),
+            None,
+            Role::Loose,
+        );
+        assert!(world
+            .observe(past)
+            .unwrap()
+            .text
+            .contains("A pair of rhythm sticks lies here."));
     }
 }

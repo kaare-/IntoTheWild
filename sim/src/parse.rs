@@ -63,6 +63,8 @@ carve flute                  a bundle of reeds, from the arms or on the ground, 
 blow flute                   the reed flute in the arms. play flute is the same reach as the bone whistle. The hare does not bolt, the fox does not slip, and the otter and the beaver do not splash. With no flute, only you hear it
 sew drum                     a hide, a dry branch bent into the hoop, and cordage. stretch drum is the same. The hide may be a deer hide, a hare hide, or another, from the arms or lying here. Hide strips, then willow, then nettle, then sinew. The branch and the cordage are spent. With one of them missing, only you hear which
 beat drum                    the drum in the arms. play drum is the same. Someone who can see you hears the beat. Past sight, a look says which way, one cell farther than the bone whistle, and one cell farther still, and that someone is beating a drum as a signal. It is not birdsong. The hare does not bolt. A deer within hearing lifts its head, and that line is not added to the beat. With no drum, only you hear it
+carve sticks                 two dry branches, from the arms or on the ground, with a flint flake or an iron knife, into a pair of rhythm sticks. The tool is not used up. With no flake or knife, or without two dry branches, only you hear which is missing
+beat sticks                  the rhythm sticks in the arms. click sticks, clack sticks, and play sticks are the same. Someone who can see you hears the click. One cell past sight, a look says which way. It is not a drum signal. The hare does not bolt, and a deer does not lift its head. With no sticks, only you hear it
 make awl                     the same bone awl
 set snare                    hide strips, willow cordage, nettle cordage, or sinew, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, willow before nettle, and nettle before sinew.
 set trap                     the same snare
@@ -526,6 +528,26 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::BeatDrum)
         }
+        "carve" | "make"
+            if rest == "sticks"
+                || rest == "rhythm sticks"
+                || rest == "a pair of rhythm sticks"
+                || rest == "pair of rhythm sticks"
+                || rest == "clappers"
+                || rest == "wooden sticks" =>
+        {
+            Ok(Attempt::CarveSticks)
+        }
+        "beat" | "play" | "click" | "clack"
+            if rest == "sticks"
+                || rest == "the sticks"
+                || rest == "rhythm sticks"
+                || rest == "the rhythm sticks"
+                || rest == "clappers"
+                || rest == "the clappers" =>
+        {
+            Ok(Attempt::BeatSticks)
+        }
         "carve"
             if rest == "hook"
                 || rest == "a hook"
@@ -947,6 +969,11 @@ fn parse_material(text: &str) -> Result<Material, String> {
             Ok(Material::Nettle)
         }
         "sinew" | "sinew cordage" | "length of sinew" | "a length of sinew" => Ok(Material::Sinew),
+        "sticks"
+        | "rhythm sticks"
+        | "pair of rhythm sticks"
+        | "a pair of rhythm sticks"
+        | "clappers" => Ok(Material::Sticks),
         "willow bark" | "strip of willow bark" | "a strip of willow bark" => Ok(Material::WillowBark),
         "willow"
         | "willow cordage"
@@ -1053,6 +1080,12 @@ fn parse_target(text: &str) -> ExamineTarget {
         | "beaver cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" => ExamineTarget::Cord,
         "sinew" | "sinew cordage" | "length of sinew" | "a length of sinew" => ExamineTarget::Sinew,
+        "sticks"
+        | "rhythm sticks"
+        | "the rhythm sticks"
+        | "pair of rhythm sticks"
+        | "a pair of rhythm sticks"
+        | "clappers" => ExamineTarget::Sticks,
         "nettle" | "nettles" | "nettle cordage" => ExamineTarget::Nettle,
         "willow bark" | "strip of willow bark" => ExamineTarget::WillowBark,
         "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,
