@@ -69,6 +69,8 @@ impl World {
         let mut brews = Vec::new();
         let mut pine_teas = Vec::new();
         let mut lights = Vec::new();
+        let mut drill_fires = Vec::new();
+        let mut drill_carves = Vec::new();
         let mut cooks = Vec::new();
         let mut eats = Vec::new();
         let mut smears = Vec::new();
@@ -196,6 +198,8 @@ impl World {
                         Attempt::Brew => brews.push(intent),
                         Attempt::SteepPine => pine_teas.push(intent),
                         Attempt::Light => lights.push(intent),
+                        Attempt::DrillFire => drill_fires.push(intent),
+                        Attempt::CarveDrill => drill_carves.push(intent),
                         Attempt::Cook => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
@@ -416,6 +420,8 @@ impl World {
         self.apply_bows(bows, &mut results);
         self.apply_dry_clothes(clothes, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
+        self.apply_drill_fires(drill_fires, &start_cells, &mut results);
+        self.apply_drill_carves(drill_carves, &mut results);
         self.apply_cooks(cooks, &mut results);
         self.apply_eats(eats, &mut results);
         self.apply_smears(smears, &mut results);
@@ -1642,6 +1648,32 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Mud).is_empty() {
                     Err("You have no mud to smear.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::CarveDrill => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(message) = self.drill_refusal(actor.id) {
+                    Err(message.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::DrillFire => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(message) = self.drill_fire_refusal(actor.id) {
+                    Err(message.into())
                 } else {
                     Ok(true)
                 }
@@ -11095,6 +11127,246 @@ impl World {
             Some("You need a dry branch.")
         } else {
             Some("You need hide strips or willow cordage.")
+        }
+    }
+
+    /// Two dry branches for a bow drill. Arms, then loose wood on this ground, then the pile.
+    fn drill_wood(&self, actor: crate::model::ActorId) -> (Vec<crate::model::ItemId>, u32) {
+        let mut ids = self.dry_loose_ids(actor, Material::Branch);
+        let cell = self.bow_cell(actor);
+        for id in self.ground_ids(cell, Material::Branch) {
+            if ids.len() >= 2 {
+                break;
+            }
+            if self.item(id).is_some_and(|item| self.is_dry(item.moisture)) && !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        ids.truncate(2);
+        let need = 2u32.saturating_sub(ids.len() as u32);
+        let from_pile = need.min(self.dry_pile_count(cell, Material::Branch));
+        (ids, from_pile)
+    }
+
+    fn dry_branches_at_hand(&self, actor: crate::model::ActorId) -> u32 {
+        let cell = self.bow_cell(actor);
+        let loose = self.dry_loose_ids(actor, Material::Branch).len() as u32;
+        let ground = self
+            .ground_ids(cell, Material::Branch)
+            .into_iter()
+            .filter(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+            .count() as u32;
+        loose + ground + self.dry_pile_count(cell, Material::Branch)
+    }
+
+    fn branches_at_hand(&self, actor: crate::model::ActorId) -> u32 {
+        let cell = self.bow_cell(actor);
+        let loose = self.loose_ids(actor, Material::Branch).len() as u32;
+        let ground = self.ground_ids(cell, Material::Branch).len() as u32;
+        loose + ground + self.pile_count(cell, Material::Branch)
+    }
+
+    /// The drill takes a slot. Branches and cordage already in the arms free theirs.
+    fn drill_arms_full(&self, actor: crate::model::ActorId) -> bool {
+        let (ids, _) = self.drill_wood(actor);
+        let Some((cord, _)) = self.bow_line(actor) else {
+            return false;
+        };
+        let mut freed = 0u32;
+        for id in ids.into_iter().chain(std::iter::once(cord)) {
+            if self.item(id).is_some_and(|item| {
+                item.carrier == Some(actor) && !item.in_basket && !item.worn_cloak()
+            }) {
+                freed += 1;
+            }
+        }
+        self.carry_count(actor) + 1 > self.tuning.carry_slots + freed
+    }
+
+    pub(crate) fn drill_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let dry = self.dry_branches_at_hand(actor);
+        let any = self.branches_at_hand(actor);
+        let line = self.bow_line(actor).is_some();
+        if dry >= 2 && line {
+            if self.drill_arms_full(actor) {
+                Some(ARMS_FULL)
+            } else {
+                None
+            }
+        } else if line && any > 0 && dry == 0 {
+            Some("The branch is not dry.")
+        } else if dry < 2 && !line {
+            Some("You need two dry branches and hide strips or willow cordage.")
+        } else if dry < 2 {
+            Some("You need two dry branches, one for the spindle and one for the fireboard.")
+        } else {
+            Some("You need hide strips or willow cordage.")
+        }
+    }
+
+    fn drill_ready_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        if let Some(id) = self.dry_loose_ids(actor, Material::Drill).first().copied() {
+            return Some(id);
+        }
+        self.ground_ids(self.bow_cell(actor), Material::Drill)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|item| self.is_dry(item.moisture))
+            })
+    }
+
+    fn drill_anywhere(&self, actor: crate::model::ActorId) -> bool {
+        !self.loose_ids(actor, Material::Drill).is_empty()
+            || !self
+                .ground_ids(self.bow_cell(actor), Material::Drill)
+                .is_empty()
+    }
+
+    pub(crate) fn drill_fire_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let person = self.actor(actor)?;
+        if self.raining && self.exposure_millis(person.cell) >= 1000 {
+            return Some("The rain puts the drill out before it catches.");
+        }
+        if self.fire_at(person.cell).is_some() {
+            return Some("A fire already burns here.");
+        }
+        if self.drill_ready_id(actor).is_some() {
+            return None;
+        }
+        if self.drill_anywhere(actor) {
+            Some("The bow drill is too damp to catch.")
+        } else {
+            Some("You have no bow drill.")
+        }
+    }
+
+    fn apply_drill_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in carves {
+            if let Some(message) = self.drill_refusal(intent.actor_id) {
+                self.finish(intent.command_id, intent.actor_id, false, message, results);
+                continue;
+            }
+            let (branches, from_pile) = self.drill_wood(intent.actor_id);
+            let Some((cord, kind)) = self.bow_line(intent.actor_id) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need hide strips or willow cordage.",
+                    results,
+                );
+                continue;
+            };
+            if branches.len() as u32 + from_pile < 2 {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need two dry branches, one for the spindle and one for the fireboard.",
+                    results,
+                );
+                continue;
+            }
+            let cell = self.bow_cell(intent.actor_id);
+            for id in &branches {
+                self.items.remove(id);
+            }
+            self.items.remove(&cord);
+            if from_pile > 0 {
+                self.take_from_pile(cell, Material::Branch, from_pile);
+            }
+            let id = self.mint_item(Material::Drill, 0, cell, Some(intent.actor_id), Role::Loose);
+            let name = self.name_of(intent.actor_id);
+            let rest = match kind {
+                Line::Hide => "a bow drill from two dry branches and hide strips.",
+                Line::Willow => "a bow drill from two dry branches and willow cordage.",
+                Line::Nettle => "a bow drill from two dry branches and nettle cordage.",
+            };
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "carve", rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "carve", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_drill_fires(
+        &mut self,
+        fires: Vec<Intent>,
+        start_cells: &BTreeMap<crate::model::ActorId, crate::model::CellId>,
+        results: &mut Vec<CommandResult>,
+    ) {
+        let mut groups: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
+        for intent in fires {
+            let cell = start_cells.get(&intent.actor_id).copied().unwrap_or(0);
+            groups.entry(cell).or_default().push(intent);
+        }
+        for (cell, mut claims) in groups {
+            let subject = format!("{cell}:drill");
+            claims.sort_by(|a, b| {
+                let left = contest_hash(self.seed, self.time, "drill", &subject, a.actor_id);
+                let right = contest_hash(self.seed, self.time, "drill", &subject, b.actor_id);
+                left.cmp(&right).then(a.actor_id.cmp(&b.actor_id))
+            });
+            let mut lit = self.fire_at(cell).is_some();
+            for intent in claims {
+                if lit || self.drill_fire_refusal(intent.actor_id).is_some() {
+                    let message = self
+                        .drill_fire_refusal(intent.actor_id)
+                        .unwrap_or("A fire already burns here.");
+                    self.finish(intent.command_id, intent.actor_id, false, message, results);
+                    continue;
+                }
+                let Some(drill) = self.drill_ready_id(intent.actor_id) else {
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        false,
+                        "You have no bow drill.",
+                        results,
+                    );
+                    continue;
+                };
+                self.items.remove(&drill);
+                let name = self.name_of(intent.actor_id);
+                let rest = "a fire with the bow drill.";
+                let hash = contest_hash(self.seed, self.time, "drill", &subject, intent.actor_id);
+                let event = self.emit(
+                    crate::model::spoken_act(Some(name.as_str()), "light", rest),
+                    Scope::Cell(cell),
+                    vec![intent.actor_id],
+                    vec![cell],
+                    vec![drill],
+                    vec![],
+                    Some(Draw {
+                        tag: "drill".into(),
+                        subject: subject.clone(),
+                        value: hash,
+                    }),
+                );
+                self.mint_fire(cell, event);
+                lit = true;
+                let mut yours = crate::model::spoken_act(None, "light", rest);
+                if self.scare_wolf(Some(intent.actor_id)) {
+                    yours.push_str(" The wolf flees the fire.");
+                }
+                self.finish(intent.command_id, intent.actor_id, true, yours, results);
+            }
         }
     }
 

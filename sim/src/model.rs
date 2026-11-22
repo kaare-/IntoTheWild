@@ -141,6 +141,8 @@ pub enum Material {
     /// A handful from the pine south of the trail. Steeped in hot water, it eases a chill.
     /// It is not mint, and it does not settle a stomach.
     Needle,
+    /// A bow drill. Two dry branches and cordage. It lights a fire without tinder.
+    Drill,
 }
 
 impl Material {
@@ -197,6 +199,7 @@ impl Material {
             Material::Flour => "flour",
             Material::Mint => "mint",
             Material::Needle => "pine needles",
+            Material::Drill => "bow drill",
         }
     }
 
@@ -253,6 +256,7 @@ impl Material {
             Material::Flour => "cattail flour",
             Material::Mint => "handful of mint",
             Material::Needle => "handful of pine needles",
+            Material::Drill => "bow drill",
         }
     }
 
@@ -397,6 +401,7 @@ pub enum ExamineTarget {
     BarkCup,
     Mint,
     Needle,
+    Drill,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -503,6 +508,10 @@ pub enum Attempt {
     /// Steep a handful of pine needles the same way. A chill eases slightly.
     /// A sick stomach does not.
     SteepPine,
+    /// Two dry branches and cordage become a bow drill. The drill is not a hunting bow.
+    CarveDrill,
+    /// The bow drill is the tinder and the fuel. Bark, resin, and charcoal stay where they are.
+    DrillFire,
 }
 
 impl Attempt {
@@ -585,6 +594,8 @@ impl Attempt {
                 | Attempt::SealCanoe
                 | Attempt::SealCup
                 | Attempt::Grind
+                | Attempt::CarveDrill
+                | Attempt::DrillFire
         )
     }
 }
@@ -19377,5 +19388,201 @@ mod pine_tea {
             .events
             .iter()
             .any(|event| { event.text == "Pine needles lie under the pine again." }));
+    }
+}
+
+#[cfg(test)]
+mod bow_drill {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: u32, line: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == line)
+    }
+
+    #[test]
+    fn a_bow_drill_lights_a_fire_without_tinder() {
+        assert!(matches!(
+            crate::parse::parse_attempt("carve drill").unwrap(),
+            Attempt::CarveDrill
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("make bow drill").unwrap(),
+            Attempt::CarveDrill
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("light fire with drill").unwrap(),
+            Attempt::DrillFire
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("drill fire").unwrap(),
+            Attempt::DrillFire
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("light").unwrap(),
+            Attempt::Light
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("light fire").unwrap(),
+            Attempt::Light
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("craft bow").unwrap(),
+            Attempt::CraftBow
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let open = cell_id(4, 3).unwrap();
+        let rock = cell_id(6, 1).unwrap();
+        let bark_before = world.pile_count(rock, Material::Bark);
+        let branches_before = world.pile_count(rock, Material::Branch);
+        assert!(bark_before >= 2);
+        assert!(branches_before >= 2);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+
+        let missing = world.step(&[intent("missing", near, Attempt::CarveDrill)]);
+        assert_eq!(
+            missing.results[0].message,
+            "You need two dry branches and hide strips or willow cordage."
+        );
+        assert!(says(
+            &world,
+            near,
+            "You need two dry branches and hide strips or willow cordage."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "You need two dry branches and hide strips or willow cordage."
+        ));
+        assert!(!says(
+            &world,
+            quiet,
+            "You need two dry branches and hide strips or willow cordage."
+        ));
+
+        let no_drill = world.step(&[intent("nodrill", near, Attempt::DrillFire)]);
+        assert_eq!(no_drill.results[0].message, "You have no bow drill.");
+        assert!(says(&world, near, "You have no bow drill."));
+        assert!(!says(&world, quiet, "You have no bow drill."));
+        assert!(!says(&world, seen, "You have no bow drill."));
+
+        world.mint_item(Material::Branch, 0, open, Some(near), Role::Loose);
+        world.mint_item(Material::Willow, 0, open, Some(near), Role::Loose);
+        let one = world.step(&[intent("one", near, Attempt::CarveDrill)]);
+        assert_eq!(
+            one.results[0].message,
+            "You need two dry branches, one for the spindle and one for the fireboard."
+        );
+        assert!(says(
+            &world,
+            near,
+            "You need two dry branches, one for the spindle and one for the fireboard."
+        ));
+        assert!(!says(
+            &world,
+            quiet,
+            "You need two dry branches, one for the spindle and one for the fireboard."
+        ));
+
+        world.mint_item(Material::Branch, 0, open, Some(near), Role::Loose);
+        let carved = world.step(&[intent("carve", near, Attempt::CarveDrill)]);
+        let yours = "You carve a bow drill from two dry branches and willow cordage.";
+        let theirs = "Near carves a bow drill from two dry branches and willow cordage.";
+        assert_eq!(carved.results[0].message, yours);
+        assert!(!says(&world, near, theirs));
+        assert!(says(&world, seen, theirs));
+        assert!(says(&world, quiet, theirs));
+        assert_eq!(world.loose_ids(near, Material::Drill).len(), 1);
+        let arms = world.observe(near).unwrap().text;
+        assert!(arms.contains("a bow drill"), "{arms}");
+
+        let still_bark = world.step(&[intent("bark", near, Attempt::Light)]);
+        assert_eq!(
+            still_bark.results[0].message,
+            "You need dry loose bark for tinder."
+        );
+        assert!(!says(&world, seen, "You need dry loose bark for tinder."));
+        assert_eq!(world.loose_ids(near, Material::Drill).len(), 1);
+        assert!(world.fire_at(open).is_none());
+
+        let drilled = world.step(&[intent("drill", near, Attempt::DrillFire)]);
+        let lit = "You light a fire with the bow drill.";
+        let heard = "Near lights a fire with the bow drill.";
+        assert_eq!(drilled.results[0].message, lit);
+        assert!(!says(&world, near, heard));
+        assert!(says(&world, seen, heard));
+        assert!(says(&world, quiet, heard));
+        assert!(world.fire_at(open).is_some());
+        assert!(world.loose_ids(near, Material::Drill).is_empty());
+        assert!(world.loose_ids(near, Material::Charcoal).is_empty());
+        assert_eq!(world.pile_count(rock, Material::Bark), bark_before);
+
+        let busy_fire = world.step(&[intent("busy", near, Attempt::DrillFire)]);
+        assert_eq!(busy_fire.results[0].message, "A fire already burns here.");
+        assert!(says(&world, near, "A fire already burns here."));
+        assert!(!says(&world, quiet, "A fire already burns here."));
+
+        let hearth = world.spawn_at("Hearth", "h", 6, 1).unwrap();
+        world.mint_item(Material::Cord, 0, rock, Some(hearth), Role::Loose);
+        let rock_branches = world.pile_count(rock, Material::Branch);
+        assert!(rock_branches >= 2, "{rock_branches}");
+        let at_rock = world.step(&[intent("rock", hearth, Attempt::CarveDrill)]);
+        assert_eq!(
+            at_rock.results[0].message,
+            "You carve a bow drill from two dry branches and hide strips."
+        );
+        assert_eq!(world.pile_count(rock, Material::Branch), rock_branches - 2);
+        assert_eq!(world.pile_count(rock, Material::Bark), bark_before);
+        assert!(says(
+            &world,
+            quiet,
+            "Hearth carves a bow drill from two dry branches and hide strips."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "Hearth carves a bow drill from two dry branches and hide strips."
+        ));
+        assert!(!says(
+            &world,
+            hearth,
+            "Hearth carves a bow drill from two dry branches and hide strips."
+        ));
+
+        let open = cell_id(4, 3).unwrap();
+        let wet = world.spawn_at("Wet", "w", 4, 3).unwrap();
+        world.mint_item(Material::Drill, 0, open, Some(wet), Role::Loose);
+        world.raining = true;
+        let rain = world.step(&[intent("rain", wet, Attempt::DrillFire)]);
+        assert_eq!(
+            rain.results[0].message,
+            "The rain puts the drill out before it catches."
+        );
+        assert!(says(
+            &world,
+            wet,
+            "The rain puts the drill out before it catches."
+        ));
+        assert!(!says(
+            &world,
+            near,
+            "The rain puts the drill out before it catches."
+        ));
+        assert_eq!(world.loose_ids(wet, Material::Drill).len(), 1);
     }
 }

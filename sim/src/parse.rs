@@ -40,6 +40,8 @@ boil                         a pot or a fired bowl, and a fire; unfired clay can
 steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough
 steep|brew pine            a handful of pine needles the same way. A chill eases a little. It does not settle a stomach. gather pine needles takes them from the pine south of the trail
 light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
+carve drill                  two dry branches and cordage into a bow drill. One branch is the spindle, one is the fireboard. Hide strips, then willow, then nettle
+light fire with drill        the bow drill, spent. No bark, no resin, and no charcoal. light fire still wants tinder
 cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
 hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, an otter on its cell or the next, a beaver on its cell or the next, a fox on its cell or the next, or a hare on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, the otter, the beaver, the fox, or the hare comes down. A refusal leaves it. The bow stays.
@@ -307,6 +309,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "shelter" =>
         {
             Ok(Attempt::Thatch)
+        }
+        "craft" | "make" | "carve"
+            if rest == "bow drill"
+                || rest == "a bow drill"
+                || rest == "drill"
+                || rest == "a drill" =>
+        {
+            Ok(Attempt::CarveDrill)
         }
         "craft" | "make" if rest == "bow" || rest == "a bow" => Ok(Attempt::CraftBow),
         "grind"
@@ -600,6 +610,26 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::Remove)
         }
+        "light" | "kindle"
+            if rest == "fire with drill"
+                || rest == "fire with the drill"
+                || rest == "fire with a drill"
+                || rest == "fire with bow drill"
+                || rest == "fire with the bow drill"
+                || rest == "with drill"
+                || rest == "with the drill"
+                || rest == "with a bow drill"
+                || rest == "with the bow drill"
+                || rest == "drill"
+                || rest == "the drill"
+                || rest == "bow drill"
+                || rest == "the bow drill" =>
+        {
+            Ok(Attempt::DrillFire)
+        }
+        "drill" if rest.is_empty() || rest == "fire" || rest == "the fire" => {
+            Ok(Attempt::DrillFire)
+        }
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
@@ -727,6 +757,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "pine needles" | "needles" | "handful of pine needles" | "pine needle" | "pine" => {
             Ok(Material::Needle)
         }
+        "bow drill" | "a bow drill" | "drill" | "a drill" => Ok(Material::Drill),
         "resin"
         | "pine resin"
         | "pitch"
@@ -863,6 +894,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "moss" => ExamineTarget::Moss,
         "mint" | "wild mint" | "handful of mint" => ExamineTarget::Mint,
         "pine needles" | "needles" | "handful of pine needles" | "pine" => ExamineTarget::Needle,
+        "bow drill" | "a bow drill" | "drill" | "a drill" => ExamineTarget::Drill,
         "resin" | "pine resin" | "pitch" | "lump of pitch" | "lump of pine resin" => {
             ExamineTarget::Resin
         }

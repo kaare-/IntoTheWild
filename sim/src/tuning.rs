@@ -800,6 +800,7 @@ impl Tuning {
             Material::Flour => 0,
             Material::Mint => 0,
             Material::Needle => 0,
+            Material::Drill => 0,
         }
     }
 }
