@@ -940,6 +940,8 @@ pub enum Wake {
     NettleReturn(CellId),
     /// Cattails grow in these shallows again.
     CattailReturn(CellId),
+    /// Cattail fluff hangs on this stand again. Not the roots.
+    FluffReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
     /// A lump of ochre lies on this slope cell again.
@@ -1299,6 +1301,10 @@ pub struct World {
     /// When bare shallows have cattails again. Look says the shallows have none until then.
     #[serde(default)]
     pub(crate) cattail_returns_at: BTreeMap<CellId, u64>,
+    /// When the cattails have fluff again. Look says they have none until then.
+    /// Ice holds it, the same as the roots.
+    #[serde(default)]
+    pub(crate) fluff_returns_at: BTreeMap<CellId, u64>,
     /// Slope cells where a flint nodule lies again after it is taken.
     #[serde(default)]
     pub(crate) flint_beds: BTreeSet<CellId>,
@@ -1512,6 +1518,7 @@ impl World {
             nettle_returns_at: BTreeMap::new(),
             cattail_stands: BTreeSet::new(),
             cattail_returns_at: BTreeMap::new(),
+            fluff_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
@@ -2236,6 +2243,23 @@ impl World {
         let at = self.time.saturating_add(self.tuning.cattail_ticks);
         self.cattail_returns_at.insert(cell, at);
         self.schedule(at, Wake::CattailReturn(cell));
+    }
+
+    /// The cattails have no fluff. It returns on the same wait as the roots.
+    /// Ice, or a dug-out stand, holds that wake. A wake that finds fluff
+    /// already there does not add a second handful.
+    pub(crate) fn arm_fluff(&mut self, cell: CellId) {
+        if !self.cattail_stands.contains(&cell) || self.fluff_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Fluff) > 0
+            || !self.ground_ids(cell, Material::Fluff).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.cattail_ticks);
+        self.fluff_returns_at.insert(cell, at);
+        self.schedule(at, Wake::FluffReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -18660,6 +18684,106 @@ mod cattail {
             .iter()
             .all(|event| event.text != "The cattail fluff is too damp to catch."));
         assert!(soaked.fire_at(floor).is_none());
+    }
+
+    #[test]
+    fn gathered_fluff_hangs_again_after_the_roots_wait_and_ice_holds_it() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let stand = super::cell_id(2, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let roots = world.pile_count(stand, Material::Cattail);
+        let gathered = world.step(&[intent("fluff", near, Attempt::Gather(Material::Fluff))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a handful of cattail fluff."
+        );
+        assert_eq!(world.pile_count(stand, Material::Cattail), roots);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The cattails here have no fluff."));
+        let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Fluff))]);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no cattail fluff here to gather."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no cattail fluff here to gather." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no cattail fluff here to gather." }));
+        let ticks = world.tuning.cattail_ticks;
+        // The miss above was one of the wait's ticks. The due tick is still ice.
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The cattails here have no fluff."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Cattail fluff hangs on the cattails again." }));
+        world.step(&[]);
+        let held = world.observe(near).unwrap();
+        assert!(held.text.contains("Ice covers it."), "{}", held.text);
+        assert!(held.text.contains("The cattails here have no fluff."));
+        assert!(held
+            .events
+            .iter()
+            .all(|event| { event.text != "Cattail fluff hangs on the cattails again." }));
+        let thaw = world.tuning.night_at + world.tuning.night_len;
+        while world.time < thaw {
+            world.step(&[]);
+        }
+        world.step(&[]);
+        let grown = "Cattail fluff hangs on the cattails again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text
+                .contains("Cattail fluff hangs on them. It is not the roots."),
+            "{}",
+            back.text
+        );
+        assert!(!back.text.contains("The cattails here have no fluff."));
+        assert!(back.text.contains("The roots can be dug."));
+        assert!(back.events.iter().any(|event| event.text == grown));
+        assert!(back
+            .events
+            .iter()
+            .all(|event| event.text != "Cattails grow again in the shallows."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == grown));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown));
+        assert_eq!(world.pile_count(stand, Material::Cattail), roots);
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Fluff))]);
+        assert_eq!(
+            again.results[0].message,
+            "You gather a handful of cattail fluff."
+        );
     }
 }
 

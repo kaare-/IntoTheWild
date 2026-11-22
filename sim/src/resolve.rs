@@ -2584,6 +2584,9 @@ impl World {
                     if material == Material::Cattail {
                         self.arm_cattail_stand(cell);
                     }
+                    if material == Material::Fluff {
+                        self.arm_fluff(cell);
+                    }
                     if material == Material::Flint {
                         self.arm_flint_bed(cell);
                     }

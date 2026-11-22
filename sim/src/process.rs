@@ -55,6 +55,7 @@ impl World {
                 Wake::WillowBarkReturn(cell) => self.return_willow_bark(cell),
                 Wake::NettleReturn(cell) => self.return_nettle(cell),
                 Wake::CattailReturn(cell) => self.return_cattail(cell),
+                Wake::FluffReturn(cell) => self.return_fluff(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -452,13 +453,61 @@ impl World {
             return;
         }
         self.add_pile(cell, Material::Cattail, 2, 0);
-        if self.pile_count(cell, Material::Fluff) == 0
+        let fluff_back = self.pile_count(cell, Material::Fluff) == 0
             && self.ground_ids(cell, Material::Fluff).is_empty()
-        {
+            && !self.fluff_returns_at.contains_key(&cell);
+        if fluff_back {
             self.add_pile(cell, Material::Fluff, 1, 0);
         }
         self.emit(
             "Cattails grow again in the shallows.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+        if fluff_back {
+            self.emit(
+                "Cattail fluff hangs on the cattails again.",
+                Scope::Cell(cell),
+                vec![],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
+    }
+
+    /// The cattails have waited out the same ticks as the roots. Fluff hangs there again.
+    /// Ice holds it. A bare stand holds it until the cattails are back.
+    /// Someone who cannot see the shallows hears nothing.
+    fn return_fluff(&mut self, cell: CellId) {
+        let Some(at) = self.fluff_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.fluff_returns_at.remove(&cell);
+        let plants = self.pile_count(cell, Material::Cattail) > 0
+            || !self.ground_ids(cell, Material::Cattail).is_empty();
+        if self.still_frozen(cell) || !plants {
+            let next = self.time.saturating_add(1);
+            self.fluff_returns_at.insert(cell, next);
+            self.schedule(next, Wake::FluffReturn(cell));
+            return;
+        }
+        if self.pile_count(cell, Material::Fluff) > 0
+            || !self.ground_ids(cell, Material::Fluff).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Fluff, 1, 0);
+        self.emit(
+            "Cattail fluff hangs on the cattails again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
