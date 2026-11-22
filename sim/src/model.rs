@@ -806,6 +806,9 @@ pub struct Item {
     /// A sealed bark cup keeps a drink. An unsealed one lets the drink soak through.
     #[serde(default)]
     pub pitched: bool,
+    /// A bow drill that has already lit a fire. It stays in the arms, and it will not light another until it is carved anew.
+    #[serde(default)]
+    pub spent: bool,
 }
 
 impl Item {
@@ -1973,6 +1976,7 @@ impl World {
                 hare: false,
                 beaver: false,
                 pitched: false,
+                spent: false,
             },
         );
         if material == Material::Meat || material == Material::Fish {
@@ -19521,16 +19525,50 @@ mod bow_drill {
         assert!(world.fire_at(open).is_none());
 
         let drilled = world.step(&[intent("drill", near, Attempt::DrillFire)]);
-        let lit = "You light a fire with the bow drill.";
-        let heard = "Near lights a fire with the bow drill.";
+        let lit = "You light a fire with the bow drill. The bow drill is spent.";
+        let heard = "Near lights a fire with the bow drill. The bow drill is spent.";
         assert_eq!(drilled.results[0].message, lit);
         assert!(!says(&world, near, heard));
         assert!(says(&world, seen, heard));
         assert!(says(&world, quiet, heard));
         assert!(world.fire_at(open).is_some());
-        assert!(world.loose_ids(near, Material::Drill).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Drill).len(), 1);
+        assert!(world
+            .item(world.loose_ids(near, Material::Drill)[0])
+            .is_some_and(|drill| drill.spent));
+        let spent_arms = world.observe(near).unwrap().text;
+        assert!(spent_arms.contains("a spent bow drill"), "{spent_arms}");
         assert!(world.loose_ids(near, Material::Charcoal).is_empty());
         assert_eq!(world.pile_count(rock, Material::Bark), bark_before);
+
+        let need_branch = world.step(&[intent("anew", near, Attempt::CarveDrill)]);
+        assert_eq!(
+            need_branch.results[0].message,
+            "You need a dry branch to carve the bow drill anew."
+        );
+        assert!(says(
+            &world,
+            near,
+            "You need a dry branch to carve the bow drill anew."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "You need a dry branch to carve the bow drill anew."
+        ));
+
+        world.mint_item(Material::Branch, 0, open, Some(near), Role::Loose);
+        let anew = world.step(&[intent("restore", near, Attempt::CarveDrill)]);
+        let restored = "You carve the spent bow drill anew with one dry branch.";
+        let restored_heard = "Near carves the spent bow drill anew with one dry branch.";
+        assert_eq!(anew.results[0].message, restored);
+        assert!(!says(&world, near, restored_heard));
+        assert!(says(&world, seen, restored_heard));
+        assert!(says(&world, quiet, restored_heard));
+        assert!(world
+            .item(world.loose_ids(near, Material::Drill)[0])
+            .is_some_and(|drill| !drill.spent));
+        assert!(world.loose_ids(near, Material::Branch).is_empty());
 
         let busy_fire = world.step(&[intent("busy", near, Attempt::DrillFire)]);
         assert_eq!(busy_fire.results[0].message, "A fire already burns here.");
@@ -19563,6 +19601,39 @@ mod bow_drill {
             hearth,
             "Hearth carves a bow drill from two dry branches and hide strips."
         ));
+
+        let hearth_lit = world.step(&[intent("hearth", hearth, Attempt::DrillFire)]);
+        assert_eq!(
+            hearth_lit.results[0].message,
+            "You light a fire with the bow drill. The bow drill is spent."
+        );
+        assert!(says(
+            &world,
+            quiet,
+            "Hearth lights a fire with the bow drill. The bow drill is spent."
+        ));
+        assert!(!says(
+            &world,
+            hearth,
+            "Hearth lights a fire with the bow drill. The bow drill is spent."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "Hearth lights a fire with the bow drill. The bow drill is spent."
+        ));
+        for _ in 0..20 {
+            if world.fire_at(rock).is_none() {
+                break;
+            }
+            world.step(&[]);
+        }
+        assert!(world.fire_at(rock).is_none());
+        let spent_fire = world.step(&[intent("spent", hearth, Attempt::DrillFire)]);
+        assert_eq!(spent_fire.results[0].message, "The bow drill is spent.");
+        assert!(says(&world, hearth, "The bow drill is spent."));
+        assert!(!says(&world, quiet, "The bow drill is spent."));
+        assert!(!says(&world, seen, "The bow drill is spent."));
 
         let open = cell_id(4, 3).unwrap();
         let wet = world.spawn_at("Wet", "w", 4, 3).unwrap();

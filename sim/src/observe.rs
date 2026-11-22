@@ -1486,8 +1486,16 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Paddle).is_empty() {
             parts.push("A wooden paddle lies here.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Drill).is_empty() {
+        let drills_here = self.ground_ids(actor.cell, Material::Drill);
+        let spent_here = drills_here
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|drill| drill.spent))
+            .count();
+        if drills_here.len() > spent_here {
             parts.push("A bow drill lies here.".into());
+        }
+        if spent_here > 0 {
+            parts.push("A spent bow drill lies here.".into());
         }
         if self.snares.contains_key(&actor.cell) {
             if self.snare_nettle.contains(&actor.cell) {
@@ -3357,26 +3365,52 @@ impl World {
             } else {
                 format!("to the {}", self.relative(origin, cell))
             };
-            lines.push(format!(
-                "A bow drill lies {place}. It can light a fire without tinder."
-            ));
+            let ids = self.ground_ids(cell, Material::Drill);
+            let spent = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|drill| drill.spent))
+                .count();
+            if ids.len() > spent {
+                lines.push(format!(
+                    "A bow drill lies {place}. It can light a fire without tinder."
+                ));
+            }
+            if spent > 0 {
+                lines.push(format!("A spent bow drill lies {place}."));
+            }
         }
         for actor in self.actors.values() {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            if self.loose_ids(actor.id, Material::Drill).is_empty() {
+            let ids = self.loose_ids(actor.id, Material::Drill);
+            if ids.is_empty() {
                 continue;
             }
+            let spent = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|drill| drill.spent))
+                .count();
+            let fresh = ids.len() - spent;
             if actor.id == viewer {
-                lines.push(
-                    "A bow drill is in your arms. It can light a fire without tinder.".into(),
-                );
+                if fresh > 0 {
+                    lines.push(
+                        "A bow drill is in your arms. It can light a fire without tinder.".into(),
+                    );
+                }
+                if spent > 0 {
+                    lines.push("A spent bow drill is in your arms.".into());
+                }
             } else {
-                lines.push(format!(
-                    "A bow drill is in {}'s arms. It can light a fire without tinder.",
-                    actor.name
-                ));
+                if fresh > 0 {
+                    lines.push(format!(
+                        "A bow drill is in {}'s arms. It can light a fire without tinder.",
+                        actor.name
+                    ));
+                }
+                if spent > 0 {
+                    lines.push(format!("A spent bow drill is in {}'s arms.", actor.name));
+                }
             }
         }
         if lines.is_empty() {
@@ -4313,10 +4347,24 @@ impl World {
             "a bow".into()
         } else if item.material == "bow" {
             format!("{} bows", count_word(item.count))
-        } else if item.material == "bow drill" && item.count == 1 {
-            "a bow drill".into()
         } else if item.material == "bow drill" {
-            format!("{} bow drills", count_word(item.count))
+            let ids = self.loose_ids(actor_id, Material::Drill);
+            let spent = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|drill| drill.spent))
+                .count();
+            let fresh = ids.len().saturating_sub(spent);
+            if fresh == 0 && spent == 1 {
+                "a spent bow drill".into()
+            } else if fresh == 1 && spent == 0 {
+                "a bow drill".into()
+            } else if fresh == 0 && spent > 1 {
+                format!("{} spent bow drills", count_word(spent as u32))
+            } else if spent == 0 {
+                format!("{} bow drills", count_word(fresh as u32))
+            } else {
+                "a bow drill and a spent bow drill".into()
+            }
         } else if item.material == "paddle" && item.count == 1 {
             "a wooden paddle".into()
         } else if item.material == "paddle" {
@@ -5452,8 +5500,16 @@ impl World {
         if !self.ground_ids(dest, Material::Bow).is_empty() {
             bits.push("a bow".into());
         }
-        if !self.ground_ids(dest, Material::Drill).is_empty() {
+        let drills_there = self.ground_ids(dest, Material::Drill);
+        let spent_there = drills_there
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|drill| drill.spent))
+            .count();
+        if drills_there.len() > spent_there {
             bits.push("a bow drill".into());
+        }
+        if spent_there > 0 {
+            bits.push("a spent bow drill".into());
         }
         if !self.ground_ids(dest, Material::Paddle).is_empty() {
             bits.push("a wooden paddle".into());
@@ -11895,6 +11951,7 @@ impl World {
             && rest != "a bow drill from two dry branches and hide strips."
             && rest != "a bow drill from two dry branches and willow cordage."
             && rest != "a bow drill from two dry branches and nettle cordage."
+            && rest != "the spent bow drill anew with one dry branch."
         {
             return None;
         }
