@@ -1755,7 +1755,11 @@ impl World {
                     && self.pile_count(actor.cell, Material::Egg) == 0
                     && self.ground_ids(actor.cell, Material::Egg).is_empty()
                 {
-                    return Err("There are no eggs here to gather.".into());
+                    return Err(self.gather_miss(
+                        actor.cell,
+                        *material,
+                        "There are no eggs here to gather.".to_string(),
+                    ));
                 } else if self.pile_count(actor.cell, *material) == 0
                     && (!matches!(
                         *material,
@@ -1795,14 +1799,15 @@ impl World {
                             | Material::Berry
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
-                    return Err(if *material == Material::BitterBerry {
+                    let bare = if *material == Material::BitterBerry {
                         format!(
                             "There are no {} here to gather.",
                             self.bitter_kind(actor.id)
                         )
                     } else {
                         format!("There is no {} here to gather.", material.word())
-                    });
+                    };
+                    return Err(self.gather_miss(actor.cell, *material, bare));
                 }
                 if self.carry_count(actor.id) >= self.tuning.carry_slots
                     && !self.gather_overflows_into_basket(actor.id, *material)
@@ -2325,18 +2330,19 @@ impl World {
                         }
                         id
                     } else {
+                        let bare = if material == Material::BitterBerry {
+                            format!(
+                                "There are no {} here to gather.",
+                                self.bitter_kind(intent.actor_id)
+                            )
+                        } else {
+                            format!("There is no {} here to gather.", material.word())
+                        };
                         self.finish(
                             intent.command_id,
                             intent.actor_id,
                             false,
-                            if material == Material::BitterBerry {
-                                format!(
-                                    "There are no {} here to gather.",
-                                    self.bitter_kind(intent.actor_id)
-                                )
-                            } else {
-                                format!("There is no {} here to gather.", material.word())
-                            },
+                            self.gather_miss(cell, material, bare),
                             results,
                         );
                         continue;

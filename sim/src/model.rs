@@ -3111,6 +3111,41 @@ impl World {
             .find(|id| self.item(*id).is_some_and(|flour| flour.cooked))
     }
 
+    /// Stock on an orthogonal neighbor, named as a step. Empty when it is already here,
+    /// or when the next cell that has it is not a single step. This does not move anyone.
+    pub(crate) fn gather_step_cue(&self, cell: CellId, material: Material) -> Option<String> {
+        if self.pile_count(cell, material) > 0 || !self.ground_ids(cell, material).is_empty() {
+            return None;
+        }
+        let (x, y) = cell_xy(cell);
+        let mut ways = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.pile_count(dest, material) > 0 || !self.ground_ids(dest, material).is_empty() {
+                ways.push(dir.word());
+            }
+        }
+        match ways.len() {
+            0 => None,
+            1 => Some(format!(" Step {}.", ways[0])),
+            _ => {
+                let last = ways.pop()?;
+                Some(format!(" Step {} or {last}.", ways.join(", ")))
+            }
+        }
+    }
+
+    /// The ordinary miss, plus a step when the stock is one cell over.
+    pub(crate) fn gather_miss(&self, cell: CellId, material: Material, bare: String) -> String {
+        match self.gather_step_cue(cell, material) {
+            Some(cue) => format!("{bare}{cue}"),
+            None => bare,
+        }
+    }
+
     pub(crate) fn cattail_bare(&self, cell: CellId) -> bool {
         self.cattail_stands.contains(&cell)
             && self.pile_count(cell, Material::Cattail) == 0
@@ -18116,5 +18151,118 @@ mod flour {
         );
         assert!(world.loose_ids(near, Material::Flour).len() == 1);
         assert!(world.loose_ids(near, Material::Cattail).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod gather_step {
+    use super::*;
+
+    fn intent(id: &str, actor: ActorId, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_gather_one_cell_off_names_the_step_and_stays_private() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+
+        let far = world.step(&[intent("far", quiet, Attempt::Gather(Material::Willow))]);
+        assert_eq!(far.results[0].message, "There is no willow here to gather.");
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no willow here to gather." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no willow here to gather." }));
+
+        let beside = world.step(&[intent("beside", near, Attempt::Gather(Material::Willow))]);
+        assert_eq!(
+            beside.results[0].message,
+            "There is no willow here to gather. Step west."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no willow here to gather. Step west." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("Step west") }));
+        }
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (1, 4));
+
+        let walked = world.step(&[intent("walk", near, Attempt::Move(Dir::West))]);
+        assert!(walked.results[0].message.contains("You walk"));
+        let gathered = world.step(&[intent("take", near, Attempt::Gather(Material::Willow))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a bundle of willow cordage."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near gathers a bundle of willow cordage." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a bundle of willow cordage." }));
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(2, 1).unwrap();
+        let salt = world.step(&[intent("salt", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(
+            salt.results[0].message,
+            "There is no salt here to gather. Step north."
+        );
+        world.actors.get_mut(&near).unwrap().cell = cell_id(1, 0).unwrap();
+        let both = world.step(&[intent("both", near, Attempt::Gather(Material::Salt))]);
+        assert_eq!(
+            both.results[0].message,
+            "There is no salt here to gather. Step east or west."
+        );
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(1, 3).unwrap();
+        let reeds = world.step(&[intent("reeds", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(
+            reeds.results[0].message,
+            "There is no reed here to gather. Step west."
+        );
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(5, 1).unwrap();
+        let ochre = world.step(&[intent("ochre", near, Attempt::Gather(Material::Ochre))]);
+        assert_eq!(
+            ochre.results[0].message,
+            "There is no ochre here to gather. Step east."
+        );
+
+        let rock = cell_id(6, 1).unwrap();
+        world.mint_item(Material::Charcoal, 0, rock, None, Role::Loose);
+        let charcoal = world.step(&[intent("char", near, Attempt::Gather(Material::Charcoal))]);
+        assert_eq!(
+            charcoal.results[0].message,
+            "There is no charcoal here to gather. Step east."
+        );
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (5, 1));
     }
 }
