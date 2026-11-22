@@ -8400,7 +8400,7 @@ mod bow_hunt {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "You bring the deer down with the flint spear." }));
+            .all(|event| { event.text != "You bring the deer down with the flint spear." }));
         assert_eq!(world.loose_ids(near, Material::Bow).len(), 1);
         assert_eq!(world.loose_ids(near, Material::Flake).len(), 1);
         assert!(world.deer_cell().is_none());
@@ -8588,7 +8588,7 @@ mod deer_return {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "You bring the deer down with the flint spear." }));
+            .all(|event| { event.text != "You bring the deer down with the flint spear." }));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -19900,6 +19900,13 @@ mod charcoal_bank {
             "You pierce the deer hide with the copper awl. It is ready to sew."
         );
         let pierce_seen = "Near pierces the deer hide with the copper awl. It is ready to sew.";
+        let pierce_yours = "You pierce the deer hide with the copper awl. It is ready to sew.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != pierce_yours && event.text != pierce_seen));
         assert!(world
             .observe(seen)
             .unwrap()

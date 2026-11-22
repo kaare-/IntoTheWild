@@ -11400,6 +11400,9 @@ impl World {
                     && self.knap_for_these_eyes(viewer, event).is_none()
                     && self.eat_for_these_eyes(viewer, event).is_none()
                     && self.cook_reply_for_these_eyes(viewer, event).is_none()
+                    && self.bring_for_these_eyes(viewer, event).is_none()
+                    && self.butcher_for_these_eyes(viewer, event).is_none()
+                    && self.pierce_for_these_eyes(viewer, event).is_none()
             })
             .map(|event| EventView {
                 id: event.id,
@@ -11818,7 +11821,9 @@ impl World {
         Some(parts.join(" and "))
     }
 
-    /// A carcass cut with the flint spear, filled for the person who cut it.
+    /// A carcass cut into meat, a hide, and a bone. The butcher already has
+    /// the reply, so the event list does not repeat it. Someone who can see
+    /// keeps the third person.
     fn butcher_for_these_eyes(
         &self,
         viewer: ActorId,
@@ -12659,8 +12664,9 @@ impl World {
         Some("You bring the deer down. A carcass lies where it stood.".into())
     }
 
-    /// A flint spear bringing the deer down, filled for the person who struck.
-    /// Anyone else keeps the stored sentence. A stone spear keeps its own line.
+    /// A flint spear bringing the deer down. The hunter already has the reply,
+    /// so the event list does not repeat it. Someone who can see keeps the
+    /// third person. A stone spear keeps its own line.
     fn bring_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
@@ -13284,8 +13290,9 @@ impl World {
         Some(crate::model::spoken_act(None, "hammer", rest))
     }
 
-    /// A hide pierced with the awl, filled for the person who pierced it.
-    /// Anyone else keeps the stored sentence.
+    /// A deer hide pierced with the awl. The piercer already has the reply,
+    /// so the event list does not repeat it. Someone who can see keeps the
+    /// third person.
     fn pierce_for_these_eyes(
         &self,
         viewer: ActorId,

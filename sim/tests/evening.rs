@@ -10000,7 +10000,7 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("bring"))
         .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+    assert!(yours.is_empty(), "{yours:?}");
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
@@ -10044,7 +10044,7 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         .map(|event| event.text.clone())
         .filter(|text| text.contains("butcher"))
         .collect();
-    assert_eq!(yours, vec![sentence.to_string()]);
+    assert!(yours.is_empty(), "{yours:?}");
     let seen: Vec<_> = world
         .observe(west)
         .unwrap()
@@ -11498,7 +11498,7 @@ fn a_copper_awl_pierces_a_carried_deer_hide() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours));
     assert!(world
         .observe(far)
         .unwrap()
@@ -12848,7 +12848,7 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == yours));
+        .all(|event| event.text != yours));
     assert!(world
         .observe(far)
         .unwrap()
