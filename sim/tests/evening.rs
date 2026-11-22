@@ -553,7 +553,8 @@ fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
     slope.step(&[cmd("back", sera, Attempt::Move(Dir::East))]);
     let bark = slope.material_tally(Material::Bark);
     let damp = slope.step(&[cmd("damp", sera, Attempt::Light)]);
-    assert_eq!(damp.results[0].message, "The bark is too damp to catch.");
+    let moss_line = "You light a fire with moss and a dry branch from the pile at the feet.";
+    assert_eq!(damp.results[0].message, moss_line);
     let seen: Vec<_> = slope
         .observe(sera)
         .unwrap()
@@ -562,10 +563,16 @@ fn damp_bark_will_not_catch_and_open_rain_puts_a_fire_out() {
         .map(|event| event.text.clone())
         .collect();
     assert!(
-        seen.iter().all(|text| !text.contains("too damp")),
+        seen.iter()
+            .all(|text| !text.contains("too damp") && text != moss_line),
         "{seen:?}"
     );
     assert_eq!(slope.material_tally(Material::Bark), bark);
+    assert!(slope
+        .observe(sera)
+        .unwrap()
+        .text
+        .contains("The shade here has no moss."));
 
     let mut open = world_at(4);
     let nils = open.spawn_at("Nils", "n", 6, 1).unwrap();

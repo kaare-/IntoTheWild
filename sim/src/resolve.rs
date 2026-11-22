@@ -4310,9 +4310,11 @@ impl World {
         // still catches when it is only slightly damp. Soaked fluff does not.
         // The open rain puts it out, the same as bark. Dry moss is tinder the
         // way bark is, and it is spent before bark. Wet moss is not.
-        // Resin on the ground is not tinder. A soaked sheet in the arms is
-        // not the tinder when a dry sheet is on the ground or in the pile,
-        // at the feet or one step off out of the rain.
+        // Resin on the ground is not tinder. Dry moss in the shade pile, or a
+        // dry handful lying on this ground, is tinder when no dry bark is at
+        // hand. A soaked sheet in the arms is not the tinder when a dry sheet
+        // is on the ground or in the pile, at the feet or one step off out of
+        // the rain.
         let tinder = self.tinder_at_hand(actor);
         let fuel = self.fuel_at_hand(actor);
         if tinder && fuel {
@@ -4335,7 +4337,7 @@ impl World {
             let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
             return Some(if carried_fluff {
                 "The cattail fluff is too damp to catch.".into()
-            } else if carried_moss {
+            } else if carried_moss || self.undry_moss_lying(actor) {
                 "The moss is too damp to catch.".into()
             } else if self.has_material_at_hand(actor, Material::Bark) {
                 "The bark is too damp to catch.".into()
@@ -4356,6 +4358,52 @@ impl World {
             || self.fluff_tinder_in_arms(actor)
             || self.moss_tinder_in_arms(actor)
             || self.has_dry(actor, Material::Bark)
+            || self.unheld_dry_moss(actor)
+    }
+
+    /// Dry moss still in the shade pile, or a dry handful lying on this ground.
+    /// The damp bank is not this moss. Bark is spent first when a dry sheet is
+    /// at hand.
+    fn unheld_dry_moss(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        let cell = person.cell;
+        let shade =
+            self.shade_moss.contains(&cell) && self.dry_pile_count(cell, Material::Moss) > 0;
+        shade || self.dry_ground_id(cell, Material::Moss).is_some()
+    }
+
+    /// Moss in the shade or on this ground that is too wet to catch.
+    fn undry_moss_lying(&self, actor: crate::model::ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        let cell = person.cell;
+        let shade = self.shade_moss.contains(&cell)
+            && self.pile_count(cell, Material::Moss) > 0
+            && self.dry_pile_count(cell, Material::Moss) == 0;
+        let loose = self.ground_ids(cell, Material::Moss).into_iter().any(|id| {
+            self.item(id)
+                .is_some_and(|item| !self.is_dry(item.moisture))
+        });
+        shade || loose
+    }
+
+    /// The shade pile first, then a dry handful on the ground. Arms are spent
+    /// by the caller before this.
+    fn take_unheld_dry_moss(
+        &mut self,
+        actor: crate::model::ActorId,
+    ) -> Option<(Option<crate::model::ItemId>, MossSpot)> {
+        let cell = self.actor(actor)?.cell;
+        if self.shade_moss.contains(&cell) && self.dry_pile_count(cell, Material::Moss) > 0 {
+            self.take_from_pile(cell, Material::Moss, 1)?;
+            return Some((None, MossSpot::Pile));
+        }
+        let id = self.dry_ground_id(cell, Material::Moss)?;
+        self.items.remove(&id);
+        Some((Some(id), MossSpot::Ground))
     }
 
     /// Dry fuel in the arms or on this cell.
@@ -4369,7 +4417,7 @@ impl World {
         let resin = !self.loose_ids(actor, Material::Resin).is_empty();
         let fluff = self.fluff_tinder_in_arms(actor);
         let carried_fluff = !self.loose_ids(actor, Material::Fluff).is_empty();
-        let dry_moss = self.moss_tinder_in_arms(actor);
+        let dry_moss = self.moss_tinder_in_arms(actor) || self.unheld_dry_moss(actor);
         let carried_moss = !self.loose_ids(actor, Material::Moss).is_empty();
         let dry_bark = self.has_dry(actor, Material::Bark);
         if resin {
@@ -4874,46 +4922,66 @@ impl World {
                         self.item(*id)
                             .is_some_and(|item| item.moisture < self.tuning.soaked_at)
                     });
-                let (tinder_item, resin, moss_arms, bark_arms, fluff_arms) =
-                    if let Some(resin_id) = resin_id {
-                        self.items.remove(&resin_id);
-                        (Some(resin_id), true, None, true, None)
-                    } else if let Some(fluff_id) = fluff_id {
-                        self.items.remove(&fluff_id);
-                        (Some(fluff_id), false, None, false, Some(true))
-                    } else if self.moss_tinder_in_arms(intent.actor_id) {
-                        match self.consume_dry(intent.actor_id, Material::Moss) {
-                            Ok((moss_item, moss_from_arms)) => {
-                                (moss_item, false, Some(moss_from_arms), false, None)
-                            }
-                            Err(()) => {
-                                self.finish(
-                                    intent.command_id,
-                                    intent.actor_id,
-                                    false,
-                                    "The moss is too damp to catch.",
-                                    results,
-                                );
-                                continue;
-                            }
+                let (tinder_item, resin, moss_arms, bark_arms, fluff_arms) = if let Some(resin_id) =
+                    resin_id
+                {
+                    self.items.remove(&resin_id);
+                    (Some(resin_id), true, None, true, None)
+                } else if let Some(fluff_id) = fluff_id {
+                    self.items.remove(&fluff_id);
+                    (Some(fluff_id), false, None, false, Some(true))
+                } else if self.moss_tinder_in_arms(intent.actor_id) {
+                    match self.consume_dry(intent.actor_id, Material::Moss) {
+                        Ok((moss_item, moss_from_arms)) => (
+                            moss_item,
+                            false,
+                            Some(if moss_from_arms {
+                                MossSpot::Arms
+                            } else {
+                                MossSpot::Pile
+                            }),
+                            false,
+                            None,
+                        ),
+                        Err(()) => {
+                            self.finish(
+                                intent.command_id,
+                                intent.actor_id,
+                                false,
+                                "The moss is too damp to catch.",
+                                results,
+                            );
+                            continue;
                         }
-                    } else {
-                        match self.consume_dry(intent.actor_id, Material::Bark) {
-                            Ok((bark_item, bark_from_arms)) => {
-                                (bark_item, false, None, bark_from_arms, None)
-                            }
-                            Err(()) => {
-                                self.finish(
-                                    intent.command_id,
-                                    intent.actor_id,
-                                    false,
-                                    "You need dry loose bark and a dry branch.",
-                                    results,
-                                );
-                                continue;
-                            }
+                    }
+                } else if self.has_dry(intent.actor_id, Material::Bark) {
+                    match self.consume_dry(intent.actor_id, Material::Bark) {
+                        Ok((bark_item, bark_from_arms)) => {
+                            (bark_item, false, None, bark_from_arms, None)
                         }
-                    };
+                        Err(()) => {
+                            self.finish(
+                                intent.command_id,
+                                intent.actor_id,
+                                false,
+                                "You need dry loose bark and a dry branch.",
+                                results,
+                            );
+                            continue;
+                        }
+                    }
+                } else if let Some((moss_item, spot)) = self.take_unheld_dry_moss(intent.actor_id) {
+                    (moss_item, false, Some(spot), false, None)
+                } else {
+                    self.finish(
+                        intent.command_id,
+                        intent.actor_id,
+                        false,
+                        "You need dry loose bark and a dry branch.",
+                        results,
+                    );
+                    continue;
+                };
                 let (fuel_item, from_charcoal, charcoal_arms, branch_arms) = if use_charcoal {
                     match self.take_charcoal(intent.actor_id) {
                         Ok((lump, charcoal_arms)) => (lump, true, charcoal_arms, false),
@@ -4976,17 +5044,16 @@ impl World {
                         fluff_light_line(Some(&name), branch_arms, brand.is_some()),
                         fluff_light_line(None, branch_arms, brand.is_some()),
                     )
-                } else if moss_arms.is_some() {
-                    let from_arms = moss_arms.unwrap_or(false);
+                } else if let Some(spot) = moss_arms {
                     if brand.is_some() {
                         (
-                            moss_brand_light_line(Some(&name), from_arms, branch_arms),
-                            moss_brand_light_line(None, from_arms, branch_arms),
+                            moss_brand_light_line(Some(&name), spot, branch_arms),
+                            moss_brand_light_line(None, spot, branch_arms),
                         )
                     } else {
                         (
-                            moss_light_line(Some(&name), from_arms, branch_arms),
-                            moss_light_line(None, from_arms, branch_arms),
+                            moss_light_line(Some(&name), spot, branch_arms),
+                            moss_light_line(None, spot, branch_arms),
                         )
                     }
                 } else if resin {
@@ -14760,12 +14827,25 @@ fn brand_light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> St
     )
 }
 
-fn moss_fuel(moss_arms: bool, branch_arms: bool) -> &'static str {
-    match (moss_arms, branch_arms) {
-        (true, true) => "the moss and the branch from the arms",
-        (false, false) => "moss and a dry branch from the pile at the feet",
-        (true, false) => "the moss from the arms and a dry branch from the pile at the feet",
-        (false, true) => "moss from the pile at the feet and the branch from the arms",
+#[derive(Clone, Copy)]
+enum MossSpot {
+    Arms,
+    Pile,
+    Ground,
+}
+
+fn moss_fuel(spot: MossSpot, branch_arms: bool) -> &'static str {
+    match (spot, branch_arms) {
+        (MossSpot::Arms, true) => "the moss and the branch from the arms",
+        (MossSpot::Arms, false) => {
+            "the moss from the arms and a dry branch from the pile at the feet"
+        }
+        (MossSpot::Pile, true) => "moss from the pile at the feet and the branch from the arms",
+        (MossSpot::Pile, false) => "moss and a dry branch from the pile at the feet",
+        (MossSpot::Ground, true) => "moss from the ground and the branch from the arms",
+        (MossSpot::Ground, false) => {
+            "moss from the ground and a dry branch from the pile at the feet"
+        }
     }
 }
 
@@ -14783,21 +14863,21 @@ fn fluff_light_line(who: Option<&str>, branch_arms: bool, brand: bool) -> String
     crate::model::spoken_act(who, "light", &rest)
 }
 
-fn moss_light_line(who: Option<&str>, moss_arms: bool, branch_arms: bool) -> String {
+fn moss_light_line(who: Option<&str>, spot: MossSpot, branch_arms: bool) -> String {
     crate::model::spoken_act(
         who,
         "light",
-        &format!("a fire with {}.", moss_fuel(moss_arms, branch_arms)),
+        &format!("a fire with {}.", moss_fuel(spot, branch_arms)),
     )
 }
 
-fn moss_brand_light_line(who: Option<&str>, moss_arms: bool, branch_arms: bool) -> String {
+fn moss_brand_light_line(who: Option<&str>, spot: MossSpot, branch_arms: bool) -> String {
     crate::model::spoken_act(
         who,
         "light",
         &format!(
             "a fire with the burning brand and {}.",
-            moss_fuel(moss_arms, branch_arms)
+            moss_fuel(spot, branch_arms)
         ),
     )
 }
@@ -14806,7 +14886,7 @@ fn moss_brand_light_line(who: Option<&str>, moss_arms: bool, branch_arms: bool) 
 fn charcoal_light_line(
     who: Option<&str>,
     resin: bool,
-    moss_arms: Option<bool>,
+    moss_arms: Option<MossSpot>,
     bark_arms: bool,
     fluff: bool,
     brand: bool,
@@ -14821,10 +14901,12 @@ fn charcoal_light_line(
         "the pine resin"
     } else if fluff {
         "the cattail fluff"
-    } else if let Some(true) = moss_arms {
-        "the moss"
-    } else if let Some(false) = moss_arms {
-        "moss from the pile at the feet"
+    } else if let Some(spot) = moss_arms {
+        match spot {
+            MossSpot::Arms => "the moss",
+            MossSpot::Pile => "moss from the pile at the feet",
+            MossSpot::Ground => "moss from the ground",
+        }
     } else if bark_arms {
         "the bark"
     } else {

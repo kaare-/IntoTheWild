@@ -2983,7 +2983,8 @@ impl World {
             .collect()
     }
 
-    /// A dry handful of moss in the arms. Moss still on the ground is not tinder yet.
+    /// A dry handful of moss in the arms. The shade pile is tinder too, once no
+    /// dry bark is at hand.
     pub(crate) fn moss_tinder_in_arms(&self, actor: ActorId) -> bool {
         !self.dry_loose_ids(actor, Material::Moss).is_empty()
     }
@@ -19354,6 +19355,41 @@ mod charcoal_bank {
             .events
             .iter()
             .all(|event| { !event.text.contains("lights") }));
+        let rock = cell_id(6, 1).unwrap();
+        let mara = world.spawn_at("Mara", "m", 6, 1).unwrap();
+        let witness = world.spawn_at("Wren", "w", 6, 1).unwrap();
+        while world.pile_count(rock, Material::Bark) > 0 {
+            world.take_from_pile(rock, Material::Bark, 1);
+        }
+        world.mint_item(Material::Charcoal, 0, rock, None, Role::Loose);
+        assert!(world.shade_moss.contains(&rock));
+        assert!(world.dry_pile_count(rock, Material::Moss) > 0);
+        let shade = world.step(&[intent("shade", mara, Attempt::Light)]);
+        let shade_line = "You light a fire with moss from the pile at the feet and a lump of charcoal from the ground.";
+        let shade_seen = "Mara lights a fire with moss from the pile at the feet and a lump of charcoal from the ground.";
+        assert_eq!(shade.results[0].message, shade_line);
+        assert_eq!(world.pile_count(rock, Material::Moss), 0);
+        assert!(world.ground_ids(rock, Material::Charcoal).is_empty());
+        let hot = world.fire_at(rock).unwrap();
+        assert!(hot.hot && hot.charcoal);
+        assert!(world
+            .observe(mara)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != shade_line && event.text != shade_seen }));
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == shade_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != shade_line && event.text != shade_seen }));
         let named = world.examine(near, ExamineTarget::Fire);
         assert!(named.contains("A hot charcoal fire burns"), "{named}");
         let plain = cell_id(3, 4).unwrap();
