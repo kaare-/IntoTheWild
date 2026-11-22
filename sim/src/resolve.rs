@@ -10533,7 +10533,14 @@ impl World {
                 "The bark cup has no water."
             };
             return Some(match self.water_step_cue(actor.cell) {
-                Some(cue) => format!("{bare}{cue}"),
+                Some(cue) => {
+                    let ice = if self.frozen_still_beside(actor.cell) {
+                        " The still is frozen."
+                    } else {
+                        ""
+                    };
+                    format!("{bare}{ice}{cue}")
+                }
                 None => bare.into(),
             });
         }

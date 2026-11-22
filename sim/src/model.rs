@@ -3489,6 +3489,19 @@ impl World {
         self.water_here(cell) && !self.still_frozen(cell)
     }
 
+    /// The pool underfoot or one step off is ice, so a water step names the brook instead.
+    pub(crate) fn frozen_still_beside(&self, cell: CellId) -> bool {
+        let frozen = |id: CellId| self.cell(id).still && self.still_frozen(id);
+        if frozen(cell) {
+            return true;
+        }
+        let (x, y) = cell_xy(cell);
+        Dir::all().into_iter().any(|dir| {
+            let (dx, dy) = dir.delta();
+            cell_id(x + dx, y + dy).is_some_and(frozen)
+        })
+    }
+
     /// The ordinary miss, plus a step when the stock is one cell over.
     pub(crate) fn gather_miss(&self, cell: CellId, material: Material, bare: String) -> String {
         match self.gather_step_cue(cell, material) {
@@ -17480,6 +17493,28 @@ mod charcoal_bank {
         assert_eq!(frozen.results[0].message, "The pot has no water.");
         assert_eq!(world.actor(west).unwrap().cell, slope);
         assert!(world.loose_ids(west, Material::Water).is_empty());
+
+        world.actors.get_mut(&near).unwrap().cell = bank;
+        world.mint_item(Material::Pot, 0, bank, Some(near), Role::Loose);
+        let iced = "The pot has no water. The still is frozen. Step west.";
+        let west_step = world.step(&[intent("west", near, Attempt::Brew)]);
+        assert_eq!(west_step.results[0].message, iced);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == iced));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != iced));
+        }
+        assert_eq!(world.actor(near).unwrap().cell, bank);
+        assert!(world.loose_ids(near, Material::Water).is_empty());
     }
 
     #[test]
