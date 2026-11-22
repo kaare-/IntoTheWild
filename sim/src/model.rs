@@ -816,6 +816,14 @@ pub struct Actor {
     /// feed them. Someone who has not tried does not get that sentence.
     #[serde(default)]
     pub bark_known: bool,
+    /// The deer this person was already told a hafted spear could reach,
+    /// while that deer stayed in sight. Cleared when it leaves sight.
+    #[serde(default)]
+    pub spear_hint_deer: Option<DeerId>,
+    /// The look after this tick may say a hafted spear could reach the deer.
+    /// The next tick clears it, so the sentence is not on every look.
+    #[serde(default)]
+    pub spear_hint_show: bool,
     pub busy: Option<WorkId>,
 }
 
@@ -1913,6 +1921,8 @@ impl World {
                 raw_mushroom_known: false,
                 pale_berry_known: false,
                 bark_known: false,
+                spear_hint_deer: None,
+                spear_hint_show: false,
                 busy: None,
             },
         );
@@ -2045,12 +2055,14 @@ impl World {
 
     pub fn step(&mut self, intents: &[Intent]) -> StepReport {
         let time = self.time;
+        self.retire_spear_hints();
         let results = self.resolve(intents);
         self.scare_wolf(None);
         self.arm_spears();
         self.tend_drying();
         self.tend_clothes();
         self.fire_due();
+        self.note_spear_reach();
         self.tend_branch_beds();
         self.tend_bark_beds();
         self.normalize();
@@ -2059,6 +2071,55 @@ impl World {
         self.howl_on_nightfall();
         self.crack_on_freeze();
         StepReport { time, results }
+    }
+
+    /// The one-tick look hint is over. The deer id stays until it leaves sight.
+    fn retire_spear_hints(&mut self) {
+        for actor in self.actors.values_mut() {
+            actor.spear_hint_show = false;
+        }
+    }
+
+    /// A flint flake in the arms, no hafted spear, and a deer in sight.
+    /// The sentence is armed once each time that deer is in sight.
+    fn note_spear_reach(&mut self) {
+        let deer = self.deer.as_ref().map(|deer| (deer.id, deer.cell));
+        let sight = self.tuning.sight;
+        let ids: Vec<ActorId> = self.actors.keys().copied().collect();
+        for id in ids {
+            let Some((deer_id, deer_cell)) = deer else {
+                if let Some(actor) = self.actors.get_mut(&id) {
+                    actor.spear_hint_deer = None;
+                    actor.spear_hint_show = false;
+                }
+                continue;
+            };
+            let in_sight = self
+                .actor(id)
+                .is_some_and(|actor| chebyshev(actor.cell, deer_cell) <= sight);
+            let flake = self
+                .loose_ids(id, Material::Flake)
+                .iter()
+                .any(|item| self.item(*item).is_some_and(|flake| !flake.in_basket));
+            let hafted = self.loose_ids(id, Material::Spear).iter().any(|item| {
+                self.item(*item)
+                    .is_some_and(|spear| spear.flint_tip && !spear.in_basket)
+            });
+            let Some(actor) = self.actors.get_mut(&id) else {
+                continue;
+            };
+            if !in_sight || !flake || hafted {
+                actor.spear_hint_deer = None;
+                actor.spear_hint_show = false;
+                continue;
+            }
+            if actor.spear_hint_deer == Some(deer_id) {
+                actor.spear_hint_show = false;
+                continue;
+            }
+            actor.spear_hint_deer = Some(deer_id);
+            actor.spear_hint_show = true;
+        }
     }
 
     pub(crate) fn schedule(&mut self, at: u64, wake: Wake) {
@@ -25138,5 +25199,79 @@ mod sticks {
             .events
             .iter()
             .any(|event| { event.text == "Near clicks the rhythm sticks." }));
+    }
+}
+
+#[cfg(test)]
+mod spear_hint {
+    use super::{cell_id, Material, Role, World};
+
+    const HINT: &str = "A hafted spear could reach the deer.";
+
+    fn hold(world: &mut World) {
+        if let Some(deer) = world.deer.as_mut() {
+            deer.held = true;
+        }
+    }
+
+    #[test]
+    fn a_flake_names_a_hafted_spear_once_while_the_deer_is_in_sight() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+
+        hold(&mut world);
+        world.step(&[]);
+        assert!(!world.observe(near).unwrap().text.contains(HINT));
+
+        world.mint_item(Material::Flint, 0, cell, Some(near), Role::Loose);
+        hold(&mut world);
+        world.step(&[]);
+        assert!(
+            !world.observe(near).unwrap().text.contains(HINT),
+            "a nodule is not a haft yet"
+        );
+        for id in world.loose_ids(near, Material::Flint) {
+            world.items.remove(&id);
+        }
+
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+        let spear = world.mint_item(Material::Spear, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&spear).unwrap().wooden_tip = true;
+        hold(&mut world);
+        let shown = world.step(&[]);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(HINT), "{}", look.text);
+        assert!(!look.events.iter().any(|event| event.text.contains(HINT)));
+        assert!(!world.observe(seen).unwrap().text.contains(HINT));
+        assert!(!world.observe(quiet).unwrap().text.contains(HINT));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.time != shown.time || !event.text.contains(HINT) }));
+
+        hold(&mut world);
+        world.step(&[]);
+        assert!(!world.observe(near).unwrap().text.contains(HINT));
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(0, 0).unwrap();
+        hold(&mut world);
+        world.step(&[]);
+        assert!(!world.observe(near).unwrap().text.contains(HINT));
+
+        world.actors.get_mut(&near).unwrap().cell = cell;
+        hold(&mut world);
+        world.step(&[]);
+        assert!(world.observe(near).unwrap().text.contains(HINT));
+
+        world.items.get_mut(&spear).unwrap().flint_tip = true;
+        world.items.get_mut(&spear).unwrap().wooden_tip = false;
+        hold(&mut world);
+        world.step(&[]);
+        assert!(!world.observe(near).unwrap().text.contains(HINT));
     }
 }

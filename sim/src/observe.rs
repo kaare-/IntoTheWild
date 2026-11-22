@@ -298,6 +298,9 @@ impl World {
             {
                 lines.push("A wolf stands here.".into());
             }
+            if let Some(hint) = self.spear_reach_hint(actor_id) {
+                lines.push(hint);
+            }
             if let Some(otter) = self.seen_otter(actor_id) {
                 lines.push(otter);
             }
@@ -330,6 +333,9 @@ impl World {
         } else {
             if let Some(deer) = self.deer_look_line(actor_id) {
                 lines.push(deer);
+            }
+            if let Some(hint) = self.spear_reach_hint(actor_id) {
+                lines.push(hint);
             }
             if let Some(tracks) = self.seen_deer_tracks(actor_id) {
                 lines.push(tracks);
@@ -5888,6 +5894,13 @@ impl World {
                         && item.role == Role::Loose
                         && item.material == Material::Branch
                 }))
+    }
+
+    /// Once while this deer stays in sight. Not an event. Not a hunt.
+    fn spear_reach_hint(&self, viewer: ActorId) -> Option<String> {
+        self.actor(viewer)?
+            .spear_hint_show
+            .then(|| "A hafted spear could reach the deer.".into())
     }
 
     fn deer_look_line(&self, viewer: ActorId) -> Option<String> {
