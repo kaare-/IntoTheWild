@@ -1971,7 +1971,9 @@ impl World {
             return None;
         }
         let way = self.relative(origin, sound.cell);
-        Some(format!("You hear a drum to the {way}."))
+        Some(format!(
+            "You hear a drum to the {way}. Someone is beating a drum as a signal."
+        ))
     }
 
     /// Smoke from a fire past sight, still inside the smoke range.

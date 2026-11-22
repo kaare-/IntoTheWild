@@ -22094,16 +22094,39 @@ mod whistle {
         assert_eq!(world.beaver_cell(), Some((0, 3)));
         let far_look = world.observe(far).unwrap();
         assert!(
-            far_look
-                .text
-                .contains("You hear a drum to the south and west."),
+            far_look.text.contains(
+                "You hear a drum to the south and west. Someone is beating a drum as a signal."
+            ),
             "{}",
             far_look.text
         );
-        assert!(!far_look
-            .events
-            .iter()
-            .any(|event| event.text.contains("You hear a drum")));
+        assert!(!far_look.events.iter().any(|event| {
+            event.text.contains("You hear a drum") || event.text.contains("as a signal")
+        }));
+        assert!(!says(
+            &world,
+            near,
+            "Someone is beating a drum as a signal."
+        ));
+        assert!(!says(
+            &world,
+            heard,
+            "Someone is beating a drum as a signal."
+        ));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("Someone is beating a drum as a signal."));
+        assert!(!world
+            .observe(heard)
+            .unwrap()
+            .text
+            .contains("Someone is beating a drum as a signal."));
+        assert_eq!(
+            world.actor(far).map(|person| person.cell),
+            Some(cell_id(5, 0).unwrap())
+        );
         assert!(!world
             .observe(past)
             .unwrap()
@@ -22375,8 +22398,19 @@ mod whistle {
         assert!(says(&world, heard, "Near beats the drum."));
         let far_look = world.observe(far).unwrap().text;
         assert!(
-            far_look.contains("You hear a drum to the south and east."),
+            far_look.contains(
+                "You hear a drum to the south and east. Someone is beating a drum as a signal."
+            ),
             "{far_look}"
+        );
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("Someone is beating a drum as a signal."));
+        assert_eq!(
+            world.actor(far).map(|person| person.cell),
+            Some(cell_id(1, 0).unwrap())
         );
         assert!(!world
             .observe(past)
