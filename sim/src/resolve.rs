@@ -674,10 +674,10 @@ impl World {
                 } else if self.loose_ids(actor.id, Material::Hook).is_empty() {
                     Err("You are not carrying a bone fish hook.".into())
                 } else if self.shallows_here(actor.cell) {
-                    if self.loose_ids(actor.id, Material::Worm).is_empty() {
-                        Err("You have no worm to bait the hook.".into())
-                    } else if self.still_frozen(actor.cell) && !self.ice_hole(actor.cell) {
+                    if self.still_frozen(actor.cell) && !self.ice_hole(actor.cell) {
                         Err("Ice covers the shallows.".into())
+                    } else if self.loose_ids(actor.id, Material::Worm).is_empty() {
+                        Err("You have no worm to bait the hook.".into())
                     } else if self.shallows_are_quiet(actor.cell) {
                         Err("The fish are gone from the shallows.".into())
                     } else {
@@ -5715,10 +5715,10 @@ impl World {
                         .is_some_and(|person| self.shallows_here(person.cell)) =>
             {
                 let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
-                if self.loose_ids(actor, Material::Worm).is_empty() {
-                    Some("You have no worm to bait the hook.")
-                } else if self.still_frozen(cell) && !self.ice_hole(cell) {
+                if self.still_frozen(cell) && !self.ice_hole(cell) {
                     Some("Ice covers the shallows.")
+                } else if self.loose_ids(actor, Material::Worm).is_empty() {
+                    Some("You have no worm to bait the hook.")
                 } else if self.shallows_are_quiet(cell) {
                     Some("The fish are gone from the shallows.")
                 } else {
@@ -5790,22 +5790,22 @@ impl World {
         cell: crate::model::CellId,
         results: &mut Vec<CommandResult>,
     ) {
-        if self.loose_ids(intent.actor_id, Material::Worm).is_empty() {
-            self.finish(
-                intent.command_id,
-                intent.actor_id,
-                false,
-                "You have no worm to bait the hook.",
-                results,
-            );
-            return;
-        }
         if self.still_frozen(cell) && !self.ice_hole(cell) {
             self.finish(
                 intent.command_id,
                 intent.actor_id,
                 false,
                 "Ice covers the shallows.",
+                results,
+            );
+            return;
+        }
+        if self.loose_ids(intent.actor_id, Material::Worm).is_empty() {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "You have no worm to bait the hook.",
                 results,
             );
             return;

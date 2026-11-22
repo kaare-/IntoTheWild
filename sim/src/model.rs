@@ -13863,6 +13863,35 @@ mod fish_hook {
             "There is no ice here."
         );
     }
+
+    #[test]
+    fn frozen_shallows_name_the_ice_before_the_worm() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let shallows = at(2, 1);
+        world.mint_item(Material::Hook, 0, shallows, Some(near), super::Role::Loose);
+        while !world.still_frozen(shallows) {
+            world.step(&[]);
+        }
+        assert!(!world.ice_hole(shallows));
+        assert!(world.loose_ids(near, Material::Worm).is_empty());
+        let iced = say(&mut world, "bare", near, Attempt::Fish);
+        assert_eq!(iced, "Ice covers the shallows.");
+        let again = say(&mut world, "hook", near, Attempt::FishHook);
+        assert_eq!(again, "Ice covers the shallows.");
+        for person in [near, seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "Ice covers the shallows."
+                    && event.text != "You have no worm to bait the hook."
+            }));
+        }
+        world.mint_item(Material::Worm, 0, shallows, Some(near), super::Role::Loose);
+        let still = say(&mut world, "bait", near, Attempt::Fish);
+        assert_eq!(still, "Ice covers the shallows.");
+        assert_eq!(world.loose_ids(near, Material::Worm).len(), 1);
+    }
 }
 
 #[cfg(test)]
