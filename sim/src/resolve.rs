@@ -215,8 +215,11 @@ impl World {
                     // A mushroom bite that does not feed is the reply only.
                     let mushroom_eat_refusal =
                         matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
-                    // A roast miss is the reply only.
+                    // A roast miss is the reply only. A cook with no fire here is
+                    // the same, including the step when a fire burns next door.
                     let roast_refusal = matches!(intent.attempt, Attempt::Roast);
+                    let cook_fire_refusal = matches!(intent.attempt, Attempt::Cook)
+                        && message.starts_with("There is no fire burning here");
                     // A bead or an awl that is not at hand is the reply only,
                     // and so is the step when the bead is one cell off.
                     let hammer_refusal =
@@ -235,6 +238,7 @@ impl World {
                             && !torch_refusal
                             && !mushroom_eat_refusal
                             && !roast_refusal
+                            && !cook_fire_refusal
                             && !hammer_refusal
                             && !pierce_refusal;
                     failures.push((intent, message, personal));
@@ -2192,7 +2196,7 @@ impl World {
                 } else if body_taken {
                     Err("You already committed to something else this window.".into())
                 } else if self.fire_at(actor.cell).is_none() {
-                    Err("There is no fire burning here.".into())
+                    Err(self.no_fire_here(actor.cell))
                 } else if self.raw_meat_id(actor.id).is_some()
                     || self.raw_fish_id(actor.id).is_some()
                     || self.raw_mushroom_id(actor.id).is_some()
@@ -4678,7 +4682,7 @@ impl World {
     pub(crate) fn cook_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
         let person = self.actor(actor)?;
         if self.fire_at(person.cell).is_none() {
-            return Some("There is no fire burning here.".into());
+            return Some(self.no_fire_here(person.cell));
         }
         if !self.cookable_carried(actor)
             && self.cookable_pile(person.cell) == 0

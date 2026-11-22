@@ -450,7 +450,13 @@ fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text.contains("no fire")));
+        .all(|event| !event.text.contains("no fire")));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("no fire")));
     assert_eq!(world.material_tally(Material::Berry), berries);
     assert_eq!(world.material_tally(Material::Bark), bark);
 

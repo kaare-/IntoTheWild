@@ -3724,6 +3724,50 @@ impl World {
 
     /// Stock on an orthogonal neighbor, named as a step. Empty when it is already here,
     /// or when the next cell that has it is not a single step. This does not move anyone.
+    /// A burning fire on the next cell. Orthogonal first, then a diagonal.
+    /// The words match a gather miss. This does not move anyone.
+    pub(crate) fn fire_step_cue(&self, cell: CellId) -> Option<String> {
+        if self.fire_at(cell).is_some() {
+            return None;
+        }
+        let (x, y) = cell_xy(cell);
+        let mut ways = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if self.fire_at(dest).is_some() {
+                ways.push(dir.word().to_string());
+            }
+        }
+        if ways.is_empty() {
+            for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let Some(dest) = cell_id(x + dx, y + dy) else {
+                    continue;
+                };
+                if self.fire_at(dest).is_some() {
+                    ways.push(self.relative(cell, dest));
+                }
+            }
+        }
+        match ways.len() {
+            0 => None,
+            1 => Some(format!(" Step {}.", ways[0])),
+            _ => {
+                let last = ways.pop()?;
+                Some(format!(" Step {} or {last}.", ways.join(", ")))
+            }
+        }
+    }
+
+    pub(crate) fn no_fire_here(&self, cell: CellId) -> String {
+        match self.fire_step_cue(cell) {
+            Some(cue) => format!("There is no fire burning here.{cue}"),
+            None => "There is no fire burning here.".into(),
+        }
+    }
+
     pub(crate) fn gather_step_cue(&self, cell: CellId, material: Material) -> Option<String> {
         if self.pile_count(cell, material) > 0 || !self.ground_ids(cell, material).is_empty() {
             return None;
@@ -12657,7 +12701,7 @@ mod berry_return {
 
 #[cfg(test)]
 mod mushroom_return {
-    use super::{Attempt, Material, World};
+    use super::{cell_id, Attempt, Material, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
         super::Intent {
@@ -12734,6 +12778,83 @@ mod mushroom_return {
         assert_eq!(
             world.pile_count(world.actor(near).unwrap().cell, Material::Mushroom),
             1
+        );
+    }
+
+    #[test]
+    fn a_fire_one_step_off_names_the_step_for_roast_and_cook() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let here = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Meat, 0, here, Some(near), super::Role::Loose);
+        let bare = world.step(&[intent("bare", near, Attempt::Roast)]);
+        assert_eq!(bare.results[0].message, "There is no fire burning here.");
+        let cook_bare = world.step(&[intent("cook-bare", near, Attempt::Cook)]);
+        assert_eq!(
+            cook_bare.results[0].message,
+            "There is no fire burning here."
+        );
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is no fire burning here." }));
+        }
+        let east = cell_id(6, 1).unwrap();
+        world.mint_fire(east, 0);
+        let roast = world.step(&[intent("roast", near, Attempt::Roast)]);
+        assert_eq!(
+            roast.results[0].message,
+            "There is no fire burning here. Step east."
+        );
+        assert_eq!(world.actor_cell(near), Some((5, 1)));
+        assert!(world
+            .item(world.loose_ids(near, Material::Meat)[0])
+            .is_some_and(|meat| !meat.cooked));
+        let cook = world.step(&[intent("cook", near, Attempt::Cook)]);
+        assert_eq!(
+            cook.results[0].message,
+            "There is no fire burning here. Step east."
+        );
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is no fire burning here. Step east." }));
+        }
+        let corner = world.spawn_at("Ash", "a", 5, 2).unwrap();
+        let corner_cell = world.actor(corner).unwrap().cell;
+        world.mint_item(
+            Material::Meat,
+            0,
+            corner_cell,
+            Some(corner),
+            super::Role::Loose,
+        );
+        let diagonal = world.step(&[intent("diag", corner, Attempt::Roast)]);
+        assert_eq!(
+            diagonal.results[0].message,
+            "There is no fire burning here. Step north and east."
+        );
+        assert_eq!(world.actor_cell(corner), Some((5, 2)));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here. Step north and east." }));
+        let south = cell_id(5, 2).unwrap();
+        world.mint_fire(south, 0);
+        let both = world.step(&[intent("both", near, Attempt::Roast)]);
+        assert_eq!(
+            both.results[0].message,
+            "There is no fire burning here. Step east or south."
         );
     }
 
