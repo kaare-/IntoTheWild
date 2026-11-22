@@ -3878,6 +3878,9 @@ impl World {
             format!("Your skin is {}.", self.sun_word(actor.sunburn)),
             format!("Your skin is {}.", self.skin_cover(actor.mud, actor.ochre)),
         ];
+        if let Some(held) = self.sun_held_off(actor.ochre) {
+            parts.push(held.into());
+        }
         if let Some(wind) = self.night_wind_line(actor_id) {
             parts.push(wind);
         }
@@ -4056,8 +4059,22 @@ impl World {
             self.cold_word(actor.cold),
             self.wind_on(actor_id),
             self.skin_cover(actor.mud, actor.ochre)
-        ) + &self.spear_clause(actor_id)
+        ) + &self
+            .sun_held_off(actor.ochre)
+            .map(|line| format!(" {line}"))
+            .unwrap_or_default()
+            + &self.spear_clause(actor_id)
             + &self.carcass_clause(actor_id)
+    }
+
+    /// A full red-ochre smear, the same cut of the sun mud already has.
+    /// Thin ochre does not say it. Rain in the open takes the smear off.
+    fn sun_held_off(&self, ochre: u32) -> Option<&'static str> {
+        if ochre >= self.tuning.smear_at {
+            Some("The red ochre holds the sun off.")
+        } else {
+            None
+        }
     }
 
     fn skin_cover(&self, mud: u32, ochre: u32) -> String {

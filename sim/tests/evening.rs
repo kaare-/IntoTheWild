@@ -3797,6 +3797,108 @@ fn open_sky_chills_and_burns_while_shelter_and_mud_hold_them_off() {
 }
 
 #[test]
+fn red_ochre_holds_the_sun_off_until_the_rain_washes_it() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+    let bare = world.spawn_at("Bare", "b", 4, 3).unwrap();
+    let none = world.step(&[cmd("none", bare, Attempt::SmearOchre)]);
+    assert_eq!(none.results[0].message, "You have no ochre to smear.");
+    assert!(world
+        .observe(bare)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You have no ochre to smear."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { event.text != "You have no ochre to smear." }));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("ochre")));
+    let got = world.step(&[cmd("ochre", near, Attempt::Gather(Material::Ochre))]);
+    assert!(got.results[0].success, "{}", got.results[0].message);
+    let smeared = world.step(&[cmd("smear", near, Attempt::SmearOchre)]);
+    assert_eq!(
+        smeared.results[0].message,
+        "You smear red ochre on your skin."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("smear")));
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near smears red ochre on their skin."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("smear")));
+    let covered = world.observe(near).unwrap();
+    assert!(covered.text.contains("Your skin is red-ochre-smeared."));
+    assert!(covered.text.contains("The red ochre holds the sun off."));
+    assert!(world
+        .examine(seen, ExamineTarget::Person("Near".into()))
+        .contains("The red ochre holds the sun off."));
+    world.step(&[cmd("south", near, Attempt::Move(Dir::South))]);
+    assert_eq!(world.actor_cell(near), Some((6, 2)));
+    while world.observe(bare).unwrap().self_info.sunburn != "burned" {
+        assert!(!world.is_raining());
+        world.step(&[]);
+        assert!(world.sim_time() < 16);
+    }
+    let still = world.observe(near).unwrap();
+    assert_eq!(still.self_info.ochre, "red-ochre-smeared");
+    assert_ne!(still.self_info.sunburn, "burned");
+    assert!(still.text.contains("The red ochre holds the sun off."));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("burned") && !event.text.contains("The sun burns")));
+    assert_eq!(world.observe(bare).unwrap().self_info.sunburn, "burned");
+    while !world.is_raining() {
+        world.step(&[]);
+    }
+    world.step(&[]);
+    let washed = world.observe(near).unwrap();
+    assert_eq!(washed.self_info.ochre, "bare");
+    assert!(!washed.text.contains("The red ochre holds the sun off."));
+    assert!(!washed.text.contains("red-ochre-smeared"));
+    assert!(washed
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the red ochre off you."));
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "The rain washes the red ochre off Near."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("ochre")));
+}
+
+#[test]
 fn mud_on_the_skin_keeps_the_same_sun_from_burning() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();
