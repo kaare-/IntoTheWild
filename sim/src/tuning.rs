@@ -810,6 +810,7 @@ impl Tuning {
             Material::Drum => 0,
             Material::Sinew => 0,
             Material::Sticks => 0,
+            Material::Torch => 0,
         }
     }
 }

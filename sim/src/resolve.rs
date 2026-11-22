@@ -149,6 +149,8 @@ impl World {
         let mut drum_beats = Vec::new();
         let mut stick_carves = Vec::new();
         let mut stick_beats = Vec::new();
+        let mut torch_makes = Vec::new();
+        let mut torch_lights = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smoke_fish = Vec::new();
@@ -207,6 +209,9 @@ impl World {
                     let sinew_refusal = matches!(intent.attempt, Attempt::PullSinew);
                     let sticks_refusal =
                         matches!(intent.attempt, Attempt::CarveSticks | Attempt::BeatSticks);
+                    // A pitch torch miss is the reply only.
+                    let torch_refusal =
+                        matches!(intent.attempt, Attempt::MakeTorch | Attempt::LightTorch);
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -216,7 +221,8 @@ impl World {
                             && !snare_line_refusal
                             && !ice_refusal
                             && !sinew_refusal
-                            && !sticks_refusal;
+                            && !sticks_refusal
+                            && !torch_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -228,9 +234,10 @@ impl World {
                         Attempt::Release => releases.push(intent),
                         Attempt::Look | Attempt::Examine(_) => quiet.push(intent),
                         Attempt::Arms => arms.push(intent),
-                        Attempt::NameSnare | Attempt::NameCanoe | Attempt::NameSinew => {
-                            hints.push(intent)
-                        }
+                        Attempt::NameSnare
+                        | Attempt::NameCanoe
+                        | Attempt::NameSinew
+                        | Attempt::NameTorch => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -309,6 +316,8 @@ impl World {
                         Attempt::BeatDrum => drum_beats.push(intent),
                         Attempt::CarveSticks => stick_carves.push(intent),
                         Attempt::BeatSticks => stick_beats.push(intent),
+                        Attempt::MakeTorch => torch_makes.push(intent),
+                        Attempt::LightTorch => torch_lights.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeFish => smoke_fish.push(intent),
@@ -483,6 +492,8 @@ impl World {
         self.apply_drum_beats(drum_beats, &mut results);
         self.apply_stick_carves(stick_carves, &mut results);
         self.apply_stick_beats(stick_beats, &mut results);
+        self.apply_torch_makes(torch_makes, &mut results);
+        self.apply_torch_lights(torch_lights, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smoke_fish(smoke_fish, &mut results);
@@ -519,7 +530,8 @@ impl World {
             | Attempt::Arms
             | Attempt::NameSnare
             | Attempt::NameCanoe
-            | Attempt::NameSinew => Ok(false),
+            | Attempt::NameSinew
+            | Attempt::NameTorch => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -1135,6 +1147,32 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Sticks).is_empty() {
                     Err("You are not carrying rhythm sticks.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::MakeTorch => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(miss) = self.torch_make_miss(actor.id) {
+                    Err(miss.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::LightTorch => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(miss) = self.torch_light_miss(actor.id) {
+                    Err(miss.into())
                 } else {
                     Ok(true)
                 }
@@ -9709,6 +9747,251 @@ impl World {
                 .is_some_and(|item| item.carrier == Some(actor))
         });
         !carried && self.carry_count(actor) >= self.tuning.carry_slots
+    }
+
+    fn torch_held_or_here(
+        &self,
+        actor: crate::model::ActorId,
+        material: Material,
+    ) -> Option<crate::model::ItemId> {
+        if let Some(id) = self.loose_ids(actor, material).first().copied() {
+            return Some(id);
+        }
+        let cell = self.actor(actor).map(|person| person.cell)?;
+        self.ground_ids(cell, material).first().copied()
+    }
+
+    fn torch_dry_held_or_here(
+        &self,
+        actor: crate::model::ActorId,
+        material: Material,
+    ) -> Option<crate::model::ItemId> {
+        if let Some(id) = self.dry_loose_ids(actor, material).first().copied() {
+            return Some(id);
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, material).into_iter().find(|id| {
+            self.item(*id)
+                .is_some_and(|item| self.is_dry(item.moisture))
+        })
+    }
+
+    /// A carried or dropped piece, or the pile on this cell.
+    fn torch_present(&self, actor: crate::model::ActorId, material: Material) -> bool {
+        self.torch_held_or_here(actor, material).is_some()
+            || self.has_material_at_hand(actor, material)
+    }
+
+    /// A dry carried or dropped piece, or a dry pile on this cell.
+    fn torch_dry_present(&self, actor: crate::model::ActorId, material: Material) -> bool {
+        self.torch_dry_held_or_here(actor, material).is_some() || self.has_dry(actor, material)
+    }
+
+    /// No resin, no dry wood, or both pieces off the arms with the arms full.
+    fn torch_make_miss(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        if !self.torch_present(actor, Material::Resin) {
+            return Some("You have no pine resin.");
+        }
+        let branch = self.torch_dry_present(actor, Material::Branch);
+        let bark = self.torch_dry_present(actor, Material::Bark);
+        if !branch && !bark {
+            let damp_branch = self.torch_present(actor, Material::Branch);
+            let damp_bark = self.torch_present(actor, Material::Bark);
+            return Some(if damp_branch {
+                "The branch is too damp to bind."
+            } else if damp_bark {
+                "The bark is too damp to wrap."
+            } else {
+                "You need a dry branch or a sheet of bark."
+            });
+        }
+        let carried = !self.loose_ids(actor, Material::Resin).is_empty()
+            || !self.dry_loose_ids(actor, Material::Branch).is_empty()
+            || !self.dry_loose_ids(actor, Material::Bark).is_empty();
+        if !carried && self.carry_count(actor) >= self.tuning.carry_slots {
+            return Some(ARMS_FULL);
+        }
+        None
+    }
+
+    fn torch_light_miss(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        let torches = self.loose_ids(actor, Material::Torch);
+        if torches.is_empty() {
+            return Some("You are not carrying a pitch torch.");
+        }
+        let unlit = torches.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|torch| torch.firing_ready_at.is_none())
+        });
+        if !unlit {
+            return Some("The pitch torch is already lit.");
+        }
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        if self.fire_at(cell).is_some() || self.torch_tinder_ready(actor) {
+            return None;
+        }
+        let damp =
+            self.torch_present(actor, Material::Bark) || self.torch_present(actor, Material::Moss);
+        Some(if damp {
+            "The tinder is too damp."
+        } else {
+            "You need a fire here, or tinder in the arms."
+        })
+    }
+
+    /// Dry bark, then dry moss, then cattail fluff. A pile at the feet counts.
+    /// Fluff still catches when damp.
+    fn torch_tinder_ready(&self, actor: crate::model::ActorId) -> bool {
+        self.torch_dry_present(actor, Material::Bark)
+            || self.torch_dry_present(actor, Material::Moss)
+            || self.torch_present(actor, Material::Fluff)
+    }
+
+    fn spend_torch_resin(&mut self, actor: crate::model::ActorId) -> bool {
+        if let Some(id) = self.torch_held_or_here(actor, Material::Resin) {
+            self.items.remove(&id);
+            return true;
+        }
+        self.take_hand(actor, Material::Resin).is_ok()
+    }
+
+    /// A dry piece from the arms or the ground, then one from the dry pile.
+    fn spend_torch_dry(&mut self, actor: crate::model::ActorId, material: Material) -> bool {
+        if let Some(id) = self.torch_dry_held_or_here(actor, material) {
+            self.items.remove(&id);
+            return true;
+        }
+        self.consume_dry(actor, material).is_ok()
+    }
+
+    fn spend_torch_tinder(&mut self, actor: crate::model::ActorId) -> bool {
+        if self.spend_torch_dry(actor, Material::Bark)
+            || self.spend_torch_dry(actor, Material::Moss)
+        {
+            return true;
+        }
+        if let Some(id) = self.torch_held_or_here(actor, Material::Fluff) {
+            self.items.remove(&id);
+            return true;
+        }
+        self.take_hand(actor, Material::Fluff).is_ok()
+    }
+
+    fn apply_torch_makes(&mut self, makes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in makes {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if let Some(miss) = self.torch_make_miss(actor.id) {
+                self.finish(intent.command_id, actor.id, false, miss, results);
+                continue;
+            }
+            if !self.spend_torch_resin(actor.id) {
+                continue;
+            }
+            let wrapped = if self.torch_dry_present(actor.id, Material::Branch) {
+                if !self.spend_torch_dry(actor.id, Material::Branch) {
+                    continue;
+                }
+                false
+            } else if self.spend_torch_dry(actor.id, Material::Bark) {
+                true
+            } else {
+                continue;
+            };
+            let id = self.mint_item(Material::Torch, 0, actor.cell, Some(actor.id), Role::Loose);
+            if let Some(torch) = self.items.get_mut(&id) {
+                torch.bound = wrapped;
+            }
+            let rest = if wrapped {
+                "a lump of pine resin and a sheet of bark into a pitch torch."
+            } else {
+                "a lump of pine resin and a dry branch into a pitch torch."
+            };
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "bind", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "bind", rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_torch_lights(&mut self, lights: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in lights {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if let Some(miss) = self.torch_light_miss(actor.id) {
+                self.finish(intent.command_id, actor.id, false, miss, results);
+                continue;
+            }
+            let Some(id) = self
+                .loose_ids(actor.id, Material::Torch)
+                .into_iter()
+                .find(|id| {
+                    self.item(*id)
+                        .is_some_and(|torch| torch.firing_ready_at.is_none())
+                })
+            else {
+                continue;
+            };
+            let from_fire = self.fire_at(actor.cell).is_some();
+            if !from_fire && !self.spend_torch_tinder(actor.id) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need a fire here, or tinder in the arms.",
+                    results,
+                );
+                continue;
+            }
+            let wrapped = self.item(id).is_some_and(|torch| torch.bound);
+            let wait = if wrapped {
+                self.tuning.clay_ticks.saturating_mul(2)
+            } else {
+                self.tuning.clay_ticks
+            };
+            let ready = self.time.saturating_add(wait);
+            if let Some(torch) = self.items.get_mut(&id) {
+                torch.firing_ready_at = Some(ready);
+            }
+            self.schedule(ready, Wake::TorchOut(id));
+            let rest = if from_fire {
+                "the pitch torch from the fire."
+            } else {
+                "the pitch torch with tinder."
+            };
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "light", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "light", rest),
+                results,
+            );
+        }
     }
 
     fn apply_stick_carves(&mut self, carves: Vec<Intent>, results: &mut Vec<CommandResult>) {

@@ -187,6 +187,13 @@ impl Host {
                 true,
                 "Pull sinew from a carcass.".into(),
             ),
+            Attempt::NameTorch => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Make a pitch torch, or light one.".into(),
+            ),
             Attempt::Look => {
                 let text = self
                     .world

@@ -39,6 +39,7 @@ impl World {
                 Wake::Smelt(id) => self.finish_smelt(id),
                 Wake::DryBranch(id) => self.dry_branch(id),
                 Wake::BrandOut(id) => self.brand_out(id),
+                Wake::TorchOut(id) => self.torch_out(id),
                 Wake::Snare(cell) => self.spring_snare(cell),
                 Wake::NetCatch(cell) => self.catch_in_net(cell),
                 Wake::Weir(cell) => self.catch_in_weir(cell),
@@ -3127,6 +3128,7 @@ impl World {
         }
         self.douse_open_fires(id);
         self.douse_open_brands();
+        self.douse_open_torches();
     }
 
     fn douse_open_brands(&mut self) {
@@ -3179,6 +3181,69 @@ impl World {
             )
         } else {
             (item.cell, vec![], "The brand burns out.".to_string())
+        };
+        self.items.remove(&id);
+        self.emit(
+            text,
+            Scope::Cell(cell),
+            affected,
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    fn douse_open_torches(&mut self) {
+        let open: Vec<ItemId> = self
+            .items
+            .values()
+            .filter(|item| item.material == Material::Torch && item.firing_ready_at.is_some())
+            .filter(|item| self.item_exposure(item.id) >= 1000)
+            .map(|item| item.id)
+            .collect();
+        for id in open {
+            self.quench_torch(id, true);
+        }
+    }
+
+    fn torch_out(&mut self, id: ItemId) {
+        let Some(item) = self.item(id) else {
+            return;
+        };
+        if item.material != Material::Torch || item.firing_ready_at != Some(self.time) {
+            return;
+        }
+        self.quench_torch(id, false);
+    }
+
+    fn quench_torch(&mut self, id: ItemId, rain: bool) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Torch {
+            return;
+        }
+        let (cell, affected, text) = if let Some(carrier) = item.carrier {
+            let name = self.name_of(carrier);
+            let cell = self
+                .actor(carrier)
+                .map(|person| person.cell)
+                .unwrap_or(item.cell);
+            let text = if rain {
+                format!("The rain puts {name}'s pitch torch out.")
+            } else {
+                format!("{name}'s pitch torch burns out.")
+            };
+            (cell, vec![carrier], text)
+        } else if rain {
+            (
+                item.cell,
+                vec![],
+                "The rain puts the pitch torch out.".to_string(),
+            )
+        } else {
+            (item.cell, vec![], "The pitch torch burns out.".to_string())
         };
         self.items.remove(&id);
         self.emit(

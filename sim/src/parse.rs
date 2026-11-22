@@ -65,6 +65,8 @@ sew drum                     a hide, a dry branch bent into the hoop, and cordag
 beat drum                    the drum in the arms. play drum is the same. Someone who can see you hears the beat. Past sight, a look says which way, one cell farther than the bone whistle, and one cell farther still, and that someone is beating a drum as a signal. It is not birdsong. The hare does not bolt. A deer within hearing lifts its head, and that line is not added to the beat. With no drum, only you hear it
 carve sticks                 two dry branches, from the arms or on the ground, with a flint flake or an iron knife, into a pair of rhythm sticks. The tool is not used up. With no flake or knife, or without two dry branches, only you hear which is missing
 beat sticks                  the rhythm sticks in the arms. click sticks, clack sticks, and play sticks are the same. Someone who can see you hears the click. One cell past sight, a look says which way. It is not a drum signal. The hare does not bolt, and a deer does not lift its head. With no sticks, only you hear it
+make torch                   a lump of pine resin and a dry branch, or a sheet of bark, from the arms or at your feet, into a pitch torch. bind torch and pitch torch are the same. With no resin, or no dry branch and no bark, only you hear which is missing
+light torch                  a pitch torch in the arms, from a fire on this cell, or with tinder in the arms or at your feet. Dry bark, dry moss, or cattail fluff is tinder. A bark torch burns longer. While it burns, the next step is readable at night. Rain in the open puts it out. With no torch, or no fire and no tinder, only you hear it
 make awl                     the same bone awl
 set snare                    hide strips, willow cordage, nettle cordage, or sinew, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, willow before nettle, and nettle before sinew.
 set trap                     the same snare
@@ -176,6 +178,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "snare" | "trap" if rest.is_empty() => Ok(Attempt::NameSnare),
         "canoe" | "dugout" if rest.is_empty() => Ok(Attempt::NameCanoe),
         "sinew" if rest.is_empty() => Ok(Attempt::NameSinew),
+        "torch" if rest.is_empty() => Ok(Attempt::NameTorch),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)
@@ -342,6 +345,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "launch" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => {
             Ok(Attempt::Launch)
+        }
+        "make" | "bind" | "pitch"
+            if rest == "torch"
+                || rest == "a torch"
+                || rest == "the torch"
+                || rest == "pitch torch" =>
+        {
+            Ok(Attempt::MakeTorch)
         }
         "seal" | "pitch" | "waterproof"
             if rest == "bark cup"
@@ -811,6 +822,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drill" if rest.is_empty() || rest == "fire" || rest == "the fire" => {
             Ok(Attempt::DrillFire)
         }
+        "light" | "kindle"
+            if rest == "torch"
+                || rest == "a torch"
+                || rest == "the torch"
+                || rest == "pitch torch"
+                || rest == "the pitch torch" =>
+        {
+            Ok(Attempt::LightTorch)
+        }
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" => Ok(Attempt::Cook),
         "eat" => parse_eat(rest),
@@ -974,6 +994,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         | "pair of rhythm sticks"
         | "a pair of rhythm sticks"
         | "clappers" => Ok(Material::Sticks),
+        "torch" | "pitch torch" | "a pitch torch" | "the pitch torch" => Ok(Material::Torch),
         "willow bark" | "strip of willow bark" | "a strip of willow bark" => Ok(Material::WillowBark),
         "willow"
         | "willow cordage"
@@ -1086,6 +1107,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         | "pair of rhythm sticks"
         | "a pair of rhythm sticks"
         | "clappers" => ExamineTarget::Sticks,
+        "torch" | "pitch torch" | "a pitch torch" | "the pitch torch" => ExamineTarget::Torch,
         "nettle" | "nettles" | "nettle cordage" => ExamineTarget::Nettle,
         "willow bark" | "strip of willow bark" => ExamineTarget::WillowBark,
         "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,

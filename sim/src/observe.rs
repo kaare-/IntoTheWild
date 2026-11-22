@@ -227,6 +227,7 @@ impl World {
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
             ExamineTarget::Sinew => self.examine_sinew(actor_id),
             ExamineTarget::Sticks => self.examine_sticks(actor_id),
+            ExamineTarget::Torch => self.examine_torch(actor_id),
             ExamineTarget::Cattail => self.examine_cattail(actor_id),
             ExamineTarget::BarkCup => self.examine_bark_cup(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
@@ -319,6 +320,9 @@ impl World {
                 .is_some_and(|tracks| tracks.contains("Wolf tracks mark the ground here."))
             {
                 lines.push("Wolf tracks mark the ground here.".into());
+            }
+            if self.torch_lights(actor_id) {
+                lines.push("The pitch torch lights the next step.".into());
             }
             if let Some(marks) = self.night_far_landmarks(actor_id) {
                 lines.push(marks);
@@ -874,6 +878,14 @@ impl World {
     fn dark_for(&self, viewer: ActorId) -> bool {
         self.actor(viewer)
             .is_some_and(|actor| self.dark_from(actor.cell))
+    }
+
+    /// A pitch torch in the arms that has not burned out yet.
+    fn torch_lights(&self, viewer: ActorId) -> bool {
+        self.loose_ids(viewer, Material::Torch).iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|torch| torch.firing_ready_at.is_some_and(|at| at > self.time))
+        })
     }
 
     fn here_text(&self, actor_id: ActorId) -> String {
@@ -1699,6 +1711,18 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Sticks).is_empty() {
             parts.push("A pair of rhythm sticks lies here.".into());
+        }
+        let torches_here = self.ground_ids(actor.cell, Material::Torch);
+        if !torches_here.is_empty() {
+            let lit = torches_here.iter().any(|id| {
+                self.item(*id)
+                    .is_some_and(|torch| torch.firing_ready_at.is_some())
+            });
+            if lit {
+                parts.push("A lit pitch torch lies here.".into());
+            } else {
+                parts.push("A pitch torch lies here.".into());
+            }
         }
         let bows_here = self.ground_ids(actor.cell, Material::Bow);
         if !bows_here.is_empty() {
@@ -3883,6 +3907,124 @@ impl World {
         }
     }
 
+    fn torch_carry_phrase(&self, actor_id: ActorId) -> String {
+        let mut bits = Vec::new();
+        for id in self.loose_ids(actor_id, Material::Torch) {
+            let Some(item) = self.item(id) else {
+                continue;
+            };
+            let lit = item.firing_ready_at.is_some();
+            bits.push(
+                match (lit, item.bound) {
+                    (true, true) => "a lit pitch torch wrapped in bark",
+                    (true, false) => "a lit pitch torch",
+                    (false, true) => "a pitch torch wrapped in bark",
+                    (false, false) => "a pitch torch",
+                }
+                .to_string(),
+            );
+        }
+        if bits.is_empty() {
+            "a pitch torch".into()
+        } else {
+            bits.join(", ")
+        }
+    }
+
+    fn examine_torch(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            for id in self.ground_ids(cell, Material::Torch) {
+                let Some(item) = self.item(id) else {
+                    continue;
+                };
+                let place = self.place_phrase(origin, cell);
+                let lit = item.firing_ready_at.is_some();
+                let name = match (lit, item.bound) {
+                    (true, true) => "A lit pitch torch wrapped in bark",
+                    (true, false) => "A lit pitch torch",
+                    (false, true) => "A pitch torch wrapped in bark",
+                    (false, false) => "A pitch torch",
+                };
+                lines.push(format!("{name} lies {place}."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            for id in self.loose_ids(actor.id, Material::Torch) {
+                let Some(item) = self.item(id) else {
+                    continue;
+                };
+                let who = if actor.id == viewer {
+                    "you"
+                } else {
+                    actor.name.as_str()
+                };
+                let cover = self.cover_phrase(actor.cell);
+                let lit = item.firing_ready_at.is_some();
+                let name = match (lit, item.bound) {
+                    (true, true) => "A lit pitch torch wrapped in bark",
+                    (true, false) => "A lit pitch torch",
+                    (false, true) => "A pitch torch wrapped in bark",
+                    (false, false) => "A pitch torch",
+                };
+                lines.push(format!("{name} is carried by {who}, {cover}."));
+            }
+        }
+        if lines.is_empty() {
+            "You see no pitch torch from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    /// Binding or lighting a pitch torch. The person already has the reply.
+    fn torch_act_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        if text == format!("{name} binds a lump of pine resin and a dry branch into a pitch torch.")
+            || text
+                == format!(
+                    "{name} binds a lump of pine resin and a sheet of bark into a pitch torch."
+                )
+            || text == format!("{name} lights the pitch torch from the fire.")
+            || text == format!("{name} lights the pitch torch with tinder.")
+        {
+            Some(text.to_string())
+        } else {
+            None
+        }
+    }
+
+    /// The torch going out, in the carrier's own words.
+    fn torch_out_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name}'s pitch torch burns out.") {
+            return Some("Your pitch torch burns out.".into());
+        }
+        if event.text == format!("The rain puts {name}'s pitch torch out.") {
+            return Some("The rain puts your pitch torch out.".into());
+        }
+        None
+    }
+
     /// A pull of sinew. The person who pulled it already has the reply.
     fn sinew_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -5187,6 +5329,8 @@ impl World {
             "a pair of rhythm sticks".into()
         } else if item.material == "sticks" {
             format!("{} pairs of rhythm sticks", count_word(item.count))
+        } else if item.material == "torch" {
+            self.torch_carry_phrase(actor_id)
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -5997,6 +6141,9 @@ impl World {
     fn adjacent_line(&self, viewer: ActorId, origin: CellId, dir: Dir) -> String {
         let line = self.adjacent_detail(viewer, origin, dir);
         if !self.dark_from(origin) || line.ends_with("the valley ends.") {
+            return line;
+        }
+        if self.torch_lights(viewer) {
             return line;
         }
         if let Some(mark) = self.night_compass_mark(origin, dir) {
@@ -10073,6 +10220,7 @@ impl World {
                 Material::Drum => "drum",
                 Material::Sticks => "rhythm sticks",
                 Material::Sinew => "sinew",
+                Material::Torch => "pitch torch",
             };
             format!("You see no {name} from here.")
         } else {
@@ -11108,6 +11256,7 @@ impl World {
                     && self.blow_for_these_eyes(viewer, event).is_none()
                     && self.drum_for_these_eyes(viewer, event).is_none()
                     && self.sticks_for_these_eyes(viewer, event).is_none()
+                    && self.torch_act_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.scrape_for_these_eyes(viewer, event).is_none()
                     && self.sinew_for_these_eyes(viewer, event).is_none()
@@ -14053,6 +14202,9 @@ impl World {
         if let Some(line) = self.brand_for_these_eyes(viewer, event) {
             return line;
         }
+        if let Some(line) = self.torch_out_for_these_eyes(viewer, event) {
+            return line;
+        }
         if let Some(line) = self.harden_for_these_eyes(viewer, event) {
             return line;
         }
@@ -15413,6 +15565,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Sinew, false) => "lengths of sinew",
         (Material::Sticks, true) => "pair of rhythm sticks",
         (Material::Sticks, false) => "pairs of rhythm sticks",
+        (Material::Torch, true) => "pitch torch",
+        (Material::Torch, false) => "pitch torches",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

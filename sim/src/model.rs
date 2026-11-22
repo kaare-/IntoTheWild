@@ -173,6 +173,9 @@ pub enum Material {
     /// click is heard in sight and one cell past sight. It is not a drum
     /// signal, and it does not startle game.
     Sticks,
+    /// Pine resin on a dry branch, or wrapped in a sheet of bark.
+    /// Unlit until a fire or tinder lights it. `bound` means the bark wrap.
+    Torch,
 }
 
 impl Material {
@@ -239,6 +242,7 @@ impl Material {
             Material::Drum => "drum",
             Material::Sinew => "sinew",
             Material::Sticks => "sticks",
+            Material::Torch => "torch",
         }
     }
 
@@ -305,6 +309,7 @@ impl Material {
             Material::Drum => "drum",
             Material::Sinew => "length of sinew",
             Material::Sticks => "pair of rhythm sticks",
+            Material::Torch => "pitch torch",
         }
     }
 
@@ -456,6 +461,8 @@ pub enum ExamineTarget {
     Sinew,
     /// A pair of rhythm sticks. They are not a drum.
     Sticks,
+    /// A pitch torch. Lit or still dark.
+    Torch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -604,6 +611,12 @@ pub enum Attempt {
     /// Beat the rhythm sticks in the arms. Heard in sight, and one cell past
     /// sight. It is not a drum signal. Game is not startled.
     BeatSticks,
+    /// Bare `torch`. Names the verbs. Does not bind or light one.
+    NameTorch,
+    /// Pine resin and a dry branch, or a sheet of bark, into a pitch torch.
+    MakeTorch,
+    /// Light a carried pitch torch from a fire here, or with tinder.
+    LightTorch,
     /// A stone, a bone, or an iron knife opens a hole in ice on the still.
     /// The tool is not used up. A baited bone hook can fish through the hole.
     BreakIce,
@@ -703,6 +716,8 @@ impl Attempt {
                 | Attempt::BeatDrum
                 | Attempt::CarveSticks
                 | Attempt::BeatSticks
+                | Attempt::MakeTorch
+                | Attempt::LightTorch
                 | Attempt::BreakIce
                 | Attempt::PullSinew
         )
@@ -1023,6 +1038,8 @@ pub enum Wake {
     Smelt(ItemId),
     DryBranch(ItemId),
     BrandOut(ItemId),
+    /// A lit pitch torch burns out on this tick.
+    TorchOut(ItemId),
     /// A drink in an unsealed bark cup soaks through on this tick.
     /// A sealed cup, or a drink held by a pot, keeps it.
     CupLeak(ItemId),
@@ -25378,5 +25395,269 @@ mod spear_hint {
         assert!(!look.events.iter().any(|event| event.text.contains(FIRE)));
         assert!(!world.observe(seen).unwrap().text.contains(FIRE));
         assert!(!world.observe(quiet).unwrap().text.contains(FIRE));
+    }
+}
+
+#[cfg(test)]
+mod pitch_torch {
+    use super::{Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_pitch_torch_lights_the_next_step_at_night() {
+        assert!(matches!(
+            crate::parse::parse_attempt("make torch").unwrap(),
+            Attempt::MakeTorch
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("bind torch").unwrap(),
+            Attempt::MakeTorch
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("light torch").unwrap(),
+            Attempt::LightTorch
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("torch").unwrap(),
+            Attempt::NameTorch
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+
+        let bare = world.step(&[intent("bare", near, Attempt::MakeTorch)]);
+        assert_eq!(bare.results[0].message, "You have no pine resin.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no pine resin."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no pine resin."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no pine resin."));
+
+        while world.take_from_pile(cell, Material::Branch, 1).is_some() {}
+        while world.take_from_pile(cell, Material::Bark, 1).is_some() {}
+        while world.take_from_pile(cell, Material::Moss, 1).is_some() {}
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 1000, cell, Some(near), Role::Loose);
+        let damp = world.step(&[intent("damp", near, Attempt::MakeTorch)]);
+        assert_eq!(damp.results[0].message, "The branch is too damp to bind.");
+        world
+            .loose_ids(near, Material::Branch)
+            .iter()
+            .for_each(|id| {
+                world.items.remove(id);
+            });
+
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let made = world.step(&[intent("make", near, Attempt::MakeTorch)]);
+        assert_eq!(
+            made.results[0].message,
+            "You bind a lump of pine resin and a dry branch into a pitch torch."
+        );
+        let yours = "You bind a lump of pine resin and a dry branch into a pitch torch.";
+        let witnessed = "Near binds a lump of pine resin and a dry branch into a pitch torch.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != witnessed));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == witnessed));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != witnessed));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You have a pitch torch."));
+
+        let unlit = world.step(&[intent("dark", near, Attempt::LightTorch)]);
+        assert_eq!(
+            unlit.results[0].message,
+            "You need a fire here, or tinder in the arms."
+        );
+        let need = "You need a fire here, or tinder in the arms.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != need));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != need));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != need));
+
+        let night = world.tuning.night_at;
+        while world.time < night {
+            world.step(&[]);
+        }
+        let dark = world.observe(near).unwrap().text;
+        assert!(dark.contains("you cannot make out the ground"), "{dark}");
+        assert!(!dark.contains("The pitch torch lights the next step."));
+
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        let lit = world.step(&[intent("light", near, Attempt::LightTorch)]);
+        assert_eq!(
+            lit.results[0].message,
+            "You light the pitch torch with tinder."
+        );
+        let light_yours = "You light the pitch torch with tinder.";
+        let light_seen = "Near lights the pitch torch with tinder.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != light_yours && event.text != light_seen));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == light_seen));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != light_seen));
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("The pitch torch lights the next step."),
+            "{look}"
+        );
+        assert!(!look.contains("you cannot make out the ground"), "{look}");
+        assert!(look.contains("You have a lit pitch torch."), "{look}");
+        assert!(look.contains("West:"), "{look}");
+
+        let wait = world.tuning.clay_ticks;
+        for _ in 0..wait {
+            world.step(&[]);
+        }
+        let out = world.observe(near).unwrap();
+        assert!(out
+            .events
+            .iter()
+            .any(|event| event.text == "Your pitch torch burns out."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near's pitch torch burns out."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("pitch torch")));
+        assert!(
+            out.text.contains("you cannot make out the ground"),
+            "{}",
+            out.text
+        );
+        assert!(!out.text.contains("pitch torch"));
+    }
+
+    #[test]
+    fn bark_wraps_a_torch_and_a_fire_lights_it() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        while world.take_from_pile(cell, Material::Branch, 1).is_some() {}
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        let made = world.step(&[intent("wrap", near, Attempt::MakeTorch)]);
+        assert_eq!(
+            made.results[0].message,
+            "You bind a lump of pine resin and a sheet of bark into a pitch torch."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a pitch torch wrapped in bark"));
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        let fire = world.step(&[intent("fire", near, Attempt::Light)]);
+        assert!(fire.results[0].success, "{}", fire.results[0].message);
+        let lit = world.step(&[intent("light", near, Attempt::LightTorch)]);
+        assert_eq!(
+            lit.results[0].message,
+            "You light the pitch torch from the fire."
+        );
+        let torch = world.loose_ids(near, Material::Torch)[0];
+        let until = world.item(torch).unwrap().firing_ready_at.unwrap();
+        assert_eq!(until, world.time + world.tuning.clay_ticks * 2 - 1);
+    }
+
+    #[test]
+    fn a_bark_pile_under_the_rock_lights_the_torch() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let bark = world.pile_count(cell, Material::Bark);
+        let moss = world.pile_count(cell, Material::Moss);
+        assert!(bark >= 1);
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
+        let made = world.step(&[intent("make", near, Attempt::MakeTorch)]);
+        assert!(made.results[0].success, "{}", made.results[0].message);
+        let lit = world.step(&[intent("light", near, Attempt::LightTorch)]);
+        assert_eq!(
+            lit.results[0].message,
+            "You light the pitch torch with tinder."
+        );
+        assert_eq!(world.pile_count(cell, Material::Bark), bark - 1);
+        assert_eq!(world.pile_count(cell, Material::Moss), moss);
+        let need = "You need a fire here, or tinder in the arms.";
+        let yours = "You light the pitch torch with tinder.";
+        let witnessed = "Near lights the pitch torch with tinder.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != need && event.text != yours && event.text != witnessed }));
     }
 }
