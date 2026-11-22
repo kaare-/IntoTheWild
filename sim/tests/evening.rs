@@ -12378,7 +12378,7 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
     let cold = world.step(&[cmd("early", near, Attempt::Smelt)]);
     assert_eq!(
         cold.results[0].message,
-        "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."
+        "Iron needs a hot charcoal fire. This fire will leave a lump of charcoal when it burns down, then light with that."
     );
     assert!(!cold.results[0].success);
     for witness in [far, west] {
@@ -12463,10 +12463,10 @@ fn carried_iron_ore_needs_a_hotter_fire_before_it_smelts() {
     let still = world.step(&[cmd("fed-fire", near, Attempt::SmeltIron)]);
     assert_eq!(
         still.results[0].message,
-        "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."
+        "Iron needs a hot charcoal fire. This fire will leave a lump of charcoal when it burns down, then light with that."
     );
     assert!(world.observe(near).unwrap().events.iter().any(|event| {
-        event.text == "Iron needs a hot charcoal fire. This fire must burn down and go out first, then light with the charcoal."
+        event.text == "Iron needs a hot charcoal fire. This fire will leave a lump of charcoal when it burns down, then light with that."
     }));
     for witness in [far, west] {
         assert!(world
