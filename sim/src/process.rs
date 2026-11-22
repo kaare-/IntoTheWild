@@ -49,6 +49,7 @@ impl World {
                 Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::MintReturn(cell) => self.return_mint(cell),
+                Wake::NeedleReturn(cell) => self.return_needles(cell),
                 Wake::ResinReturn(cell) => self.return_resin(cell),
                 Wake::WillowReturn(cell) => self.return_willow(cell),
                 Wake::NettleReturn(cell) => self.return_nettle(cell),
@@ -284,6 +285,33 @@ impl World {
         self.add_pile(cell, Material::Mint, 1, 0);
         self.emit(
             "Wild mint grows on the wet bank again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The pine has waited out the same ticks as moss. One handful of needles lies there again.
+    /// Pitch is a different pile.
+    fn return_needles(&mut self, cell: CellId) {
+        let Some(at) = self.needle_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.needle_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Needle) > 0
+            || !self.ground_ids(cell, Material::Needle).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Needle, 1, 0);
+        self.emit(
+            "Pine needles lie under the pine again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

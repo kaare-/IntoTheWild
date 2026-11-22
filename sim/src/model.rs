@@ -138,6 +138,9 @@ pub enum Material {
     Flour,
     /// A handful from the wet bank. Steeped in hot water over a fire, it is mint tea.
     Mint,
+    /// A handful from the pine south of the trail. Steeped in hot water, it eases a chill.
+    /// It is not mint, and it does not settle a stomach.
+    Needle,
 }
 
 impl Material {
@@ -193,6 +196,7 @@ impl Material {
             Material::BarkCup => "bark cup",
             Material::Flour => "flour",
             Material::Mint => "mint",
+            Material::Needle => "pine needles",
         }
     }
 
@@ -248,6 +252,7 @@ impl Material {
             Material::BarkCup => "bark cup",
             Material::Flour => "cattail flour",
             Material::Mint => "handful of mint",
+            Material::Needle => "handful of pine needles",
         }
     }
 
@@ -391,6 +396,7 @@ pub enum ExamineTarget {
     Cattail,
     BarkCup,
     Mint,
+    Needle,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -494,6 +500,9 @@ pub enum Attempt {
     /// Steep a handful of mint in a pot or a bark cup of water over a fire.
     /// The tea is drunk in the same act. A sick stomach eases.
     Brew,
+    /// Steep a handful of pine needles the same way. A chill eases slightly.
+    /// A sick stomach does not.
+    SteepPine,
 }
 
 impl Attempt {
@@ -512,6 +521,7 @@ impl Attempt {
                 | Attempt::Cook
                 | Attempt::Boil
                 | Attempt::Brew
+                | Attempt::SteepPine
                 | Attempt::SetClay
                 | Attempt::BindSpear
                 | Attempt::Knap
@@ -887,6 +897,8 @@ pub enum Wake {
     MossReturn(CellId),
     /// A wet bank on this cell grows mint again.
     MintReturn(CellId),
+    /// The pine on this cell has needles again.
+    NeedleReturn(CellId),
     /// Pitch lumps lie under the pine on this cell again.
     ResinReturn(CellId),
     /// Willow cordage hangs on this bank again.
@@ -1213,6 +1225,12 @@ pub struct World {
     /// When a bare wet bank grows mint again. Look says the bank has no mint until then.
     #[serde(default)]
     pub(crate) mint_returns_at: BTreeMap<CellId, u64>,
+    /// The pine where needles lie. Bare once the handful is taken. Pitch is separate.
+    #[serde(default)]
+    pub(crate) needle_stands: BTreeSet<CellId>,
+    /// When a bare pine has needles again. Look says the pine has no needles until then.
+    #[serde(default)]
+    pub(crate) needle_returns_at: BTreeMap<CellId, u64>,
     /// The pine on the dry floor. Bare once the last lump of pitch is taken.
     #[serde(default)]
     pub(crate) resin_stands: BTreeSet<CellId>,
@@ -1438,6 +1456,8 @@ impl World {
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
             mint_returns_at: BTreeMap::new(),
+            needle_stands: BTreeSet::new(),
+            needle_returns_at: BTreeMap::new(),
             resin_stands: BTreeSet::new(),
             resin_returns_at: BTreeMap::new(),
             willow_stands: BTreeSet::new(),
@@ -1571,9 +1591,12 @@ impl World {
         world.add_pile(bank, Material::Moss, 1, 0);
         world.moss_banks.insert(bank);
         // A pine on the dry floor south of the trail. Two lumps of pitch.
+        // A handful of needles lies there too. Pitch and needles are not the same gather.
         let pine = cell_id(2, 4).unwrap();
         world.add_pile(pine, Material::Resin, 2, 0);
         world.resin_stands.insert(pine);
+        world.add_pile(pine, Material::Needle, 1, 0);
+        world.needle_stands.insert(pine);
         // A willow on the dry bank south of the brook. Two bundles of cordage.
         let willow = cell_id(0, 4).unwrap();
         world.add_pile(willow, Material::Willow, 2, 0);
@@ -2061,6 +2084,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.mint_returns_at.insert(cell, at);
         self.schedule(at, Wake::MintReturn(cell));
+    }
+
+    /// The pine has no needles. They return on the same wait as moss.
+    /// Pitch on that pine is a different pile and is not touched.
+    pub(crate) fn arm_needle_stand(&mut self, cell: CellId) {
+        if !self.needle_stands.contains(&cell) || self.needle_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Needle) > 0
+            || !self.ground_ids(cell, Material::Needle).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.moss_ticks);
+        self.needle_returns_at.insert(cell, at);
+        self.schedule(at, Wake::NeedleReturn(cell));
     }
 
     /// The pine is bare. Pitch returns `resin_ticks` after this step.
@@ -19066,5 +19105,277 @@ mod mint_tea {
             .unwrap()
             .text
             .contains("Wild mint grows on the wet bank to the west."));
+    }
+}
+
+#[cfg(test)]
+mod pine_tea {
+    use super::{cell_id, Attempt, Dir, ExamineTarget, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn pine_needles_steep_into_a_tea_that_eases_a_chill() {
+        assert!(matches!(
+            crate::parse::parse_attempt("steep pine").unwrap(),
+            Attempt::SteepPine
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("brew pine needles").unwrap(),
+            Attempt::SteepPine
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("brew pine needle tea").unwrap(),
+            Attempt::SteepPine
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("steep mint").unwrap(),
+            Attempt::Brew
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather pine needles").unwrap(),
+            Attempt::Gather(Material::Needle)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather resin").unwrap(),
+            Attempt::Gather(Material::Resin)
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let pine = cell_id(2, 4).unwrap();
+        assert_eq!(world.pile_count(pine, Material::Needle), 1);
+        assert_eq!(world.pile_count(pine, Material::Resin), 2);
+        let near = world.spawn_at("Near", "n", 1, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 0).unwrap();
+
+        let beside = world.observe(near).unwrap().text;
+        assert!(
+            beside.contains("Pine needles lie under the pine to the east."),
+            "{beside}"
+        );
+        assert!(beside.contains("pine needles"), "{beside}");
+        assert!(
+            beside.contains("pine resin") || beside.contains("pitch"),
+            "{beside}"
+        );
+        let miss = world.step(&[intent("miss", near, Attempt::Gather(Material::Needle))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There are no pine needles here to gather. Step east."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There are no pine needles here to gather. Step east." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("pine needles") }));
+
+        world.step(&[intent("east", near, Attempt::Move(Dir::East))]);
+        assert_eq!(world.actor(near).unwrap().cell, pine);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("Pine needles lie under the pine here."),
+            "{here}"
+        );
+        assert!(
+            here.contains("It is pine resin.") || here.contains("pitch"),
+            "{here}"
+        );
+        let examined = world.examine(near, ExamineTarget::Needle);
+        assert!(
+            examined.contains("They can be steeped in hot water."),
+            "{examined}"
+        );
+        assert!(!examined.contains("mint"), "{examined}");
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Needle))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a handful of pine needles."
+        );
+        let held = world.observe(near).unwrap();
+        assert!(
+            held.text.contains("The pine here has no needles."),
+            "{}",
+            held.text
+        );
+        assert!(
+            held.text.contains("You have a handful of pine needles."),
+            "{}",
+            held.text
+        );
+        assert!(
+            held.text.contains("pine resin") || held.text.contains("pitch"),
+            "{}",
+            held.text
+        );
+        assert!(held
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers a handful of pine needles") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a handful of pine needles." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("pine needles") }));
+        let bare = world.observe(seen).unwrap().text;
+        assert!(
+            bare.contains("The pine to the west has no needles."),
+            "{bare}"
+        );
+        assert!(bare.contains("no needles"), "{bare}");
+
+        let no_fire = world.step(&[intent("steep", near, Attempt::SteepPine)]);
+        assert_eq!(no_fire.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here." }));
+
+        world.mint_fire(pine, 0);
+        let no_water = world.step(&[intent("water", near, Attempt::SteepPine)]);
+        assert_eq!(
+            no_water.results[0].message,
+            "You have no water to steep the pine needles in."
+        );
+        world.mint_item(Material::Water, 0, pine, Some(near), Role::Loose);
+        world.mint_item(Material::Bowl, 0, pine, Some(near), Role::Loose);
+        let bowl = world.step(&[intent("bowl", near, Attempt::SteepPine)]);
+        assert_eq!(
+            bowl.results[0].message,
+            "You need a pot or a bark cup to steep the pine needles."
+        );
+        let bowl_id = world.loose_ids(near, Material::Bowl)[0];
+        world.items.remove(&bowl_id);
+        world.mint_item(Material::Pot, 0, pine, Some(near), Role::Loose);
+        let not_mint = world.step(&[intent("mint", near, Attempt::Brew)]);
+        assert_eq!(not_mint.results[0].message, "You have no mint to steep.");
+        assert_eq!(world.loose_ids(near, Material::Needle).len(), 1);
+        world.actors.get_mut(&near).unwrap().cold = 0;
+        world.actors.get_mut(&near).unwrap().illness = 800;
+        let well = world.step(&[intent("warm", near, Attempt::SteepPine)]);
+        assert_eq!(
+            well.results[0].message,
+            "You steep a handful of pine needles in the pot over the fire and drink the pine needle tea."
+        );
+        assert!(!well.results[0].message.contains("chill"));
+        assert!(!well.results[0].message.contains("stomach"));
+        assert!(world.actor(near).unwrap().illness >= world.tuning.ill_at);
+
+        world.mint_item(Material::Needle, 0, pine, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, pine, Some(near), Role::Loose);
+        let ease = world.tuning.cold_per_tick.saturating_mul(2);
+        let chilly = world
+            .tuning
+            .chilly_at
+            .saturating_add(ease)
+            .saturating_add(world.tuning.fire_warmth)
+            .saturating_add(40);
+        world.actors.get_mut(&near).unwrap().cold = chilly;
+        world.actors.get_mut(&near).unwrap().illness = 800;
+        let steeped = world.step(&[intent("chill", near, Attempt::SteepPine)]);
+        assert_eq!(
+            steeped.results[0].message,
+            "You steep a handful of pine needles in the pot over the fire and drink the pine needle tea. The chill eases."
+        );
+        assert!(!steeped.results[0].message.contains("stomach"));
+        assert!(!steeped.results[0].message.contains("mint tea"));
+        let after = world.actor(near).unwrap();
+        assert_eq!(after.cold, chilly - ease - world.tuning.fire_warmth);
+        assert!(after.illness >= world.tuning.ill_at);
+        let eased = world.observe(near).unwrap();
+        assert!(eased.events.iter().all(|event| {
+            !event.text.contains("steeps a handful of pine needles")
+                && !event.text.contains("The chill eases.")
+        }));
+        let seen_tea = world.observe(seen).unwrap();
+        assert!(seen_tea.events.iter().any(|event| {
+            event.text == "Near steeps a handful of pine needles in the pot over the fire and drinks the pine needle tea."
+        }));
+        assert!(seen_tea.events.iter().all(|event| {
+            !event.text.contains("The chill eases.") && !event.text.contains("stomach")
+        }));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("pine needle") && !event.text.contains("The chill eases.")
+        }));
+
+        let gone = world.step(&[intent("again", near, Attempt::SteepPine)]);
+        assert_eq!(
+            gone.results[0].message,
+            "You have no pine needles to steep."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You have no pine needles to steep." }));
+
+        let pot_id = world.loose_ids(near, Material::Pot)[0];
+        world.items.remove(&pot_id);
+        let cup = world.mint_item(Material::BarkCup, 0, pine, Some(near), Role::Loose);
+        world.mint_item(Material::Needle, 0, pine, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, pine, Some(near), Role::Loose);
+        world.actors.get_mut(&near).unwrap().cold = 0;
+        let in_cup = world.step(&[intent("cup", near, Attempt::SteepPine)]);
+        assert_eq!(
+            in_cup.results[0].message,
+            "You steep a handful of pine needles in the bark cup over the fire and drink the pine needle tea."
+        );
+        world.items.get_mut(&cup).unwrap().pitched = true;
+        world.mint_item(Material::Needle, 0, pine, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, pine, Some(near), Role::Loose);
+        let sealed = world.step(&[intent("sealed", near, Attempt::SteepPine)]);
+        assert_eq!(
+            sealed.results[0].message,
+            "You steep a handful of pine needles in the sealed bark cup over the fire and drink the pine needle tea."
+        );
+
+        let at = world.needle_returns_at[&pine];
+        while world.time < at {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The pine here has no needles."));
+        world.step(&[]);
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("Pine needles lie under the pine here."),
+            "{}",
+            back.text
+        );
+        assert!(
+            back.text.contains("pine resin") || back.text.contains("pitch"),
+            "{}",
+            back.text
+        );
+        assert!(back
+            .events
+            .iter()
+            .any(|event| { event.text == "Pine needles lie under the pine again." }));
     }
 }

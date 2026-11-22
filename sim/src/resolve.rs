@@ -67,6 +67,7 @@ impl World {
         let mut drinks = Vec::new();
         let mut boils = Vec::new();
         let mut brews = Vec::new();
+        let mut pine_teas = Vec::new();
         let mut lights = Vec::new();
         let mut cooks = Vec::new();
         let mut eats = Vec::new();
@@ -193,6 +194,7 @@ impl World {
                         Attempt::Drink => drinks.push(intent),
                         Attempt::Boil => boils.push(intent),
                         Attempt::Brew => brews.push(intent),
+                        Attempt::SteepPine => pine_teas.push(intent),
                         Attempt::Light => lights.push(intent),
                         Attempt::Cook => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
@@ -356,6 +358,7 @@ impl World {
         self.apply_drinks(drinks, &mut results);
         self.apply_boils(boils, &mut results);
         self.apply_brews(brews, &mut results);
+        self.apply_pine_teas(pine_teas, &mut results);
         self.apply_sets(sets, &mut results);
         self.apply_feeds(feeds, &mut results);
         self.apply_banks(banks, &mut results);
@@ -506,6 +509,27 @@ impl World {
                     && self.loose_ids(actor.id, Material::BarkCup).is_empty()
                 {
                     Err("You need a pot or a bark cup to steep the mint.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::SteepPine => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.loose_ids(actor.id, Material::Needle).is_empty() {
+                    Err("You have no pine needles to steep.".into())
+                } else if self.loose_ids(actor.id, Material::Water).is_empty() {
+                    Err("You have no water to steep the pine needles in.".into())
+                } else if self.loose_ids(actor.id, Material::Pot).is_empty()
+                    && self.loose_ids(actor.id, Material::BarkCup).is_empty()
+                {
+                    Err("You need a pot or a bark cup to steep the pine needles.".into())
                 } else {
                     Ok(true)
                 }
@@ -1828,6 +1852,8 @@ impl World {
                             "There are no {} here to gather.",
                             self.bitter_kind(actor.id)
                         )
+                    } else if *material == Material::Needle {
+                        "There are no pine needles here to gather.".to_string()
                     } else {
                         format!("There is no {} here to gather.", material.word())
                     };
@@ -2359,6 +2385,8 @@ impl World {
                                 "There are no {} here to gather.",
                                 self.bitter_kind(intent.actor_id)
                             )
+                        } else if material == Material::Needle {
+                            "There are no pine needles here to gather.".to_string()
                         } else {
                             format!("There is no {} here to gather.", material.word())
                         };
@@ -2456,6 +2484,9 @@ impl World {
                     }
                     if material == Material::Mint {
                         self.arm_mint_bank(cell);
+                    }
+                    if material == Material::Needle {
+                        self.arm_needle_stand(cell);
                     }
                     if material == Material::Resin {
                         self.arm_resin_stand(cell);
@@ -10035,6 +10066,94 @@ impl World {
                 crate::model::spoken_act(None, "sew", rest),
                 results,
             );
+        }
+    }
+
+    /// A handful of pine needles and a drink of water, in a pot or a bark cup, over a fire.
+    /// Both are spent. The tea is drunk in the same act. A chill eases by one open-wind tick.
+    /// A sick stomach is left alone. The chill line stays in the reply.
+    fn apply_pine_teas(&mut self, teas: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in teas {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let cell = actor.cell;
+            let refuse = if self.fire_at(cell).is_none() {
+                Some("There is no fire burning here.")
+            } else if self.loose_ids(actor.id, Material::Needle).is_empty() {
+                Some("You have no pine needles to steep.")
+            } else if self.loose_ids(actor.id, Material::Water).is_empty() {
+                Some("You have no water to steep the pine needles in.")
+            } else if self.loose_ids(actor.id, Material::Pot).is_empty()
+                && self.loose_ids(actor.id, Material::BarkCup).is_empty()
+            {
+                Some("You need a pot or a bark cup to steep the pine needles.")
+            } else {
+                None
+            };
+            if let Some(message) = refuse {
+                self.emit(
+                    message.to_string(),
+                    crate::model::Scope::Personal(actor.id),
+                    vec![actor.id],
+                    vec![cell],
+                    vec![],
+                    vec![],
+                    None,
+                );
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    message.to_string(),
+                    results,
+                );
+                continue;
+            }
+            let needle_id = self.loose_ids(actor.id, Material::Needle)[0];
+            let water_id = self.loose_ids(actor.id, Material::Water)[0];
+            let in_pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
+            let vessel = if in_pot {
+                "the pot"
+            } else if self
+                .loose_ids(actor.id, Material::BarkCup)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|cup| cup.pitched))
+            {
+                "the sealed bark cup"
+            } else {
+                "the bark cup"
+            };
+            self.items.remove(&needle_id);
+            self.items.remove(&water_id);
+            let was_chilly = actor.cold >= self.tuning.chilly_at;
+            if was_chilly {
+                let ease = self.tuning.cold_per_tick.saturating_mul(2);
+                if let Some(person) = self.actors.get_mut(&actor.id) {
+                    person.cold = person.cold.saturating_sub(ease);
+                }
+            }
+            let rest_you = format!(
+                "a handful of pine needles in {vessel} over the fire and drink the pine needle tea."
+            );
+            let rest_them = format!(
+                "a handful of pine needles in {vessel} over the fire and drinks the pine needle tea."
+            );
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "steep", &rest_them),
+                crate::model::Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+            let mut reply = crate::model::spoken_act(None, "steep", &rest_you);
+            if was_chilly {
+                reply.push_str(" The chill eases.");
+            }
+            self.finish(intent.command_id, intent.actor_id, true, reply, results);
         }
     }
 

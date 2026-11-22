@@ -799,6 +799,7 @@ impl Tuning {
             Material::BarkCup => 0,
             Material::Flour => 0,
             Material::Mint => 0,
+            Material::Needle => 0,
         }
     }
 }

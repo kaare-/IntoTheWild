@@ -38,6 +38,7 @@ lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough
+steep|brew pine            a handful of pine needles the same way. A chill eases a little. It does not settle a stomach. gather pine needles takes them from the pine south of the trail
 light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
 cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
@@ -431,6 +432,17 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
         "brew" | "steep"
+            if rest == "pine"
+                || rest == "needles"
+                || rest == "pine needles"
+                || rest == "pine needle"
+                || rest == "pine tea"
+                || rest == "pine needle tea"
+                || rest == "a handful of pine needles" =>
+        {
+            Ok(Attempt::SteepPine)
+        }
+        "brew" | "steep"
             if rest.is_empty()
                 || rest == "mint"
                 || rest == "tea"
@@ -439,7 +451,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::Brew)
         }
-        "brew" | "steep" => Err("Steep a handful of mint.".into()),
+        "brew" | "steep" => Err("Steep a handful of mint, or pine needles.".into()),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
         "set" if rest == "mat" || rest == "a mat" || rest == "the mat" || rest == "reed mat" => {
             Ok(Attempt::SetMat)
@@ -712,6 +724,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "egg" | "eggs" => Ok(Material::Egg),
         "moss" | "handful of moss" => Ok(Material::Moss),
         "mint" | "handful of mint" | "wild mint" => Ok(Material::Mint),
+        "pine needles" | "needles" | "handful of pine needles" | "pine needle" | "pine" => {
+            Ok(Material::Needle)
+        }
         "resin"
         | "pine resin"
         | "pitch"
@@ -847,6 +862,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
         "moss" => ExamineTarget::Moss,
         "mint" | "wild mint" | "handful of mint" => ExamineTarget::Mint,
+        "pine needles" | "needles" | "handful of pine needles" | "pine" => ExamineTarget::Needle,
         "resin" | "pine resin" | "pitch" | "lump of pitch" | "lump of pine resin" => {
             ExamineTarget::Resin
         }

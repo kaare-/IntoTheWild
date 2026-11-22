@@ -218,6 +218,7 @@ impl World {
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Mint => self.examine_mint(actor_id),
+            ExamineTarget::Needle => self.examine_needles(actor_id),
             ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Willow => self.examine_willow(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
@@ -430,6 +431,9 @@ impl World {
             }
             if let Some(resin) = self.seen_resin(actor_id) {
                 lines.push(resin);
+            }
+            if let Some(needles) = self.seen_needles(actor_id) {
+                lines.push(needles);
             }
             if let Some(willow) = self.seen_willow(actor_id) {
                 lines.push(willow);
@@ -1256,6 +1260,13 @@ impl World {
             parts.push("A lump of pitch lies here. It is pine resin.".into());
         } else if self.resin_bare(actor.cell) {
             parts.push("The pine here has no resin.".into());
+        }
+        if self.pile_count(actor.cell, Material::Needle) > 0
+            || !self.ground_ids(actor.cell, Material::Needle).is_empty()
+        {
+            parts.push("Pine needles lie under the pine here.".into());
+        } else if self.needle_bare(actor.cell) {
+            parts.push("The pine here has no needles.".into());
         }
         let willow_here = self.pile_count(actor.cell, Material::Willow)
             + self.ground_ids(actor.cell, Material::Willow).len() as u32;
@@ -2832,6 +2843,84 @@ impl World {
         }
     }
 
+    /// Pine needles under a pine this person can see but is not standing on.
+    /// Pitch on that pine is a different sentence.
+    fn seen_needles(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::Needle) > 0
+                || !self.ground_ids(cell, Material::Needle).is_empty()
+            {
+                lines.push(format!("Pine needles lie under the pine to the {way}."));
+            } else if self.needle_bare(cell) {
+                lines.push(format!("The pine to the {way} has no needles."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_needles(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let holds = self.pile_count(cell, Material::Needle) > 0
+                || !self.ground_ids(cell, Material::Needle).is_empty();
+            if !holds && !self.needle_bare(cell) {
+                continue;
+            }
+            if holds {
+                lines.push(format!(
+                    "Pine needles lie under the pine {}. They can be steeped in hot water.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if cell == origin {
+                lines.push("The pine here has no needles.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The pine to the {way} has no needles."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Needle).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A handful of pine needles is carried by {who} {cover}. They can be steeped in hot water."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} handfuls of pine needles are carried by {who} {cover}. They can be steeped in hot water.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no pine needles from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// Pitch under a pine this person can see but is not standing on.
     fn seen_resin(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -3486,6 +3575,14 @@ impl World {
             && self.ground_ids(cell, Material::Moss).is_empty()
     }
 
+    /// The pine was gathered bare of needles, and they have not lain there again.
+    /// Pitch uses a different wait.
+    fn needle_bare(&self, cell: crate::model::CellId) -> bool {
+        self.needle_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Needle) == 0
+            && self.ground_ids(cell, Material::Needle).is_empty()
+    }
+
     /// The pine was gathered bare and pitch has not lain there again.
     fn resin_bare(&self, cell: crate::model::CellId) -> bool {
         self.resin_returns_at.contains_key(&cell)
@@ -4117,6 +4214,10 @@ impl World {
             "a handful of mint".into()
         } else if item.material == "mint" {
             format!("{} handfuls of mint", count_word(item.count))
+        } else if item.material == "pine needles" && item.count == 1 {
+            "a handful of pine needles".into()
+        } else if item.material == "pine needles" {
+            format!("{} handfuls of pine needles", count_word(item.count))
         } else if item.material == "resin" && item.count == 1 {
             "a lump of pine resin".into()
         } else if item.material == "resin" {
@@ -5161,6 +5262,13 @@ impl World {
             bits.push("pine resin".into());
         } else if self.resin_bare(dest) {
             bits.push("a bare pine".into());
+        }
+        if self.pile_count(dest, Material::Needle) > 0
+            || !self.ground_ids(dest, Material::Needle).is_empty()
+        {
+            bits.push("pine needles".into());
+        } else if self.needle_bare(dest) {
+            bits.push("no needles".into());
         }
         if self.pile_count(dest, Material::Willow) > 0
             || !self.ground_ids(dest, Material::Willow).is_empty()
@@ -8889,6 +8997,7 @@ impl World {
                 Material::Egg => "eggs",
                 Material::Moss => "moss",
                 Material::Mint => "mint",
+                Material::Needle => "pine needles",
                 Material::Resin => "resin",
                 Material::Willow => "willow",
                 Material::Nettle => "nettles",
@@ -11922,6 +12031,7 @@ impl World {
             "the eggs",
             "handful of moss",
             "handful of mint",
+            "handful of pine needles",
             "salt crust",
             "lump of pine resin",
             "bundle of willow cordage",
@@ -11996,12 +12106,13 @@ impl World {
             return None;
         }
         let name = self.name_of(viewer);
-        let rest = event
-            .text
-            .strip_prefix(&format!("{name} steeps a handful of mint "))?;
-        if rest.starts_with("in the pot ")
-            || rest.starts_with("in the bark cup ")
-            || rest.starts_with("in the sealed bark cup ")
+        let rest = event.text.strip_prefix(&format!("{name} steeps "))?;
+        let tea = rest
+            .strip_prefix("a handful of mint ")
+            .or_else(|| rest.strip_prefix("a handful of pine needles "))?;
+        if tea.starts_with("in the pot ")
+            || tea.starts_with("in the bark cup ")
+            || tea.starts_with("in the sealed bark cup ")
         {
             Some(event.text.clone())
         } else {
@@ -13886,6 +13997,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Moss, _) => "handful of moss",
         (Material::Mint, true) => "handful of mint",
         (Material::Mint, false) => "handfuls of mint",
+        (Material::Needle, true) => "handful of pine needles",
+        (Material::Needle, false) => "handfuls of pine needles",
         (Material::Resin, true) => "lump of pine resin",
         (Material::Resin, false) => "lumps of pine resin",
         (Material::Willow, true) => "bundle of willow cordage",
