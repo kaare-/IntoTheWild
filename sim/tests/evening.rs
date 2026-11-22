@@ -11595,11 +11595,9 @@ fn a_pierced_deer_hide_sews_into_a_cloak() {
         text.contains("The sewn deer-hide cloak is on you."),
         "{text}"
     );
+    assert!(text.contains("You wear a sewn deer-hide cloak."), "{text}");
     let worn_arms = arms_sentence(&text);
-    assert!(
-        worn_arms.contains("a sewn deer-hide cloak on you"),
-        "{worn_arms}"
-    );
+    assert!(!worn_arms.contains("cloak"), "{worn_arms}");
     assert_eq!(
         world.examine(near, ExamineTarget::Hide),
         "A sewn deer-hide cloak is on you, under the rock overhang. It keeps off the cold."

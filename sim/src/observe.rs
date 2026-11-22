@@ -3955,8 +3955,9 @@ impl World {
         } else if item.material == "hide" && item.count == 1 {
             let hide = self
                 .loose_ids(actor_id, Material::Hide)
-                .first()
-                .and_then(|id| self.item(*id));
+                .into_iter()
+                .find(|id| self.item(*id).is_some_and(|hide| !hide.worn_cloak()))
+                .and_then(|id| self.item(id));
             let otter = hide.is_some_and(|hide| hide.otter);
             let fox = hide.is_some_and(|hide| hide.fox);
             let hare = hide.is_some_and(|hide| hide.hare);
@@ -4415,7 +4416,39 @@ impl World {
         parts.join(" ")
     }
 
+    /// A sewn cloak on the body, named apart from what the arms hold.
+    fn worn_cloak_phrase(&self, actor_id: ActorId) -> Option<String> {
+        let (otter, fox, hare, beaver, wolf) = self
+            .loose_ids(actor_id, Material::Hide)
+            .into_iter()
+            .find_map(|id| {
+                let hide = self.item(id)?;
+                hide.worn_cloak().then_some((
+                    hide.otter,
+                    hide.fox,
+                    hide.hare,
+                    hide.beaver,
+                    hide.wolf,
+                ))
+            })?;
+        let cloak = if otter {
+            "otter-hide"
+        } else if fox {
+            "fox-hide"
+        } else if hare {
+            "hare-hide"
+        } else if beaver {
+            "beaver-hide"
+        } else if wolf {
+            "wolf-hide"
+        } else {
+            "deer-hide"
+        };
+        Some(format!("a sewn {cloak} cloak"))
+    }
+
     /// The carrying sentence look already uses. Empty arms say so.
+    /// A worn sewn cloak is the next sentence, not another thing in the list.
     pub fn arms_line(&self, actor_id: ActorId) -> String {
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
@@ -4461,10 +4494,33 @@ impl World {
                 if cup_holds_the_drink && item.material == "bark cup" {
                     return Some(cup_drink_phrase(drinks, raw_drinks, cup_sealed));
                 }
+                if item.material == "hide" {
+                    let counting = self
+                        .loose_ids(actor_id, Material::Hide)
+                        .into_iter()
+                        .filter(|id| self.item(*id).is_some_and(|hide| !hide.worn_cloak()))
+                        .count() as u32;
+                    if counting == 0 {
+                        return None;
+                    }
+                    if counting != item.count {
+                        let mut trimmed = item.clone();
+                        trimmed.count = counting;
+                        return Some(self.arm_bit(actor_id, &trimmed));
+                    }
+                }
                 Some(self.arm_bit(actor_id, item))
             })
             .collect();
-        format!("You have {}.", bits.join(", "))
+        let have = if bits.is_empty() {
+            "Your arms are empty.".to_string()
+        } else {
+            format!("You have {}.", bits.join(", "))
+        };
+        match self.worn_cloak_phrase(actor_id) {
+            Some(cloak) => format!("{have} You wear {cloak}."),
+            None => have,
+        }
     }
 
     fn person_text(&self, actor_id: ActorId) -> String {

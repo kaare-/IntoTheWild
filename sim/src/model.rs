@@ -18656,4 +18656,98 @@ mod arms {
             assert_eq!(world.carry_count(actor), 6);
         }
     }
+
+    #[test]
+    fn a_worn_cloak_is_named_after_what_the_arms_hold() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        for material in [
+            Material::Charcoal,
+            Material::IronOre,
+            Material::Bark,
+            Material::Stone,
+            Material::Pot,
+        ] {
+            world.mint_item(material, 0, cell, Some(near), Role::Loose);
+        }
+        cloak(
+            &mut world, cell, near, false, false, false, false, false, true, true,
+        );
+        let line = world.arms_line(near);
+        let (have, wear) = line.split_once(" You wear ").unwrap();
+        assert!(have.starts_with("You have "), "{line}");
+        assert!(!have.contains("cloak"), "{line}");
+        assert!(have.contains("charcoal"), "{line}");
+        assert!(have.contains("iron ore"), "{line}");
+        assert!(have.contains("bark"), "{line}");
+        assert!(have.contains("stone"), "{line}");
+        assert!(have.contains("pot"), "{line}");
+        assert_eq!(wear, "a sewn deer-hide cloak.");
+        assert_eq!(world.observe(near).unwrap().text.contains(&line), true);
+        for (wolf, otter, fox, hare, beaver, phrase) in [
+            (true, false, false, false, false, "a sewn wolf-hide cloak."),
+            (false, true, false, false, false, "a sewn otter-hide cloak."),
+            (false, false, true, false, false, "a sewn fox-hide cloak."),
+            (false, false, false, true, false, "a sewn hare-hide cloak."),
+            (
+                false,
+                false,
+                false,
+                false,
+                true,
+                "a sewn beaver-hide cloak.",
+            ),
+        ] {
+            let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+            let cell = cell_id(4, 4).unwrap();
+            let actor = world.spawn_at("Near", "n", 4, 4).unwrap();
+            world.mint_item(Material::Stone, 0, cell, Some(actor), Role::Loose);
+            cloak(
+                &mut world, cell, actor, wolf, otter, fox, hare, beaver, true, true,
+            );
+            let line = world.arms_line(actor);
+            assert!(
+                line.starts_with("You have ") && line.ends_with(&format!(" You wear {phrase}")),
+                "{line}"
+            );
+            let have = line.split(" You wear ").next().unwrap();
+            assert!(!have.contains("cloak"), "{line}");
+        }
+        let mut carried = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let actor = carried.spawn_at("Near", "n", 4, 4).unwrap();
+        cloak(
+            &mut carried,
+            cell,
+            actor,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            false,
+        );
+        let line = carried.arms_line(actor);
+        assert_eq!(line, "You have a sewn deer-hide cloak.");
+        let mut plain = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let actor = plain.spawn_at("Near", "n", 4, 4).unwrap();
+        cloak(
+            &mut plain, cell, actor, false, false, false, false, false, false, true,
+        );
+        let line = plain.arms_line(actor);
+        assert_eq!(line, "You have a deer hide on you.");
+        let mut only = World::valley(crate::tuning::Tuning::evening(), 1);
+        let cell = cell_id(4, 4).unwrap();
+        let actor = only.spawn_at("Near", "n", 4, 4).unwrap();
+        cloak(
+            &mut only, cell, actor, false, false, false, false, false, true, true,
+        );
+        assert_eq!(
+            only.arms_line(actor),
+            "Your arms are empty. You wear a sewn deer-hide cloak."
+        );
+    }
 }
