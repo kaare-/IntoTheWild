@@ -1712,15 +1712,7 @@ impl World {
                         )
                         .into())
                 } else {
-                    Err(self
-                        .hide_line(
-                            actor.id,
-                            "The deer hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                            "The wolf hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                            "The otter hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                            "The fox hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                        )
-                        .into())
+                    Err(self.unpierced_sew_line(actor.id))
                 }
             }
             Attempt::Eat(material) => {
@@ -11706,14 +11698,9 @@ impl World {
                         "The otter hide is not scraped.",
                         "The fox hide is not scraped.",
                     )
+                    .to_string()
                 } else {
-                    self.hide_line(
-                        intent.actor_id,
-                        "The deer hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                        "The wolf hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                        "The otter hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                        "The fox hide is not pierced. Pierce it with a copper awl or a bone awl.",
-                    )
+                    self.unpierced_sew_line(intent.actor_id)
                 };
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
@@ -13765,6 +13752,44 @@ impl World {
         } else {
             deer
         }
+    }
+
+    /// A scraped hide that is not pierced. A held awl is named. Neither awl names both.
+    fn unpierced_sew_line(&self, actor: ActorId) -> String {
+        let ids = self.loose_ids(actor, Material::Awl);
+        let bone = ids
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|awl| awl.bone));
+        let copper = ids
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|awl| !awl.bone));
+        let tool = if bone && !copper {
+            "the bone awl"
+        } else if copper && !bone {
+            "the copper awl"
+        } else if bone && copper {
+            if self.item(ids[0]).is_some_and(|awl| awl.bone) {
+                "the bone awl"
+            } else {
+                "the copper awl"
+            }
+        } else {
+            "a copper awl or a bone awl"
+        };
+        let kind = if self.carrying_otter_hide(actor) {
+            "otter"
+        } else if self.carrying_fox_hide(actor) {
+            "fox"
+        } else if self.carrying_wolf_hide(actor) {
+            "wolf"
+        } else if self.carrying_hare_hide(actor) {
+            "hare"
+        } else if self.carrying_beaver_hide(actor) {
+            "beaver"
+        } else {
+            "deer"
+        };
+        format!("The {kind} hide is not pierced. Pierce it with {tool}.")
     }
 
     fn hide_missing<'a>(&self, actor: ActorId, deer: &'a str) -> &'a str {

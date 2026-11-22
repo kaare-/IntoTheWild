@@ -24451,7 +24451,25 @@ mod scrape_hide {
             }));
         }
 
+        let bone = world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
+        world.items.get_mut(&bone).unwrap().bone = true;
+        let with_bone = world.step(&[intent("sew-bone", near, Attempt::Sew)]);
+        assert_eq!(
+            with_bone.results[0].message,
+            "The deer hide is not pierced. Pierce it with the bone awl."
+        );
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "The deer hide is not pierced. Pierce it with the bone awl."
+            }));
+        }
+        world.step(&[intent("drop-bone", near, Attempt::Drop(Material::Awl))]);
         world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
+        let with_copper = world.step(&[intent("sew-copper", near, Attempt::Sew)]);
+        assert_eq!(
+            with_copper.results[0].message,
+            "The deer hide is not pierced. Pierce it with the copper awl."
+        );
         let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
         assert!(pierced.results[0].success, "{}", pierced.results[0].message);
         let sewn = world.step(&[intent("cloak", near, Attempt::Sew)]);
