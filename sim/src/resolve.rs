@@ -2182,7 +2182,7 @@ impl World {
                     Err("You already committed to something else this window.".into())
                 } else if self.fire_at(actor.cell).is_none() {
                     Err("There is no fire burning here.".into())
-                } else if self.raw_meat_at(actor.cell).is_some()
+                } else if self.raw_meat_id(actor.id).is_some()
                     || self.raw_fish_id(actor.id).is_some()
                     || self.raw_mushroom_id(actor.id).is_some()
                     || self.pile_count(actor.cell, Material::Mushroom) > 0
@@ -4611,7 +4611,7 @@ impl World {
         }
         if !self.cookable_carried(actor)
             && self.cookable_pile(person.cell) == 0
-            && self.raw_meat_at(person.cell).is_none()
+            && self.raw_meat_id(actor).is_none()
             && !self.raw_fish_near(actor)
         {
             if self.spoiled_meat_near(actor) {
@@ -5037,7 +5037,7 @@ impl World {
                 .actor(intent.actor_id)
                 .map(|actor| actor.cell)
                 .unwrap_or(0);
-            if self.raw_meat_at(cell).is_some() {
+            if self.raw_meat_id(intent.actor_id).is_some() {
                 self.cook_meat(intent, results, "cook");
                 continue;
             }
@@ -5189,14 +5189,10 @@ impl World {
         );
     }
 
-    /// Meat on the ground, then a raw fish, then a mushroom. The same food
-    /// `cook` would take, and the line says roast.
+    /// Raw meat from the arms, else the ground, then a raw fish, then a
+    /// mushroom. The same food `cook` would take, and the line says roast.
     fn roast_food(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
-        let cell = self
-            .actor(intent.actor_id)
-            .map(|actor| actor.cell)
-            .unwrap_or(0);
-        if self.raw_meat_at(cell).is_some() {
+        if self.raw_meat_id(intent.actor_id).is_some() {
             self.cook_meat(intent, results, "roast");
             return;
         }
@@ -5441,7 +5437,7 @@ impl World {
         );
     }
 
-    /// Raw meat on the fire's own cell. It stays on the ground and is not eaten.
+    /// Raw meat from the arms, else on this cell. It stays where it was and is not eaten.
     fn cook_meat(&mut self, intent: Intent, results: &mut Vec<CommandResult>, stem: &str) {
         if self.cook_refusal(intent.actor_id).is_some() {
             let message = self
@@ -5455,7 +5451,7 @@ impl World {
             .actor(intent.actor_id)
             .map(|actor| actor.cell)
             .unwrap_or(0);
-        let Some(id) = self.raw_meat_at(cell) else {
+        let Some(id) = self.raw_meat_id(intent.actor_id) else {
             self.finish(
                 intent.command_id,
                 intent.actor_id,

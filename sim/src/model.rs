@@ -4440,6 +4440,23 @@ impl World {
             .is_some_and(|until| self.time < *until)
     }
 
+    /// A raw portion in the arms, else one on this cell. Cooked, smoked, and
+    /// spoiled meat are not raw. The same order as a raw fish.
+    pub(crate) fn raw_meat_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Meat)
+            .into_iter()
+            .find(|id| {
+                self.item(*id)
+                    .is_some_and(|meat| !meat.cooked && !meat.smoked && !meat.spoiled)
+            });
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.raw_meat_at(cell)
+    }
+
     /// One piece of raw meat lying on this cell. Cooked meat is not raw.
     /// Smoked meat is not raw. Spoiled meat is not raw either. It is not food.
     pub(crate) fn raw_meat_at(&self, cell: CellId) -> Option<ItemId> {
@@ -12983,6 +13000,81 @@ mod mushroom_return {
             .events
             .iter()
             .all(|event| { event.text != "Near roasts the mushroom over the fire." }));
+    }
+
+    #[test]
+    fn roast_and_cook_take_raw_meat_from_the_arms() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let carried = world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        let ground = world.mint_item(Material::Meat, 0, cell, None, super::Role::Loose);
+        let cold = world.step(&[intent("cold", near, Attempt::Roast)]);
+        assert_eq!(cold.results[0].message, "There is no fire burning here.");
+        assert!(!cold.results[0].success);
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is no fire burning here." }));
+        }
+        assert!(!world.item(carried).unwrap().cooked);
+        world.mint_fire(cell, 0);
+        let roasted = world.step(&[intent("arms", near, Attempt::Roast)]);
+        assert_eq!(
+            roasted.results[0].message,
+            "You roast the raw meat over the fire."
+        );
+        assert!(world.item(carried).unwrap().cooked);
+        assert_eq!(world.item(carried).unwrap().carrier, Some(near));
+        assert!(!world.item(ground).unwrap().cooked);
+        let arms = world.arms_line(near);
+        assert!(arms.contains("cooked meat"), "{arms}");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You roast the raw meat over the fire."
+                && event.text != "Near roasts the raw meat over the fire."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near roasts the raw meat over the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near roasts the raw meat over the fire." }));
+        let second = world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        let cooked = world.step(&[intent("cook", near, Attempt::Cook)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the raw meat over the fire."
+        );
+        assert!(world.item(second).unwrap().cooked);
+        assert_eq!(world.item(second).unwrap().carrier, Some(near));
+        assert!(!world.item(ground).unwrap().cooked);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You cook the raw meat over the fire."
+                && event.text != "Near cooks the raw meat over the fire."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near cooks the raw meat over the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Near cooks the raw meat over the fire." }));
     }
 }
 
