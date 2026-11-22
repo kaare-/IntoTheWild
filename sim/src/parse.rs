@@ -39,6 +39,7 @@ drink                        raw water where you stand; still water freezes unti
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough
 steep|brew pine            a handful of pine needles the same way. A chill eases a little. It does not settle a stomach. gather pine needles takes them from the pine south of the trail
+steep|brew willow bark      a strip of willow bark the same way. A sunburn eases a little. It does not settle a stomach or a chill. The cordage is not the bark
 light fire                   dry bark and a dry branch, from the arms if you carry them. Dry moss from the shade under the rock is tinder the same way, and is spent before bark when both are held. Wet moss is not tinder. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before moss and bark when it is held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
 carve drill                  two dry branches and cordage into a bow drill. One branch is the spindle, one is the fireboard. Hide strips, then willow, then nettle. A spent bow drill in the arms is carved anew with one dry branch
 light fire with drill        the bow drill stays in the arms, and the line names it spent. No bark, no resin, and no charcoal. light fire still wants tinder
@@ -88,6 +89,7 @@ gather eggs                  eggs from the bird's nest in the tree on the west s
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
 strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
+strip willow bark            a strip of bark from that same willow. It is not the cordage. gather willow bark is the same. The willow has no bark once the strip is taken.
 strip nettle                 a bundle of nettle cordage from the nettles east of the trail. gather nettle is the same. Bare hands sting. Mud on the skin does not. The nettles are bare, then they grow again. The bundle is cordage where hide strips or willow cordage work.
 press moss                   a carried handful on a sting. The stings clear.
 dress sting                  the same press
@@ -238,6 +240,13 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "the cattail roots" =>
         {
             Ok(Attempt::Gather(Material::Cattail))
+        }
+        "strip"
+            if rest == "willow bark"
+                || rest == "the willow bark"
+                || rest == "bark from the willow" =>
+        {
+            Ok(Attempt::Gather(Material::WillowBark))
         }
         "strip"
             if rest == "willow"
@@ -442,6 +451,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
         "brew" | "steep"
+            if rest == "willow"
+                || rest == "willow bark"
+                || rest == "willow bark tea"
+                || rest == "willow tea"
+                || rest == "a strip of willow bark"
+                || rest == "strip of willow bark" =>
+        {
+            Ok(Attempt::SteepWillow)
+        }
+        "brew" | "steep"
             if rest == "pine"
                 || rest == "needles"
                 || rest == "pine needles"
@@ -461,7 +480,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::Brew)
         }
-        "brew" | "steep" => Err("Steep a handful of mint, or pine needles.".into()),
+        "brew" | "steep" => Err("Steep a handful of mint, pine needles, or willow bark.".into()),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
         "set" if rest == "mat" || rest == "a mat" || rest == "the mat" || rest == "reed mat" => {
             Ok(Attempt::SetMat)
@@ -768,6 +787,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "nettle" | "nettles" | "nettle cordage" | "bundle of nettle cordage" => {
             Ok(Material::Nettle)
         }
+        "willow bark" | "strip of willow bark" | "a strip of willow bark" => Ok(Material::WillowBark),
         "willow"
         | "willow cordage"
         | "bundle of willow cordage"
@@ -868,6 +888,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         | "beaver cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" => ExamineTarget::Cord,
         "nettle" | "nettles" | "nettle cordage" => ExamineTarget::Nettle,
+        "willow bark" | "strip of willow bark" => ExamineTarget::WillowBark,
         "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,
         "meat" | "raw meat" | "cooked meat" | "salted meat" | "smoked meat" => ExamineTarget::Meat,
         "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,

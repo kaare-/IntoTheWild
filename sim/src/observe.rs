@@ -222,6 +222,7 @@ impl World {
             ExamineTarget::Drill => self.examine_drill(actor_id),
             ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Willow => self.examine_willow(actor_id),
+            ExamineTarget::WillowBark => self.examine_willow_bark(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
             ExamineTarget::Cattail => self.examine_cattail(actor_id),
             ExamineTarget::BarkCup => self.examine_bark_cup(actor_id),
@@ -1331,6 +1332,19 @@ impl World {
                 .push("A bundle of willow cordage hangs here. It is withies from a willow.".into());
         } else if self.willow_bare(actor.cell) {
             parts.push("The willow here has no withies.".into());
+        }
+        let bark_here = self.pile_count(actor.cell, Material::WillowBark)
+            + self.ground_ids(actor.cell, Material::WillowBark).len() as u32;
+        if bark_here > 1 {
+            parts.push(
+                "Strips of willow bark hang on the willow here. They are not the cordage.".into(),
+            );
+        } else if bark_here == 1 {
+            parts.push(
+                "A strip of willow bark hangs on the willow here. It is not the cordage.".into(),
+            );
+        } else if self.willow_bark_bare(actor.cell) {
+            parts.push("The willow here has no bark.".into());
         }
         let nettle_here = self.pile_count(actor.cell, Material::Nettle)
             + self.ground_ids(actor.cell, Material::Nettle).len() as u32;
@@ -3109,6 +3123,19 @@ impl World {
             } else if self.willow_bare(cell) {
                 lines.push(format!("The willow to the {way} has no withies."));
             }
+            let bark = self.pile_count(cell, Material::WillowBark)
+                + self.ground_ids(cell, Material::WillowBark).len() as u32;
+            if bark > 1 {
+                lines.push(format!(
+                    "Strips of willow bark hang on the willow to the {way}. They are not the cordage."
+                ));
+            } else if bark == 1 {
+                lines.push(format!(
+                    "A strip of willow bark hangs on the willow to the {way}. It is not the cordage."
+                ));
+            } else if self.willow_bark_bare(cell) {
+                lines.push(format!("The willow to the {way} has no bark."));
+            }
         }
         if lines.is_empty() {
             None
@@ -3169,6 +3196,64 @@ impl World {
         }
         if lines.is_empty() {
             "You see no willow from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    /// Willow bark on the same stand. The words are not the cordage.
+    fn examine_willow_bark(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::WillowBark)
+                + self.ground_ids(cell, Material::WillowBark).len() as u32;
+            if count == 0 && !self.willow_bark_bare(cell) {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if count > 1 {
+                lines.push(format!(
+                    "Strips of willow bark hang on the willow {place}. They are not the cordage."
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A strip of willow bark hangs on the willow {place}. It is not the cordage."
+                ));
+            } else if cell == origin {
+                lines.push("The willow here has no bark.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The willow to the {way} has no bark."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::WillowBark).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A strip of willow bark is carried by {who} {cover}. It is not cordage. It can be steeped in hot water."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} strips of willow bark are carried by {who} {cover}. They are not cordage. They can be steeped in hot water.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no willow bark from here.".into()
         } else {
             lines.join(" ")
         }
@@ -3741,6 +3826,13 @@ impl World {
         self.resin_returns_at.contains_key(&cell)
             && self.pile_count(cell, Material::Resin) == 0
             && self.ground_ids(cell, Material::Resin).is_empty()
+    }
+
+    /// The strip of willow bark was taken. It does not grow back.
+    fn willow_bark_bare(&self, cell: crate::model::CellId) -> bool {
+        self.willow_bark_stands.contains(&cell)
+            && self.pile_count(cell, Material::WillowBark) == 0
+            && self.ground_ids(cell, Material::WillowBark).is_empty()
     }
 
     /// The willow was stripped bare and cordage has not hung there again.
@@ -4375,6 +4467,10 @@ impl World {
             "a lump of pine resin".into()
         } else if item.material == "resin" {
             format!("{} lumps of pine resin", count_word(item.count))
+        } else if item.material == "willow bark" && item.count == 1 {
+            "a strip of willow bark".into()
+        } else if item.material == "willow bark" {
+            format!("{} strips of willow bark", count_word(item.count))
         } else if item.material == "willow" && item.count == 1 {
             "a bundle of willow cordage".into()
         } else if item.material == "willow" {
@@ -5456,6 +5552,13 @@ impl World {
             bits.push("willow cordage".into());
         } else if self.willow_bare(dest) {
             bits.push("a bare willow".into());
+        }
+        if self.pile_count(dest, Material::WillowBark) > 0
+            || !self.ground_ids(dest, Material::WillowBark).is_empty()
+        {
+            bits.push("willow bark".into());
+        } else if self.willow_bark_bare(dest) {
+            bits.push("no willow bark".into());
         }
         if self.pile_count(dest, Material::Nettle) > 0
             || !self.ground_ids(dest, Material::Nettle).is_empty()
@@ -9211,6 +9314,7 @@ impl World {
                 Material::PaleBerry => "pale berries",
                 Material::Paddle => "wooden paddle",
                 Material::Hook => "bone fish hook",
+                Material::WillowBark => "willow bark",
             };
             format!("You see no {name} from here.")
         } else {
@@ -12231,6 +12335,7 @@ impl World {
             "salt crust",
             "lump of pine resin",
             "bundle of willow cordage",
+            "strip of willow bark",
             "bundle of nettle cordage",
             "cattail roots",
             "cattail flour",
@@ -12305,7 +12410,8 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} steeps "))?;
         let tea = rest
             .strip_prefix("a handful of mint ")
-            .or_else(|| rest.strip_prefix("a handful of pine needles "))?;
+            .or_else(|| rest.strip_prefix("a handful of pine needles "))
+            .or_else(|| rest.strip_prefix("a strip of willow bark "))?;
         if tea.starts_with("in the pot ")
             || tea.starts_with("in the bark cup ")
             || tea.starts_with("in the sealed bark cup ")
@@ -14201,6 +14307,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Resin, false) => "lumps of pine resin",
         (Material::Willow, true) => "bundle of willow cordage",
         (Material::Willow, false) => "bundles of willow cordage",
+        (Material::WillowBark, true) => "strip of willow bark",
+        (Material::WillowBark, false) => "strips of willow bark",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

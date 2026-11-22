@@ -801,6 +801,7 @@ impl Tuning {
             Material::Mint => 0,
             Material::Needle => 0,
             Material::Drill => 0,
+            Material::WillowBark => 0,
         }
     }
 }

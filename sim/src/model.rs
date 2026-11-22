@@ -143,6 +143,9 @@ pub enum Material {
     Needle,
     /// A bow drill. Two dry branches and cordage. It lights a fire without tinder.
     Drill,
+    /// Bark from the willow, not the withies. Steeped, it eases a sunburn a little.
+    /// It is not cordage, and it does not settle a stomach or a chill.
+    WillowBark,
 }
 
 impl Material {
@@ -200,6 +203,7 @@ impl Material {
             Material::Mint => "mint",
             Material::Needle => "pine needles",
             Material::Drill => "bow drill",
+            Material::WillowBark => "willow bark",
         }
     }
 
@@ -257,6 +261,7 @@ impl Material {
             Material::Mint => "handful of mint",
             Material::Needle => "handful of pine needles",
             Material::Drill => "bow drill",
+            Material::WillowBark => "strip of willow bark",
         }
     }
 
@@ -402,6 +407,7 @@ pub enum ExamineTarget {
     Mint,
     Needle,
     Drill,
+    WillowBark,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -512,6 +518,10 @@ pub enum Attempt {
     CarveDrill,
     /// The bow drill is the tinder and the fuel. Bark, resin, and charcoal stay where they are.
     DrillFire,
+    /// Steep a strip of willow bark in a pot or a bark cup of water over a fire.
+    /// The tea is drunk in the same act. A sunburn eases slightly.
+    /// A sick stomach and a chill do not.
+    SteepWillow,
 }
 
 impl Attempt {
@@ -531,6 +541,7 @@ impl Attempt {
                 | Attempt::Boil
                 | Attempt::Brew
                 | Attempt::SteepPine
+                | Attempt::SteepWillow
                 | Attempt::SetClay
                 | Attempt::BindSpear
                 | Attempt::Knap
@@ -1257,6 +1268,10 @@ pub struct World {
     /// The willow on the dry bank south of the brook. Bare once the last bundle is taken.
     #[serde(default)]
     pub(crate) willow_stands: BTreeSet<CellId>,
+    /// The same willow, where a strip of bark hangs. Not the cordage.
+    /// Bare once that strip is taken. It does not grow back.
+    #[serde(default)]
+    pub(crate) willow_bark_stands: BTreeSet<CellId>,
     /// When a bare willow has withies again. Look says the willow has none until then.
     #[serde(default)]
     pub(crate) willow_returns_at: BTreeMap<CellId, u64>,
@@ -1479,6 +1494,7 @@ impl World {
             resin_stands: BTreeSet::new(),
             resin_returns_at: BTreeMap::new(),
             willow_stands: BTreeSet::new(),
+            willow_bark_stands: BTreeSet::new(),
             willow_returns_at: BTreeMap::new(),
             nettle_stands: BTreeSet::new(),
             nettle_returns_at: BTreeMap::new(),
@@ -1623,6 +1639,8 @@ impl World {
         let willow = cell_id(0, 4).unwrap();
         world.add_pile(willow, Material::Willow, 2, 0);
         world.willow_stands.insert(willow);
+        world.add_pile(willow, Material::WillowBark, 1, 0);
+        world.willow_bark_stands.insert(willow);
         // Nettles on the dry floor east of the trail. Two bundles of cordage.
         let nettles = cell_id(6, 2).unwrap();
         world.add_pile(nettles, Material::Nettle, 2, 0);
@@ -17536,6 +17554,192 @@ mod frogs {
             .to_lowercase()
             .contains("frog"));
         assert!(!world.observe(near).unwrap().text.contains("croak"));
+    }
+}
+
+#[cfg(test)]
+mod willow_bark {
+    use super::{Attempt, ExamineTarget, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn willow_bark_is_not_cordage_and_the_tea_eases_a_sunburn() {
+        assert!(matches!(
+            crate::parse::parse_attempt("strip willow bark").unwrap(),
+            Attempt::Gather(Material::WillowBark)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather willow bark").unwrap(),
+            Attempt::Gather(Material::WillowBark)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("strip willow").unwrap(),
+            Attempt::Gather(Material::Willow)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("steep willow").unwrap(),
+            Attempt::SteepWillow
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("brew willow bark tea").unwrap(),
+            Attempt::SteepWillow
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let stand = super::cell_id(0, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let cordage = world.pile_count(stand, Material::Willow);
+        assert!(cordage >= 2);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains(
+                "A strip of willow bark hangs on the willow here. It is not the cordage."
+            ),
+            "{here}"
+        );
+        assert!(
+            here.contains("Bundles of willow cordage hang here. They are withies from a willow."),
+            "{here}"
+        );
+        let named = world.examine(near, ExamineTarget::WillowBark);
+        assert!(named.contains("It is not the cordage."), "{named}");
+        assert!(!named.contains("withies"), "{named}");
+        let cord = world.examine(near, ExamineTarget::Willow);
+        assert!(cord.contains("withies from a willow"), "{cord}");
+        assert!(!cord.contains("willow bark"), "{cord}");
+        let distant = world.observe(seen).unwrap().text;
+        assert!(
+            distant.contains(
+                "A strip of willow bark hangs on the willow to the west. It is not the cordage."
+            ),
+            "{distant}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("willow bark"));
+
+        let gathered = world.step(&[intent("strip", near, Attempt::Gather(Material::WillowBark))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a strip of willow bark."
+        );
+        assert_eq!(world.pile_count(stand, Material::Willow), cordage);
+        let taken = world.observe(near).unwrap();
+        assert!(
+            taken.text.contains("The willow here has no bark."),
+            "{}",
+            taken.text
+        );
+        assert!(taken.text.contains("willow cordage"), "{}", taken.text);
+        assert!(
+            taken.text.contains("a strip of willow bark"),
+            "{}",
+            taken.text
+        );
+        assert!(taken
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a strip of willow bark." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers") && !event.text.contains("willow bark")));
+
+        let open = super::cell_id(4, 4).unwrap();
+        world.actors.get_mut(&near).unwrap().cell = open;
+        world.raining = true;
+        world.mint_fire(open, 0);
+        world.mint_item(Material::Pot, 0, open, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, open, Some(near), Role::Loose);
+        let illness = world.tuning.ill_at;
+        let cold = world.tuning.chilly_at;
+        let sun = world.tuning.burned_at;
+        {
+            let person = world.actors.get_mut(&near).unwrap();
+            person.illness = illness;
+            person.cold = cold;
+            person.sunburn = sun;
+        }
+        let steeped = world.step(&[intent("tea", near, Attempt::SteepWillow)]);
+        assert_eq!(
+            steeped.results[0].message,
+            "You steep a strip of willow bark in the pot over the fire and drink the willow bark tea. The sunburn eases."
+        );
+        assert!(!steeped.results[0].message.contains("stomach"));
+        assert!(!steeped.results[0].message.contains("chill"));
+        assert_eq!(
+            world.actor(near).unwrap().illness,
+            illness - world.tuning.illness_recovery
+        );
+        assert_eq!(
+            world.actor(near).unwrap().sunburn,
+            sun - world.tuning.sun_per_tick * 2
+        );
+        assert!(world.loose_ids(near, Material::WillowBark).is_empty());
+        let heard =
+            "Near steeps a strip of willow bark in the pot over the fire and drinks the willow bark tea.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && !event.text.contains("sunburn")));
+        let witness = world.spawn_at("Ash", "a", 4, 2).unwrap();
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("sunburn") && !event.text.contains("stomach") }));
+
+        world.actors.get_mut(&near).unwrap().sunburn = 0;
+        world.mint_item(Material::WillowBark, 0, open, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, open, Some(near), Role::Loose);
+        let plain = world.step(&[intent("plain", near, Attempt::SteepWillow)]);
+        assert_eq!(
+            plain.results[0].message,
+            "You steep a strip of willow bark in the pot over the fire and drink the willow bark tea."
+        );
+        assert!(!plain.results[0].message.contains("sunburn"));
+
+        let missing = world.step(&[intent("none", near, Attempt::SteepWillow)]);
+        assert_eq!(
+            missing.results[0].message,
+            "You have no willow bark to steep."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You have no willow bark to steep." }));
+        assert!(world
+            .observe(witness)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "You have no willow bark to steep." }));
     }
 }
 
