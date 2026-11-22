@@ -3,8 +3,8 @@
 //! break by a recorded hash.
 
 use crate::model::{
-    cell_id, cell_xy, contest_hash, ActorId, Attempt, CommandResult, Dir, Draw, Intent, Material,
-    Region, Role, Scope, Wake, WorkKind, World,
+    cell_id, cell_xy, contest_hash, ActorId, Attempt, CommandResult, Dir, Draw, Intent, ItemId,
+    Material, Region, Role, Scope, Wake, WorkKind, World,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -90,6 +90,7 @@ impl World {
         let mut banks = Vec::new();
         let mut hammers = Vec::new();
         let mut pierces = Vec::new();
+        let mut scrapes = Vec::new();
         let mut sews = Vec::new();
         let mut binds = Vec::new();
         let mut knaps = Vec::new();
@@ -239,6 +240,7 @@ impl World {
                         Attempt::Bank => banks.push(intent),
                         Attempt::Hammer | Attempt::HammerIron => hammers.push(intent),
                         Attempt::Pierce => pierces.push(intent),
+                        Attempt::Scrape => scrapes.push(intent),
                         Attempt::Sew => sews.push(intent),
                         Attempt::BindSpear => binds.push(intent),
                         Attempt::Knap => knaps.push(intent),
@@ -407,6 +409,7 @@ impl World {
         self.apply_smelts(smelts, &mut results);
         self.apply_hammers(hammers, &mut results);
         self.apply_pierces(pierces, &mut results);
+        self.apply_scrapes(scrapes, &mut results);
         self.apply_sews(sews, &mut results);
         self.apply_binds(binds, &mut results);
         self.apply_knaps(knaps, &mut results);
@@ -1622,6 +1625,49 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::Scrape => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.scrape_tool(actor.id).is_none() {
+                    Err("You need a flint flake or a stone to scrape the hide.".into())
+                } else if self.scrape_hide(actor.id).is_some() {
+                    Ok(true)
+                } else if self
+                    .scrape_hide_any(actor.id)
+                    .is_some_and(|id| self.item(id).is_some_and(|hide| hide.sewn))
+                {
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "The deer hide is already a cloak.",
+                            "The wolf hide is already a cloak.",
+                            "The otter hide is already a cloak.",
+                            "The fox hide is already a cloak.",
+                        )
+                        .into())
+                } else if self
+                    .scrape_hide_any(actor.id)
+                    .is_some_and(|id| self.item(id).is_some_and(|hide| hide.scraped))
+                {
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "The deer hide is already scraped.",
+                            "The wolf hide is already scraped.",
+                            "The otter hide is already scraped.",
+                            "The fox hide is already scraped.",
+                        )
+                        .into())
+                } else {
+                    Err(self
+                        .hide_missing(actor.id, "You are not carrying a deer hide.")
+                        .into())
+                }
+            }
             Attempt::Sew => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -1633,12 +1679,24 @@ impl World {
                     Err(self
                         .hide_missing(actor.id, "You are not carrying a deer hide.")
                         .into())
-                } else if self
-                    .loose_ids(actor.id, Material::Hide)
-                    .iter()
-                    .any(|id| self.item(*id).is_some_and(|hide| hide.pierced))
-                {
+                } else if self.loose_ids(actor.id, Material::Hide).iter().any(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| hide.pierced && hide.scraped)
+                }) {
                     Ok(true)
+                } else if self.loose_ids(actor.id, Material::Hide).iter().any(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| !hide.scraped && !hide.sewn)
+                }) {
+                    Err(self
+                        .hide_line(
+                            actor.id,
+                            "The deer hide is not scraped.",
+                            "The wolf hide is not scraped.",
+                            "The otter hide is not scraped.",
+                            "The fox hide is not scraped.",
+                        )
+                        .into())
                 } else if self
                     .loose_ids(actor.id, Material::Hide)
                     .iter()
@@ -11513,20 +11571,150 @@ impl World {
         }
     }
 
+    /// A flint flake, a flint nodule, or a loose stone. The flake is named first.
+    fn scrape_tool(&self, actor: ActorId) -> Option<&'static str> {
+        if !self.loose_ids(actor, Material::Flake).is_empty() {
+            return Some("the flint flake");
+        }
+        if !self.loose_ids(actor, Material::Flint).is_empty() {
+            return Some("the flint");
+        }
+        if !self.loose_ids(actor, Material::Stone).is_empty() {
+            return Some("the stone");
+        }
+        None
+    }
+
+    /// A hide that still needs scraping, carried first, then one on this ground.
+    fn scrape_hide(&self, actor: ActorId) -> Option<ItemId> {
+        let ready = |id: &ItemId| {
+            self.item(*id)
+                .is_some_and(|hide| !hide.scraped && !hide.sewn)
+        };
+        self.loose_ids(actor, Material::Hide)
+            .into_iter()
+            .find(ready)
+            .or_else(|| {
+                let cell = self.actor(actor)?.cell;
+                self.ground_ids(cell, Material::Hide)
+                    .into_iter()
+                    .find(ready)
+            })
+    }
+
+    /// Any hide in the arms or on this ground, for a refusal that names it.
+    fn scrape_hide_any(&self, actor: ActorId) -> Option<ItemId> {
+        self.loose_ids(actor, Material::Hide)
+            .into_iter()
+            .next()
+            .or_else(|| {
+                let cell = self.actor(actor)?.cell;
+                self.ground_ids(cell, Material::Hide).into_iter().next()
+            })
+    }
+
+    fn apply_scrapes(&mut self, scrapes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in scrapes {
+            let Some(tool) = self.scrape_tool(intent.actor_id) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You need a flint flake or a stone to scrape the hide.",
+                    results,
+                );
+                continue;
+            };
+            let Some(hide) = self.scrape_hide(intent.actor_id) else {
+                self.finish(
+                    intent.command_id,
+                    intent.actor_id,
+                    false,
+                    "You are not carrying a deer hide.",
+                    results,
+                );
+                continue;
+            };
+            let wolf = self.item(hide).is_some_and(|hide| hide.wolf);
+            let otter = self.item(hide).is_some_and(|hide| hide.otter);
+            let fox = self.item(hide).is_some_and(|hide| hide.fox);
+            let hare = self.item(hide).is_some_and(|hide| hide.hare);
+            let beaver = self.item(hide).is_some_and(|hide| hide.beaver);
+            let kind = if beaver {
+                "beaver"
+            } else if hare {
+                "hare"
+            } else if otter {
+                "otter"
+            } else if fox {
+                "fox"
+            } else if wolf {
+                "wolf"
+            } else {
+                "deer"
+            };
+            let rest = format!("the {kind} hide with {tool}.");
+            if let Some(item) = self.items.get_mut(&hide) {
+                item.scraped = true;
+            }
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            let name = self.name_of(intent.actor_id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "scrape", &rest),
+                Scope::Cell(cell),
+                vec![intent.actor_id],
+                vec![cell],
+                vec![hide],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                true,
+                crate::model::spoken_act(None, "scrape", &rest),
+                results,
+            );
+        }
+    }
+
     fn apply_sews(&mut self, sews: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in sews {
             let hide = self
                 .loose_ids(intent.actor_id, Material::Hide)
                 .into_iter()
-                .find(|id| self.item(*id).is_some_and(|hide| hide.pierced));
+                .find(|id| {
+                    self.item(*id)
+                        .is_some_and(|hide| hide.pierced && hide.scraped)
+                });
             let Some(hide) = hide else {
-                let message = self.hide_line(
-                    intent.actor_id,
-                    "The deer hide is not pierced.",
-                    "The wolf hide is not pierced.",
-                    "The otter hide is not pierced.",
-                    "The fox hide is not pierced.",
-                );
+                let raw = self
+                    .loose_ids(intent.actor_id, Material::Hide)
+                    .iter()
+                    .any(|id| {
+                        self.item(*id)
+                            .is_some_and(|hide| !hide.scraped && !hide.sewn)
+                    });
+                let message = if raw {
+                    self.hide_line(
+                        intent.actor_id,
+                        "The deer hide is not scraped.",
+                        "The wolf hide is not scraped.",
+                        "The otter hide is not scraped.",
+                        "The fox hide is not scraped.",
+                    )
+                } else {
+                    self.hide_line(
+                        intent.actor_id,
+                        "The deer hide is not pierced.",
+                        "The wolf hide is not pierced.",
+                        "The otter hide is not pierced.",
+                        "The fox hide is not pierced.",
+                    )
+                };
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
                 continue;
             };
@@ -13596,6 +13784,8 @@ fn beaver_instead(deer: &str) -> &'static str {
         "The deer hide is already pierced." => "The beaver hide is already pierced.",
         "The deer hide is already a cloak." => "The beaver hide is already a cloak.",
         "The deer hide is not pierced." => "The beaver hide is not pierced.",
+        "The deer hide is not scraped." => "The beaver hide is not scraped.",
+        "The deer hide is already scraped." => "The beaver hide is already scraped.",
         "You are not carrying a deer hide." => "You are not carrying a beaver hide.",
         "You are not wearing a deer hide." => "You are not wearing a beaver hide.",
         _ => "You are not carrying a beaver hide.",
@@ -13608,6 +13798,8 @@ fn hare_instead(deer: &str) -> &'static str {
         "The deer hide is already pierced." => "The hare hide is already pierced.",
         "The deer hide is already a cloak." => "The hare hide is already a cloak.",
         "The deer hide is not pierced." => "The hare hide is not pierced.",
+        "The deer hide is not scraped." => "The hare hide is not scraped.",
+        "The deer hide is already scraped." => "The hare hide is already scraped.",
         "You are not carrying a deer hide." => "You are not carrying a hare hide.",
         "You are not wearing a deer hide." => "You are not wearing a hare hide.",
         _ => "You are not carrying a hare hide.",

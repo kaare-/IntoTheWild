@@ -913,6 +913,11 @@ fn parser_accepts_the_evening_commands() {
         parse_attempt("pierce hide").unwrap(),
         Attempt::Pierce
     ));
+    assert!(matches!(
+        parse_attempt("scrape hide").unwrap(),
+        Attempt::Scrape
+    ));
+    assert!(matches!(parse_attempt("scrape").unwrap(), Attempt::Scrape));
     assert!(matches!(parse_attempt("sew hide").unwrap(), Attempt::Sew));
     assert!(matches!(parse_attempt("sew").unwrap(), Attempt::Sew));
     assert!(matches!(parse_attempt("rest").unwrap(), Attempt::Rest));
@@ -11559,7 +11564,13 @@ fn a_copper_awl_pierces_a_worn_deer_hide() {
 fn a_pierced_deer_hide_sews_into_a_cloak() {
     let (mut world, near, far, west) = valley_with_an_awl_and_a_hide();
     let early = world.step(&[cmd("early", near, parse_attempt("sew hide").unwrap())]);
-    assert_eq!(early.results[0].message, "The deer hide is not pierced.");
+    assert_eq!(early.results[0].message, "The deer hide is not scraped.");
+    world.mark_carried_hides_scraped(near);
+    let unpierced = world.step(&[cmd("unpierced", near, Attempt::Sew)]);
+    assert_eq!(
+        unpierced.results[0].message,
+        "The deer hide is not pierced."
+    );
     assert!(world
         .observe(far)
         .unwrap()
@@ -11664,6 +11675,7 @@ fn cold_rank(word: &str) -> u8 {
 #[test]
 fn a_sewn_cloak_in_the_open_wind_stays_warmer_than_bare_skin() {
     let (mut world, near, _far, west) = valley_with_an_awl_and_a_hide();
+    world.mark_carried_hides_scraped(near);
     world.step(&[cmd("pierce", near, Attempt::Pierce)]);
     world.step(&[cmd("sew", near, Attempt::Sew)]);
     let wore = world.step(&[cmd("wear", near, Attempt::Wear)]);

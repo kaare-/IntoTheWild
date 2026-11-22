@@ -491,6 +491,8 @@ pub enum Attempt {
     Hammer,
     HammerIron,
     Pierce,
+    /// A raw hide scraped with a flint flake, a flint nodule, or a stone. The tool stays.
+    Scrape,
     Sew,
     Rest,
     Cut,
@@ -620,6 +622,7 @@ impl Attempt {
                 | Attempt::Hammer
                 | Attempt::HammerIron
                 | Attempt::Pierce
+                | Attempt::Scrape
                 | Attempt::Sew
                 | Attempt::Rest
                 | Attempt::Cut
@@ -846,6 +849,9 @@ pub struct Item {
     /// A hide the copper awl has pierced. Sewing consumes this. Other materials leave this false.
     #[serde(default)]
     pub pierced: bool,
+    /// A raw hide scraped with a flint flake or a stone. A cloak needs this before the awl. Other materials leave this false.
+    #[serde(default)]
+    pub scraped: bool,
     /// A pierced hide sewn into a cloak. Other materials leave this false.
     #[serde(default)]
     pub sewn: bool,
@@ -2144,6 +2150,7 @@ impl World {
                 spoils_at: None,
                 worn: false,
                 pierced: false,
+                scraped: false,
                 sewn: false,
                 small: false,
                 shaped: false,
@@ -2162,6 +2169,16 @@ impl World {
             self.arm_raw_spoil(id);
         }
         id
+    }
+
+    /// Marks every carried hide scraped. Cloak tests that already pierced a hide
+    /// use this so they still sew. The scrape verb is a separate act.
+    pub fn mark_carried_hides_scraped(&mut self, actor: ActorId) {
+        for id in self.loose_ids(actor, Material::Hide) {
+            if let Some(item) = self.items.get_mut(&id) {
+                item.scraped = true;
+            }
+        }
     }
 
     /// Raw meat spoils `meat_ticks` after the step that cut it.
@@ -11869,6 +11886,7 @@ mod wolf {
             Some(seen),
             super::Role::Loose,
         );
+        world.mark_carried_hides_scraped(seen);
         world.mint_item(
             super::Material::Awl,
             0,
@@ -11929,6 +11947,7 @@ mod wolf {
             .iter()
             .all(|event| { !event.text.contains("wolf hide") }));
 
+        world.mark_carried_hides_scraped(near);
         let cloaks = world.step(&[
             intent("sew", near, super::Attempt::Sew),
             intent("wear-deer", seen, super::Attempt::Wear),
@@ -12079,9 +12098,9 @@ mod wolf {
         );
         let early = world.step(&[intent("sew", near, super::Attempt::Sew)]);
         assert!(!early.results[0].success);
-        assert_eq!(early.results[0].message, "The wolf hide is not pierced.");
+        assert_eq!(early.results[0].message, "The wolf hide is not scraped.");
         assert!(world.observe(near).unwrap().events.iter().all(|event| {
-            event.text != "The wolf hide is not pierced."
+            event.text != "The wolf hide is not scraped."
                 && !event.text.contains("sews the pierced wolf")
         }));
         assert!(world
@@ -15256,7 +15275,8 @@ mod beaver {
         world.items.get_mut(&awl).unwrap().bone = true;
 
         let early = world.step(&[intent("sew", near, Attempt::Sew)]);
-        assert_eq!(early.results[0].message, "The beaver hide is not pierced.");
+        assert_eq!(early.results[0].message, "The beaver hide is not scraped.");
+        world.mark_carried_hides_scraped(near);
         assert!(world
             .observe(near)
             .unwrap()
@@ -16446,7 +16466,8 @@ mod hare {
         world.items.get_mut(&deer_hide).unwrap().worn = true;
 
         let early = world.step(&[intent("sew", near, Attempt::Sew)]);
-        assert_eq!(early.results[0].message, "The hare hide is not pierced.");
+        assert_eq!(early.results[0].message, "The hare hide is not scraped.");
+        world.mark_carried_hides_scraped(near);
         assert!(!early.results[0].success);
         assert!(world
             .observe(near)
@@ -16820,7 +16841,8 @@ mod fox_hunt {
         world.items.get_mut(&wolf_hide).unwrap().worn = true;
 
         let early = world.step(&[intent("sew", near, Attempt::Sew)]);
-        assert_eq!(early.results[0].message, "The fox hide is not pierced.");
+        assert_eq!(early.results[0].message, "The fox hide is not scraped.");
+        world.mark_carried_hides_scraped(near);
         assert!(!early.results[0].success);
         assert!(world
             .observe(near)
@@ -17536,7 +17558,8 @@ mod otter_hunt {
         world.items.get_mut(&awl).unwrap().bone = true;
 
         let early = world.step(&[intent("sew", near, Attempt::Sew)]);
-        assert_eq!(early.results[0].message, "The otter hide is not pierced.");
+        assert_eq!(early.results[0].message, "The otter hide is not scraped.");
+        world.mark_carried_hides_scraped(near);
         assert!(!early.results[0].success);
         assert!(world
             .observe(near)
@@ -24331,5 +24354,129 @@ mod night_marks {
                 .any(|line| line.starts_with("East:") && line.contains("pot")),
             "{beside}"
         );
+    }
+}
+
+#[cfg(test)]
+mod scrape_hide {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_raw_hide_must_be_scraped_before_it_is_sewn() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Hide, 0, cell, None, Role::Loose);
+        world.mint_item(Material::Flake, 0, cell, Some(near), Role::Loose);
+
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Hide))]);
+        assert!(
+            gathered.results[0].success,
+            "{}",
+            gathered.results[0].message
+        );
+        let refused = world.step(&[intent("sew", near, Attempt::Sew)]);
+        assert_eq!(refused.results[0].message, "The deer hide is not scraped.");
+        assert!(!refused.results[0].success);
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "The deer hide is not scraped." }));
+        }
+
+        let scraped = world.step(&[intent("scrape", near, Attempt::Scrape)]);
+        assert_eq!(
+            scraped.results[0].message,
+            "You scrape the deer hide with the flint flake."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("scrapes")
+                && event.text != "You scrape the deer hide with the flint flake."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near scrapes the deer hide with the flint flake." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("scrape") }));
+        let named = world.observe(near).unwrap().text;
+        assert!(named.contains("a scraped deer hide"), "{named}");
+
+        let again = world.step(&[intent("again", near, Attempt::Scrape)]);
+        assert_eq!(
+            again.results[0].message,
+            "The deer hide is already scraped."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The deer hide is already scraped." }));
+
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Hide))]);
+        let ground = world.observe(near).unwrap().text;
+        assert!(
+            ground.contains("A scraped deer hide lies here."),
+            "{ground}"
+        );
+        world.step(&[intent("up", near, Attempt::Gather(Material::Hide))]);
+        let unpierced = world.step(&[intent("sew2", near, Attempt::Sew)]);
+        assert_eq!(
+            unpierced.results[0].message,
+            "The deer hide is not pierced."
+        );
+
+        world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
+        let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);
+        assert!(pierced.results[0].success, "{}", pierced.results[0].message);
+        let sewn = world.step(&[intent("cloak", near, Attempt::Sew)]);
+        assert_eq!(
+            sewn.results[0].message,
+            "You sew the pierced deer hide into a cloak."
+        );
+
+        world.step(&[intent("drop-cloak", near, Attempt::Drop(Material::Hide))]);
+        world.step(&[intent("drop-flake", near, Attempt::Drop(Material::Flake))]);
+        world.mint_item(Material::Hide, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Stone, 0, cell, Some(near), Role::Loose);
+        let with_stone = world.step(&[intent("stone", near, Attempt::Scrape)]);
+        assert_eq!(
+            with_stone.results[0].message,
+            "You scrape the deer hide with the stone."
+        );
+        let stone_name = world.observe(near).unwrap().text;
+        assert!(stone_name.contains("a scraped deer hide"), "{stone_name}");
+
+        let bare = world.spawn_at("Bare", "b", 2, 0).unwrap();
+        let bare_cell = cell_id(2, 0).unwrap();
+        world.mint_item(Material::Hide, 0, bare_cell, Some(bare), Role::Loose);
+        let no_tool = world.step(&[intent("none", bare, Attempt::Scrape)]);
+        assert_eq!(
+            no_tool.results[0].message,
+            "You need a flint flake or a stone to scrape the hide."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You need a flint flake or a stone to scrape the hide."
+        }));
     }
 }

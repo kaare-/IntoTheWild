@@ -4807,6 +4807,7 @@ impl World {
             let hare = hide.is_some_and(|hide| hide.hare);
             let beaver = hide.is_some_and(|hide| hide.beaver);
             let wolf = hide.is_some_and(|hide| hide.wolf);
+            let scraped = hide.is_some_and(|hide| hide.scraped);
             let kind = if otter {
                 "otter"
             } else if fox {
@@ -4833,7 +4834,12 @@ impl World {
             } else {
                 "deer-hide"
             };
-            let article = if otter { "an" } else { "a" };
+            let article = if otter && !scraped { "an" } else { "a" };
+            let raw = if scraped {
+                format!("scraped {kind}")
+            } else {
+                kind.to_string()
+            };
             match (
                 hide.is_some_and(|hide| hide.worn),
                 hide.is_some_and(|hide| hide.pierced),
@@ -4845,8 +4851,8 @@ impl World {
                 (_, _, true) => format!("a sewn {cloak} cloak"),
                 (true, true, _) => format!("{article} pierced {kind} hide on you (ready to sew)"),
                 (false, true, _) => format!("{article} pierced {kind} hide (ready to sew)"),
-                (true, false, _) => format!("{article} {kind} hide on you"),
-                (false, false, _) => format!("{article} {kind} hide"),
+                (true, false, _) => format!("{article} {raw} hide on you"),
+                (false, false, _) => format!("{article} {raw} hide"),
             }
         } else if item.material == "ochre" && item.count == 1 {
             "a lump of ochre".into()
@@ -5274,16 +5280,41 @@ impl World {
                     "The pierced deer hide is on you. It is ready to sew.".into()
                 });
             } else if otter_plain {
-                parts.push("The otter hide is on you.".into());
+                parts.push(if worn(|hide| hide.otter && hide.scraped) {
+                    "The scraped otter hide is on you.".into()
+                } else {
+                    "The otter hide is on you.".into()
+                });
             } else if fox_plain {
-                parts.push("The fox hide is on you.".into());
+                parts.push(if worn(|hide| hide.fox && hide.scraped) {
+                    "The scraped fox hide is on you.".into()
+                } else {
+                    "The fox hide is on you.".into()
+                });
             } else if hare_plain {
-                parts.push("The hare hide is on you.".into());
+                parts.push(if worn(|hide| hide.hare && hide.scraped) {
+                    "The scraped hare hide is on you.".into()
+                } else {
+                    "The hare hide is on you.".into()
+                });
             } else if beaver_plain {
-                parts.push("The beaver hide is on you.".into());
+                parts.push(if worn(|hide| hide.beaver && hide.scraped) {
+                    "The scraped beaver hide is on you.".into()
+                } else {
+                    "The beaver hide is on you.".into()
+                });
             } else {
+                let scraped = worn(|hide| {
+                    hide.scraped && !hide.otter && !hide.fox && !hide.hare && !hide.beaver
+                });
                 parts.push(if wolf {
-                    "The wolf hide is on you.".into()
+                    if scraped {
+                        "The scraped wolf hide is on you.".into()
+                    } else {
+                        "The wolf hide is on you.".into()
+                    }
+                } else if scraped {
+                    "The scraped deer hide is on you.".into()
                 } else {
                     "The deer hide is on you.".into()
                 });
@@ -8052,6 +8083,17 @@ impl World {
         lines
     }
 
+    fn plain_scraped(
+        &self,
+        ids: &[crate::model::ItemId],
+        pred: impl Fn(&crate::model::Item) -> bool,
+    ) -> bool {
+        ids.iter().any(|id| {
+            self.item(*id)
+                .is_some_and(|hide| pred(hide) && hide.scraped && !hide.pierced && !hide.sewn)
+        })
+    }
+
     fn hide_stage(&self, ids: &[crate::model::ItemId], wolf: bool) -> Option<(bool, bool)> {
         let mine: Vec<_> = ids
             .iter()
@@ -8088,6 +8130,10 @@ impl World {
                 lines.push(format!(
                     "A pierced {kind} hide lies here. It is ready to sew."
                 ));
+            } else if self.plain_scraped(ids, |hide| {
+                hide.wolf == wolf && !hide.otter && !hide.fox && !hide.hare && !hide.beaver
+            }) {
+                lines.push(format!("A scraped {kind} hide lies here."));
             } else {
                 lines.push(format!("A {kind} hide lies here."));
             }
@@ -8125,6 +8171,8 @@ impl World {
             vec!["A sewn fox-hide cloak lies here. It breaks the wind.".into()]
         } else if pierced {
             vec!["A pierced fox hide lies here. It is ready to sew.".into()]
+        } else if self.plain_scraped(ids, |hide| hide.fox) {
+            vec!["A scraped fox hide lies here.".into()]
         } else {
             vec!["A fox hide lies here.".into()]
         }
@@ -8138,6 +8186,8 @@ impl World {
             vec!["a sewn fox-hide cloak".into()]
         } else if pierced {
             vec!["a pierced fox hide".into()]
+        } else if self.plain_scraped(ids, |hide| hide.fox) {
+            vec!["a scraped fox hide".into()]
         } else {
             vec!["a fox hide".into()]
         }
@@ -8155,6 +8205,8 @@ impl World {
             Some(format!(
                 "A pierced fox hide lies {place}. It is ready to sew."
             ))
+        } else if self.plain_scraped(ids, |hide| hide.fox) {
+            Some(format!("A scraped fox hide lies {place}."))
         } else {
             Some(format!("A fox hide lies {place}."))
         }
@@ -8183,8 +8235,12 @@ impl World {
             Some(format!(
                 "A pierced fox hide is carried by {who}, {cover}. It is ready to sew."
             ))
+        } else if worn && self.plain_scraped(hides, |hide| hide.fox) {
+            Some(format!("A scraped fox hide is on {who}, {cover}."))
         } else if worn {
             Some(format!("A fox hide is on {who}, {cover}."))
+        } else if self.plain_scraped(hides, |hide| hide.fox) {
+            Some(format!("A scraped fox hide is carried by {who}, {cover}."))
         } else {
             Some(format!("A fox hide is carried by {who}, {cover}."))
         }
@@ -8219,6 +8275,8 @@ impl World {
             vec!["A sewn hare-hide cloak lies here. It is a light cover.".into()]
         } else if pierced {
             vec!["A pierced hare hide lies here. It is ready to sew.".into()]
+        } else if self.plain_scraped(ids, |hide| hide.hare) {
+            vec!["A scraped hare hide lies here.".into()]
         } else {
             vec!["A hare hide lies here.".into()]
         }
@@ -8232,6 +8290,8 @@ impl World {
             vec!["a sewn hare-hide cloak".into()]
         } else if pierced {
             vec!["a pierced hare hide".into()]
+        } else if self.plain_scraped(ids, |hide| hide.hare) {
+            vec!["a scraped hare hide".into()]
         } else {
             vec!["a hare hide".into()]
         }
@@ -8249,6 +8309,8 @@ impl World {
             Some(format!(
                 "A pierced hare hide lies {place}. It is ready to sew."
             ))
+        } else if self.plain_scraped(ids, |hide| hide.hare) {
+            Some(format!("A scraped hare hide lies {place}."))
         } else {
             Some(format!("A hare hide lies {place}."))
         }
@@ -8277,8 +8339,12 @@ impl World {
             Some(format!(
                 "A pierced hare hide is carried by {who}, {cover}. It is ready to sew."
             ))
+        } else if worn && self.plain_scraped(hides, |hide| hide.hare) {
+            Some(format!("A scraped hare hide is on {who}, {cover}."))
         } else if worn {
             Some(format!("A hare hide is on {who}, {cover}."))
+        } else if self.plain_scraped(hides, |hide| hide.hare) {
+            Some(format!("A scraped hare hide is carried by {who}, {cover}."))
         } else {
             Some(format!("A hare hide is carried by {who}, {cover}."))
         }
@@ -8313,6 +8379,8 @@ impl World {
             vec!["A sewn beaver-hide cloak lies here. It sheds the rain and the brook.".into()]
         } else if pierced {
             vec!["A pierced beaver hide lies here. It is ready to sew.".into()]
+        } else if self.plain_scraped(ids, |hide| hide.beaver) {
+            vec!["A scraped beaver hide lies here.".into()]
         } else {
             vec!["A beaver hide lies here.".into()]
         }
@@ -8326,6 +8394,8 @@ impl World {
             vec!["a sewn beaver-hide cloak".into()]
         } else if pierced {
             vec!["a pierced beaver hide".into()]
+        } else if self.plain_scraped(ids, |hide| hide.beaver) {
+            vec!["a scraped beaver hide".into()]
         } else {
             vec!["a beaver hide".into()]
         }
@@ -8343,6 +8413,8 @@ impl World {
             Some(format!(
                 "A pierced beaver hide lies {place}. It is ready to sew."
             ))
+        } else if self.plain_scraped(ids, |hide| hide.beaver) {
+            Some(format!("A scraped beaver hide lies {place}."))
         } else {
             Some(format!("A beaver hide lies {place}."))
         }
@@ -8371,8 +8443,14 @@ impl World {
             Some(format!(
                 "A pierced beaver hide is carried by {who}, {cover}. It is ready to sew."
             ))
+        } else if worn && self.plain_scraped(hides, |hide| hide.beaver) {
+            Some(format!("A scraped beaver hide is on {who}, {cover}."))
         } else if worn {
             Some(format!("A beaver hide is on {who}, {cover}."))
+        } else if self.plain_scraped(hides, |hide| hide.beaver) {
+            Some(format!(
+                "A scraped beaver hide is carried by {who}, {cover}."
+            ))
         } else {
             Some(format!("A beaver hide is carried by {who}, {cover}."))
         }
@@ -8390,6 +8468,10 @@ impl World {
                 bits.push(format!("a sewn {cloak} cloak"));
             } else if pierced {
                 bits.push(format!("a pierced {kind} hide (ready to sew)"));
+            } else if self.plain_scraped(ids, |hide| {
+                hide.wolf == wolf && !hide.otter && !hide.fox && !hide.hare && !hide.beaver
+            }) {
+                bits.push(format!("a scraped {kind} hide"));
             } else {
                 bits.push(format!("a {kind} hide"));
             }
@@ -8420,6 +8502,8 @@ impl World {
             vec!["A sewn otter-hide cloak lies here.".into()]
         } else if pierced {
             vec!["A pierced otter hide lies here. It is ready to sew.".into()]
+        } else if self.plain_scraped(ids, |hide| hide.otter) {
+            vec!["A scraped otter hide lies here.".into()]
         } else {
             vec!["An otter hide lies here.".into()]
         }
@@ -8444,6 +8528,8 @@ impl World {
             vec!["a sewn otter-hide cloak".into()]
         } else if pierced {
             vec!["a pierced otter hide".into()]
+        } else if self.plain_scraped(&otter, |hide| hide.otter) {
+            vec!["a scraped otter hide".into()]
         } else {
             vec!["an otter hide".into()]
         }
@@ -8472,6 +8558,8 @@ impl World {
             Some(format!(
                 "A pierced otter hide lies {place}. It is ready to sew."
             ))
+        } else if self.plain_scraped(&otter, |hide| hide.otter) {
+            Some(format!("A scraped otter hide lies {place}."))
         } else {
             Some(format!("An otter hide lies {place}."))
         }
@@ -8511,8 +8599,14 @@ impl World {
             Some(format!(
                 "A pierced otter hide is carried by {who}, {cover}. It is ready to sew."
             ))
+        } else if worn && self.plain_scraped(&otter, |hide| hide.otter) {
+            Some(format!("A scraped otter hide is on {who}, {cover}."))
         } else if worn {
             Some(format!("An otter hide is on {who}, {cover}."))
+        } else if self.plain_scraped(&otter, |hide| hide.otter) {
+            Some(format!(
+                "A scraped otter hide is carried by {who}, {cover}."
+            ))
         } else {
             Some(format!("An otter hide is carried by {who}, {cover}."))
         }
@@ -8540,6 +8634,10 @@ impl World {
                         lines.push(format!(
                             "A pierced wolf hide lies {place}. It is ready to sew."
                         ));
+                    } else if self.plain_scraped(&ids, |hide| {
+                        hide.wolf && !hide.otter && !hide.fox && !hide.hare && !hide.beaver
+                    }) {
+                        lines.push(format!("A scraped wolf hide lies {place}."));
                     } else {
                         lines.push(format!("A wolf hide lies {place}."));
                     }
@@ -8551,6 +8649,10 @@ impl World {
                     lines.push(format!(
                         "A pierced deer hide lies {place}. It is ready to sew."
                     ));
+                } else if self.plain_scraped(&ids, |hide| {
+                    !hide.wolf && !hide.otter && !hide.fox && !hide.hare && !hide.beaver
+                }) {
+                    lines.push(format!("A scraped deer hide lies {place}."));
                 } else {
                     lines.push(format!("A deer hide lies {place}."));
                 }
@@ -8623,8 +8725,12 @@ impl World {
                         lines.push(format!(
                             "A pierced wolf hide is carried by {who}, {cover}. It is ready to sew."
                         ));
+                    } else if worn && self.plain_scraped(&mine, |hide| hide.wolf) {
+                        lines.push(format!("A scraped wolf hide is on {who}, {cover}."));
                     } else if worn {
                         lines.push(format!("A wolf hide is on {who}, {cover}."));
+                    } else if self.plain_scraped(&mine, |hide| hide.wolf) {
+                        lines.push(format!("A scraped wolf hide is carried by {who}, {cover}."));
                     } else {
                         lines.push(format!("A wolf hide is carried by {who}, {cover}."));
                     }
@@ -8644,6 +8750,10 @@ impl World {
                     lines.push(format!(
                         "A pierced deer hide is carried by {who}, {cover}. It is ready to sew."
                     ));
+                } else if self.plain_scraped(&mine, |hide| {
+                    !hide.wolf && !hide.otter && !hide.fox && !hide.hare && !hide.beaver
+                }) {
+                    lines.push(format!("A scraped deer hide is carried by {who}, {cover}."));
                 } else {
                     lines.push(format!("A deer hide is carried by {who}, {cover}."));
                 }
@@ -10810,6 +10920,7 @@ impl World {
                     && self.blow_for_these_eyes(viewer, event).is_none()
                     && self.drum_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
+                    && self.scrape_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
                     && self.craft_for_these_eyes(viewer, event).is_none()
@@ -12753,6 +12864,22 @@ impl World {
         }
     }
 
+    /// A hide scraped with a flint flake or a stone. The scraper already has the reply.
+    fn scrape_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        event
+            .text
+            .starts_with(&format!("{name} scrapes "))
+            .then(|| event.text.clone())
+    }
+
     /// A hide pierced with a bone awl. The copper awl still reaches the piercer.
     fn bone_pierce_for_these_eyes(
         &self,
@@ -13098,6 +13225,8 @@ impl World {
         }
         let failures = [
             "The otter hide is not pierced.",
+            "The otter hide is not scraped.",
+            "The otter hide is already scraped.",
             "The otter hide is already pierced.",
             "The otter hide is already a cloak.",
             "You are not wearing an otter hide.",
@@ -13136,6 +13265,8 @@ impl World {
         }
         let failures = [
             "The beaver hide is not pierced.",
+            "The beaver hide is not scraped.",
+            "The beaver hide is already scraped.",
             "The beaver hide is already pierced.",
             "The beaver hide is already a cloak.",
             "You are not wearing a beaver hide.",
@@ -13174,6 +13305,8 @@ impl World {
         }
         let failures = [
             "The hare hide is not pierced.",
+            "The hare hide is not scraped.",
+            "The hare hide is already scraped.",
             "The hare hide is already pierced.",
             "The hare hide is already a cloak.",
             "You are not wearing a hare hide.",
@@ -13212,6 +13345,8 @@ impl World {
         }
         let failures = [
             "The fox hide is not pierced.",
+            "The fox hide is not scraped.",
+            "The fox hide is already scraped.",
             "The fox hide is already pierced.",
             "The fox hide is already a cloak.",
             "You are not wearing a fox hide.",
@@ -13250,6 +13385,8 @@ impl World {
         }
         let failures = [
             "The wolf hide is not pierced.",
+            "The wolf hide is not scraped.",
+            "The wolf hide is already scraped.",
             "The wolf hide is already pierced.",
             "The wolf hide is already a cloak.",
             "You are not wearing a wolf hide.",

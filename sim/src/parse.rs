@@ -128,8 +128,9 @@ smelt iron                   a carried lump of iron ore at a hot charcoal fire; 
 feed                         an extra dry branch, or a carried lump of charcoal, into a burning fire; the fire burns hotter. Charcoal fed in makes it a charcoal fire, which iron needs. With neither, you have nothing to feed the fire
 hammer|forge                 a carried copper bead at a fire, or with a stone, into a copper awl
 hammer bloom                 a carried bloom of iron at a hotter fire, or with a stone, into an iron knife
+scrape hide                  a raw hide with a flint flake, a flint nodule, or a stone. The hide is scraped. The tool stays. An unscraped hide will not sew into a cloak
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way. A fox hide uses a copper awl or a bone awl the same way. A hare hide uses a copper awl or a bone awl the same way. A beaver hide uses a copper awl or a bone awl the same way
-sew hide                     a pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off. A pierced beaver hide sews into a cloak that sheds the rain and the brook. A pierced fox hide sews into a cloak that breaks the wind and cuts the cold the way a deer cloak does. A pierced hare hide sews into a light cloak that takes a little of the cold off and leaves the wind and the rain
+sew hide                     a scraped and pierced deer hide into a cloak, worn against the cold. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off. A pierced beaver hide sews into a cloak that sheds the rain and the brook. A pierced fox hide sews into a cloak that breaks the wind and cuts the cold the way a deer cloak does. A pierced hare hide sews into a light cloak that takes a little of the cold off and leaves the wind and the rain
 rest|sleep                   under the rock, a lean-to, or on a reed mat, tiredness eases; the open wind refuses
 interrupt                    stop the work your body is in
 help"
@@ -830,6 +831,18 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "iron knife" =>
         {
             Ok(Attempt::HammerIron)
+        }
+        "scrape"
+            if rest.is_empty()
+                || rest == "hide"
+                || rest == "deer hide"
+                || rest == "wolf hide"
+                || rest == "otter hide"
+                || rest == "fox hide"
+                || rest == "hare hide"
+                || rest == "beaver hide" =>
+        {
+            Ok(Attempt::Scrape)
         }
         "pierce"
             if rest.is_empty()
