@@ -1900,9 +1900,9 @@ impl World {
             let distance = chebyshev(origin, fire.cell);
             let way = self.relative(origin, fire.cell);
             let line = if distance == see_at {
-                format!("You see smoke to the {way}.")
+                format!("You see smoke to the {way}. Someone is signaling with smoke.")
             } else if distance == smell_at {
-                format!("You smell smoke to the {way}.")
+                format!("You smell smoke to the {way}. Someone is signaling with smoke.")
             } else {
                 continue;
             };

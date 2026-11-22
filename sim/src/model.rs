@@ -21488,20 +21488,39 @@ mod signal {
         assert!(!plume.contains("You see smoke"), "{plume}");
         assert!(!plume.contains("You smell smoke"), "{plume}");
         let see = world.observe(quiet).unwrap().text;
-        assert!(see.contains("You see smoke to the east."), "{see}");
+        assert!(
+            see.contains("You see smoke to the east. Someone is signaling with smoke."),
+            "{see}"
+        );
         assert!(!see.contains("You smell smoke"), "{see}");
+        assert!(!plume.contains("Someone is signaling"), "{plume}");
+        assert!(!watching.contains("Someone is signaling"), "{watching}");
+        assert!(!here.contains("Someone is signaling"), "{here}");
         let smell = world.observe(far).unwrap().text;
-        assert!(smell.contains("You smell smoke to the east."), "{smell}");
+        assert!(
+            smell.contains("You smell smoke to the east. Someone is signaling with smoke."),
+            "{smell}"
+        );
         assert!(!smell.contains("You see smoke"), "{smell}");
         let none = world.observe(past).unwrap().text;
         assert!(!none.contains("You see smoke"), "{none}");
         assert!(!none.contains("You smell smoke"), "{none}");
-        for person in [quiet, far, past, seen, west] {
+        assert!(!none.contains("Someone is signaling"), "{none}");
+        for person in [near, quiet, far, past, seen, west] {
             assert!(world.observe(person).unwrap().events.iter().all(|event| {
-                event.text != "You see smoke to the east."
-                    && event.text != "You smell smoke to the east."
+                !event.text.contains("You see smoke")
+                    && !event.text.contains("You smell smoke")
+                    && !event.text.contains("signaling")
             }));
         }
+        assert_eq!(
+            world.actor(quiet).map(|person| person.cell),
+            Some(cell_id(2, 1).unwrap())
+        );
+        assert_eq!(
+            world.actor(far).map(|person| person.cell),
+            Some(cell_id(1, 1).unwrap())
+        );
         let again = world.step(&[intent("again", near, Attempt::Signal(None))]);
         assert_eq!(
             again.results[0].message,
@@ -21555,7 +21574,7 @@ mod signal {
             .observe(quiet)
             .unwrap()
             .text
-            .contains("You see smoke to the east."));
+            .contains("You see smoke to the east. Someone is signaling with smoke."));
 
         let mut leaves = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = leaves.spawn_at("Near", "n", 6, 1).unwrap();
@@ -21575,7 +21594,7 @@ mod signal {
             .observe(far)
             .unwrap()
             .text
-            .contains("You smell smoke to the east."));
+            .contains("You smell smoke to the east. Someone is signaling with smoke."));
         assert!(!says(
             &leaves,
             far,
