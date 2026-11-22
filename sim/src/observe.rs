@@ -13225,6 +13225,7 @@ impl World {
         }
         let failures = [
             "The otter hide is not pierced.",
+            "The otter hide is not pierced. Pierce it with a copper awl or a bone awl.",
             "The otter hide is not scraped.",
             "The otter hide is already scraped.",
             "The otter hide is already pierced.",
@@ -13265,6 +13266,7 @@ impl World {
         }
         let failures = [
             "The beaver hide is not pierced.",
+            "The beaver hide is not pierced. Pierce it with a copper awl or a bone awl.",
             "The beaver hide is not scraped.",
             "The beaver hide is already scraped.",
             "The beaver hide is already pierced.",
@@ -13305,6 +13307,7 @@ impl World {
         }
         let failures = [
             "The hare hide is not pierced.",
+            "The hare hide is not pierced. Pierce it with a copper awl or a bone awl.",
             "The hare hide is not scraped.",
             "The hare hide is already scraped.",
             "The hare hide is already pierced.",
@@ -13345,6 +13348,7 @@ impl World {
         }
         let failures = [
             "The fox hide is not pierced.",
+            "The fox hide is not pierced. Pierce it with a copper awl or a bone awl.",
             "The fox hide is not scraped.",
             "The fox hide is already scraped.",
             "The fox hide is already pierced.",
@@ -13385,6 +13389,7 @@ impl World {
         }
         let failures = [
             "The wolf hide is not pierced.",
+            "The wolf hide is not pierced. Pierce it with a copper awl or a bone awl.",
             "The wolf hide is not scraped.",
             "The wolf hide is already scraped.",
             "The wolf hide is already pierced.",

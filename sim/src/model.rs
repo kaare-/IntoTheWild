@@ -24443,8 +24443,13 @@ mod scrape_hide {
         let unpierced = world.step(&[intent("sew2", near, Attempt::Sew)]);
         assert_eq!(
             unpierced.results[0].message,
-            "The deer hide is not pierced."
+            "The deer hide is not pierced. Pierce it with a copper awl or a bone awl."
         );
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "The deer hide is not pierced. Pierce it with a copper awl or a bone awl."
+            }));
+        }
 
         world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
         let pierced = world.step(&[intent("pierce", near, Attempt::Pierce)]);

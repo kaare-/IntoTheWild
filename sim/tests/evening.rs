@@ -11569,7 +11569,7 @@ fn a_pierced_deer_hide_sews_into_a_cloak() {
     let unpierced = world.step(&[cmd("unpierced", near, Attempt::Sew)]);
     assert_eq!(
         unpierced.results[0].message,
-        "The deer hide is not pierced."
+        "The deer hide is not pierced. Pierce it with a copper awl or a bone awl."
     );
     assert!(world
         .observe(far)

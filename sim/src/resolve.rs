@@ -1715,10 +1715,10 @@ impl World {
                     Err(self
                         .hide_line(
                             actor.id,
-                            "The deer hide is not pierced.",
-                            "The wolf hide is not pierced.",
-                            "The otter hide is not pierced.",
-                            "The fox hide is not pierced.",
+                            "The deer hide is not pierced. Pierce it with a copper awl or a bone awl.",
+                            "The wolf hide is not pierced. Pierce it with a copper awl or a bone awl.",
+                            "The otter hide is not pierced. Pierce it with a copper awl or a bone awl.",
+                            "The fox hide is not pierced. Pierce it with a copper awl or a bone awl.",
                         )
                         .into())
                 }
@@ -11709,10 +11709,10 @@ impl World {
                 } else {
                     self.hide_line(
                         intent.actor_id,
-                        "The deer hide is not pierced.",
-                        "The wolf hide is not pierced.",
-                        "The otter hide is not pierced.",
-                        "The fox hide is not pierced.",
+                        "The deer hide is not pierced. Pierce it with a copper awl or a bone awl.",
+                        "The wolf hide is not pierced. Pierce it with a copper awl or a bone awl.",
+                        "The otter hide is not pierced. Pierce it with a copper awl or a bone awl.",
+                        "The fox hide is not pierced. Pierce it with a copper awl or a bone awl.",
                     )
                 };
                 self.finish(intent.command_id, intent.actor_id, false, message, results);
@@ -13784,6 +13784,9 @@ fn beaver_instead(deer: &str) -> &'static str {
         "The deer hide is already pierced." => "The beaver hide is already pierced.",
         "The deer hide is already a cloak." => "The beaver hide is already a cloak.",
         "The deer hide is not pierced." => "The beaver hide is not pierced.",
+        "The deer hide is not pierced. Pierce it with a copper awl or a bone awl." => {
+            "The beaver hide is not pierced. Pierce it with a copper awl or a bone awl."
+        }
         "The deer hide is not scraped." => "The beaver hide is not scraped.",
         "The deer hide is already scraped." => "The beaver hide is already scraped.",
         "You are not carrying a deer hide." => "You are not carrying a beaver hide.",
@@ -13798,6 +13801,9 @@ fn hare_instead(deer: &str) -> &'static str {
         "The deer hide is already pierced." => "The hare hide is already pierced.",
         "The deer hide is already a cloak." => "The hare hide is already a cloak.",
         "The deer hide is not pierced." => "The hare hide is not pierced.",
+        "The deer hide is not pierced. Pierce it with a copper awl or a bone awl." => {
+            "The hare hide is not pierced. Pierce it with a copper awl or a bone awl."
+        }
         "The deer hide is not scraped." => "The hare hide is not scraped.",
         "The deer hide is already scraped." => "The hare hide is already scraped.",
         "You are not carrying a deer hide." => "You are not carrying a hare hide.",
