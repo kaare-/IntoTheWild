@@ -17582,6 +17582,93 @@ mod frogs {
 }
 
 #[cfg(test)]
+mod birdsong {
+    use super::World;
+
+    #[test]
+    fn birds_sing_on_some_morning_ticks_and_not_as_an_event() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let thatch = world.spawn_at("Thatch", "t", 5, 2).unwrap();
+        world.thatched.insert(world.actor(thatch).unwrap().cell);
+        let bare = world.spawn_at("Bare", "b", 4, 2).unwrap();
+        world.lean_tos.insert(world.actor(bare).unwrap().cell);
+        let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+        for person in [near, seen, quiet, thatch, bare, far] {
+            let look = world.observe(person).unwrap();
+            assert!(!look.text.contains("birdsong"), "{}", look.text);
+            assert!(look
+                .events
+                .iter()
+                .all(|event| !event.text.contains("birdsong")));
+        }
+        world.step(&[]);
+        assert_eq!(world.sim_time(), 1);
+        assert!(!world.observe(near).unwrap().text.contains("birdsong"));
+        while world.sim_time() < world.tuning.night_at {
+            world.step(&[]);
+        }
+        assert!(world.night());
+        assert_eq!(world.sim_time() % 3, 0);
+        let night = world.observe(near).unwrap().text;
+        assert!(
+            night.contains("You hear an owl hoot to the north."),
+            "{night}"
+        );
+        assert!(!night.contains("birdsong"), "{night}");
+        assert!(!world.observe(quiet).unwrap().text.contains("birdsong"));
+        while !world.morning() {
+            world.step(&[]);
+        }
+        assert!(world.morning());
+        assert_eq!(world.sim_time() % 3, 2);
+        let open = world.observe(near).unwrap().text;
+        assert!(open.contains("You hear birdsong."), "{open}");
+        assert!(!open.contains("faint"), "{open}");
+        assert!(!open.contains("owl"), "{open}");
+        assert!(!open.contains("croak"), "{open}");
+        assert!(!open.contains("wind rush"), "{open}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("You hear birdsong."));
+        assert!(world
+            .observe(far)
+            .unwrap()
+            .text
+            .contains("You hear birdsong."));
+        assert!(world
+            .observe(bare)
+            .unwrap()
+            .text
+            .contains("You hear birdsong."));
+        assert!(!world.observe(bare).unwrap().text.contains("faint"));
+        let under = world.observe(quiet).unwrap().text;
+        assert!(under.contains("You hear birdsong, faint."), "{under}");
+        assert!(!under.contains("You hear birdsong."), "{under}");
+        let roof = world.observe(thatch).unwrap().text;
+        assert!(roof.contains("You hear birdsong, faint."), "{roof}");
+        assert!(!roof.contains("muffled"), "{roof}");
+        for person in [near, seen, quiet, thatch, bare, far] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| !event.text.contains("birdsong")));
+        }
+        world.step(&[]);
+        assert!(world.morning());
+        assert!(!world.observe(near).unwrap().text.contains("birdsong"));
+        assert!(!world.observe(quiet).unwrap().text.contains("birdsong"));
+        assert!(!world.observe(thatch).unwrap().text.contains("birdsong"));
+    }
+}
+
+#[cfg(test)]
 mod willow_bark {
     use super::{Attempt, ExamineTarget, Material, Role, World};
 

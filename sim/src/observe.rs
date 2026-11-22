@@ -732,6 +732,24 @@ impl World {
         Some(format!("You hear frogs croak to the {way}."))
     }
 
+    /// Dawn and morning, some ticks and not others. Night and evening are quiet.
+    /// The valley sings. It is not an owl, and it is not the frogs.
+    /// Under the rock or a thatched lean-to it is faint. The line is look, not a tick event.
+    fn birds_sing(&self) -> bool {
+        self.morning() && self.time % 3 == 2
+    }
+
+    fn bird_line(&self, actor_id: ActorId) -> Option<String> {
+        if !self.birds_sing() {
+            return None;
+        }
+        let origin = self.actor(actor_id)?.cell;
+        if self.thatched.contains(&origin) || self.exposure_millis(origin) == 0 {
+            return Some("You hear birdsong, faint.".into());
+        }
+        Some("You hear birdsong.".into())
+    }
+
     /// A fire underfoot or on the next cell. Farther light does not help.
     fn fire_nearby(&self, cell: CellId) -> bool {
         self.fires
@@ -4772,6 +4790,9 @@ impl World {
         }
         if let Some(frogs) = self.frog_line(actor_id) {
             parts.push(frogs);
+        }
+        if let Some(birds) = self.bird_line(actor_id) {
+            parts.push(birds);
         }
         if self.illness_word(actor.illness) == "ill" {
             parts.push("Your stomach has not settled.".into());
