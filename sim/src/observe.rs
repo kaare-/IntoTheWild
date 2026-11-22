@@ -1713,16 +1713,11 @@ impl World {
             parts.push("A pair of rhythm sticks lies here.".into());
         }
         let torches_here = self.ground_ids(actor.cell, Material::Torch);
-        if !torches_here.is_empty() {
-            let lit = torches_here.iter().any(|id| {
-                self.item(*id)
-                    .is_some_and(|torch| torch.firing_ready_at.is_some())
-            });
-            if lit {
-                parts.push("A lit pitch torch lies here.".into());
-            } else {
-                parts.push("A pitch torch lies here.".into());
-            }
+        for id in torches_here {
+            let Some(item) = self.item(id) else {
+                continue;
+            };
+            parts.push(format!("{} lies here.", self.torch_phrase(item, true)));
         }
         let bows_here = self.ground_ids(actor.cell, Material::Bow);
         if !bows_here.is_empty() {
@@ -3907,28 +3902,20 @@ impl World {
         }
     }
 
-    fn torch_carry_phrase(&self, actor_id: ActorId) -> String {
-        let mut bits = Vec::new();
-        for id in self.loose_ids(actor_id, Material::Torch) {
-            let Some(item) = self.item(id) else {
-                continue;
-            };
-            let lit = item.firing_ready_at.is_some();
-            bits.push(
-                match (lit, item.bound) {
-                    (true, true) => "a lit pitch torch wrapped in bark",
-                    (true, false) => "a lit pitch torch",
-                    (false, true) => "a pitch torch wrapped in bark",
-                    (false, false) => "a pitch torch",
-                }
-                .to_string(),
-            );
-        }
-        if bits.is_empty() {
-            "a pitch torch".into()
+    /// Lit while it burns. Unlit keeps the moisture word: dry, damp, or soaked.
+    fn torch_carry_word(&self, item: &crate::model::Item) -> &'static str {
+        if item.firing_ready_at.is_some() {
+            "lit"
         } else {
-            bits.join(", ")
+            self.condition_word(item.moisture)
         }
+    }
+
+    fn torch_phrase(&self, item: &crate::model::Item, capital: bool) -> String {
+        let word = self.torch_carry_word(item);
+        let wrap = if item.bound { " wrapped in bark" } else { "" };
+        let article = if capital { "A" } else { "a" };
+        format!("{article} {word} pitch torch{wrap}")
     }
 
     fn examine_torch(&self, viewer: ActorId) -> String {
@@ -3940,13 +3927,7 @@ impl World {
                     continue;
                 };
                 let place = self.place_phrase(origin, cell);
-                let lit = item.firing_ready_at.is_some();
-                let name = match (lit, item.bound) {
-                    (true, true) => "A lit pitch torch wrapped in bark",
-                    (true, false) => "A lit pitch torch",
-                    (false, true) => "A pitch torch wrapped in bark",
-                    (false, false) => "A pitch torch",
-                };
+                let name = self.torch_phrase(item, true);
                 lines.push(format!("{name} lies {place}."));
             }
         }
@@ -3964,13 +3945,7 @@ impl World {
                     actor.name.as_str()
                 };
                 let cover = self.cover_phrase(actor.cell);
-                let lit = item.firing_ready_at.is_some();
-                let name = match (lit, item.bound) {
-                    (true, true) => "A lit pitch torch wrapped in bark",
-                    (true, false) => "A lit pitch torch",
-                    (false, true) => "A pitch torch wrapped in bark",
-                    (false, false) => "A pitch torch",
-                };
+                let name = self.torch_phrase(item, true);
                 lines.push(format!("{name} is carried by {who}, {cover}."));
             }
         }
@@ -5330,7 +5305,7 @@ impl World {
         } else if item.material == "sticks" {
             format!("{} pairs of rhythm sticks", count_word(item.count))
         } else if item.material == "torch" {
-            self.torch_carry_phrase(actor_id)
+            self.torch_arm_bit(actor_id, item)
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -11170,26 +11145,58 @@ impl World {
         }
     }
 
+    /// One arms entry for the torches that share this carrying word.
+    fn torch_arm_bit(&self, actor_id: ActorId, view: &CarryView) -> String {
+        let mut bits = Vec::new();
+        for id in self.loose_ids(actor_id, Material::Torch) {
+            let Some(item) = self.item(id) else {
+                continue;
+            };
+            if self.torch_carry_word(item) != view.condition {
+                continue;
+            }
+            bits.push(self.torch_phrase(item, false));
+        }
+        if bits.is_empty() {
+            format!("a {} pitch torch", view.condition)
+        } else {
+            bits.join(", ")
+        }
+    }
+
     fn carry_views(&self, actor_id: ActorId) -> Vec<CarryView> {
-        let mut groups: Vec<(Material, u32, u32)> = Vec::new();
+        let mut groups: Vec<(Material, u32, u32, Option<&'static str>)> = Vec::new();
         for item in self.items.values().filter(|item| {
             item.carrier == Some(actor_id) && item.role == Role::Loose && !item.in_basket
         }) {
+            if item.material == Material::Torch {
+                let word = self.torch_carry_word(item);
+                if let Some(group) = groups.iter_mut().find(|(material, _, _, flag)| {
+                    *material == Material::Torch && *flag == Some(word)
+                }) {
+                    group.1 += 1;
+                } else {
+                    groups.push((Material::Torch, 1, item.moisture, Some(word)));
+                }
+                continue;
+            }
             if let Some(group) = groups
                 .iter_mut()
-                .find(|(material, _, _)| *material == item.material)
+                .find(|(material, _, _, _)| *material == item.material)
             {
                 group.1 += 1;
                 group.2 = group.2.max(item.moisture);
             } else {
-                groups.push((item.material, 1, item.moisture));
+                groups.push((item.material, 1, item.moisture, None));
             }
         }
         groups
             .into_iter()
-            .map(|(material, count, moisture)| CarryView {
+            .map(|(material, count, moisture, torch_word)| CarryView {
                 material: material.word().into(),
-                condition: self.condition_word(moisture).into(),
+                condition: torch_word
+                    .unwrap_or_else(|| self.condition_word(moisture))
+                    .into(),
                 count,
             })
             .collect()

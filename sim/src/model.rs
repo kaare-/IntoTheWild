@@ -25496,11 +25496,20 @@ mod pitch_torch {
             .events
             .iter()
             .all(|event| event.text != witnessed));
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .text
-            .contains("You have a pitch torch."));
+        let unlit_look = world.observe(near).unwrap();
+        assert!(
+            unlit_look.text.contains("You have a dry pitch torch."),
+            "{}",
+            unlit_look.text
+        );
+        let unlit_carry = unlit_look
+            .self_info
+            .carrying
+            .iter()
+            .find(|item| item.material == "torch")
+            .unwrap();
+        assert_eq!(unlit_carry.condition, "dry");
+        assert_eq!(unlit_carry.count, 1);
 
         let unlit = world.step(&[intent("dark", near, Attempt::LightTorch)]);
         assert_eq!(
@@ -25568,6 +25577,17 @@ mod pitch_torch {
         );
         assert!(!look.contains("you cannot make out the ground"), "{look}");
         assert!(look.contains("You have a lit pitch torch."), "{look}");
+        assert!(!look.contains("dry pitch torch"), "{look}");
+        let lit_carry = world
+            .observe(near)
+            .unwrap()
+            .self_info
+            .carrying
+            .into_iter()
+            .find(|item| item.material == "torch")
+            .unwrap();
+        assert_eq!(lit_carry.condition, "lit");
+        assert_eq!(lit_carry.count, 1);
         assert!(look.contains("West:"), "{look}");
 
         let wait = world.tuning.clay_ticks;
@@ -25616,7 +25636,7 @@ mod pitch_torch {
             .observe(near)
             .unwrap()
             .text
-            .contains("a pitch torch wrapped in bark"));
+            .contains("a dry pitch torch wrapped in bark"));
         world.mint_item(Material::Branch, 0, cell, Some(near), Role::Loose);
         world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
         let fire = world.step(&[intent("fire", near, Attempt::Light)]);
