@@ -4,7 +4,7 @@ use crate::model::{Attempt, Dir, ExamineTarget, Material};
 
 pub fn help_text() -> &'static str {
     "\
-look                         where you are, and the local map. At night the ground stays dark. A fire, a smoke column, or the rock overhang that is still in sight keeps its direction
+look                         where you are, and the local map. At night the ground stays dark. A fire, a smoke column, or the rock overhang that is still in sight keeps its direction. When that overhang's way is already named, the compass names it too
 examine wood|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone|flint|ochre|iron ore|bloom of iron|iron knife|copper ore|copper bead|awl|flake|clay|bowl|spear|carcass|hide|brand|fire|deer|tracks|log|frame|rock|slope|eggs|moss|bow|paddle|hook|self|here|<name>
 say <words>                  people nearby hear you
 n s e w                      walk

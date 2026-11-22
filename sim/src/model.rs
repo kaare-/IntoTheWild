@@ -25617,8 +25617,9 @@ mod night_marks {
             ),
             "{nearer}"
         );
+        assert!(nearer.contains("East: the rock overhang."), "{nearer}");
         assert!(
-            nearer.contains("East: you cannot make out the ground."),
+            nearer.contains("North: you cannot make out the ground."),
             "{nearer}"
         );
         assert!(!nearer.contains("a pot"), "{nearer}");
@@ -25631,6 +25632,37 @@ mod night_marks {
             beside.contains("North: you cannot make out the ground."),
             "{beside}"
         );
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(5, 2).unwrap();
+        let corner = world.observe(near).unwrap().text;
+        assert!(
+            corner.contains("The rock overhang is to the north and east."),
+            "{corner}"
+        );
+        assert!(
+            corner.contains("North: the rock overhang to the north and east."),
+            "{corner}"
+        );
+        assert!(
+            corner.contains("East: the rock overhang to the north and east."),
+            "{corner}"
+        );
+        assert!(
+            corner.contains("South: you cannot make out the ground."),
+            "{corner}"
+        );
+        assert!(
+            corner.contains("West: you cannot make out the ground."),
+            "{corner}"
+        );
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("rock overhang") }));
+        }
         assert!(
             !beside
                 .lines()

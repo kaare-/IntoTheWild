@@ -13341,7 +13341,10 @@ fn night_shortens_the_look_until_a_fire_is_nearby() {
     assert!(
         dark.contains("Night has fallen.")
             && dark.contains("The dark hides what lies farther off.")
-            && dark.contains("North: you cannot make out the ground.")
+            && dark.contains("The rock overhang is to the north and east.")
+            && dark.contains("North: the rock overhang to the north and east.")
+            && dark.contains("East: the rock overhang to the north and east.")
+            && dark.contains("South: you cannot make out the ground.")
             && dark.contains("You are on the")
             && !dark.contains("A deer stands"),
         "{dark}"

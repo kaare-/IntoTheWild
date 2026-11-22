@@ -828,6 +828,35 @@ impl World {
         Some(format!("{}: the rock overhang.", capitalize(dir.word())))
     }
 
+    /// Look already names a rock that is still in sight, and this compass
+    /// heading is part of that way. The next square is not the rock.
+    /// The ground on that square stays unnamed.
+    fn night_compass_rock(&self, viewer: ActorId, origin: CellId, dir: Dir) -> Option<String> {
+        let heading = dir.word();
+        let mut best: Option<(i32, String)> = None;
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin || !self.cell(cell).rock || orthogonal_neighbor(origin, cell) {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            let toward = way == heading || way.split(" and ").any(|part| part == heading);
+            if !toward {
+                continue;
+            }
+            let dist = chebyshev(origin, cell);
+            let line = if way == heading {
+                format!("{}: the rock overhang.", capitalize(heading))
+            } else {
+                format!("{}: the rock overhang to the {way}.", capitalize(heading))
+            };
+            match best {
+                Some((nearer, _)) if nearer <= dist => {}
+                _ => best = Some((dist, line)),
+            }
+        }
+        best.map(|(_, line)| line)
+    }
+
     /// A rock or a burning fire inside sight, farther than the next cell.
     /// The compass already names a rock on the next cell. The ground stays dark.
     fn night_far_landmarks(&self, viewer: ActorId) -> Option<String> {
@@ -6120,6 +6149,9 @@ impl World {
             return line;
         }
         if let Some(mark) = self.night_compass_mark(origin, dir) {
+            return mark;
+        }
+        if let Some(mark) = self.night_compass_rock(viewer, origin, dir) {
             return mark;
         }
         format!(
