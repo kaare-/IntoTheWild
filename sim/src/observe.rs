@@ -459,6 +459,9 @@ impl World {
             if let Some(smoke) = self.seen_smoke(actor_id) {
                 lines.push(smoke);
             }
+            if let Some(column) = self.seen_signal(actor_id) {
+                lines.push(column);
+            }
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
@@ -871,6 +874,9 @@ impl World {
                 parts.push(format!("A fire burns hotter here. It warms you.{kept}"));
             } else {
                 parts.push(format!("A small fire burns here. It warms you.{kept}"));
+            }
+            if fire.column {
+                parts.push("A column of smoke rises from the fire.".into());
             }
             if self.banks.contains_key(&actor.cell) {
                 parts.push("Branches are banked on the fire under a cover of mud.".into());
@@ -1828,6 +1834,39 @@ impl World {
                     "Wolf tracks mark the ground to the {}.",
                     self.relative(origin, cell)
                 )
+            };
+            if !lines.contains(&line) {
+                lines.push(line);
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    /// A signal column past the ordinary smoke. One cell past that smoke
+    /// is still a thing you see. One cell farther, you only smell it.
+    /// Someone who can see the fire already has the fire sentence.
+    /// The ordinary plume, one cell past sight, stays "Smoke rises".
+    fn seen_signal(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let see_at = self.tuning.smoke_range().saturating_add(1);
+        let smell_at = see_at.saturating_add(1);
+        let mut lines = Vec::new();
+        for fire in self.fires.values() {
+            if !fire.column {
+                continue;
+            }
+            let distance = chebyshev(origin, fire.cell);
+            let way = self.relative(origin, fire.cell);
+            let line = if distance == see_at {
+                format!("You see smoke to the {way}.")
+            } else if distance == smell_at {
+                format!("You smell smoke to the {way}.")
+            } else {
+                continue;
             };
             if !lines.contains(&line) {
                 lines.push(line);
@@ -4271,6 +4310,9 @@ impl World {
                     parts.push(format!("{burn}"));
                 } else {
                     parts.push(format!("{burn} It warms {}.", self.join_names(&warmed)));
+                }
+                if fire.column {
+                    parts.push("A column of smoke rises from the fire.".into());
                 }
                 if self.banks.contains_key(&cell) {
                     parts.push("Branches are banked on it under a cover of mud.".into());

@@ -133,6 +133,7 @@ impl World {
         let mut dresses = Vec::new();
         let mut bows = Vec::new();
         let mut clothes = Vec::new();
+        let mut signals = Vec::new();
 
         for intent in pending {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
@@ -263,6 +264,7 @@ impl World {
                         Attempt::DressSting => dresses.push(intent),
                         Attempt::CraftBow => bows.push(intent),
                         Attempt::DryClothes => clothes.push(intent),
+                        Attempt::Signal(_) => signals.push(intent),
                     }
                 }
             }
@@ -422,6 +424,7 @@ impl World {
         self.apply_dresses(dresses, &mut results);
         self.apply_bows(bows, &mut results);
         self.apply_dry_clothes(clothes, &mut results);
+        self.apply_signals(signals, &mut results);
         self.apply_lights(lights, &start_cells, &mut results);
         self.apply_drill_fires(drill_fires, &start_cells, &mut results);
         self.apply_drill_carves(drill_carves, &mut results);
@@ -1779,6 +1782,29 @@ impl World {
                     Ok(true)
                 } else {
                     Err("You have nothing to mark with.".into())
+                }
+            }
+            Attempt::Signal(green) => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err("There is no fire burning here.".into())
+                } else if self.fire_at(actor.cell).is_some_and(|fire| fire.column) {
+                    Err("A column of smoke is already rising.".into())
+                } else if let Some(material) = green {
+                    if self.has_material_at_hand(actor.id, *material) {
+                        Ok(true)
+                    } else if *material == Material::Reed {
+                        Err("You have no green reeds to lay on the fire.".into())
+                    } else {
+                        Err("You have no green pine needles to lay on the fire.".into())
+                    }
+                } else {
+                    Ok(true)
                 }
             }
             Attempt::Light => {
@@ -3968,6 +3994,61 @@ impl World {
             return Some("There is nothing here to cook.".into());
         }
         None
+    }
+
+    /// A column of smoke from the fire here. The reply stays with the person
+    /// who sent it. Look, not an event, places it for everyone else.
+    fn apply_signals(&mut self, signals: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in signals {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Attempt::Signal(green) = intent.attempt else {
+                continue;
+            };
+            if self.fire_at(actor.cell).is_none() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no fire burning here.",
+                    results,
+                );
+                continue;
+            }
+            if self.fire_at(actor.cell).is_some_and(|fire| fire.column) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A column of smoke is already rising.",
+                    results,
+                );
+                continue;
+            }
+            let message = if let Some(material) = green {
+                if self.take_hand(actor.id, material).is_err() {
+                    let missing = if material == Material::Reed {
+                        "You have no green reeds to lay on the fire."
+                    } else {
+                        "You have no green pine needles to lay on the fire."
+                    };
+                    self.finish(intent.command_id, actor.id, false, missing, results);
+                    continue;
+                }
+                if material == Material::Reed {
+                    "You lay green reeds on the fire. A column of smoke rises."
+                } else {
+                    "You lay green pine needles on the fire. A column of smoke rises."
+                }
+            } else {
+                "You send up a column of smoke."
+            };
+            if let Some(fire) = self.fires.values_mut().find(|fire| fire.cell == actor.cell) {
+                fire.column = true;
+            }
+            self.finish(intent.command_id, actor.id, true, message, results);
+        }
     }
 
     fn apply_lights(

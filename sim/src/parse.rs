@@ -41,6 +41,7 @@ steep|brew mint            a handful of mint in a pot or a bark cup of water ove
 steep|brew pine            a handful of pine needles the same way. A chill eases a little. It does not settle a stomach. gather pine needles takes them from the pine south of the trail
 steep|brew willow bark      a strip of willow bark the same way. A sunburn eases a little. It does not settle a stomach or a chill. The cordage is not the bark
 light fire                   dry bark and a dry branch, from the arms if you carry them. Dry moss from the shade under the rock is tinder the same way, and is spent before bark when both are held. Wet moss is not tinder. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before moss and bark when it is held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
+signal                       a column of smoke from a burning fire here. smoke signal is the same. It lasts while the fire burns. Someone who cannot see the fire, past the ordinary smoke, reads which way. One cell farther, they smell it. Green reeds or pine needles may be laid on the fire. They do not change the column. With no fire, with nothing green when you asked for it, or with the column already rising, only you hear it
 carve drill                  two dry branches and cordage into a bow drill. One branch is the spindle, one is the fireboard. Hide strips, then willow, then nettle. A spent bow drill in the arms is carved anew with one dry branch
 light fire with drill        the bow drill stays in the arms, and the line names it spent. No bark, no resin, and no charcoal. light fire still wants tinder
 cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
@@ -124,6 +125,28 @@ interrupt                    stop the work your body is in
 help"
 }
 
+fn parse_signal(rest: &str) -> Result<Attempt, String> {
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return Ok(Attempt::Signal(None));
+    }
+    let green = match rest {
+        "with reeds"
+        | "with green reeds"
+        | "reeds"
+        | "with a bundle of reeds"
+        | "a bundle of reeds" => Some(Material::Reed),
+        "with pine needles" | "with needles" | "with green leaves" | "with leaves"
+        | "pine needles" | "needles" | "green leaves" | "leaves" => Some(Material::Needle),
+        _ => {
+            return Err(
+                "Lay green reeds or pine needles on the fire, or send the smoke up plain.".into(),
+            );
+        }
+    };
+    Ok(Attempt::Signal(green))
+}
+
 pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
     let line = line.trim();
     if line.is_empty() {
@@ -161,6 +184,10 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "e" | "east" => Ok(Attempt::Move(Dir::East)),
         "w" | "west" => Ok(Attempt::Move(Dir::West)),
         "move" | "go" | "walk" => parse_dir(rest).map(Attempt::Move),
+        "signal" => parse_signal(rest),
+        "smoke" if rest == "signal" || rest.starts_with("signal ") => {
+            parse_signal(rest.trim_start_matches("signal").trim())
+        }
         "smoke"
             if rest == "fish"
                 || rest == "the fish"

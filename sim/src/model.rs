@@ -528,6 +528,9 @@ pub enum Attempt {
     /// The tea is drunk in the same act. A sunburn eases slightly.
     /// A sick stomach and a chill do not.
     SteepWillow,
+    /// A column of smoke from a burning fire. Green reeds or pine needles
+    /// may be laid on it. They do not change what the column means.
+    Signal(Option<Material>),
 }
 
 impl Attempt {
@@ -613,6 +616,7 @@ impl Attempt {
                 | Attempt::Grind
                 | Attempt::CarveDrill
                 | Attempt::DrillFire
+                | Attempt::Signal(_)
         )
     }
 }
@@ -887,6 +891,10 @@ pub struct Fire {
     /// Lit with a lump of charcoal. It is hot, and it burns for twice as long.
     #[serde(default)]
     pub charcoal: bool,
+    /// A column of smoke rises from this fire until it goes out.
+    /// Look names it. The person who sent it up does not announce it.
+    #[serde(default)]
+    pub column: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2803,6 +2811,7 @@ impl World {
                 goes_out_at,
                 hot: charcoal,
                 charcoal,
+                column: false,
             },
         );
         self.schedule(goes_out_at, Wake::Fire(id));
@@ -20739,5 +20748,198 @@ mod bow_drill {
             "The rain puts the drill out before it catches."
         ));
         assert_eq!(world.loose_ids(wet, Material::Drill).len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod signal {
+    use super::*;
+
+    fn intent(id: &str, actor: ActorId, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: ActorId, text: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == text)
+    }
+
+    #[test]
+    fn a_smoke_signal_is_a_column_past_the_ordinary_smoke() {
+        assert!(matches!(
+            crate::parse::parse_attempt("signal").unwrap(),
+            Attempt::Signal(None)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("smoke signal").unwrap(),
+            Attempt::Signal(None)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("signal with reeds").unwrap(),
+            Attempt::Signal(Some(Material::Reed))
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("smoke signal with green leaves").unwrap(),
+            Attempt::Signal(Some(Material::Needle))
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let west = world.spawn_at("West", "w", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 2, 1).unwrap();
+        let far = world.spawn_at("Far", "f", 1, 1).unwrap();
+        let past = world.spawn_at("Past", "p", 0, 1).unwrap();
+        let missed = world.step(&[intent("none", near, Attempt::Signal(None))]);
+        assert_eq!(missed.results[0].message, "There is no fire burning here.");
+        assert!(says(&world, near, "There is no fire burning here."));
+        for person in [west, seen, quiet, far, past] {
+            assert!(!says(&world, person, "There is no fire burning here."));
+        }
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        let before = world.observe(near).unwrap().text;
+        assert!(before.contains("A small fire burns here. It warms you."));
+        assert!(!before.contains("A column of smoke rises from the fire."));
+        assert!(!world.observe(quiet).unwrap().text.contains("You see smoke"));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Smoke rises to the north and east."));
+        let bare = world.step(&[intent("signal", near, Attempt::Signal(None))]);
+        assert_eq!(bare.results[0].message, "You send up a column of smoke.");
+        let reply = "You send up a column of smoke.";
+        for person in [near, west, seen, quiet, far, past] {
+            assert!(!says(&world, person, reply));
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| !event.text.contains("sends up")));
+        }
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("A column of smoke rises from the fire."),
+            "{here}"
+        );
+        assert!(here.contains("A small fire burns here. It warms you."));
+        let watching = world.observe(west).unwrap().text;
+        assert!(
+            watching.contains("A column of smoke rises from the fire."),
+            "{watching}"
+        );
+        assert!(!watching.contains("You see smoke"), "{watching}");
+        let plume = world.observe(seen).unwrap().text;
+        assert!(
+            plume.contains("Smoke rises to the north and east."),
+            "{plume}"
+        );
+        assert!(!plume.contains("You see smoke"), "{plume}");
+        assert!(!plume.contains("You smell smoke"), "{plume}");
+        let see = world.observe(quiet).unwrap().text;
+        assert!(see.contains("You see smoke to the east."), "{see}");
+        assert!(!see.contains("You smell smoke"), "{see}");
+        let smell = world.observe(far).unwrap().text;
+        assert!(smell.contains("You smell smoke to the east."), "{smell}");
+        assert!(!smell.contains("You see smoke"), "{smell}");
+        let none = world.observe(past).unwrap().text;
+        assert!(!none.contains("You see smoke"), "{none}");
+        assert!(!none.contains("You smell smoke"), "{none}");
+        for person in [quiet, far, past, seen, west] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "You see smoke to the east."
+                    && event.text != "You smell smoke to the east."
+            }));
+        }
+        let again = world.step(&[intent("again", near, Attempt::Signal(None))]);
+        assert_eq!(
+            again.results[0].message,
+            "A column of smoke is already rising."
+        );
+        assert!(says(&world, near, "A column of smoke is already rising."));
+        assert!(!says(&world, seen, "A column of smoke is already rising."));
+        while world.fire_at(rock).is_some() {
+            world.step(&[]);
+        }
+        assert!(!world.observe(quiet).unwrap().text.contains("You see smoke"));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A column of smoke rises from the fire."));
+
+        let mut green = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = green.spawn_at("Near", "n", 6, 1).unwrap();
+        let quiet = green.spawn_at("Quiet", "q", 2, 1).unwrap();
+        green.step(&[intent("light", near, Attempt::Light)]);
+        let no_reeds = green.step(&[intent("reeds", near, Attempt::Signal(Some(Material::Reed)))]);
+        assert_eq!(
+            no_reeds.results[0].message,
+            "You have no green reeds to lay on the fire."
+        );
+        assert!(says(
+            &green,
+            near,
+            "You have no green reeds to lay on the fire."
+        ));
+        assert!(!says(
+            &green,
+            quiet,
+            "You have no green reeds to lay on the fire."
+        ));
+        assert!(!green.observe(quiet).unwrap().text.contains("You see smoke"));
+        green.add_pile(cell_id(6, 1).unwrap(), Material::Reed, 1, 0);
+        let laid = green.step(&[intent("lay", near, Attempt::Signal(Some(Material::Reed)))]);
+        assert_eq!(
+            laid.results[0].message,
+            "You lay green reeds on the fire. A column of smoke rises."
+        );
+        assert_eq!(green.pile_count(cell_id(6, 1).unwrap(), Material::Reed), 0);
+        assert!(!says(
+            &green,
+            near,
+            "You lay green reeds on the fire. A column of smoke rises."
+        ));
+        assert!(green
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("You see smoke to the east."));
+
+        let mut leaves = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = leaves.spawn_at("Near", "n", 6, 1).unwrap();
+        let far = leaves.spawn_at("Far", "f", 1, 1).unwrap();
+        leaves.step(&[intent("light", near, Attempt::Light)]);
+        leaves.add_pile(cell_id(6, 1).unwrap(), Material::Needle, 1, 0);
+        let laid = leaves.step(&[intent(
+            "leaves",
+            near,
+            Attempt::Signal(Some(Material::Needle)),
+        )]);
+        assert_eq!(
+            laid.results[0].message,
+            "You lay green pine needles on the fire. A column of smoke rises."
+        );
+        assert!(leaves
+            .observe(far)
+            .unwrap()
+            .text
+            .contains("You smell smoke to the east."));
+        assert!(!says(
+            &leaves,
+            far,
+            "You lay green pine needles on the fire. A column of smoke rises."
+        ));
     }
 }
