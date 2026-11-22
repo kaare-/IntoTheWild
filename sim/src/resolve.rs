@@ -2550,6 +2550,9 @@ impl World {
                     if material == Material::Willow {
                         self.arm_willow_stand(cell);
                     }
+                    if material == Material::WillowBark {
+                        self.arm_willow_bark(cell);
+                    }
                     if material == Material::Nettle
                         && self
                             .actor(intent.actor_id)

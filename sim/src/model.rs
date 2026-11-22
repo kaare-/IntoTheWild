@@ -928,6 +928,8 @@ pub enum Wake {
     ResinReturn(CellId),
     /// Willow cordage hangs on this bank again.
     WillowReturn(CellId),
+    /// A strip of willow bark hangs on this willow again. Not the cordage.
+    WillowBarkReturn(CellId),
     /// Nettles grow on this floor again.
     NettleReturn(CellId),
     /// Cattails grow in these shallows again.
@@ -1269,9 +1271,12 @@ pub struct World {
     #[serde(default)]
     pub(crate) willow_stands: BTreeSet<CellId>,
     /// The same willow, where a strip of bark hangs. Not the cordage.
-    /// Bare once that strip is taken. It does not grow back.
+    /// Bare once that strip is taken, until it grows back.
     #[serde(default)]
     pub(crate) willow_bark_stands: BTreeSet<CellId>,
+    /// When the bare willow has bark again. Look says it has none until then.
+    #[serde(default)]
+    pub(crate) willow_bark_returns_at: BTreeMap<CellId, u64>,
     /// When a bare willow has withies again. Look says the willow has none until then.
     #[serde(default)]
     pub(crate) willow_returns_at: BTreeMap<CellId, u64>,
@@ -1495,6 +1500,7 @@ impl World {
             resin_returns_at: BTreeMap::new(),
             willow_stands: BTreeSet::new(),
             willow_bark_stands: BTreeSet::new(),
+            willow_bark_returns_at: BTreeMap::new(),
             willow_returns_at: BTreeMap::new(),
             nettle_stands: BTreeSet::new(),
             nettle_returns_at: BTreeMap::new(),
@@ -2173,6 +2179,24 @@ impl World {
         let at = self.time.saturating_add(self.tuning.willow_ticks);
         self.willow_returns_at.insert(cell, at);
         self.schedule(at, Wake::WillowReturn(cell));
+    }
+
+    /// The willow has no bark. One strip returns on the same wait as moss.
+    /// Cordage on that willow is a different pile and is not touched.
+    pub(crate) fn arm_willow_bark(&mut self, cell: CellId) {
+        if !self.willow_bark_stands.contains(&cell)
+            || self.willow_bark_returns_at.contains_key(&cell)
+        {
+            return;
+        }
+        if self.pile_count(cell, Material::WillowBark) > 0
+            || !self.ground_ids(cell, Material::WillowBark).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.moss_ticks);
+        self.willow_bark_returns_at.insert(cell, at);
+        self.schedule(at, Wake::WillowBarkReturn(cell));
     }
 
     /// The nettles are bare. They grow again `nettle_ticks` after this step.
@@ -17740,6 +17764,114 @@ mod willow_bark {
             .events
             .iter()
             .all(|event| { event.text != "You have no willow bark to steep." }));
+    }
+
+    #[test]
+    fn a_stripped_willow_grows_bark_again_and_the_cordage_stays() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let stand = super::cell_id(0, 4).unwrap();
+        let near = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let cordage = world.pile_count(stand, Material::Willow);
+        let none = world.step(&[intent("none", quiet, Attempt::Gather(Material::WillowBark))]);
+        assert_eq!(
+            none.results[0].message,
+            "There is no willow bark here to gather."
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no willow bark here to gather." }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no willow bark here to gather." }));
+        let gathered = world.step(&[intent("strip", near, Attempt::Gather(Material::WillowBark))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a strip of willow bark."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers")));
+        assert_eq!(world.pile_count(stand, Material::Willow), cordage);
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The willow here has no bark."), "{bare}");
+        assert!(
+            bare.contains("Bundles of willow cordage hang here."),
+            "{bare}"
+        );
+        let ticks = world.tuning.moss_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The willow here has no bark."));
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text.contains("grows on the willow again")));
+        world.step(&[]);
+        let grown = "Willow bark grows on the willow again.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains(
+                "A strip of willow bark hangs on the willow here. It is not the cordage."
+            ),
+            "{}",
+            back.text
+        );
+        assert!(!back.text.contains("The willow here has no bark."));
+        assert!(back.text.contains("Bundles of willow cordage hang here."));
+        assert!(back.events.iter().any(|event| event.text == grown));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == grown));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("A strip of willow bark hangs on the willow to the west."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown));
+        assert!(!world.observe(quiet).unwrap().text.contains("willow bark"));
+        assert_eq!(world.pile_count(stand, Material::Willow), cordage);
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text.contains("cordage hangs on the willow again")));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::WillowBark))]);
+        assert_eq!(
+            again.results[0].message,
+            "You gather a strip of willow bark."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The willow here has no bark."));
     }
 }
 

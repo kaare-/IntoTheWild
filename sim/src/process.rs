@@ -52,6 +52,7 @@ impl World {
                 Wake::NeedleReturn(cell) => self.return_needles(cell),
                 Wake::ResinReturn(cell) => self.return_resin(cell),
                 Wake::WillowReturn(cell) => self.return_willow(cell),
+                Wake::WillowBarkReturn(cell) => self.return_willow_bark(cell),
                 Wake::NettleReturn(cell) => self.return_nettle(cell),
                 Wake::CattailReturn(cell) => self.return_cattail(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
@@ -366,6 +367,33 @@ impl World {
         self.add_pile(cell, Material::Willow, 2, 0);
         self.emit(
             "Willow cordage hangs on the willow again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The willow has waited out the same ticks as moss. One strip of bark hangs there again.
+    /// Cordage is a different pile. Someone who cannot see the willow hears nothing.
+    fn return_willow_bark(&mut self, cell: CellId) {
+        let Some(at) = self.willow_bark_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.willow_bark_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::WillowBark) > 0
+            || !self.ground_ids(cell, Material::WillowBark).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::WillowBark, 1, 0);
+        self.emit(
+            "Willow bark grows on the willow again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

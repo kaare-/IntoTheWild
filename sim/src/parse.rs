@@ -89,7 +89,7 @@ gather eggs                  eggs from the bird's nest in the tree on the west s
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
 strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
-strip willow bark            a strip of bark from that same willow. It is not the cordage. gather willow bark is the same. The willow has no bark once the strip is taken.
+strip willow bark            a strip of bark from that same willow. It is not the cordage. gather willow bark is the same. The willow has no bark once the strip is taken, then the strip grows back.
 strip nettle                 a bundle of nettle cordage from the nettles east of the trail. gather nettle is the same. Bare hands sting. Mud on the skin does not. The nettles are bare, then they grow again. The bundle is cordage where hide strips or willow cordage work.
 press moss                   a carried handful on a sting. The stings clear.
 dress sting                  the same press
