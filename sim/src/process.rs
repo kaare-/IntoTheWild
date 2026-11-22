@@ -134,6 +134,9 @@ impl World {
         if self.item(cup).is_some_and(|cup| cup.pitched) {
             return;
         }
+        if let Some(bark) = self.items.get_mut(&cup) {
+            bark.moisture = bark.moisture.max(self.tuning.soaked_at);
+        }
         self.items.remove(&id);
         let cell = self
             .actor(actor)

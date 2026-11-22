@@ -1026,11 +1026,7 @@ impl World {
             parts.push("A bark basket lies here.".into());
         }
         for id in self.ground_ids(actor.cell, Material::BarkCup) {
-            if self.item(id).is_some_and(|cup| cup.pitched) {
-                parts.push("A sealed bark cup lies here.".into());
-            } else {
-                parts.push("A bark cup lies here.".into());
-            }
+            parts.push(format!("{} lies here.", self.bark_cup_name(id, true)));
         }
         let charcoal_here = self.ground_ids(actor.cell, Material::Charcoal).len();
         if charcoal_here == 1 {
@@ -3874,15 +3870,7 @@ impl World {
         } else if item.material == "basket" && item.count == 1 {
             self.basket_arm_phrase(actor_id)
         } else if item.material == "bark cup" && item.count == 1 {
-            if self
-                .loose_ids(actor_id, Material::BarkCup)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|cup| cup.pitched))
-            {
-                "a sealed bark cup".into()
-            } else {
-                "a bark cup".into()
-            }
+            self.bark_cup_arm_phrase(actor_id)
         } else if item.material == "pot" && item.count == 1 {
             format!("a {} pot", item.condition)
         } else if item.material == "clay" {
@@ -10344,12 +10332,7 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             for id in self.ground_ids(cell, Material::BarkCup) {
-                let sealed = self.item(id).is_some_and(|cup| cup.pitched);
-                let (name, hold) = if sealed {
-                    ("A sealed bark cup", "Pine resin seals it.")
-                } else {
-                    ("A bark cup", "A drink soaks through it.")
-                };
+                let (name, hold) = self.bark_cup_examine(id, true);
                 lines.push(format!(
                     "{name} lies {}. It is folded from a sheet of birch bark. {hold} {}",
                     self.place_phrase(origin, cell),
@@ -10358,18 +10341,10 @@ impl World {
             }
         }
         for other in self.visible_actor_ids(viewer) {
-            if self.loose_ids(other, Material::BarkCup).is_empty() {
+            let Some(id) = self.loose_ids(other, Material::BarkCup).first().copied() else {
                 continue;
-            }
-            let sealed = self
-                .loose_ids(other, Material::BarkCup)
-                .iter()
-                .any(|id| self.item(*id).is_some_and(|cup| cup.pitched));
-            let (name, hold) = if sealed {
-                ("a sealed bark cup", "Pine resin seals it.")
-            } else {
-                ("a bark cup", "A drink soaks through it.")
             };
+            let (name, hold) = self.bark_cup_examine(id, false);
             let who = if other == viewer {
                 "You carry".to_string()
             } else {
@@ -13335,6 +13310,38 @@ impl World {
                 names[names.len() - 1]
             ),
         }
+    }
+
+    /// Look and the arms read the cup. A leak leaves it soaked. Sealing names the resin.
+    fn bark_cup_arm_phrase(&self, actor_id: ActorId) -> String {
+        let Some(id) = self.loose_ids(actor_id, Material::BarkCup).first().copied() else {
+            return "a bark cup".into();
+        };
+        self.bark_cup_name(id, false)
+    }
+
+    fn bark_cup_name(&self, id: ItemId, capital: bool) -> String {
+        let (name, _) = self.bark_cup_examine(id, capital);
+        name
+    }
+
+    fn bark_cup_examine(&self, id: ItemId, capital: bool) -> (String, &'static str) {
+        let cup = self.item(id);
+        let (stem, hold) = if cup.is_some_and(|cup| cup.pitched) {
+            ("sealed bark cup", "Pine resin seals it.")
+        } else if cup.is_some_and(|cup| cup.moisture >= self.tuning.soaked_at) {
+            ("soaked bark cup", "The bark is soaked.")
+        } else if cup.is_some_and(|cup| cup.moisture >= self.tuning.damp_at) {
+            ("damp bark cup", "The bark is damp.")
+        } else {
+            ("bark cup", "A drink soaks through it.")
+        };
+        let name = if capital {
+            format!("A {stem}")
+        } else {
+            format!("a {stem}")
+        };
+        (name, hold)
     }
 }
 

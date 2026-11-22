@@ -17580,12 +17580,24 @@ mod bark_cup {
             .events
             .iter()
             .any(|event| event.text == "The drink soaks through the bark cup."));
-        assert!(
-            soaked.text.contains("You have a bark cup."),
-            "{}",
-            soaked.text
-        );
+        assert!(soaked.text.contains("a soaked bark cup"), "{}", soaked.text);
+        assert!(!soaked.text.contains("You have a bark cup."));
         assert!(!soaked.text.contains("drink of"));
+        assert!(soaked
+            .events
+            .iter()
+            .all(|event| event.text != "The bark is soaked."));
+        let examined = world.examine(near, ExamineTarget::BarkCup);
+        assert!(
+            examined.contains("a soaked bark cup") && examined.contains("The bark is soaked."),
+            "{examined}"
+        );
+        assert!(world
+            .examine(seen, ExamineTarget::BarkCup)
+            .contains("soaked bark cup"));
+        assert!(!world
+            .examine(quiet, ExamineTarget::BarkCup)
+            .contains("soaked"));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -17608,11 +17620,7 @@ mod bark_cup {
         );
         assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
         let named = world.observe(near).unwrap();
-        assert!(
-            named.text.contains("a sealed bark cup"),
-            "{}",
-            named.text
-        );
+        assert!(named.text.contains("a sealed bark cup"), "{}", named.text);
         assert!(named.events.iter().all(|event| {
             !event.text.contains("seals the bark cup") && !event.text.contains("You seal")
         }));
