@@ -5641,6 +5641,206 @@ mod smoke_meat {
 }
 
 #[cfg(test)]
+mod fire_look {
+    use super::{Attempt, Dir, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn go(world: &mut World, actor: u32, dir: Dir, id: &str) {
+        let stepped = world.step(&[intent(id, actor, Attempt::Move(dir))]);
+        assert!(stepped.results[0].success, "{}", stepped.results[0].message);
+    }
+
+    #[test]
+    fn look_and_the_fire_verbs_name_the_same_tick() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        let signal = world.step(&[intent("signal", near, Attempt::Signal(None))]);
+        assert!(signal.results[0].success, "{}", signal.results[0].message);
+        world.mint_item(Material::Fish, 0, cell, Some(near), Role::Loose);
+        let life = world.tuning.fire_ticks;
+        for _ in 2..life {
+            world.step(&[]);
+        }
+        let named = world.observe(near).unwrap();
+        assert!(
+            named.text.contains("A small fire burns here."),
+            "{}",
+            named.text
+        );
+        assert!(
+            named
+                .text
+                .contains("A column of smoke rises from the fire."),
+            "{}",
+            named.text
+        );
+        world.actors.get_mut(&seen).unwrap().wetness = 600;
+        let together = world.step(&[
+            intent("hang", near, Attempt::SmokeFish),
+            intent("dry", seen, Attempt::DryClothes),
+        ]);
+        let hang = together
+            .results
+            .iter()
+            .find(|result| result.command_id == "hang")
+            .unwrap();
+        let dry = together
+            .results
+            .iter()
+            .find(|result| result.command_id == "dry")
+            .unwrap();
+        assert_eq!(
+            hang.message,
+            "You hang a raw fish by the fire. It is not smoked yet."
+        );
+        assert_eq!(
+            dry.message,
+            "You hold your soaked clothes by the fire. They are not dry yet."
+        );
+        let gone = world.observe(near).unwrap();
+        assert!(!gone.text.contains("fire burns"), "{}", gone.text);
+        assert!(
+            !gone.text.contains("A column of smoke rises from the fire."),
+            "{}",
+            gone.text
+        );
+        assert!(gone
+            .events
+            .iter()
+            .any(|event| event.text == "The fire burns down."));
+        assert!(gone.events.iter().all(|event| {
+            event.text != "Near hangs a raw fish by the fire."
+                && !event.text.contains("Near holds their")
+        }));
+        let witness = world.observe(seen).unwrap();
+        assert!(witness
+            .events
+            .iter()
+            .any(|event| event.text == "Near hangs a raw fish by the fire."));
+        assert!(witness
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Seen holds their") }));
+        assert!(witness
+            .events
+            .iter()
+            .any(|event| event.text == "The fire burns down."));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != "The fire burns down."
+                && !event.text.contains("hangs a raw fish")
+                && !event.text.contains("holds their")
+        }));
+        let cold = world.step(&[
+            intent("again", near, Attempt::SmokeFish),
+            intent("dry-again", seen, Attempt::DryClothes),
+        ]);
+        let hang_again = cold
+            .results
+            .iter()
+            .find(|result| result.command_id == "again")
+            .unwrap();
+        let dry_again = cold
+            .results
+            .iter()
+            .find(|result| result.command_id == "dry-again")
+            .unwrap();
+        assert_eq!(hang_again.message, "There is no fire burning here.");
+        assert_eq!(dry_again.message, "There is no fire burning here.");
+        let still = world.observe(near).unwrap();
+        assert!(!still.text.contains("fire burns"), "{}", still.text);
+        assert!(
+            !still
+                .text
+                .contains("A column of smoke rises from the fire."),
+            "{}",
+            still.text
+        );
+        assert!(still
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no fire burning here." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no fire burning here." }));
+    }
+
+    #[test]
+    fn a_rock_fire_lasts_the_walk_for_a_fish() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Hook, 0, cell, Some(near), Role::Loose);
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        for (n, dir) in [Dir::West, Dir::West, Dir::West, Dir::West, Dir::South]
+            .into_iter()
+            .enumerate()
+        {
+            go(&mut world, near, dir, &format!("out-{n}"));
+        }
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Worm))]);
+        assert!(dug.results[0].success, "{}", dug.results[0].message);
+        let caught = world.step(&[intent("fish", near, Attempt::FishHook)]);
+        assert!(caught.results[0].success, "{}", caught.results[0].message);
+        for (n, dir) in [Dir::East, Dir::East, Dir::East, Dir::East, Dir::North]
+            .into_iter()
+            .enumerate()
+        {
+            go(&mut world, near, dir, &format!("back-{n}"));
+        }
+        assert_eq!(world.actor_cell(near), Some((6, 1)));
+        let spare = world.step(&[intent("rest", near, Attempt::Rest)]);
+        assert!(spare.results[0].success, "{}", spare.results[0].message);
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("A small fire burns here."),
+            "{}",
+            back.text
+        );
+        let hung = world.step(&[intent("smoke", near, Attempt::SmokeFish)]);
+        assert_eq!(
+            hung.results[0].message,
+            "You hang a raw fish by the fire. It is not smoked yet."
+        );
+        for _ in 0..world.tuning.clay_ticks {
+            world.step(&[]);
+        }
+        let done = world.observe(near).unwrap();
+        assert!(done.events.iter().any(|event| {
+            event.text == "The fish is smoked. It will keep, and it can be eaten cold."
+        }));
+        assert!(
+            done.text
+                .contains("A smoked fish lies here. It can be eaten cold."),
+            "{}",
+            done.text
+        );
+    }
+}
+
+#[cfg(test)]
 mod salt_lick {
     use super::{Attempt, Intent, Material, Role, World};
 

@@ -22,11 +22,12 @@ frame_phase_ticks = 1
 frame_phases = 3
 bark_ticks = 1
 # A fire lit with dry bark and a dry branch burns this many ticks, then goes out.
-# Thirteen keeps a fire lit on the step that ends at sim time 5 burning through
-# the dry step that ends at sim time 13 and through sim time 17, when rain
-# starts. It still goes out on the next step. Rain in the open puts a fire out
-# sooner. A rock overhang or a bark roof keeps the rain off it.
-fire_ticks = 13
+# Twenty keeps a rock fire through a walk to the brook, a worm, the catch, the
+# walk back, one command that is not the fire, and the wait until the fish is
+# smoked. A look on that span still names the fire. The tick after it burns
+# down, the look does not. Rain in the open puts a fire out sooner. A rock
+# overhang or a bark roof keeps the rain off it. Charcoal burns twice as long.
+fire_ticks = 20
 # After a body steps off a fire, or the fire goes out, the sky's cold is halved
 # for this many ticks. Open wind still cools. The fire still dies in the rain.
 warmth_hold = 4

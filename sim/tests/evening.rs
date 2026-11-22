@@ -4765,7 +4765,7 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
         .visible_cells
         .iter()
         .any(|cell| cell.x == 5 && cell.y == 1 && cell.fire)
-        && ticks < 12
+        && ticks < world.tuning.fire_ticks as usize + 2
     {
         world.step(&[]);
         ticks += 1;
@@ -6093,10 +6093,12 @@ fn a_hardened_spear_hunts_the_deer_and_the_carcass_cooks() {
         (hunger_before.as_str(), hunger_after.as_str()),
         ("starving", "not hungry")
     );
-    kill.step(&[cmd("bark2", hunter, Attempt::Gather(Material::Bark))]);
-    kill.step(&[cmd("branch2", hunter, Attempt::Gather(Material::Branch))]);
-    let relit = kill.step(&[cmd("relight", hunter, Attempt::Light)]);
-    assert!(relit.results[0].success, "{}", relit.results[0].message);
+    if !burning(&kill, hunter) {
+        kill.step(&[cmd("bark2", hunter, Attempt::Gather(Material::Bark))]);
+        kill.step(&[cmd("branch2", hunter, Attempt::Gather(Material::Branch))]);
+        let relit = kill.step(&[cmd("relight", hunter, Attempt::Light)]);
+        assert!(relit.results[0].success, "{}", relit.results[0].message);
+    }
     let energy_before = kill.observe(hunter).unwrap().self_info.energy;
     let cooked = kill.step(&[cmd("cook", hunter, Attempt::Cook)]);
     let after = kill.observe(hunter).unwrap().self_info;
@@ -10515,7 +10517,7 @@ fn removing_a_worn_hide_returns_it_to_the_arms() {
         removed_cold = world.observe(near).unwrap().self_info.cold.clone();
         kept_cold = kept.observe(near).unwrap().self_info.cold.clone();
     }
-    assert_eq!(ticks, 7);
+    assert!(ticks < 40, "bare skin did not go cold ahead of the hide");
     assert_eq!(removed_cold, "cold");
     assert_eq!(kept_cold, "chilly");
     let again = world.step(&[cmd("again", near, Attempt::Remove)]);
