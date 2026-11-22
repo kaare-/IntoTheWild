@@ -217,6 +217,7 @@ impl World {
             ExamineTarget::Honey => self.examine_honey(actor_id),
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
+            ExamineTarget::Mint => self.examine_mint(actor_id),
             ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Willow => self.examine_willow(actor_id),
             ExamineTarget::Nettle => self.examine_nettle(actor_id),
@@ -423,6 +424,9 @@ impl World {
             }
             if let Some(moss) = self.seen_moss(actor_id) {
                 lines.push(moss);
+            }
+            if let Some(mint) = self.seen_mint(actor_id) {
+                lines.push(mint);
             }
             if let Some(resin) = self.seen_resin(actor_id) {
                 lines.push(resin);
@@ -1236,6 +1240,13 @@ impl World {
             parts.push("Moss grows on the damp bank here.".into());
         } else if self.moss_bare(actor.cell) {
             parts.push("The damp bank here is bare.".into());
+        }
+        if self.pile_count(actor.cell, Material::Mint) > 0
+            || !self.ground_ids(actor.cell, Material::Mint).is_empty()
+        {
+            parts.push("Wild mint grows on the wet bank here.".into());
+        } else if self.mint_bare(actor.cell) {
+            parts.push("The wet bank here has no mint.".into());
         }
         let resin_here = self.pile_count(actor.cell, Material::Resin)
             + self.ground_ids(actor.cell, Material::Resin).len() as u32;
@@ -2691,6 +2702,83 @@ impl World {
         }
     }
 
+    /// Wild mint on a wet bank this person can see but is not standing on.
+    fn seen_mint(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.pile_count(cell, Material::Mint) > 0
+                || !self.ground_ids(cell, Material::Mint).is_empty()
+            {
+                lines.push(format!("Wild mint grows on the wet bank to the {way}."));
+            } else if self.mint_bare(cell) {
+                lines.push(format!("The wet bank to the {way} has no mint."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_mint(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let holds = self.pile_count(cell, Material::Mint) > 0
+                || !self.ground_ids(cell, Material::Mint).is_empty();
+            if !holds && !self.mint_bare(cell) {
+                continue;
+            }
+            if holds {
+                lines.push(format!(
+                    "Wild mint grows on the wet bank {}. It can be steeped in hot water.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if cell == origin {
+                lines.push("The wet bank here has no mint.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The wet bank to the {way} has no mint."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Mint).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A handful of mint is carried by {who} {cover}. It can be steeped in hot water."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} handfuls of mint are carried by {who} {cover}. They can be steeped in hot water.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no mint from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     fn examine_moss(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
@@ -3385,6 +3473,13 @@ impl World {
     }
 
     /// The damp bank was gathered and moss has not grown there again.
+    /// The wet bank was gathered bare and mint has not grown there again.
+    fn mint_bare(&self, cell: crate::model::CellId) -> bool {
+        self.mint_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Mint) == 0
+            && self.ground_ids(cell, Material::Mint).is_empty()
+    }
+
     fn moss_bare(&self, cell: crate::model::CellId) -> bool {
         self.moss_returns_at.contains_key(&cell)
             && self.pile_count(cell, Material::Moss) == 0
@@ -4018,6 +4113,10 @@ impl World {
             "a handful of moss".into()
         } else if item.material == "moss" {
             format!("{} handfuls of moss", count_word(item.count))
+        } else if item.material == "mint" && item.count == 1 {
+            "a handful of mint".into()
+        } else if item.material == "mint" {
+            format!("{} handfuls of mint", count_word(item.count))
         } else if item.material == "resin" && item.count == 1 {
             "a lump of pine resin".into()
         } else if item.material == "resin" {
@@ -5048,6 +5147,13 @@ impl World {
             bits.push("moss".into());
         } else if self.moss_bare(dest) {
             bits.push("a bare bank".into());
+        }
+        if self.pile_count(dest, Material::Mint) > 0
+            || !self.ground_ids(dest, Material::Mint).is_empty()
+        {
+            bits.push("wild mint".into());
+        } else if self.mint_bare(dest) {
+            bits.push("no mint".into());
         }
         if self.pile_count(dest, Material::Resin) > 0
             || !self.ground_ids(dest, Material::Resin).is_empty()
@@ -8782,6 +8888,7 @@ impl World {
                 Material::Honey => "honey",
                 Material::Egg => "eggs",
                 Material::Moss => "moss",
+                Material::Mint => "mint",
                 Material::Resin => "resin",
                 Material::Willow => "willow",
                 Material::Nettle => "nettles",
@@ -9854,6 +9961,7 @@ impl World {
                     && self.light_for_these_eyes(viewer, event).is_none()
                     && self.fire_pot_for_these_eyes(viewer, event).is_none()
                     && self.boil_reply_for_these_eyes(viewer, event).is_none()
+                    && self.steep_reply_for_these_eyes(viewer, event).is_none()
                     && self.point_for_these_eyes(viewer, event).is_none()
                     && self.hold_point_for_these_eyes(viewer, event).is_none()
                     && self.wooden_deer_for_these_eyes(viewer, event).is_none()
@@ -11813,6 +11921,7 @@ impl World {
             "honeycomb",
             "the eggs",
             "handful of moss",
+            "handful of mint",
             "salt crust",
             "lump of pine resin",
             "bundle of willow cordage",
@@ -11873,6 +11982,31 @@ impl World {
             return None;
         }
         event.affected_cells.first().copied()
+    }
+
+    /// A successful steep. The stored sentence names the actor and has no
+    /// stomach words. The person who drank already has the reply, so
+    /// `recent_events` drops it. A witness keeps the act.
+    fn steep_reply_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event
+            .text
+            .strip_prefix(&format!("{name} steeps a handful of mint "))?;
+        if rest.starts_with("in the pot ")
+            || rest.starts_with("in the bark cup ")
+            || rest.starts_with("in the sealed bark cup ")
+        {
+            Some(event.text.clone())
+        } else {
+            None
+        }
     }
 
     /// A successful boil, filled for the person who drank it.
@@ -13750,6 +13884,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Honey, _) => "honeycomb",
         (Material::Egg, _) => "eggs",
         (Material::Moss, _) => "handful of moss",
+        (Material::Mint, true) => "handful of mint",
+        (Material::Mint, false) => "handfuls of mint",
         (Material::Resin, true) => "lump of pine resin",
         (Material::Resin, false) => "lumps of pine resin",
         (Material::Willow, true) => "bundle of willow cordage",

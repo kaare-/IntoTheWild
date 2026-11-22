@@ -48,6 +48,7 @@ impl World {
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::EggReturn(cell) => self.return_eggs(cell),
                 Wake::MossReturn(cell) => self.return_moss(cell),
+                Wake::MintReturn(cell) => self.return_mint(cell),
                 Wake::ResinReturn(cell) => self.return_resin(cell),
                 Wake::WillowReturn(cell) => self.return_willow(cell),
                 Wake::NettleReturn(cell) => self.return_nettle(cell),
@@ -257,6 +258,32 @@ impl World {
         self.add_pile(cell, Material::Moss, 1, 0);
         self.emit(
             "Moss grows on the damp bank again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The wet bank has waited out the same ticks as moss. One handful lies there again.
+    fn return_mint(&mut self, cell: CellId) {
+        let Some(at) = self.mint_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.mint_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Mint) > 0
+            || !self.ground_ids(cell, Material::Mint).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Mint, 1, 0);
+        self.emit(
+            "Wild mint grows on the wet bank again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

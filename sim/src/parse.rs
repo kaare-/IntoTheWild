@@ -37,6 +37,7 @@ raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
 drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
+steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough
 light fire                   dry bark and a dry branch, from the arms if you carry them. A lump of charcoal you carry, or one on this ground, stands in for the branch, even when a dry branch lies here. That fire burns hot, and for twice as long. A lump of pine resin in the arms is tinder instead, and is spent before bark when both are held. Resin on the ground is not tinder. The branch is still required when no charcoal is at hand
 cook                         heat a mushroom, or cook berries, a carcass, raw meat, or cattail flour into a flatbread
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
@@ -429,6 +430,16 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "roof" => Ok(Attempt::LayBark),
         "drink" => Ok(Attempt::Drink),
         "boil" => Ok(Attempt::Boil),
+        "brew" | "steep"
+            if rest.is_empty()
+                || rest == "mint"
+                || rest == "tea"
+                || rest == "mint tea"
+                || rest == "a handful of mint" =>
+        {
+            Ok(Attempt::Brew)
+        }
+        "brew" | "steep" => Err("Steep a handful of mint.".into()),
         "set" if rest == "clay" => Ok(Attempt::SetClay),
         "set" if rest == "mat" || rest == "a mat" || rest == "the mat" || rest == "reed mat" => {
             Ok(Attempt::SetMat)
@@ -700,6 +711,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "honey" | "honeycomb" | "bees nest" | "bee nest" => Ok(Material::Honey),
         "egg" | "eggs" => Ok(Material::Egg),
         "moss" | "handful of moss" => Ok(Material::Moss),
+        "mint" | "handful of mint" | "wild mint" => Ok(Material::Mint),
         "resin"
         | "pine resin"
         | "pitch"
@@ -834,6 +846,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         "honey" | "honeycomb" | "bees" | "bees nest" | "nest" => ExamineTarget::Honey,
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
         "moss" => ExamineTarget::Moss,
+        "mint" | "wild mint" | "handful of mint" => ExamineTarget::Mint,
         "resin" | "pine resin" | "pitch" | "lump of pitch" | "lump of pine resin" => {
             ExamineTarget::Resin
         }

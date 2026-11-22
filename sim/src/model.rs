@@ -136,6 +136,8 @@ pub enum Material {
     /// Cattail roots pounded with a stone on a stone. Raw flour does not feed.
     /// Cooked, it is a flatbread.
     Flour,
+    /// A handful from the wet bank. Steeped in hot water over a fire, it is mint tea.
+    Mint,
 }
 
 impl Material {
@@ -190,6 +192,7 @@ impl Material {
             Material::Cattail => "cattail",
             Material::BarkCup => "bark cup",
             Material::Flour => "flour",
+            Material::Mint => "mint",
         }
     }
 
@@ -244,6 +247,7 @@ impl Material {
             Material::Cattail => "cattail roots",
             Material::BarkCup => "bark cup",
             Material::Flour => "cattail flour",
+            Material::Mint => "handful of mint",
         }
     }
 
@@ -386,6 +390,7 @@ pub enum ExamineTarget {
     Nettle,
     Cattail,
     BarkCup,
+    Mint,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -486,6 +491,9 @@ pub enum Attempt {
     SealCup,
     /// Cattail roots pounded with a stone on a stone. The stones stay.
     Grind,
+    /// Steep a handful of mint in a pot or a bark cup of water over a fire.
+    /// The tea is drunk in the same act. A sick stomach eases.
+    Brew,
 }
 
 impl Attempt {
@@ -503,6 +511,7 @@ impl Attempt {
                 | Attempt::Light
                 | Attempt::Cook
                 | Attempt::Boil
+                | Attempt::Brew
                 | Attempt::SetClay
                 | Attempt::BindSpear
                 | Attempt::Knap
@@ -876,6 +885,8 @@ pub enum Wake {
     EggReturn(CellId),
     /// The damp bank on this cell grows moss again.
     MossReturn(CellId),
+    /// A wet bank on this cell grows mint again.
+    MintReturn(CellId),
     /// Pitch lumps lie under the pine on this cell again.
     ResinReturn(CellId),
     /// Willow cordage hangs on this bank again.
@@ -1196,6 +1207,12 @@ pub struct World {
     /// When a bare bank grows moss again. Look says the bank is bare until then.
     #[serde(default)]
     pub(crate) moss_returns_at: BTreeMap<CellId, u64>,
+    /// The wet bank where wild mint grows. Bare once the handful is taken.
+    #[serde(default)]
+    pub(crate) mint_banks: BTreeSet<CellId>,
+    /// When a bare wet bank grows mint again. Look says the bank has no mint until then.
+    #[serde(default)]
+    pub(crate) mint_returns_at: BTreeMap<CellId, u64>,
     /// The pine on the dry floor. Bare once the last lump of pitch is taken.
     #[serde(default)]
     pub(crate) resin_stands: BTreeSet<CellId>,
@@ -1419,6 +1436,8 @@ impl World {
             egg_returns_at: BTreeMap::new(),
             moss_banks: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
+            mint_banks: BTreeSet::new(),
+            mint_returns_at: BTreeMap::new(),
             resin_stands: BTreeSet::new(),
             resin_returns_at: BTreeMap::new(),
             willow_stands: BTreeSet::new(),
@@ -1526,6 +1545,9 @@ impl World {
         let clay = cell_id(2, 2).unwrap();
         world.add_pile(clay, Material::Clay, 2, 0);
         world.clay_beds.insert(clay, 2);
+        // The same wet bank, beside the brook and the still. One handful of mint.
+        world.add_pile(clay, Material::Mint, 1, 0);
+        world.mint_banks.insert(clay);
         let reeds = cell_id(0, 3).unwrap();
         world.add_pile(reeds, Material::Reed, 4, 0);
         world.reed_beds.insert(reeds, 4);
@@ -2023,6 +2045,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.moss_ticks);
         self.moss_returns_at.insert(cell, at);
         self.schedule(at, Wake::MossReturn(cell));
+    }
+
+    /// The wet bank is bare. Mint returns on the same wait as moss.
+    /// A wake that finds mint already there does not add a second handful.
+    pub(crate) fn arm_mint_bank(&mut self, cell: CellId) {
+        if !self.mint_banks.contains(&cell) || self.mint_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Mint) > 0
+            || !self.ground_ids(cell, Material::Mint).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.moss_ticks);
+        self.mint_returns_at.insert(cell, at);
+        self.schedule(at, Wake::MintReturn(cell));
     }
 
     /// The pine is bare. Pitch returns `resin_ticks` after this step.
@@ -18749,5 +18787,284 @@ mod arms {
             only.arms_line(actor),
             "Your arms are empty. You wear a sewn deer-hide cloak."
         );
+    }
+}
+
+#[cfg(test)]
+mod mint_tea {
+    use super::{cell_id, Attempt, Dir, ExamineTarget, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn wild_mint_on_the_wet_bank_steeps_into_tea() {
+        assert!(matches!(
+            crate::parse::parse_attempt("steep mint").unwrap(),
+            Attempt::Brew
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("brew tea").unwrap(),
+            Attempt::Brew
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather mint").unwrap(),
+            Attempt::Gather(Material::Mint)
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let bank = cell_id(2, 2).unwrap();
+        assert_eq!(world.pile_count(bank, Material::Mint), 1);
+        let near = world.spawn_at("Near", "n", 3, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+
+        let from_beside = world.observe(near).unwrap().text;
+        assert!(
+            from_beside.contains("Wild mint grows on the wet bank to the west."),
+            "{from_beside}"
+        );
+        assert!(from_beside.contains("wild mint"), "{from_beside}");
+        let miss = world.step(&[intent("miss", near, Attempt::Gather(Material::Mint))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There is no mint here to gather. Step west."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "There is no mint here to gather. Step west."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("mint")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("mint")));
+
+        world.step(&[intent("west", near, Attempt::Move(Dir::West))]);
+        assert_eq!(world.actor(near).unwrap().cell, bank);
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("Wild mint grows on the wet bank here."),
+            "{here}"
+        );
+        let examined = world.examine(near, ExamineTarget::Mint);
+        assert!(
+            examined.contains("It can be steeped in hot water."),
+            "{examined}"
+        );
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Mint))]);
+        assert_eq!(gathered.results[0].message, "You gather a handful of mint.");
+        let held = world.observe(near).unwrap();
+        assert!(
+            held.text.contains("The wet bank here has no mint."),
+            "{}",
+            held.text
+        );
+        assert!(
+            held.text.contains("You have a handful of mint."),
+            "{}",
+            held.text
+        );
+        assert!(held
+            .events
+            .iter()
+            .all(|event| !event.text.contains("gathers a handful of mint")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near gathers a handful of mint." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("mint")));
+        let bare = world.observe(seen).unwrap().text;
+        assert!(
+            bare.contains("The wet bank to the west has no mint."),
+            "{bare}"
+        );
+        assert!(bare.contains("no mint"), "{bare}");
+
+        let no_fire = world.step(&[intent("steep", near, Attempt::Brew)]);
+        assert_eq!(no_fire.results[0].message, "There is no fire burning here.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no fire burning here." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "There is no fire burning here."));
+
+        world.mint_fire(bank, 0);
+        let no_water = world.step(&[intent("water", near, Attempt::Brew)]);
+        assert_eq!(
+            no_water.results[0].message,
+            "You have no water to steep the mint in."
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("steep")));
+
+        world.mint_item(Material::Water, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Bowl, 0, bank, Some(near), Role::Loose);
+        let bowl = world.step(&[intent("bowl", near, Attempt::Brew)]);
+        assert_eq!(
+            bowl.results[0].message,
+            "You need a pot or a bark cup to steep the mint."
+        );
+        let bowl_id = world.loose_ids(near, Material::Bowl)[0];
+        world.items.remove(&bowl_id);
+        world.mint_item(Material::Clay, 0, bank, Some(near), Role::Loose);
+        let clay = world.step(&[intent("clay", near, Attempt::Brew)]);
+        assert_eq!(
+            clay.results[0].message,
+            "You need a pot or a bark cup to steep the mint."
+        );
+        let clay_id = world.loose_ids(near, Material::Clay)[0];
+        world.items.remove(&clay_id);
+
+        world.mint_item(Material::Pot, 0, bank, Some(near), Role::Loose);
+        let well = world.step(&[intent("well", near, Attempt::Brew)]);
+        assert_eq!(
+            well.results[0].message,
+            "You steep a handful of mint in the pot over the fire and drink the mint tea."
+        );
+        assert!(!well.results[0].message.contains("stomach"));
+        let after_well = world.observe(near).unwrap();
+        assert!(after_well
+            .events
+            .iter()
+            .all(|event| !event.text.contains("steeps a handful of mint")));
+        assert!(!after_well.text.contains("a handful of mint"));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near steeps a handful of mint in the pot over the fire and drinks the mint tea."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("steep")));
+
+        world.mint_item(Material::Mint, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::BitterBerry, 0, bank, Some(near), Role::Loose);
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::BitterBerry))]);
+        assert!(eaten.results[0].message.contains("Your stomach turns."));
+        assert!(world.actor(near).unwrap().illness >= world.tuning.ill_at);
+        let steeped = world.step(&[intent("tea", near, Attempt::Brew)]);
+        assert_eq!(
+            steeped.results[0].message,
+            "You steep a handful of mint in the pot over the fire and drink the mint tea. Your stomach eases."
+        );
+        assert!(world.actor(near).unwrap().illness < world.tuning.ill_at);
+        let eased = world.observe(near).unwrap();
+        assert!(eased
+            .events
+            .iter()
+            .any(|event| event.text == "Your stomach settles."));
+        assert!(eased
+            .events
+            .iter()
+            .all(|event| !event.text.contains("steeps a handful of mint")));
+        let seen_tea = world.observe(seen).unwrap();
+        assert!(seen_tea.events.iter().any(|event| {
+            event.text
+                == "Near steeps a handful of mint in the pot over the fire and drinks the mint tea."
+        }));
+        assert!(seen_tea
+            .events
+            .iter()
+            .all(|event| !event.text.contains("stomach")));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("stomach") && !event.text.contains("steep")));
+
+        let gone = world.step(&[intent("again", near, Attempt::Brew)]);
+        assert_eq!(gone.results[0].message, "You have no mint to steep.");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != "You have no mint to steep."));
+
+        let pot_id = world.loose_ids(near, Material::Pot)[0];
+        world.items.remove(&pot_id);
+        let cup = world.mint_item(Material::BarkCup, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Mint, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, bank, Some(near), Role::Loose);
+        let in_cup = world.step(&[intent("cup", near, Attempt::Brew)]);
+        assert_eq!(
+            in_cup.results[0].message,
+            "You steep a handful of mint in the bark cup over the fire and drink the mint tea."
+        );
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text
+                == "Near steeps a handful of mint in the bark cup over the fire and drinks the mint tea."
+        }));
+        world.items.get_mut(&cup).unwrap().pitched = true;
+        world.mint_item(Material::Mint, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Water, 0, bank, Some(near), Role::Loose);
+        let sealed = world.step(&[intent("sealed", near, Attempt::Brew)]);
+        assert_eq!(
+            sealed.results[0].message,
+            "You steep a handful of mint in the sealed bark cup over the fire and drink the mint tea."
+        );
+
+        let at = world.mint_returns_at[&bank];
+        while world.time < at {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The wet bank here has no mint."));
+        world.step(&[]);
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains("Wild mint grows on the wet bank here."),
+            "{}",
+            back.text
+        );
+        assert!(back
+            .events
+            .iter()
+            .any(|event| event.text == "Wild mint grows on the wet bank again."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("Wild mint grows on the wet bank to the west."));
     }
 }
