@@ -11595,9 +11595,7 @@ impl World {
                     }
                 }
                 if !meat.cooked && !meat.salted && !meat.smoked && !meat.spoiled {
-                    if let Some(at) = meat.spoils_at {
-                        self.schedule(at, Wake::Spoil(piece));
-                    }
+                    self.schedule_spoil_wakes(piece);
                 }
                 ids.push(piece);
             }

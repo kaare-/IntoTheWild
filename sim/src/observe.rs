@@ -11739,11 +11739,21 @@ impl World {
             }
         } else if meat.salted {
             "salted"
-        } else if meat.spoils_at == Some(self.time) {
+        } else if self.meat_is_going_bad(meat) {
             "going"
         } else {
             "raw"
         }
+    }
+
+    /// The second half of the wait, up through the tick it is still raw.
+    /// The spoil wake lands on the step that leaves that tick.
+    fn meat_is_going_bad(&self, meat: &crate::model::Item) -> bool {
+        let Some(at) = meat.spoils_at else {
+            return false;
+        };
+        let warn = self.tuning.meat_ticks / 2;
+        self.time.saturating_add(warn) >= at && self.time <= at
     }
 
     fn meat_tally(&self, ids: &[crate::model::ItemId], face: &str, small: bool) -> u32 {

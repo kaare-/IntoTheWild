@@ -54,9 +54,9 @@ pub struct Tuning {
     /// once it catches. The brook is not fished out.
     #[serde(default = "default_weir_ticks")]
     pub weir_ticks: u64,
-    /// Ticks after raw meat is cut before it spoils. The tick before that,
-    /// look says it is going bad. Salted meat is not on this timer.
-    /// Cooked meat stays good.
+    /// Ticks after raw meat is cut before it spoils. For the second half of
+    /// that wait, look says it is going bad, and raw meat on the ground is
+    /// named once. Salted meat is not on this timer. Cooked meat stays good.
     #[serde(default = "default_meat_ticks")]
     pub meat_ticks: u64,
     /// Ticks after the salt crust on the slope is gathered before another forms.

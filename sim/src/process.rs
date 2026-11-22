@@ -44,6 +44,7 @@ impl World {
                 Wake::NetCatch(cell) => self.catch_in_net(cell),
                 Wake::Weir(cell) => self.catch_in_weir(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
+                Wake::GoingBad(id) => self.note_going_bad(id),
                 Wake::CupLeak(id) => self.leak_cup(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
@@ -81,6 +82,52 @@ impl World {
                 Wake::Charcoal(cell) => self.char_bank(cell),
             }
         }
+    }
+
+    /// Raw meat on the ground has reached the second half of its wait.
+    /// Someone who can see that ground hears it once. Carried meat stays
+    /// in the arms line. Salted, smoked, and cooked meat say nothing.
+    /// The spoil line still comes later.
+    fn note_going_bad(&mut self, id: ItemId) {
+        let Some(item) = self.item(id).cloned() else {
+            return;
+        };
+        if item.material != Material::Meat || item.carrier.is_some() {
+            return;
+        }
+        if item.cooked || item.salted || item.smoked || item.spoiled || item.going_noted {
+            return;
+        }
+        let Some(at) = item.spoils_at else {
+            return;
+        };
+        let warn = self.tuning.meat_ticks / 2;
+        if self.time.saturating_add(warn) < at || self.time > at {
+            return;
+        }
+        if let Some(meat) = self.items.get_mut(&id) {
+            meat.going_noted = true;
+        }
+        let text = if item.small {
+            if self.raining {
+                "A smaller piece of raw meat on the ground is going bad in the rain."
+            } else {
+                "A smaller piece of raw meat on the ground is going bad."
+            }
+        } else if self.raining {
+            "A portion of raw meat on the ground is going bad in the rain."
+        } else {
+            "A portion of raw meat on the ground is going bad."
+        };
+        self.emit(
+            text,
+            Scope::Cell(item.cell),
+            vec![],
+            vec![item.cell],
+            vec![id],
+            vec![],
+            None,
+        );
     }
 
     /// Raw meat or a raw fish has waited out its ticks. It is not food.

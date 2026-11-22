@@ -903,10 +903,13 @@ pub struct Item {
     #[serde(default)]
     pub spoiled: bool,
     /// The tick when raw unsalted meat spoils, counted from the step it was cut.
-    /// The step before that, look says it is going bad. Salt clears this.
+    /// For the second half of that wait, look says it is going bad. Salt clears this.
     /// Cooked meat clears this and stays good.
     #[serde(default)]
     pub spoils_at: Option<u64>,
+    /// The ground has already been told this portion is going bad. One warning.
+    #[serde(default)]
+    pub going_noted: bool,
     /// A hide worn against the cold. Other materials leave this false.
     #[serde(default)]
     pub worn: bool,
@@ -1057,6 +1060,10 @@ pub enum Wake {
     Weir(CellId),
     /// Raw unsalted meat spoils on this tick. Salted meat and cooked meat do not.
     Spoil(ItemId),
+    /// Raw meat on the ground has reached the second half of its wait.
+    /// Look already says it is going bad. This is the one time someone
+    /// who can see it hears that. A later spoil still says it is not food.
+    GoingBad(ItemId),
     /// The salt lick on this cell forms another crust.
     SaltReturn(CellId),
     /// The bees' nest on this cell has honey again.
@@ -2330,6 +2337,7 @@ impl World {
                 smoked: false,
                 spoiled: false,
                 spoils_at: None,
+                going_noted: false,
                 worn: false,
                 pierced: false,
                 scraped: false,
@@ -2382,7 +2390,28 @@ impl World {
         if let Some(meat) = self.items.get_mut(&id) {
             meat.spoils_at = Some(at);
         }
+        self.schedule_spoil_wakes(id);
+    }
+
+    /// The spoil tick, and for raw meat the one warning halfway there.
+    /// A fish has no halfway warning. Salt, smoke, and cooking clear both.
+    pub(crate) fn schedule_spoil_wakes(&mut self, id: ItemId) {
+        let Some(item) = self.item(id) else {
+            return;
+        };
+        if item.cooked || item.salted || item.smoked || item.spoiled {
+            return;
+        }
+        let Some(at) = item.spoils_at else {
+            return;
+        };
+        let material = item.material;
         self.schedule(at, Wake::Spoil(id));
+        if material == Material::Meat {
+            let warn = self.tuning.meat_ticks / 2;
+            let note = at.saturating_sub(warn).max(self.time);
+            self.schedule(note, Wake::GoingBad(id));
+        }
     }
 
     /// A drink gathered into an unsealed bark cup soaks through `cup_leak_ticks` later.
@@ -4949,6 +4978,101 @@ mod spoil_meat {
             .all(|event| event.text != "The meat has spoiled."));
         assert!(world.item(raw).unwrap().spoiled);
         assert_eq!(world.material_tally(Material::Meat), 1);
+    }
+
+    #[test]
+    fn raw_meat_on_the_ground_warns_before_it_spoils() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let raw = world.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        let other = world.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        let salted = world.mint_item(Material::Meat, 0, cell, None, Role::Loose);
+        if let Some(meat) = world.items.get_mut(&salted) {
+            meat.salted = true;
+            meat.spoils_at = None;
+        }
+        let fresh = world.observe(near).unwrap().text;
+        assert!(
+            fresh.contains("Two portions of raw meat lie here."),
+            "{fresh}"
+        );
+        assert!(!fresh.contains("going bad"), "{fresh}");
+        for _ in 0..11 {
+            world.step(&[]);
+        }
+        assert_eq!(world.sim_time(), 11);
+        assert!(!world.observe(near).unwrap().text.contains("going bad"));
+        world.raining = true;
+        world.step(&[]);
+        assert_eq!(world.sim_time(), 12);
+        let early = world.observe(near).unwrap();
+        assert!(
+            early
+                .text
+                .contains("Two portions of raw meat lie here. They are going bad."),
+            "{}",
+            early.text
+        );
+        assert!(!early.text.contains("spoiled"), "{}", early.text);
+        let warn = "A portion of raw meat on the ground is going bad in the rain.";
+        assert!(early.events.iter().all(|event| event.text != warn));
+        world.step(&[]);
+        assert_eq!(world.sim_time(), 13);
+        let noted = world.observe(near).unwrap();
+        assert_eq!(
+            noted
+                .events
+                .iter()
+                .filter(|event| event.text == warn)
+                .count(),
+            2
+        );
+        assert!(noted
+            .text
+            .contains("Two portions of raw meat lie here. They are going bad."));
+        assert!(!noted.text.contains("spoiled"));
+        assert!(!world.item(raw).unwrap().spoiled);
+        assert!(!world.item(other).unwrap().spoiled);
+        assert!(
+            world
+                .observe(seen)
+                .unwrap()
+                .events
+                .iter()
+                .filter(|event| event.text == warn)
+                .count()
+                >= 2
+        );
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != warn && !event.text.contains("going bad")));
+        while world.sim_time() < world.tuning.meat_ticks {
+            world.step(&[]);
+        }
+        let still = world.observe(near).unwrap().text;
+        assert!(still.contains("They are going bad."), "{still}");
+        assert!(!still.contains("spoiled"), "{still}");
+        world.step(&[]);
+        let done = world.observe(near).unwrap();
+        assert!(done
+            .text
+            .contains("Two portions of spoiled meat lie here. They are not food."));
+        assert!(done
+            .events
+            .iter()
+            .any(|event| event.text == "A portion of raw meat spoils. It is not food."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("spoils")));
     }
 }
 
