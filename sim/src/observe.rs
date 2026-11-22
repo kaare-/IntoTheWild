@@ -9703,6 +9703,7 @@ impl World {
                 self.event_visible(viewer, origin, event)
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
+                    && self.drop_for_these_eyes(viewer, event).is_none()
                     && self.fold_for_these_eyes(viewer, event).is_none()
                     && self.seal_cup_for_these_eyes(viewer, event).is_none()
                     && self.smoke_for_these_eyes(viewer, event).is_none()
@@ -11605,6 +11606,20 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "feed", rest))
+    }
+
+    /// A drop. The person who dropped it already has the reply.
+    /// The event list does not repeat the third person. A witness keeps it.
+    fn drop_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} drops "))?;
+        if !rest.contains("in contact with the ground.") {
+            return None;
+        }
+        Some(event.text.clone())
     }
 
     /// A successful gather. The gatherer already has this as the reply,

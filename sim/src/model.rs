@@ -17519,6 +17519,85 @@ mod bark_cup {
     }
 
     #[test]
+    fn a_drop_stays_with_the_reply_and_a_soaked_cup_is_named() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let miss = world.step(&[intent("miss", near, Attempt::Drop(Material::Pot))]);
+        assert_eq!(miss.results[0].message, "You are not carrying a loose pot.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You are not carrying a loose pot." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You are not carrying a loose pot." }));
+        }
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("fold", near, Attempt::FoldCup)]);
+        let dry = world.step(&[intent("dry", near, Attempt::Drop(Material::BarkCup))]);
+        assert_eq!(
+            dry.results[0].message,
+            "You drop a bark cup. It is in contact with the ground."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drops") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near drops a bark cup. It is in contact with the ground."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drops") }));
+        let lifted = world.step(&[intent("lift", near, Attempt::Gather(Material::BarkCup))]);
+        assert_eq!(lifted.results[0].message, "You gather a bark cup.");
+        world.step(&[intent("water", near, Attempt::Gather(Material::Water))]);
+        let ticks = world.tuning.cup_leak_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let wet = world.step(&[intent("wet", near, Attempt::Drop(Material::BarkCup))]);
+        assert_eq!(
+            wet.results[0].message,
+            "You drop a soaked bark cup. It is in contact with the ground."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drops") }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near drops a soaked bark cup. It is in contact with the ground."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drops") }));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A soaked bark cup lies here."));
+    }
+
+    #[test]
     fn pine_resin_seals_a_bark_cup_and_an_unsealed_one_leaks() {
         assert!(matches!(
             crate::parse::parse_attempt("seal bark cup"),
