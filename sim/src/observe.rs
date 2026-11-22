@@ -1496,6 +1496,8 @@ impl World {
         }
         if !self.ground_ids(actor.cell, Material::Bone).is_empty() {
             parts.push("A bone lies here.".into());
+        } else if self.bone_cache_bare(actor.cell) {
+            parts.push("The rock has no bone.".into());
         }
         if !self.ground_ids(actor.cell, Material::Hook).is_empty() {
             parts.push("A bone fish hook lies here.".into());
@@ -4083,6 +4085,13 @@ impl World {
             && self.ground_ids(cell, Material::Nettle).is_empty()
     }
 
+    /// The scavenged bone under the rock was taken and has not lain there again.
+    fn bone_cache_bare(&self, cell: crate::model::CellId) -> bool {
+        self.bone_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Bone) == 0
+            && self.ground_ids(cell, Material::Bone).is_empty()
+    }
+
     /// The salt lick on this cell was gathered and has not formed again.
     fn salt_lick_bare(&self, cell: crate::model::CellId) -> bool {
         self.salt_returns_at.contains_key(&cell)
@@ -4106,6 +4115,11 @@ impl World {
             };
             if !self.ground_ids(cell, Material::Bone).is_empty() {
                 lines.push(format!("A bone lies {place}."));
+            } else if self.bone_cache_bare(cell) {
+                lines.push(format!(
+                    "The rock to the {} has no bone.",
+                    self.relative(origin, cell)
+                ));
             }
             if self
                 .ground_ids(cell, Material::Awl)

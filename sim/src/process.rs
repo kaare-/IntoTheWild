@@ -57,6 +57,7 @@ impl World {
                 Wake::CattailReturn(cell) => self.return_cattail(cell),
                 Wake::FluffReturn(cell) => self.return_fluff(cell),
                 Wake::WormReturn(cell) => self.return_worms(cell),
+                Wake::BoneReturn(cell) => self.return_bone(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -153,6 +154,33 @@ impl World {
             vec![actor],
             vec![cell],
             vec![cup],
+            vec![],
+            None,
+        );
+    }
+
+    /// The rock has waited out the salt ticks. One bone lies there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_bone(&mut self, cell: CellId) {
+        let Some(at) = self.bone_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.bone_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Bone) > 0
+            || !self.ground_ids(cell, Material::Bone).is_empty()
+        {
+            return;
+        }
+        self.mint_item(Material::Bone, 0, cell, None, Role::Loose);
+        self.emit(
+            "A bone lies under the rock again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
             vec![],
             None,
         );

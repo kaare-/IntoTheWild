@@ -1018,6 +1018,8 @@ pub enum Wake {
     Charcoal(CellId),
     /// Worms are in this damp earth again.
     WormReturn(CellId),
+    /// A scavenged bone lies under the rock on this cell again.
+    BoneReturn(CellId),
 }
 
 /// A seeded berry patch. Emptying it, by gathering or by the deer, arms the same wait.
@@ -1302,6 +1304,12 @@ pub struct World {
     /// The rock face where a clear stone of quartz lies. It does not grow back.
     #[serde(default)]
     pub(crate) quartz_faces: BTreeSet<CellId>,
+    /// One scavenged bone under the rock. Taken, it lies there again after the salt wait.
+    #[serde(default)]
+    pub(crate) bone_caches: BTreeSet<CellId>,
+    /// When that bone lies under the rock again. Look says the rock has none until then.
+    #[serde(default)]
+    pub(crate) bone_returns_at: BTreeMap<CellId, u64>,
     /// A whistle just blown. Look names the direction while `time` is still
     /// within `until`. It is not a fire and not a column of smoke.
     #[serde(default)]
@@ -1560,6 +1568,8 @@ impl World {
             worm_beds: BTreeSet::new(),
             worm_returns_at: BTreeMap::new(),
             quartz_faces: BTreeSet::new(),
+            bone_caches: BTreeSet::new(),
+            bone_returns_at: BTreeMap::new(),
             whistle: None,
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
@@ -1712,9 +1722,12 @@ impl World {
         world.add_pile(clay, Material::Worm, 1, 0);
         world.worm_beds.insert(clay);
         // Shade under the rock. This handful stays dry, and it lights a fire the way bark does.
+        // One scavenged bone lies there too. Taken, it lies there again after the salt wait.
         let shade = cell_id(6, 1).unwrap();
         world.add_pile(shade, Material::Moss, 1, 0);
         world.shade_moss.insert(shade);
+        world.mint_item(Material::Bone, 0, shade, None, Role::Loose);
+        world.bone_caches.insert(shade);
         // A pine on the dry floor south of the trail. Two lumps of pitch.
         // A handful of needles lies there too. Pitch and needles are not the same gather.
         let pine = cell_id(2, 4).unwrap();
@@ -2148,6 +2161,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.salt_ticks);
         self.salt_returns_at.insert(cell, at);
         self.schedule(at, Wake::SaltReturn(cell));
+    }
+
+    /// The rock's scavenged bone is gone. Another lies there after the salt wait.
+    /// A wake that finds a bone already there does not add a second one.
+    pub(crate) fn arm_bone_cache(&mut self, cell: CellId) {
+        if !self.bone_caches.contains(&cell) || self.bone_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Bone) > 0
+            || !self.ground_ids(cell, Material::Bone).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.salt_ticks);
+        self.bone_returns_at.insert(cell, at);
+        self.schedule(at, Wake::BoneReturn(cell));
     }
 
     /// The nest is empty. Honey returns `honey_ticks` after this step.
@@ -12256,6 +12285,10 @@ mod carve_hook {
     #[test]
     fn a_butchered_bone_and_an_iron_knife_carve_a_hook_under_the_rock() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = super::cell_id(6, 1).unwrap();
+        for id in world.ground_ids(rock, Material::Bone) {
+            world.items.remove(&id);
+        }
         let near = world.spawn_at("Near", "n", 4, 3).unwrap();
         let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 3, 3).unwrap();
@@ -16598,6 +16631,159 @@ mod otter_hunt {
             .events
             .iter()
             .all(|event| !event.text.contains("bone")));
+    }
+
+    #[test]
+    fn a_bone_under_the_rock_is_named_gathered_and_lies_there_again() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let rock = super::cell_id(6, 1).unwrap();
+        assert_eq!(world.ground_ids(rock, Material::Bone).len(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let here = world.observe(near).unwrap();
+        assert!(here.text.contains("A bone lies here."), "{}", here.text);
+        assert!(here.events.iter().all(|event| !event.text.contains("bone")));
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("A bone lies under the rock to the north and east."),
+            "{from_seen}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("bone"));
+        let missed = world.step(&[intent("none", seen, Attempt::Gather(Material::Bone))]);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no bone here to gather."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no bone here to gather." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "There is no bone here to gather." }));
+        assert_eq!(world.ground_ids(rock, Material::Bone).len(), 1);
+        let taken = world.step(&[intent("bone", near, Attempt::Gather(Material::Bone))]);
+        assert_eq!(taken.results[0].message, "You gather a bone.");
+        assert!(!taken.results[0].message.contains("Near"));
+        assert!(world.ground_ids(rock, Material::Bone).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Bone).len(), 1);
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You gather a bone." && event.text != "Near gathers a bone."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers a bone."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("bone")));
+        let bare = world.observe(near).unwrap().text;
+        assert!(bare.contains("The rock has no bone."), "{bare}");
+        assert!(!bare.contains("A bone lies here."), "{bare}");
+        let seen_bare = world.observe(seen).unwrap().text;
+        assert!(
+            seen_bare.contains("The rock to the north and east has no bone."),
+            "{seen_bare}"
+        );
+        assert!(!world.observe(quiet).unwrap().text.contains("bone"));
+        let ticks = world.tuning.salt_ticks;
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert_eq!(world.ground_ids(rock, Material::Bone).len(), 0);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The rock has no bone."));
+        world.step(&[]);
+        assert_eq!(world.ground_ids(rock, Material::Bone).len(), 1);
+        let back = "A bone lies under the rock again.";
+        let again = world.observe(near).unwrap();
+        assert!(again.text.contains("A bone lies here."), "{}", again.text);
+        assert!(
+            !again.text.contains("The rock has no bone."),
+            "{}",
+            again.text
+        );
+        assert!(again.events.iter().any(|event| event.text == back));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("A bone lies under the rock to the north and east."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == back));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != back));
+        assert!(!world.observe(quiet).unwrap().text.contains("bone"));
+        let second = world.step(&[intent("again", near, Attempt::Gather(Material::Bone))]);
+        assert_eq!(second.results[0].message, "You gather a bone.");
+        assert_eq!(world.loose_ids(near, Material::Bone).len(), 2);
+
+        let mut carving = World::valley(crate::tuning::Tuning::evening(), 1);
+        let carver = carving.spawn_at("Near", "n", 6, 1).unwrap();
+        let rock = super::cell_id(6, 1).unwrap();
+        carving.mint_item(Material::Flint, 0, rock, Some(carver), Role::Loose);
+        let knapped = carving.step(&[intent("knap", carver, Attempt::Knap)]);
+        assert_eq!(
+            knapped.results[0].message,
+            "You knap the flint nodule into a sharp flake."
+        );
+        let carved = carving.step(&[intent("whistle", carver, Attempt::CarveWhistle)]);
+        assert_eq!(
+            carved.results[0].message,
+            "You carve a bone into a bone whistle with the flint flake."
+        );
+        assert!(!carved.results[0].message.contains("Near"));
+        assert!(carving.ground_ids(rock, Material::Bone).is_empty());
+        assert_eq!(carving.loose_ids(carver, Material::Whistle).len(), 1);
+        assert!(carving
+            .observe(carver)
+            .unwrap()
+            .text
+            .contains("The rock has no bone."));
+        let wait = carving.tuning.salt_ticks;
+        for _ in 0..wait - 1 {
+            carving.step(&[]);
+        }
+        assert!(carving.ground_ids(rock, Material::Bone).is_empty());
+        carving.step(&[]);
+        assert_eq!(carving.ground_ids(rock, Material::Bone).len(), 1);
+
+        let mut elsewhere = World::valley(crate::tuning::Tuning::evening(), 1);
+        let floor = super::cell_id(2, 2).unwrap();
+        let walker = elsewhere.spawn_at("Near", "n", 2, 2).unwrap();
+        elsewhere.mint_item(Material::Bone, 0, floor, None, Role::Loose);
+        let off = elsewhere.step(&[intent("off", walker, Attempt::Gather(Material::Bone))]);
+        assert_eq!(off.results[0].message, "You gather a bone.");
+        let wait = elsewhere.tuning.salt_ticks;
+        for _ in 0..wait {
+            elsewhere.step(&[]);
+        }
+        assert!(
+            elsewhere.ground_ids(floor, Material::Bone).is_empty(),
+            "a bone off the rock does not lie there again"
+        );
     }
 }
 
@@ -21400,6 +21586,9 @@ mod whistle {
 
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let rock = cell_id(6, 1).unwrap();
+        for id in world.ground_ids(rock, Material::Bone) {
+            world.items.remove(&id);
+        }
         let near = world.spawn_at("Near", "n", 6, 1).unwrap();
         let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
         let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();

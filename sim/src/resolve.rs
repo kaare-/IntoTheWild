@@ -2632,6 +2632,9 @@ impl World {
                     if material == Material::Salt {
                         self.arm_salt_lick(cell);
                     }
+                    if material == Material::Bone {
+                        self.arm_bone_cache(cell);
+                    }
                     if material == Material::Honey && self.smoked_nests.contains(&cell) {
                         self.smoked_nests.remove(&cell);
                     } else if material == Material::Honey {
@@ -8658,6 +8661,7 @@ impl World {
         }
         if let Some(id) = self.ground_ids(cell, Material::Bone).first().copied() {
             self.items.remove(&id);
+            self.arm_bone_cache(cell);
             return true;
         }
         false
