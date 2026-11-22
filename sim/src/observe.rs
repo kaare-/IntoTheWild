@@ -634,6 +634,44 @@ impl World {
         }
     }
 
+    /// An owl on the north slope, some night ticks and not others.
+    /// The line is look, not a tick event. Out of sight, the direction
+    /// is from the listener. Under the rock or a thatched lean-to it is muffled.
+    fn owl_hoots(&self) -> bool {
+        self.night() && self.time % 3 == 0
+    }
+
+    fn owl_roost(&self) -> CellId {
+        crate::model::cell_id(4, 0).unwrap()
+    }
+
+    fn owl_sheltered(&self, cell: CellId) -> bool {
+        self.thatched.contains(&cell) || self.exposure_millis(cell) == 0
+    }
+
+    fn owl_line(&self, actor_id: ActorId) -> Option<String> {
+        if !self.owl_hoots() {
+            return None;
+        }
+        let origin = self.actor(actor_id)?.cell;
+        let roost = self.owl_roost();
+        if chebyshev(origin, roost) > self.tuning.hearing {
+            return None;
+        }
+        if self.owl_sheltered(origin) {
+            return Some("You hear an owl, muffled.".into());
+        }
+        let distance = chebyshev(origin, roost);
+        if distance == 0 {
+            return Some("An owl hoots here.".into());
+        }
+        if distance <= self.tuning.sight {
+            return Some("An owl hoots.".into());
+        }
+        let way = self.relative(origin, roost);
+        Some(format!("You hear an owl hoot to the {way}."))
+    }
+
     /// A fire underfoot or on the next cell. Farther light does not help.
     fn fire_nearby(&self, cell: CellId) -> bool {
         self.fires
@@ -4096,6 +4134,9 @@ impl World {
         }
         if let Some(wind) = self.night_wind_line(actor_id) {
             parts.push(wind);
+        }
+        if let Some(owl) = self.owl_line(actor_id) {
+            parts.push(owl);
         }
         if self.illness_word(actor.illness) == "ill" {
             parts.push("Your stomach has not settled.".into());

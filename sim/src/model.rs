@@ -16722,3 +16722,72 @@ mod nettle {
             .contains("nettle"));
     }
 }
+
+#[cfg(test)]
+mod owl {
+    use super::World;
+
+    #[test]
+    fn an_owl_hoots_on_some_night_ticks_and_not_as_an_event() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+        let thatch = world.spawn_at("Thatch", "t", 5, 2).unwrap();
+        world.thatched.insert(world.actor(thatch).unwrap().cell);
+        let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+        let slope = world.spawn_at("Slope", "p", 4, 1).unwrap();
+        let roost = world.spawn_at("Roost", "o", 4, 0).unwrap();
+        assert!(!world.observe(near).unwrap().text.contains("owl"));
+        while world.sim_time() < world.tuning.night_at {
+            world.step(&[]);
+        }
+        assert!(world.night());
+        assert_eq!(world.sim_time() % 3, 0);
+        let open = world.observe(near).unwrap();
+        assert!(
+            open.text.contains("You hear an owl hoot to the north."),
+            "{}",
+            open.text
+        );
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("You hear an owl hoot to the north and east."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("You hear an owl hoot to the north and west."));
+        let sheltered = world.observe(rock).unwrap().text;
+        assert!(
+            sheltered.contains("You hear an owl, muffled."),
+            "{sheltered}"
+        );
+        assert!(!sheltered.contains("hoot to the"), "{sheltered}");
+        let under = world.observe(thatch).unwrap().text;
+        assert!(under.contains("You hear an owl, muffled."), "{under}");
+        assert!(!world.observe(far).unwrap().text.contains("owl"));
+        assert!(world.observe(slope).unwrap().text.contains("An owl hoots."));
+        assert!(!world.observe(slope).unwrap().text.contains("hoot to the"));
+        assert!(world
+            .observe(roost)
+            .unwrap()
+            .text
+            .contains("An owl hoots here."));
+        for person in [near, seen, quiet, rock, thatch, far, slope, roost] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| !event.text.contains("hoot") && !event.text.contains("an owl")));
+        }
+        world.step(&[]);
+        assert!(world.night());
+        assert!(!world.observe(near).unwrap().text.contains("owl"));
+        assert!(!world.observe(rock).unwrap().text.contains("owl"));
+    }
+}
