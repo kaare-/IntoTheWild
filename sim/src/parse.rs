@@ -60,6 +60,7 @@ gather cattail               cattail roots from the shallows of the still. dig c
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 fold bark                    a sheet of bark into a bark cup. make bark cup is the same. The cup holds water. A clay pot is still a pot.
+seal bark cup                a lump of pine resin on a bark cup in the arms or at your feet. The lump is spent. pitch bark cup is the same. An unsealed cup lets a drink soak through after 8 ticks. A sealed cup keeps it.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
 set weir                     one bundle of reeds and cordage, hide strips or willow or nettle, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
@@ -255,6 +256,15 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         }
         "launch" if rest.is_empty() || rest == "canoe" || rest == "the canoe" => {
             Ok(Attempt::Launch)
+        }
+        "seal" | "pitch" | "waterproof"
+            if rest == "bark cup"
+                || rest == "the bark cup"
+                || rest == "a bark cup"
+                || rest == "cup"
+                || rest == "the cup" =>
+        {
+            Ok(Attempt::SealCup)
         }
         "seal" | "pitch" | "waterproof"
             if rest.is_empty()

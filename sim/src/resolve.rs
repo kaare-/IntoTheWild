@@ -111,6 +111,7 @@ impl World {
         let mut carves_canoe = Vec::new();
         let mut launches = Vec::new();
         let mut seals = Vec::new();
+        let mut cup_seals = Vec::new();
         let mut boards = Vec::new();
         let mut paddles = Vec::new();
         let mut disembarks = Vec::new();
@@ -230,6 +231,7 @@ impl World {
                         Attempt::CarveCanoe => carves_canoe.push(intent),
                         Attempt::Launch => launches.push(intent),
                         Attempt::SealCanoe => seals.push(intent),
+                        Attempt::SealCup => cup_seals.push(intent),
                         Attempt::Board => boards.push(intent),
                         Attempt::Paddle(_) => paddles.push(intent),
                         Attempt::Disembark => disembarks.push(intent),
@@ -384,6 +386,7 @@ impl World {
         self.apply_canoe_carves(carves_canoe, &mut results);
         self.apply_launches(launches, &mut results);
         self.apply_seals(seals, &mut results);
+        self.apply_cup_seals(cup_seals, &mut results);
         self.apply_boards(boards, &mut results);
         self.apply_paddles(paddles, &mut results);
         self.apply_disembarks(disembarks, &mut results);
@@ -1998,6 +2001,26 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::SealCup => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.cup_to_seal(actor.id).is_none() {
+                    Err("There is no bark cup here.".into())
+                } else if self
+                    .cup_to_seal(actor.id)
+                    .is_some_and(|id| self.item(id).is_some_and(|cup| cup.pitched))
+                {
+                    Err("The bark cup is already sealed.".into())
+                } else if self.loose_ids(actor.id, Material::Resin).is_empty() {
+                    Err("You have no pine resin to seal the cup.".into())
+                } else {
+                    Ok(true)
+                }
+            }
             Attempt::SealCanoe => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -3007,6 +3030,68 @@ impl World {
                 actor.id,
                 true,
                 "You seal the dugout canoe with pine resin.",
+                results,
+            );
+        }
+    }
+
+    /// One lump of pine resin, spent on a bark cup in the arms or at the feet.
+    /// The clay pot is left alone. An unsealed cup still lets a drink soak through.
+    fn apply_cup_seals(&mut self, seals: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in seals {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            let Some(id) = self.cup_to_seal(actor.id) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "There is no bark cup here.",
+                    results,
+                );
+                continue;
+            };
+            if self.item(id).is_some_and(|cup| cup.pitched) {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "The bark cup is already sealed.",
+                    results,
+                );
+                continue;
+            }
+            let Some(lump) = self.loose_ids(actor.id, Material::Resin).into_iter().next() else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You have no pine resin to seal the cup.",
+                    results,
+                );
+                continue;
+            };
+            self.items.remove(&lump);
+            if let Some(cup) = self.items.get_mut(&id) {
+                cup.pitched = true;
+            }
+            let name = self.name_of(actor.id);
+            let rest = "the bark cup with pine resin.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "seal", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "seal", rest),
                 results,
             );
         }
@@ -4333,13 +4418,23 @@ impl World {
             && !self
                 .loose_ids(intent.actor_id, Material::BarkCup)
                 .is_empty();
+        let sealed_cup = into_cup
+            && self
+                .loose_ids(intent.actor_id, Material::BarkCup)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|cup| cup.pitched));
         let pot = if into_pot {
             " into the pot"
+        } else if sealed_cup {
+            " into the sealed bark cup"
         } else if into_cup {
             " into the bark cup"
         } else {
             ""
         };
+        if into_cup && !sealed_cup {
+            self.arm_cup_leak(item);
+        }
         let rest = format!("a drink of water from {source}{pot}.");
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "gather", &rest),
@@ -9790,6 +9885,11 @@ impl World {
                 .collect();
             let in_pot = !self.loose_ids(actor.id, Material::Pot).is_empty();
             let in_cup = !in_pot && !self.loose_ids(actor.id, Material::BarkCup).is_empty();
+            let sealed_cup = in_cup
+                && self
+                    .loose_ids(actor.id, Material::BarkCup)
+                    .iter()
+                    .any(|id| self.item(*id).is_some_and(|cup| cup.pitched));
             let coda = if self.thirst_word(before) == "not thirsty" {
                 ""
             } else if self.thirst_word(after) == "not thirsty" {
@@ -9802,7 +9902,7 @@ impl World {
                 crate::model::spoken_act(
                     Some(actor.name.as_str()),
                     "boil",
-                    boil_witness_rest(in_pot, in_cup)
+                    boil_witness_rest(in_pot, in_cup, sealed_cup)
                 )
             );
             self.emit(
@@ -9816,7 +9916,7 @@ impl World {
             );
             let message = format!(
                 "{}{coda}",
-                crate::model::spoken_act(None, "boil", boil_actor_rest(in_pot, in_cup))
+                crate::model::spoken_act(None, "boil", boil_actor_rest(in_pot, in_cup, sealed_cup))
             );
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
@@ -11011,9 +11111,11 @@ fn attempt_dir(attempt: &Attempt) -> Option<Dir> {
 
 /// The witness rest of one boil. The actor's rest names the same fire and
 /// says "drink".
-fn boil_witness_rest(in_pot: bool, in_cup: bool) -> &'static str {
+fn boil_witness_rest(in_pot: bool, in_cup: bool, sealed_cup: bool) -> &'static str {
     if in_pot {
         "the drink in the pot over the fire and drinks it."
+    } else if sealed_cup {
+        "the drink in the sealed bark cup over the fire and drinks it."
     } else if in_cup {
         "the drink in the bark cup over the fire and drinks it."
     } else {
@@ -11021,9 +11123,11 @@ fn boil_witness_rest(in_pot: bool, in_cup: bool) -> &'static str {
     }
 }
 
-fn boil_actor_rest(in_pot: bool, in_cup: bool) -> &'static str {
+fn boil_actor_rest(in_pot: bool, in_cup: bool, sealed_cup: bool) -> &'static str {
     if in_pot {
         "the drink in the pot over the fire and drink it."
+    } else if sealed_cup {
+        "the drink in the sealed bark cup over the fire and drink it."
     } else if in_cup {
         "the drink in the bark cup over the fire and drink it."
     } else {

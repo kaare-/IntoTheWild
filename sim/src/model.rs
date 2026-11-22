@@ -477,6 +477,8 @@ pub enum Attempt {
     CarveHook,
     /// Spend a lump of pine resin on the dugout here, or the one afloat beside you.
     SealCanoe,
+    /// A lump of pine resin spent on a bark cup. Not a dugout.
+    SealCup,
 }
 
 impl Attempt {
@@ -555,6 +557,7 @@ impl Attempt {
                 | Attempt::CarvePaddle
                 | Attempt::CarveHook
                 | Attempt::SealCanoe
+                | Attempt::SealCup
         )
     }
 }
@@ -760,8 +763,9 @@ pub struct Item {
     /// Other materials leave this false.
     #[serde(default)]
     pub beaver: bool,
-    /// Pine resin rubbed into a dugout. Other materials leave this false.
+    /// Pine resin rubbed into a dugout, or into a bark cup.
     /// A pitched canoe does not keep soaking the person aboard it.
+    /// A sealed bark cup keeps a drink. An unsealed one lets the drink soak through.
     #[serde(default)]
     pub pitched: bool,
 }
@@ -837,6 +841,9 @@ pub enum Wake {
     Smelt(ItemId),
     DryBranch(ItemId),
     BrandOut(ItemId),
+    /// A drink in an unsealed bark cup soaks through on this tick.
+    /// A sealed cup, or a drink held by a pot, keeps it.
+    CupLeak(ItemId),
     /// A hide snare set on this cell. It springs on that tick.
     Snare(CellId),
     /// A fishing net set in this brook cell. It catches on that tick.
@@ -1923,6 +1930,19 @@ impl World {
         self.schedule(at, Wake::Spoil(id));
     }
 
+    /// A drink gathered into an unsealed bark cup soaks through `cup_leak_ticks` later.
+    /// Sealing the cup before that, or boiling the drink, leaves the wake with nothing to do.
+    pub(crate) fn arm_cup_leak(&mut self, id: ItemId) {
+        if !self
+            .item(id)
+            .is_some_and(|drink| drink.material == Material::Water)
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.cup_leak_ticks);
+        self.schedule(at, Wake::CupLeak(id));
+    }
+
     /// The lick is empty. Another crust forms `salt_ticks` after this step.
     /// A wake that finds salt already there does not add a second crust.
     pub(crate) fn arm_salt_lick(&mut self, cell: CellId) {
@@ -2640,6 +2660,19 @@ impl World {
             return Some(id);
         }
         self.floating_canoe_near(person.cell)
+    }
+
+    /// A bark cup in the arms, or one lying at the feet. The arms win.
+    /// An unsealed cup is preferred so a second sealed one does not hide it.
+    pub(crate) fn cup_to_seal(&self, actor_id: ActorId) -> Option<ItemId> {
+        let mut ids = self.loose_ids(actor_id, Material::BarkCup);
+        if let Some(actor) = self.actor(actor_id) {
+            ids.extend(self.ground_ids(actor.cell, Material::BarkCup));
+        }
+        ids.iter()
+            .copied()
+            .find(|id| self.item(*id).is_some_and(|cup| !cup.pitched))
+            .or_else(|| ids.first().copied())
     }
 
     pub(crate) fn canoe_pitched(&self, id: ItemId) -> bool {
@@ -17483,5 +17516,166 @@ mod bark_cup {
             boiled_pot.results[0].message
         );
         assert!(!boiled_pot.results[0].message.contains("bark cup"));
+    }
+
+    #[test]
+    fn pine_resin_seals_a_bark_cup_and_an_unsealed_one_leaks() {
+        assert!(matches!(
+            crate::parse::parse_attempt("seal bark cup"),
+            Ok(Attempt::SealCup)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("pitch the bark cup"),
+            Ok(Attempt::SealCup)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("seal canoe"),
+            Ok(Attempt::SealCanoe)
+        ));
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 1, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.step(&[intent("fold", near, Attempt::FoldCup)]);
+        let bare = world.step(&[intent("bare", near, Attempt::SealCup)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You have no pine resin to seal the cup."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "You have no pine resin to seal the cup." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "You have no pine resin to seal the cup." }));
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("You have a bark cup."));
+        assert!(!world.observe(near).unwrap().text.contains("sealed"));
+
+        let open = world.step(&[intent("water", near, Attempt::Gather(Material::Water))]);
+        assert_eq!(
+            open.results[0].message,
+            "You gather a drink of water from the brook into the bark cup."
+        );
+        let ticks = world.tuning.cup_leak_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let soaked = world.observe(near).unwrap();
+        assert!(soaked
+            .events
+            .iter()
+            .any(|event| event.text == "The drink soaks through the bark cup."));
+        assert!(
+            soaked.text.contains("You have a bark cup."),
+            "{}",
+            soaked.text
+        );
+        assert!(!soaked.text.contains("drink of"));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The drink soaks through the bark cup." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The drink soaks through the bark cup." }));
+
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        world.mint_item(Material::Resin, 0, cell, Some(near), Role::Loose);
+        let sealed = world.step(&[intent("seal", near, Attempt::SealCup)]);
+        assert_eq!(
+            sealed.results[0].message,
+            "You seal the bark cup with pine resin."
+        );
+        assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
+        let named = world.observe(near).unwrap();
+        assert!(
+            named.text.contains("a sealed bark cup"),
+            "{}",
+            named.text
+        );
+        assert!(named.events.iter().all(|event| {
+            !event.text.contains("seals the bark cup") && !event.text.contains("You seal")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near seals the bark cup with pine resin." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("seals the bark cup") }));
+        let again = world.step(&[intent("again", near, Attempt::SealCup)]);
+        assert_eq!(again.results[0].message, "The bark cup is already sealed.");
+        assert_eq!(world.loose_ids(near, Material::Resin).len(), 1);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "The bark cup is already sealed." }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "The bark cup is already sealed." }));
+
+        let held = world.step(&[intent("held", near, Attempt::Gather(Material::Water))]);
+        assert_eq!(
+            held.results[0].message,
+            "You gather a drink of water from the brook into the sealed bark cup."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a sealed bark cup with a drink of raw water in it"));
+        let soaked_before = world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .filter(|event| event.text == "The drink soaks through the bark cup.")
+            .count();
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let kept = world.observe(near).unwrap();
+        let soaked_after = kept
+            .events
+            .iter()
+            .filter(|event| event.text == "The drink soaks through the bark cup.")
+            .count();
+        assert_eq!(soaked_before, soaked_after);
+        assert!(
+            kept.text
+                .contains("a sealed bark cup with a drink of raw water in it"),
+            "{}",
+            kept.text
+        );
     }
 }

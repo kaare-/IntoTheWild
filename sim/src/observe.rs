@@ -1025,8 +1025,12 @@ impl World {
         for _id in self.ground_ids(actor.cell, Material::Basket) {
             parts.push("A bark basket lies here.".into());
         }
-        for _id in self.ground_ids(actor.cell, Material::BarkCup) {
-            parts.push("A bark cup lies here.".into());
+        for id in self.ground_ids(actor.cell, Material::BarkCup) {
+            if self.item(id).is_some_and(|cup| cup.pitched) {
+                parts.push("A sealed bark cup lies here.".into());
+            } else {
+                parts.push("A bark cup lies here.".into());
+            }
         }
         let charcoal_here = self.ground_ids(actor.cell, Material::Charcoal).len();
         if charcoal_here == 1 {
@@ -3870,7 +3874,15 @@ impl World {
         } else if item.material == "basket" && item.count == 1 {
             self.basket_arm_phrase(actor_id)
         } else if item.material == "bark cup" && item.count == 1 {
-            "a bark cup".into()
+            if self
+                .loose_ids(actor_id, Material::BarkCup)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|cup| cup.pitched))
+            {
+                "a sealed bark cup".into()
+            } else {
+                "a bark cup".into()
+            }
         } else if item.material == "pot" && item.count == 1 {
             format!("a {} pot", item.condition)
         } else if item.material == "clay" {
@@ -4386,6 +4398,10 @@ impl World {
             && carrying
                 .iter()
                 .any(|item| item.material == "pot" && item.count == 1);
+        let cup_sealed = self
+            .loose_ids(actor_id, Material::BarkCup)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|cup| cup.pitched));
         let cup_holds_the_drink = !pot_holds_the_drink
             && drinks > 0
             && carrying
@@ -4401,7 +4417,7 @@ impl World {
                     return Some(pot_drink_phrase(drinks, raw_drinks));
                 }
                 if cup_holds_the_drink && item.material == "bark cup" {
-                    return Some(cup_drink_phrase(drinks, raw_drinks));
+                    return Some(cup_drink_phrase(drinks, raw_drinks, cup_sealed));
                 }
                 Some(self.arm_bit(actor_id, item))
             })
@@ -9700,6 +9716,7 @@ impl World {
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
                     && self.fold_for_these_eyes(viewer, event).is_none()
+                    && self.seal_cup_for_these_eyes(viewer, event).is_none()
                     && self.smoke_for_these_eyes(viewer, event).is_none()
                     && self.walk_for_these_eyes(viewer, event).is_none()
                     && self.smear_for_these_eyes(viewer, event).is_none()
@@ -10326,9 +10343,15 @@ impl World {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if !self.ground_ids(cell, Material::BarkCup).is_empty() {
+            for id in self.ground_ids(cell, Material::BarkCup) {
+                let sealed = self.item(id).is_some_and(|cup| cup.pitched);
+                let (name, hold) = if sealed {
+                    ("A sealed bark cup", "Pine resin seals it.")
+                } else {
+                    ("A bark cup", "A drink soaks through it.")
+                };
                 lines.push(format!(
-                    "A bark cup lies {}. It is folded from a sheet of birch bark. It can hold water. {}",
+                    "{name} lies {}. It is folded from a sheet of birch bark. {hold} {}",
                     self.place_phrase(origin, cell),
                     self.rain_reaches_phrase(cell)
                 ));
@@ -10338,6 +10361,15 @@ impl World {
             if self.loose_ids(other, Material::BarkCup).is_empty() {
                 continue;
             }
+            let sealed = self
+                .loose_ids(other, Material::BarkCup)
+                .iter()
+                .any(|id| self.item(*id).is_some_and(|cup| cup.pitched));
+            let (name, hold) = if sealed {
+                ("a sealed bark cup", "Pine resin seals it.")
+            } else {
+                ("a bark cup", "A drink soaks through it.")
+            };
             let who = if other == viewer {
                 "You carry".to_string()
             } else {
@@ -10345,7 +10377,7 @@ impl World {
             };
             let cell = self.actor(other).unwrap().cell;
             lines.push(format!(
-                "{who} a bark cup, {}. It is folded from a sheet of birch bark. It can hold water.",
+                "{who} {name}, {}. It is folded from a sheet of birch bark. {hold}",
                 self.cover_phrase(cell)
             ));
         }
@@ -10750,6 +10782,23 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "fold", rest))
+    }
+
+    /// A bark cup sealed with pine resin. The person who sealed it already read the sentence.
+    fn seal_cup_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} seals "))?;
+        if rest != "the bark cup with pine resin." {
+            return None;
+        }
+        Some(crate::model::spoken_act(None, "seal", rest))
     }
 
     /// A dry branch pointed into a wooden spear. The person who pointed it
@@ -11738,6 +11787,9 @@ impl World {
             }
             "the drink in the bark cup over the fire and drinks it." => {
                 "the drink in the bark cup over the fire and drink it."
+            }
+            "the drink in the sealed bark cup over the fire and drinks it." => {
+                "the drink in the sealed bark cup over the fire and drink it."
             }
             "a drink of water over the fire and drinks it." => {
                 "a drink of water over the fire and drink it."
@@ -13003,6 +13055,13 @@ impl World {
         {
             actions.push("seal canoe".into());
         }
+        if !self.loose_ids(actor_id, Material::Resin).is_empty()
+            && self
+                .cup_to_seal(actor_id)
+                .is_some_and(|id| self.item(id).is_some_and(|cup| !cup.pitched))
+        {
+            actions.push("seal bark cup".into());
+        }
         if !self.loose_ids(actor_id, Material::Moss).is_empty() && actor.stings_until.is_some() {
             actions.push("press moss".into());
         }
@@ -13312,17 +13371,22 @@ fn cell_span(count: u32) -> String {
 }
 
 /// Brook water in the pot is raw. Any other drink in that pot is not.
-fn cup_drink_phrase(drinks: u32, raw_drinks: u32) -> String {
+fn cup_drink_phrase(drinks: u32, raw_drinks: u32, sealed: bool) -> String {
+    let cup = if sealed {
+        "a sealed bark cup"
+    } else {
+        "a bark cup"
+    };
     let boiled = drinks.saturating_sub(raw_drinks);
     match (boiled > 0, raw_drinks > 0, drinks == 1) {
-        (true, false, true) => "a bark cup with a drink of water in it".into(),
-        (false, true, true) => "a bark cup with a drink of raw water in it".into(),
-        (true, false, false) => format!("a bark cup with {drinks} drinks of water in it"),
-        (false, true, false) => format!("a bark cup with {drinks} drinks of raw water in it"),
+        (true, false, true) => format!("{cup} with a drink of water in it"),
+        (false, true, true) => format!("{cup} with a drink of raw water in it"),
+        (true, false, false) => format!("{cup} with {drinks} drinks of water in it"),
+        (false, true, false) => format!("{cup} with {drinks} drinks of raw water in it"),
         (true, true, _) => format!(
-            "a bark cup with {boiled} drinks of water and {raw_drinks} drinks of raw water in it"
+            "{cup} with {boiled} drinks of water and {raw_drinks} drinks of raw water in it"
         ),
-        (false, false, _) => "a bark cup".into(),
+        (false, false, _) => cup.into(),
     }
 }
 

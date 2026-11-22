@@ -94,6 +94,10 @@ pub struct Tuning {
     /// Look says the shallows have none until then.
     #[serde(default = "default_cattail_ticks")]
     pub cattail_ticks: u64,
+    /// Ticks a drink stays in an unsealed bark cup before it soaks through.
+    /// A cup sealed with pine resin keeps the drink.
+    #[serde(default = "default_cup_leak_ticks")]
+    pub cup_leak_ticks: u64,
     /// Ticks after the flint nodule on the slope is gathered before another lies there.
     /// Look says the slope has no flint until then. Knapping the carried nodule
     /// leaves the same wait.
@@ -305,6 +309,9 @@ fn default_nettle_ticks() -> u64 {
 fn default_cattail_ticks() -> u64 {
     24
 }
+fn default_cup_leak_ticks() -> u64 {
+    8
+}
 fn default_flint_ticks() -> u64 {
     24
 }
@@ -465,6 +472,8 @@ struct RawTime {
     nettle_ticks: u64,
     #[serde(default = "default_cattail_ticks")]
     cattail_ticks: u64,
+    #[serde(default = "default_cup_leak_ticks")]
+    cup_leak_ticks: u64,
     #[serde(default = "default_flint_ticks")]
     flint_ticks: u64,
     #[serde(default = "default_ochre_ticks")]
@@ -588,6 +597,7 @@ impl Tuning {
             || raw.time.willow_ticks == 0
             || raw.time.nettle_ticks == 0
             || raw.time.cattail_ticks == 0
+            || raw.time.cup_leak_ticks == 0
             || raw.time.flint_ticks == 0
             || raw.time.ochre_ticks == 0
             || raw.time.clay_bank_ticks == 0
@@ -663,6 +673,7 @@ impl Tuning {
             willow_ticks: raw.time.willow_ticks,
             nettle_ticks: raw.time.nettle_ticks,
             cattail_ticks: raw.time.cattail_ticks,
+            cup_leak_ticks: raw.time.cup_leak_ticks,
             flint_ticks: raw.time.flint_ticks,
             ochre_ticks: raw.time.ochre_ticks,
             clay_bank_ticks: raw.time.clay_bank_ticks,

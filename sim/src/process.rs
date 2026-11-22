@@ -43,6 +43,7 @@ impl World {
                 Wake::NetCatch(cell) => self.catch_in_net(cell),
                 Wake::Weir(cell) => self.catch_in_weir(cell),
                 Wake::Spoil(id) => self.spoil_food(id),
+                Wake::CupLeak(id) => self.leak_cup(id),
                 Wake::SaltReturn(cell) => self.return_salt(cell),
                 Wake::HoneyReturn(cell) => self.return_honey(cell),
                 Wake::EggReturn(cell) => self.return_eggs(cell),
@@ -106,6 +107,44 @@ impl World {
             vec![],
             vec![item.cell],
             vec![id],
+            vec![],
+            None,
+        );
+    }
+
+    /// A drink has waited out its ticks in an unsealed bark cup.
+    /// The drink is gone. A sealed cup, a pot, or no cup at all keeps it.
+    /// Someone who cannot see the cell hears nothing.
+    fn leak_cup(&mut self, id: ItemId) {
+        let Some(water) = self.item(id).cloned() else {
+            return;
+        };
+        if water.material != Material::Water {
+            return;
+        }
+        let Some(actor) = water.carrier else {
+            return;
+        };
+        if !self.loose_ids(actor, Material::Pot).is_empty() {
+            return;
+        }
+        let Some(cup) = self.loose_ids(actor, Material::BarkCup).first().copied() else {
+            return;
+        };
+        if self.item(cup).is_some_and(|cup| cup.pitched) {
+            return;
+        }
+        self.items.remove(&id);
+        let cell = self
+            .actor(actor)
+            .map(|person| person.cell)
+            .unwrap_or(water.cell);
+        self.emit(
+            "The drink soaks through the bark cup.",
+            Scope::Cell(cell),
+            vec![actor],
+            vec![cell],
+            vec![cup],
             vec![],
             None,
         );
