@@ -13236,7 +13236,9 @@ impl World {
             "You are not carrying an otter hide.",
             "You need a copper awl and an otter hide.",
         ];
-        if failures.iter().any(|line| line == &event.text) {
+        if failures.iter().any(|line| line == &event.text)
+            || event.text.starts_with("The otter hide is not pierced.")
+        {
             return Some(event.text.clone());
         }
         let name = self.name_of(viewer);
@@ -13279,7 +13281,9 @@ impl World {
             "You are not carrying a beaver hide.",
             "You need a copper awl and a beaver hide.",
         ];
-        if failures.iter().any(|line| line == &event.text) {
+        if failures.iter().any(|line| line == &event.text)
+            || event.text.starts_with("The beaver hide is not pierced.")
+        {
             return Some(event.text.clone());
         }
         let name = self.name_of(viewer);
@@ -13322,7 +13326,9 @@ impl World {
             "You are not carrying a hare hide.",
             "You need a copper awl and a hare hide.",
         ];
-        if failures.iter().any(|line| line == &event.text) {
+        if failures.iter().any(|line| line == &event.text)
+            || event.text.starts_with("The hare hide is not pierced.")
+        {
             return Some(event.text.clone());
         }
         let name = self.name_of(viewer);
@@ -13365,7 +13371,9 @@ impl World {
             "You are not carrying a fox hide.",
             "You need a copper awl and a fox hide.",
         ];
-        if failures.iter().any(|line| line == &event.text) {
+        if failures.iter().any(|line| line == &event.text)
+            || event.text.starts_with("The fox hide is not pierced.")
+        {
             return Some(event.text.clone());
         }
         let name = self.name_of(viewer);
@@ -13407,7 +13415,9 @@ impl World {
             "You are not wearing a wolf hide.",
             "You need a copper awl and a wolf hide.",
         ];
-        if failures.iter().any(|line| line == &event.text) {
+        if failures.iter().any(|line| line == &event.text)
+            || event.text.starts_with("The wolf hide is not pierced.")
+        {
             return Some(event.text.clone());
         }
         let name = self.name_of(viewer);

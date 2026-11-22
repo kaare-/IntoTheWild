@@ -24451,6 +24451,53 @@ mod scrape_hide {
             }));
         }
 
+        let north = cell_id(5, 2).unwrap();
+        let east = cell_id(6, 3).unwrap();
+        let far = cell_id(5, 0).unwrap();
+        let diag = cell_id(6, 2).unwrap();
+        let stray = world.mint_item(Material::Awl, 0, far, None, Role::Loose);
+        world.items.get_mut(&stray).unwrap().bone = true;
+        let two_off = world.step(&[intent("sew-far", near, Attempt::Sew)]);
+        assert_eq!(
+            two_off.results[0].message,
+            "The deer hide is not pierced. Pierce it with a copper awl or a bone awl."
+        );
+        world.items.get_mut(&stray).unwrap().cell = north;
+        let stepped = world.step(&[intent("sew-north", near, Attempt::Sew)]);
+        assert_eq!(
+            stepped.results[0].message,
+            "The deer hide is not pierced. Pierce it with the bone awl. Step north."
+        );
+        for person in [seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text
+                    != "The deer hide is not pierced. Pierce it with the bone awl. Step north."
+            }));
+        }
+        world.items.get_mut(&stray).unwrap().cell = diag;
+        let diagonal = world.step(&[intent("sew-diag", near, Attempt::Sew)]);
+        assert_eq!(
+            diagonal.results[0].message,
+            "The deer hide is not pierced. Pierce it with the bone awl. Step north and east."
+        );
+        let also = world.mint_item(Material::Awl, 0, east, None, Role::Loose);
+        world.items.get_mut(&also).unwrap().bone = true;
+        world.items.get_mut(&stray).unwrap().cell = north;
+        let either = world.step(&[intent("sew-either", near, Attempt::Sew)]);
+        assert_eq!(
+            either.results[0].message,
+            "The deer hide is not pierced. Pierce it with the bone awl. Step north or east."
+        );
+        world.items.get_mut(&stray).unwrap().bone = false;
+        world.items.get_mut(&stray).unwrap().cell = east;
+        world.items.get_mut(&also).unwrap().cell = far;
+        let copper_step = world.step(&[intent("sew-east", near, Attempt::Sew)]);
+        assert_eq!(
+            copper_step.results[0].message,
+            "The deer hide is not pierced. Pierce it with the copper awl. Step east."
+        );
+        world.items.get_mut(&stray).unwrap().cell = far;
+
         let bone = world.mint_item(Material::Awl, 0, cell, Some(near), Role::Loose);
         world.items.get_mut(&bone).unwrap().bone = true;
         let with_bone = world.step(&[intent("sew-bone", near, Attempt::Sew)]);

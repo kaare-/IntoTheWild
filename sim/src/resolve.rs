@@ -13777,17 +13777,76 @@ impl World {
         })
     }
 
-    /// A scraped hide that is not pierced. A held awl is named, then an awl at the feet.
-    /// Neither awl names both.
+    /// An awl one cell off, orthogonal first, then a single diagonal.
+    /// The words match a gather miss. Two cells off is no step. This does not move anyone.
+    fn awl_neighbor(&self, actor: ActorId) -> Option<(&'static str, String)> {
+        let cell = self.actor(actor)?.cell;
+        let (x, y) = cell_xy(cell);
+        let mut ortho = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            let ids = self.ground_ids(dest, Material::Awl);
+            if !ids.is_empty() {
+                ortho.push((dir.word(), ids));
+            }
+        }
+        let (ways, ids) = if !ortho.is_empty() {
+            let ids = ortho
+                .iter()
+                .flat_map(|(_, ids)| ids.iter().copied())
+                .collect::<Vec<_>>();
+            let ways = ortho
+                .iter()
+                .map(|(way, _)| (*way).to_string())
+                .collect::<Vec<_>>();
+            (ways, ids)
+        } else {
+            let mut diag = Vec::new();
+            for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let Some(dest) = cell_id(x + dx, y + dy) else {
+                    continue;
+                };
+                let ids = self.ground_ids(dest, Material::Awl);
+                if !ids.is_empty() {
+                    diag.push((self.relative(cell, dest), ids));
+                }
+            }
+            if diag.len() != 1 {
+                return None;
+            }
+            let (way, ids) = diag.remove(0);
+            (vec![way], ids)
+        };
+        let cue = match ways.len() {
+            1 => format!(" Step {}.", ways[0]),
+            _ => {
+                let last = ways.last()?.to_string();
+                let head = ways[..ways.len() - 1].join(", ");
+                format!(" Step {head} or {last}.")
+            }
+        };
+        Some((self.awl_tool_phrase(&ids)?, cue))
+    }
+
+    /// A scraped hide that is not pierced. Arms, then the feet, then one cell off.
+    /// None of those names both tools.
     fn unpierced_sew_line(&self, actor: ActorId) -> String {
         let held = self.loose_ids(actor, Material::Awl);
-        let tool = if let Some(phrase) = self.awl_tool_phrase(&held) {
-            phrase
+        let (tool, cue) = if let Some(phrase) = self.awl_tool_phrase(&held) {
+            (phrase, String::new())
         } else {
             let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
             let ground = self.ground_ids(cell, Material::Awl);
-            self.awl_tool_phrase(&ground)
-                .unwrap_or("a copper awl or a bone awl")
+            if let Some(phrase) = self.awl_tool_phrase(&ground) {
+                (phrase, String::new())
+            } else if let Some((phrase, cue)) = self.awl_neighbor(actor) {
+                (phrase, cue)
+            } else {
+                ("a copper awl or a bone awl", String::new())
+            }
         };
         let kind = if self.carrying_otter_hide(actor) {
             "otter"
@@ -13802,7 +13861,7 @@ impl World {
         } else {
             "deer"
         };
-        format!("The {kind} hide is not pierced. Pierce it with {tool}.")
+        format!("The {kind} hide is not pierced. Pierce it with {tool}.{cue}")
     }
 
     fn hide_missing<'a>(&self, actor: ActorId, deer: &'a str) -> &'a str {
