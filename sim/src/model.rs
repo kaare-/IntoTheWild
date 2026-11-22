@@ -823,10 +823,13 @@ pub struct Actor {
     /// The look after this tick may name the spear. The next tick clears it.
     #[serde(default)]
     pub spear_hint_show: bool,
-    /// The sentence on `spear_hint_show` says to fire-harden the tip.
-    /// False means it says to haft the flake and a dry branch.
+    /// The sentence on `spear_hint_show` says to fire-harden a wooden point.
+    /// False with `spear_hint_fire` false says to haft the flake and a dry branch.
     #[serde(default)]
     pub spear_hint_harden: bool,
+    /// The sentence on `spear_hint_show` says to set a flint tip by a fire.
+    #[serde(default)]
+    pub spear_hint_fire: bool,
     pub busy: Option<WorkId>,
 }
 
@@ -1566,6 +1569,14 @@ fn default_next_deer_id() -> u32 {
     2
 }
 
+/// Which one-tick look line a deer in sight may earn.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SpearReach {
+    Haft,
+    Wooden,
+    Fire,
+}
+
 impl World {
     pub fn valley(tuning: Tuning, seed: u64) -> Self {
         let mut cells = Vec::with_capacity((WIDTH * HEIGHT) as usize);
@@ -1927,6 +1938,7 @@ impl World {
                 spear_hint_deer: None,
                 spear_hint_show: false,
                 spear_hint_harden: false,
+                spear_hint_fire: false,
                 busy: None,
             },
         );
@@ -2084,9 +2096,9 @@ impl World {
         }
     }
 
-    /// A flint flake and no spear says to haft. A spear that is not yet
-    /// fire-hardened says to harden the tip. Each sentence is armed once
-    /// while that deer stays in sight.
+    /// A flint flake and no spear says to haft. A wooden point says to
+    /// fire-harden. A flint tip says to set the spear by a fire. Each
+    /// sentence is armed once while that deer stays in sight.
     fn note_spear_reach(&mut self) {
         let deer = self.deer.as_ref().map(|deer| (deer.id, deer.cell));
         let sight = self.tuning.sight;
@@ -2094,50 +2106,69 @@ impl World {
         for id in ids {
             let Some((deer_id, deer_cell)) = deer else {
                 if let Some(actor) = self.actors.get_mut(&id) {
-                    actor.spear_hint_deer = None;
-                    actor.spear_hint_show = false;
-                    actor.spear_hint_harden = false;
+                    Self::clear_spear_hint(actor);
                 }
                 continue;
             };
             let in_sight = self
                 .actor(id)
                 .is_some_and(|actor| chebyshev(actor.cell, deer_cell) <= sight);
-            let harden = self.spear_hint_kind(id);
+            let kind = self.spear_hint_kind(id);
             let Some(actor) = self.actors.get_mut(&id) else {
                 continue;
             };
-            let Some(harden) = harden.filter(|_| in_sight) else {
-                actor.spear_hint_deer = None;
-                actor.spear_hint_show = false;
-                actor.spear_hint_harden = false;
+            let Some(kind) = kind.filter(|_| in_sight) else {
+                Self::clear_spear_hint(actor);
                 continue;
             };
-            if actor.spear_hint_deer == Some(deer_id) && actor.spear_hint_harden == harden {
+            let same = actor.spear_hint_deer == Some(deer_id)
+                && actor.spear_hint_harden == matches!(kind, SpearReach::Wooden)
+                && actor.spear_hint_fire == matches!(kind, SpearReach::Fire);
+            if same {
                 actor.spear_hint_show = false;
                 continue;
             }
             actor.spear_hint_deer = Some(deer_id);
-            actor.spear_hint_harden = harden;
+            actor.spear_hint_harden = matches!(kind, SpearReach::Wooden);
+            actor.spear_hint_fire = matches!(kind, SpearReach::Fire);
             actor.spear_hint_show = true;
         }
     }
 
-    /// True says to fire-harden the tip. False says to haft. None says nothing.
-    /// A spear already hardening in a fire, or one already fire-hardened, says nothing.
-    fn spear_hint_kind(&self, id: ActorId) -> Option<bool> {
+    fn clear_spear_hint(actor: &mut Actor) {
+        actor.spear_hint_deer = None;
+        actor.spear_hint_show = false;
+        actor.spear_hint_harden = false;
+        actor.spear_hint_fire = false;
+    }
+
+    /// Haft, fire-harden a wooden point, or set a flint tip by a fire.
+    /// A spear already hardening, or one already fire-hardened, says nothing.
+    fn spear_hint_kind(&self, id: ActorId) -> Option<SpearReach> {
         let spears: Vec<_> = self
             .loose_ids(id, Material::Spear)
             .into_iter()
             .filter_map(|item| self.item(item))
             .filter(|spear| !spear.in_basket)
             .collect();
-        let hardened = spears.iter().any(|spear| spear.hardened);
-        let waiting = spears
+        if spears.iter().any(|spear| spear.hardened) {
+            return None;
+        }
+        let waiting = |spear: &&Item| !spear.hardened && spear.firing_ready_at.is_none();
+        if spears.iter().any(|spear| waiting(spear) && spear.flint_tip) {
+            return Some(SpearReach::Fire);
+        }
+        if spears
             .iter()
-            .any(|spear| !spear.hardened && spear.firing_ready_at.is_none());
-        if !hardened && waiting {
-            return Some(true);
+            .any(|spear| waiting(spear) && !spear.wooden_tip)
+        {
+            return Some(SpearReach::Fire);
+        }
+        if spears
+            .iter()
+            .any(|spear| waiting(spear) && spear.wooden_tip)
+        {
+            return Some(SpearReach::Wooden);
         }
         if !spears.is_empty() {
             return None;
@@ -2146,7 +2177,7 @@ impl World {
             .loose_ids(id, Material::Flake)
             .iter()
             .any(|item| self.item(*item).is_some_and(|flake| !flake.in_basket));
-        flake.then_some(false)
+        flake.then_some(SpearReach::Haft)
     }
 
     pub(crate) fn schedule(&mut self, at: u64, wake: Wake) {
@@ -25236,6 +25267,7 @@ mod spear_hint {
     const HAFT: &str =
         "Haft the flint flake and a dry branch into a spear that could reach the deer.";
     const HARDEN: &str = "Fire-harden the tip of the spear that could reach the deer.";
+    const FIRE: &str = "Set the spear by a fire, or light one, so the tip could reach the deer.";
 
     fn hold(world: &mut World) {
         if let Some(deer) = world.deer.as_mut() {
@@ -25304,6 +25336,7 @@ mod spear_hint {
         let wooden = world.step(&[]);
         let look = world.observe(near).unwrap();
         assert!(look.text.contains(HARDEN), "{}", look.text);
+        assert!(!look.text.contains(FIRE), "{}", look.text);
         assert!(!look.text.contains(HAFT), "{}", look.text);
         assert!(!look.events.iter().any(|event| event.text.contains(HARDEN)));
         assert!(!world.observe(seen).unwrap().text.contains(HARDEN));
@@ -25339,7 +25372,11 @@ mod spear_hint {
         hold(&mut world);
         world.step(&[]);
         let look = world.observe(near).unwrap();
-        assert!(look.text.contains(HARDEN), "{}", look.text);
+        assert!(look.text.contains(FIRE), "{}", look.text);
+        assert!(!look.text.contains(HARDEN), "{}", look.text);
         assert!(!look.text.contains(HAFT), "{}", look.text);
+        assert!(!look.events.iter().any(|event| event.text.contains(FIRE)));
+        assert!(!world.observe(seen).unwrap().text.contains(FIRE));
+        assert!(!world.observe(quiet).unwrap().text.contains(FIRE));
     }
 }

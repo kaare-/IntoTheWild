@@ -5902,7 +5902,9 @@ impl World {
         if !actor.spear_hint_show {
             return None;
         }
-        Some(if actor.spear_hint_harden {
+        Some(if actor.spear_hint_fire {
+            "Set the spear by a fire, or light one, so the tip could reach the deer.".into()
+        } else if actor.spear_hint_harden {
             "Fire-harden the tip of the spear that could reach the deer.".into()
         } else {
             "Haft the flint flake and a dry branch into a spear that could reach the deer.".into()
