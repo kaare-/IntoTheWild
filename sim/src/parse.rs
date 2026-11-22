@@ -35,7 +35,7 @@ seal canoe                   a lump of pine resin on the dugout here, or the one
 release                      let go of the log
 raise frame                  three branches, then three phases of work
 lay bark                     bark over a frame supported at both ends
-drink                        raw water where you stand; still water freezes until the day thaws it. The brook does not freeze
+drink                        raw water where you stand, and on the bank beside the brook where a baited hook can take a fish. Still water freezes until the day thaws it. The brook does not freeze. A miss stays with you
 boil                         a pot or a fired bowl, and a fire; unfired clay cannot
 steep|brew mint            a handful of mint in a pot or a bark cup of water over a fire. You drink the mint tea. A sick stomach eases. A bowl or unfired clay is not enough. With no fire, no mint, no pot or cup, or no water in that pot or cup, only you hear which one is missing. Drinkable water one step away adds which way, and the water stays where it is. When the still beside you is frozen and that step is the brook, only you hear that the still is frozen
 steep|brew pine            a handful of pine needles the same way. A chill eases a little. It does not settle a stomach. gather pine needles takes them from the pine south of the trail

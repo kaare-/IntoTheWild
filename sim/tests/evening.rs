@@ -401,13 +401,20 @@ fn thirst_rises_without_a_command_and_the_brook_eases_it() {
     assert!(refused, "otto is not standing in the brook");
     assert_eq!(world.observe(otto).unwrap().self_info.thirst, "thirsty");
 
-    world.step(&[cmd("sip", sera, Attempt::Drink)]);
+    let sip = world.step(&[cmd("sip", sera, Attempt::Drink)]);
+    assert!(
+        sip.results[0]
+            .message
+            .starts_with("You drink from the brook."),
+        "{}",
+        sip.results[0].message
+    );
     let eased = world.observe(sera).unwrap();
     assert_eq!(eased.self_info.thirst, "not thirsty");
     assert!(eased
         .events
         .iter()
-        .any(|event| event.text.contains("drinks from the brook")));
+        .all(|event| !event.text.contains("Sera drinks from the brook")));
     assert!(
         world
             .observe(otto)
@@ -2515,14 +2522,21 @@ fn still_water_sickens_more_often_than_the_brook() {
     assert!(looked.contains("almost every time"));
     assert!(looked.contains("only occasionally"));
     assert!(!looked.contains("0.90") && !looked.contains("0.20"));
-    pool.step(&[cmd("pool", sera, Attempt::Drink)]);
+    let pooled = pool.step(&[cmd("pool", sera, Attempt::Drink)]);
+    assert!(
+        pooled.results[0]
+            .message
+            .starts_with("You drink the still water."),
+        "{}",
+        pooled.results[0].message
+    );
     let ill = pool.observe(sera).unwrap();
     assert_eq!(ill.self_info.illness, "ill");
     assert_eq!(ill.self_info.thirst, "not thirsty");
     assert!(ill
         .events
         .iter()
-        .any(|event| event.text.contains("drinks the still water")));
+        .all(|event| !event.text.contains("Sera drinks the still water")));
     let draw = pool
         .event_log()
         .iter()
@@ -2543,13 +2557,20 @@ fn still_water_sickens_more_often_than_the_brook() {
     running.tuning.still_chance = 1000;
     running.tuning.illness_chance = 0;
     let sera = running.spawn_at("Sera", "s", 0, 1).unwrap();
-    running.step(&[cmd("run", sera, Attempt::Drink)]);
+    let ran = running.step(&[cmd("run", sera, Attempt::Drink)]);
+    assert!(
+        ran.results[0]
+            .message
+            .starts_with("You drink from the brook."),
+        "{}",
+        ran.results[0].message
+    );
     let well = running.observe(sera).unwrap();
     assert_eq!(well.self_info.illness, "well");
     assert!(well
         .events
         .iter()
-        .any(|event| event.text.contains("drinks from the brook")));
+        .all(|event| !event.text.contains("Sera drinks from the brook")));
 
     let mut swapped = World::valley(Tuning::evening(), 3);
     swapped.tuning.still_chance = 0;
@@ -4651,13 +4672,20 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     assert_eq!(frozen.self_info.illness, "well");
     assert!(frozen.visible_cells.iter().any(|cell| cell.frozen));
     let otto = pool.spawn_at("Otto", "o", 0, 1).unwrap();
-    pool.step(&[cmd("run", otto, Attempt::Drink)]);
+    let ran = pool.step(&[cmd("run", otto, Attempt::Drink)]);
+    assert!(
+        ran.results[0]
+            .message
+            .starts_with("You drink from the brook."),
+        "{}",
+        ran.results[0].message
+    );
     assert!(pool
         .observe(otto)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text.contains("drinks from the brook")));
+        .all(|event| !event.text.contains("Otto drinks from the brook")));
 
     let mut thaw = world_at(10_000);
     thaw.tuning.chill_at = 0;
@@ -4676,12 +4704,19 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
         .iter()
         .any(|event| event.text.contains("frozen")));
     thaw.step(&[cmd("light", sera, Attempt::Light)]);
-    thaw.step(&[cmd("thaw", sera, Attempt::Drink)]);
+    let thawed = thaw.step(&[cmd("thaw", sera, Attempt::Drink)]);
+    assert!(
+        thawed.results[0]
+            .message
+            .starts_with("You drink the still water."),
+        "{}",
+        thawed.results[0].message
+    );
     let open = thaw.observe(sera).unwrap();
     assert!(open
         .events
         .iter()
-        .any(|event| event.text.contains("drinks the still water")));
+        .all(|event| !event.text.contains("Sera drinks the still water")));
     assert!(open.text.contains("keeping the still water from freezing"));
 }
 

@@ -13866,6 +13866,77 @@ mod fish_hook {
 }
 
 #[cfg(test)]
+mod bank_drink {
+    use super::{cell_id, Attempt, Intent, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> Intent {
+        Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    #[test]
+    fn a_drink_on_the_hook_bank_is_the_brook() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let bank = cell_id(2, 2).unwrap();
+        world.mint_item(Material::Hook, 0, bank, Some(near), Role::Loose);
+        world.mint_item(Material::Worm, 0, bank, Some(near), Role::Loose);
+        let caught = world.step(&[intent("cast", near, Attempt::Fish)]);
+        assert_eq!(
+            caught.results[0].message,
+            "You catch a fish from the brook with the bone fish hook and a worm."
+        );
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        let dry = world.observe(near).unwrap().self_info.wetness.clone();
+        let drank = world.step(&[intent("sip", near, Attempt::Drink)]);
+        assert!(
+            drank.results[0]
+                .message
+                .starts_with("You drink from the brook."),
+            "{}",
+            drank.results[0].message
+        );
+        assert_eq!(world.actor_cell(near), Some((2, 2)));
+        assert_eq!(world.observe(near).unwrap().self_info.wetness, dry);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Near drinks") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near drinks from the brook." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drinks from the brook") }));
+        let inland = world.spawn_at("Inland", "i", 4, 4).unwrap();
+        let missed = world.step(&[intent("away", inland, Attempt::Drink)]);
+        assert_eq!(missed.results[0].message, "The brook is not here.");
+        assert!(!missed.results[0].success);
+        for person in [seen, quiet, near] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "The brook is not here." }));
+        }
+    }
+}
+
+#[cfg(test)]
 mod brook_south {
     use super::{Attempt, Material, Role, World};
 

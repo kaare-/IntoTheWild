@@ -10763,6 +10763,7 @@ impl World {
                     && self.mat_for_these_eyes(viewer, event).is_none()
                     && self.canoe_for_these_eyes(viewer, event).is_none()
                     && self.light_for_these_eyes(viewer, event).is_none()
+                    && self.drink_for_these_eyes(viewer, event).is_none()
                     && self.strike_for_these_eyes(viewer, event).is_none()
                     && self.fire_pot_for_these_eyes(viewer, event).is_none()
                     && self.boil_reply_for_these_eyes(viewer, event).is_none()
@@ -13468,6 +13469,22 @@ impl World {
     /// A successful light, bark or pine resin, with or without a brand.
     /// The lighter already has the reply, so it does not sit in their events.
     /// Anyone else keeps the stored third-person sentence.
+    /// The drinker already has the reply. The third person stays with
+    /// someone who can see the cell.
+    fn drink_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} drinks from the brook.")
+            || event.text == format!("{name} drinks the still water.")
+        {
+            Some(event.text.clone())
+        } else {
+            None
+        }
+    }
+
     fn light_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;

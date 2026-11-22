@@ -513,9 +513,11 @@ impl World {
                     Err("You are in the middle of something.".into())
                 } else if body_taken {
                     Err("You already committed to something else this window.".into())
-                } else if !self.water_here(actor.cell) {
+                } else if self.drink_source(actor.cell).is_none() {
                     Err("The brook is not here.".into())
-                } else if self.still_frozen(actor.cell) {
+                } else if self.drink_source(actor.cell) == Some(true)
+                    && self.still_frozen(actor.cell)
+                {
                     Err("The still water is frozen.".into())
                 } else {
                     Ok(true)
@@ -11933,12 +11935,23 @@ impl World {
         }
     }
 
+    /// Still water on this cell, the brook underfoot, or the brook beside this
+    /// bank. The bool is true when the drink is still water. A bank where a
+    /// baited hook can take a fish is the brook, not a step into the water.
+    fn drink_source(&self, cell: crate::model::CellId) -> Option<bool> {
+        if self.water_here(cell) {
+            let still = self.cell(cell).still && self.cell(cell).region != Region::Brook;
+            return Some(still);
+        }
+        self.brook_stretch(cell).map(|_| false)
+    }
+
     fn apply_drinks(&mut self, drinks: Vec<Intent>, results: &mut Vec<CommandResult>) {
         for intent in drinks {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            if !self.water_here(actor.cell) {
+            let Some(still) = self.drink_source(actor.cell) else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
@@ -11947,8 +11960,8 @@ impl World {
                     results,
                 );
                 continue;
-            }
-            if self.still_frozen(actor.cell) {
+            };
+            if still && self.still_frozen(actor.cell) {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
@@ -11958,8 +11971,6 @@ impl World {
                 );
                 continue;
             }
-            let still =
-                self.cell(actor.cell).still && self.cell(actor.cell).region != Region::Brook;
             let chance = if still {
                 self.tuning.still_chance
             } else {
