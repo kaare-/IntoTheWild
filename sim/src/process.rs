@@ -2217,6 +2217,38 @@ impl World {
         }
     }
 
+    /// A whistle within ordinary hearing. The fox slips the same way it does
+    /// when someone steps onto it. The blow's reply does not carry this line.
+    pub(crate) fn whistle_frighten_fox(&mut self, blower: CellId) {
+        let Some(fox) = self.fox.clone() else {
+            return;
+        };
+        if chebyshev(blower, fox.cell) > self.tuning.hearing {
+            return;
+        }
+        let Some((next_at, next)) = self.fox_away(fox.route_at, blower) else {
+            return;
+        };
+        if next == fox.cell {
+            return;
+        }
+        let dir = step_dir(fox.cell, next);
+        let from = fox.cell;
+        self.emit(
+            format!("A fox slips away to the {}.", dir.word()),
+            Scope::Cell(from),
+            vec![],
+            vec![from],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(fox) = self.fox.as_mut() {
+            fox.cell = next;
+            fox.route_at = next_at;
+        }
+    }
+
     /// A missed throw. The hare bolts to a dry neighbor farther from the hunter.
     /// None when it has nowhere to go.
     pub(crate) fn bolt_hunted_hare(&mut self, hunter: CellId) -> Option<&'static str> {

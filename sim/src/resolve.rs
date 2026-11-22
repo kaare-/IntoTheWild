@@ -8613,6 +8613,7 @@ impl World {
                 until: self.time.saturating_add(1),
             });
             self.whistle_frighten_hare(actor.cell);
+            self.whistle_frighten_fox(actor.cell);
             let name = self.name_of(actor.id);
             let rest = "the bone whistle.";
             self.emit(
