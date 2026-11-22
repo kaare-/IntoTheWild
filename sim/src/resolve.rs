@@ -1343,7 +1343,11 @@ impl World {
                 } else if !self.loose_ids(actor.id, Material::IronOre).is_empty() {
                     self.iron_smelt_ready(actor)
                 } else {
-                    Err("You are not carrying copper ore.".into())
+                    Err(self.gather_miss(
+                        actor.cell,
+                        Material::CopperOre,
+                        "You are not carrying copper ore.".into(),
+                    ))
                 }
             }
             Attempt::SmeltIron => {
@@ -9998,7 +10002,11 @@ impl World {
 
     fn iron_smelt_ready(&self, actor: &crate::model::Actor) -> Result<bool, String> {
         if self.loose_ids(actor.id, Material::IronOre).is_empty() {
-            Err("You are not carrying iron ore.".into())
+            Err(self.gather_miss(
+                actor.cell,
+                Material::IronOre,
+                "You are not carrying iron ore.".into(),
+            ))
         } else if self.fire_at(actor.cell).is_none() {
             Err("There is no fire burning here.".into())
         } else if self.fire_at(actor.cell).is_some_and(|fire| !fire.charcoal) {
@@ -10109,11 +10117,19 @@ impl World {
                 .first()
                 .copied()
             else {
+                let cell = self
+                    .actor(intent.actor_id)
+                    .map(|actor| actor.cell)
+                    .unwrap_or(0);
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "You are not carrying copper ore.",
+                    self.gather_miss(
+                        cell,
+                        Material::CopperOre,
+                        "You are not carrying copper ore.".into(),
+                    ),
                     results,
                 );
                 continue;
@@ -10176,11 +10192,19 @@ impl World {
             .first()
             .copied()
         else {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
             self.finish(
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "You are not carrying iron ore.",
+                self.gather_miss(
+                    cell,
+                    Material::IronOre,
+                    "You are not carrying iron ore.".into(),
+                ),
                 results,
             );
             return;

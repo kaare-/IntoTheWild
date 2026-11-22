@@ -17185,6 +17185,59 @@ mod charcoal_bank {
     }
 
     #[test]
+    fn smelt_names_the_step_when_the_ore_is_one_cell_off() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 0).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let stayed = world.actor(near).unwrap().cell;
+        let iron = world.step(&[intent("iron", near, Attempt::SmeltIron)]);
+        assert_eq!(
+            iron.results[0].message,
+            "You are not carrying iron ore. Step west."
+        );
+        assert_eq!(world.actor(near).unwrap().cell, stayed);
+        let iron_line = "You are not carrying iron ore. Step west.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == iron_line));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != iron_line));
+        }
+        let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+        let under = world.step(&[intent("under", rock, Attempt::SmeltIron)]);
+        assert_eq!(under.results[0].message, "You are not carrying iron ore.");
+        let bank = world.spawn_at("Bank", "b", 2, 2).unwrap();
+        let copper = world.step(&[intent("copper", bank, Attempt::Smelt)]);
+        assert_eq!(
+            copper.results[0].message,
+            "You are not carrying copper ore. Step west."
+        );
+        assert_eq!(world.actor(bank).unwrap().cell, cell_id(2, 2).unwrap());
+        let copper_line = "You are not carrying copper ore. Step west.";
+        assert!(world
+            .observe(bank)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == copper_line));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != copper_line));
+    }
+
+    #[test]
     fn iron_needs_a_hot_charcoal_fire() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 3);
         let cell = cell_id(6, 1).unwrap();
