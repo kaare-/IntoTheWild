@@ -50,6 +50,7 @@ impl World {
                 Wake::ResinReturn(cell) => self.return_resin(cell),
                 Wake::WillowReturn(cell) => self.return_willow(cell),
                 Wake::NettleReturn(cell) => self.return_nettle(cell),
+                Wake::CattailReturn(cell) => self.return_cattail(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -295,6 +296,33 @@ impl World {
         self.add_pile(cell, Material::Nettle, 2, 0);
         self.emit(
             "Nettles grow here again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The shallows have waited out their ticks. Cattails grow there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_cattail(&mut self, cell: CellId) {
+        let Some(at) = self.cattail_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.cattail_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Cattail) > 0
+            || !self.ground_ids(cell, Material::Cattail).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Cattail, 2, 0);
+        self.emit(
+            "Cattails grow again in the shallows.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

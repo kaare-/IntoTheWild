@@ -103,6 +103,10 @@ resin_ticks = 24
 # Someone who cannot see that willow does not get the line.
 willow_ticks = 24
 nettle_ticks = 24
+# After the last cattail roots are dug, look says the shallows have no
+# cattails for this many ticks. Then they grow again. Someone who cannot
+# see those shallows does not get the line. They are not the reeds.
+cattail_ticks = 24
 # After the flint nodule on the slope is gathered, look says the slope has
 # no flint for this many ticks. Then a nodule lies there again. Knapping the
 # one that was carried does not change the wait. Someone who cannot see that

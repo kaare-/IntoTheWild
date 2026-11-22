@@ -850,6 +850,8 @@ pub enum Wake {
     WillowReturn(CellId),
     /// Nettles grow on this floor again.
     NettleReturn(CellId),
+    /// Cattails grow in these shallows again.
+    CattailReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
     /// A lump of ochre lies on this slope cell again.
@@ -1181,9 +1183,12 @@ pub struct World {
     #[serde(default)]
     pub(crate) nettle_returns_at: BTreeMap<CellId, u64>,
     /// The cattails in the shallows of the still. Not the reeds at the brook.
-    /// Bare once the last roots are dug. They do not grow back.
+    /// Bare once the last roots are dug.
     #[serde(default)]
     pub(crate) cattail_stands: BTreeSet<CellId>,
+    /// When bare shallows have cattails again. Look says the shallows have none until then.
+    #[serde(default)]
+    pub(crate) cattail_returns_at: BTreeMap<CellId, u64>,
     /// Slope cells where a flint nodule lies again after it is taken.
     #[serde(default)]
     pub(crate) flint_beds: BTreeSet<CellId>,
@@ -1389,6 +1394,7 @@ impl World {
             nettle_stands: BTreeSet::new(),
             nettle_returns_at: BTreeMap::new(),
             cattail_stands: BTreeSet::new(),
+            cattail_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
@@ -2020,6 +2026,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.nettle_ticks);
         self.nettle_returns_at.insert(cell, at);
         self.schedule(at, Wake::NettleReturn(cell));
+    }
+
+    /// The shallows are dug out. Cattails grow again `cattail_ticks` after this step.
+    /// A wake that finds roots already there does not add a second stand.
+    pub(crate) fn arm_cattail_stand(&mut self, cell: CellId) {
+        if !self.cattail_stands.contains(&cell) || self.cattail_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Cattail) > 0
+            || !self.ground_ids(cell, Material::Cattail).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.cattail_ticks);
+        self.cattail_returns_at.insert(cell, at);
+        self.schedule(at, Wake::CattailReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -17063,5 +17085,107 @@ mod cattail {
             .events
             .iter()
             .all(|event| !event.text.contains("eats the cooked cattail roots")));
+    }
+
+    #[test]
+    fn dug_out_cattails_grow_again_after_twenty_four_ticks() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        assert_eq!(world.tuning.cattail_ticks, 24);
+        let one = world.step(&[intent("one", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(one.results[0].message, "You gather cattail roots.");
+        assert!(world.cattail_returns_at.is_empty());
+        assert!(world.observe(near).unwrap().text.contains(
+            "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
+        ));
+        let two = world.step(&[intent("two", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(two.results[0].message, "You gather cattail roots.");
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("gathers cattail roots") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers cattail roots."));
+        let bare = world.observe(near).unwrap().text;
+        assert!(
+            bare.contains("The shallows here have no cattails."),
+            "{bare}"
+        );
+        assert!(!bare.contains("Cattails grow here"), "{bare}");
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .text
+            .contains("The shallows to the north and west have no cattails."));
+        assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
+        let missed = world.step(&[intent("none", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(
+            missed.results[0].message,
+            "There is no cattail here to gather."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "There is no cattail here to gather." }));
+        for person in [seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is no cattail here to gather." }));
+        }
+        let ticks = world.tuning.cattail_ticks;
+        // The bare gather above was one of the twenty-four ticks.
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The shallows here have no cattails."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != "Cattails grow again in the shallows." }));
+        world.step(&[]);
+        let grown = "Cattails grow again in the shallows.";
+        let back = world.observe(near).unwrap();
+        assert!(
+            back.text.contains(
+                "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
+            ),
+            "{}",
+            back.text
+        );
+        assert!(!back.text.contains("The shallows here have no cattails."));
+        assert!(back.events.iter().any(|event| event.text == grown));
+        let west = world.observe(seen).unwrap();
+        assert!(west.text.contains(
+            "Cattails grow in the shallows to the north and west. They are not the reeds."
+        ));
+        assert!(west.events.iter().any(|event| event.text == grown));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != grown));
+        assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(again.results[0].message, "You gather cattail roots.");
     }
 }
