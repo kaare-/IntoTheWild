@@ -185,7 +185,7 @@ impl World {
             ExamineTarget::Bark => self.examine_material(actor_id, Material::Bark),
             ExamineTarget::Log => self.examine_log(actor_id),
             ExamineTarget::Frame => self.examine_frames(actor_id),
-            ExamineTarget::Berries => self.examine_material(actor_id, Material::Berry),
+            ExamineTarget::Berries => self.examine_named_berries(actor_id),
             ExamineTarget::BitterBerries => self.examine_material(actor_id, Material::BitterBerry),
             ExamineTarget::Mushrooms => self.examine_material(actor_id, Material::Mushroom),
             ExamineTarget::Pot => self.examine_pot(actor_id),
@@ -9793,10 +9793,51 @@ impl World {
         }
     }
 
+    /// `examine berries` names the berries underfoot. Dark berries and pale
+    /// berries describe themselves. A sweet pile farther off is not that patch.
+    /// With nothing underfoot, the sweet berries in sight are still the ones named.
+    fn examine_named_berries(&self, viewer: ActorId) -> String {
+        let Some(origin) = self.actor(viewer).map(|person| person.cell) else {
+            return "No such person is in the valley.".into();
+        };
+        let mut parts = Vec::new();
+        if self.berries_underfoot(origin, Material::BitterBerry) {
+            parts.push(self.examine_material_limited(viewer, Material::BitterBerry, Some(origin)));
+        }
+        if self.berries_underfoot(origin, Material::PaleBerry) {
+            parts.push(self.examine_material_limited(viewer, Material::PaleBerry, Some(origin)));
+        }
+        if parts.is_empty() {
+            return self.examine_material(viewer, Material::Berry);
+        }
+        if self.berries_underfoot(origin, Material::Berry) {
+            parts.push(self.examine_material_limited(viewer, Material::Berry, Some(origin)));
+        }
+        parts.join(" ")
+    }
+
+    fn berries_underfoot(&self, cell: CellId, material: Material) -> bool {
+        self.pile_count(cell, material) > 0 || !self.ground_ids(cell, material).is_empty()
+    }
+
     fn examine_material(&self, viewer: ActorId, material: Material) -> String {
+        self.examine_material_limited(viewer, material, None)
+    }
+
+    fn examine_material_limited(
+        &self,
+        viewer: ActorId,
+        material: Material,
+        only: Option<CellId>,
+    ) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
-        for cell in self.visible_cell_ids(viewer) {
+        let cells = if let Some(cell) = only {
+            vec![cell]
+        } else {
+            self.visible_cell_ids(viewer)
+        };
+        for cell in cells {
             let count = self.pile_count(cell, material);
             if count == 0 && self.berry_patch_bare(cell, material) {
                 let way = if cell == origin {
@@ -9994,6 +10035,9 @@ impl World {
             }
         }
         for other in self.visible_actor_ids(viewer) {
+            if only.is_some_and(|cell| self.actor(other).map(|person| person.cell) != Some(cell)) {
+                continue;
+            }
             let ids = self.loose_ids(other, material);
             if ids.is_empty() {
                 continue;

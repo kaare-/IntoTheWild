@@ -12457,7 +12457,7 @@ mod wolf {
 
 #[cfg(test)]
 mod berry_return {
-    use super::{Attempt, Material, World};
+    use super::{Attempt, ExamineTarget, Material, World};
 
     fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
         super::Intent {
@@ -12555,6 +12555,44 @@ mod berry_return {
             world.pile_count(world.actor(near).unwrap().cell, Material::BitterBerry),
             1
         );
+    }
+
+    #[test]
+    fn examine_berries_on_the_dark_patch_names_those_berries() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let pale = world.spawn_at("Ash", "a", 1, 4).unwrap();
+        let here = world.examine(near, ExamineTarget::Berries);
+        assert!(
+            here.contains("A pile of 2 handfuls of dark berries is in contact with the ground here, in the open."),
+            "{here}"
+        );
+        assert!(here.contains("The dark berries are dry."), "{here}");
+        assert!(!here.contains("sweet"), "{here}");
+        assert!(!here.contains("deer"), "{here}");
+        assert!(!here.contains("under the rock"), "{here}");
+        let sweet = world.examine(seen, ExamineTarget::Berries);
+        assert!(sweet.contains("under the rock overhang"), "{sweet}");
+        assert!(
+            sweet.contains("sweet berries") || sweet.contains("good to eat raw"),
+            "{sweet}"
+        );
+        assert!(!sweet.contains("dark berries"), "{sweet}");
+        let pale_text = world.examine(pale, ExamineTarget::Berries);
+        assert!(pale_text.contains("pale berries"), "{pale_text}");
+        assert!(!pale_text.contains("dark berries"), "{pale_text}");
+        assert!(!pale_text.contains("sweet"), "{pale_text}");
+        assert!(!pale_text.contains("deer"), "{pale_text}");
+        for person in [near, seen, quiet, pale] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("berries") }));
+        }
     }
 
     #[test]
