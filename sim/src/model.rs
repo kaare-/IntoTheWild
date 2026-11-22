@@ -123,6 +123,10 @@ pub enum Material {
     /// A bundle is cordage. A bone fish hook spends it as the line
     /// when the arms hold no hide strips.
     Willow,
+    /// Fibres from the nettles east of the trail.
+    /// A bundle is cordage, spent where hide strips or willow cordage are spent
+    /// when neither of those is at hand. Bare hands sting. Mud on the skin does not.
+    Nettle,
 }
 
 impl Material {
@@ -173,6 +177,7 @@ impl Material {
             Material::Hook => "fish hook",
             Material::Resin => "resin",
             Material::Willow => "willow",
+            Material::Nettle => "nettle",
         }
     }
 
@@ -223,6 +228,7 @@ impl Material {
             Material::Hook => "bone fish hook",
             Material::Resin => "lump of pine resin",
             Material::Willow => "bundle of willow cordage",
+            Material::Nettle => "bundle of nettle cordage",
         }
     }
 
@@ -362,6 +368,7 @@ pub enum ExamineTarget {
     Hook,
     Resin,
     Willow,
+    Nettle,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -674,6 +681,9 @@ pub struct Item {
     /// The lashing was willow cordage. Hide strips leave this false.
     #[serde(default)]
     pub bound_willow: bool,
+    /// The lashing was nettle cordage. Hide strips and willow leave this false.
+    #[serde(default)]
+    pub bound_nettle: bool,
     /// Meat that has been held over a fire. Raw meat leaves this false.
     #[serde(default)]
     pub cooked: bool,
@@ -828,6 +838,8 @@ pub enum Wake {
     ResinReturn(CellId),
     /// Willow cordage hangs on this bank again.
     WillowReturn(CellId),
+    /// Nettles grow on this floor again.
+    NettleReturn(CellId),
     /// A flint nodule lies on this slope cell again.
     FlintReturn(CellId),
     /// A lump of ochre lies on this slope cell again.
@@ -1069,6 +1081,9 @@ pub struct World {
     /// Snares in `snares` that were set with willow cordage rather than hide strips.
     #[serde(default)]
     pub(crate) snare_willow: BTreeSet<CellId>,
+    /// Snares in `snares` that were set with nettle cordage.
+    #[serde(default)]
+    pub(crate) snare_nettle: BTreeSet<CellId>,
     /// Brook cells where a fishing net is set. It stays until someone gathers it.
     #[serde(default)]
     pub(crate) set_nets: BTreeSet<CellId>,
@@ -1149,6 +1164,12 @@ pub struct World {
     /// When a bare willow has withies again. Look says the willow has none until then.
     #[serde(default)]
     pub(crate) willow_returns_at: BTreeMap<CellId, u64>,
+    /// The nettles on the dry floor east of the trail. Bare once the last bundle is taken.
+    #[serde(default)]
+    pub(crate) nettle_stands: BTreeSet<CellId>,
+    /// When bare nettles have grown again. Look says the nettles are bare until then.
+    #[serde(default)]
+    pub(crate) nettle_returns_at: BTreeMap<CellId, u64>,
     /// Slope cells where a flint nodule lies again after it is taken.
     #[serde(default)]
     pub(crate) flint_beds: BTreeSet<CellId>,
@@ -1325,6 +1346,7 @@ impl World {
             thatched: BTreeSet::new(),
             snares: BTreeMap::new(),
             snare_willow: BTreeSet::new(),
+            snare_nettle: BTreeSet::new(),
             set_nets: BTreeSet::new(),
             net_catches_at: BTreeMap::new(),
             weirs: BTreeMap::new(),
@@ -1350,6 +1372,8 @@ impl World {
             resin_returns_at: BTreeMap::new(),
             willow_stands: BTreeSet::new(),
             willow_returns_at: BTreeMap::new(),
+            nettle_stands: BTreeSet::new(),
+            nettle_returns_at: BTreeMap::new(),
             flint_beds: BTreeSet::new(),
             flint_returns_at: BTreeMap::new(),
             ochre_beds: BTreeSet::new(),
@@ -1476,6 +1500,10 @@ impl World {
         let willow = cell_id(0, 4).unwrap();
         world.add_pile(willow, Material::Willow, 2, 0);
         world.willow_stands.insert(willow);
+        // Nettles on the dry floor east of the trail. Two bundles of cordage.
+        let nettles = cell_id(6, 2).unwrap();
+        world.add_pile(nettles, Material::Nettle, 2, 0);
+        world.nettle_stands.insert(nettles);
         world.normalize();
         world
     }
@@ -1813,6 +1841,7 @@ impl World {
                 wooden_tip: false,
                 bound: false,
                 bound_willow: false,
+                bound_nettle: false,
                 cooked: false,
                 salted: false,
                 smoked: false,
@@ -1956,6 +1985,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.willow_ticks);
         self.willow_returns_at.insert(cell, at);
         self.schedule(at, Wake::WillowReturn(cell));
+    }
+
+    /// The nettles are bare. They grow again `nettle_ticks` after this step.
+    /// A wake that finds cordage already there does not add a second stand.
+    pub(crate) fn arm_nettle_stand(&mut self, cell: CellId) {
+        if !self.nettle_stands.contains(&cell) || self.nettle_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Nettle) > 0
+            || !self.ground_ids(cell, Material::Nettle).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.nettle_ticks);
+        self.nettle_returns_at.insert(cell, at);
+        self.schedule(at, Wake::NettleReturn(cell));
     }
 
     /// An emptied berry patch grows the same pile back after `berry_ticks`.
@@ -16442,5 +16487,211 @@ mod charcoal_bank {
             .events
             .iter()
             .all(|event| event.text != "The iron ore smelts into a bloom."));
+    }
+}
+
+#[cfg(test)]
+mod nettle {
+    use super::{Attempt, Dir, Material, Role, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn events(world: &World, actor: u32) -> Vec<String> {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.text.clone())
+            .collect()
+    }
+
+    #[test]
+    fn nettles_east_of_the_trail_strip_into_cordage() {
+        assert!(matches!(
+            crate::parse::parse_attempt("strip nettle").unwrap(),
+            Attempt::Gather(Material::Nettle)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather nettle").unwrap(),
+            Attempt::Gather(Material::Nettle)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("strip willow").unwrap(),
+            Attempt::Gather(Material::Willow)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather cordage").unwrap(),
+            Attempt::Gather(Material::Willow)
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let stand = super::cell_id(6, 2).unwrap();
+        assert_eq!(world.pile_count(stand, Material::Nettle), 2);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let from_here = world.observe(near).unwrap().text;
+        assert!(from_here.contains("Nettles grow to the"), "{from_here}");
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .text
+            .contains("Nettles grow to the"));
+        assert!(!world
+            .observe(seen)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("nettle"));
+
+        let miss = world.step(&[intent("miss", near, Attempt::Gather(Material::Nettle))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There is no nettle here to gather."
+        );
+        assert!(events(&world, near).contains(&"There is no nettle here to gather.".to_string()));
+        assert!(events(&world, seen)
+            .iter()
+            .all(|text| !text.contains("nettle")));
+        assert!(events(&world, quiet)
+            .iter()
+            .all(|text| !text.contains("nettle")));
+
+        let other = world.spawn_at("Other", "o", 0, 0).unwrap();
+        world.mint_item(
+            Material::Cord,
+            0,
+            world.actor(other).unwrap().cell,
+            Some(other),
+            Role::Loose,
+        );
+        world.mint_item(
+            Material::Nettle,
+            0,
+            world.actor(other).unwrap().cell,
+            Some(other),
+            Role::Loose,
+        );
+        let prefer = world.step(&[intent("prefer", other, Attempt::SetSnare)]);
+        assert_eq!(prefer.results[0].message, "You set a snare of hide strips.");
+        assert!(world.loose_ids(other, Material::Cord).is_empty());
+        assert_eq!(world.loose_ids(other, Material::Nettle).len(), 1);
+        assert!(events(&world, other).iter().all(|text| {
+            text != "You set a snare of hide strips."
+                && text != "Other sets a snare of hide strips."
+        }));
+
+        for (id, dir) in [
+            ("north", Dir::North),
+            ("east", Dir::East),
+            ("east2", Dir::East),
+        ] {
+            world.step(&[intent(id, near, Attempt::Move(dir))]);
+        }
+        assert_eq!(world.actor(near).unwrap().cell, stand);
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        let on_stand = world.observe(near).unwrap().text;
+        assert!(
+            on_stand.contains("Nettles grow here. They can be stripped for cordage."),
+            "{on_stand}"
+        );
+
+        let strip = world.step(&[intent("strip", near, Attempt::Gather(Material::Nettle))]);
+        let yours = "You gather a bundle of nettle cordage. The nettles sting.";
+        let theirs = "Near gathers a bundle of nettle cordage. The nettles sting.";
+        assert_eq!(strip.results[0].message, yours);
+        assert!(events(&world, near)
+            .iter()
+            .all(|text| text != yours && text != theirs));
+        assert!(events(&world, quiet).contains(&theirs.to_string()));
+        assert!(events(&world, seen)
+            .iter()
+            .all(|text| !text.contains("nettle")));
+        assert!(world.observe(near).unwrap().text.contains("You are stung."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a bundle of nettle cordage"));
+        assert_eq!(world.loose_ids(near, Material::Nettle).len(), 1);
+
+        {
+            let person = world.actors.get_mut(&near).unwrap();
+            person.stings_until = None;
+            person.mud = world.tuning.smear_at;
+        }
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Nettle))]);
+        let calm = "You gather a bundle of nettle cordage.";
+        let calm_seen = "Near gathers a bundle of nettle cordage.";
+        assert_eq!(again.results[0].message, calm);
+        assert!(events(&world, near)
+            .iter()
+            .all(|text| text != calm && text != calm_seen));
+        assert!(events(&world, quiet).iter().any(|text| text == calm_seen));
+        assert!(events(&world, seen)
+            .iter()
+            .all(|text| !text.contains("gathers")));
+        assert!(world.actor(near).unwrap().stings_until.is_none());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("The nettles here are bare."));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("two bundles of nettle cordage"));
+        assert_eq!(world.loose_ids(near, Material::Nettle).len(), 2);
+
+        world.mint_item(Material::Flake, 0, stand, Some(near), Role::Loose);
+        world.mint_item(Material::Branch, 0, stand, Some(near), Role::Loose);
+        let haft = world.step(&[intent("haft", near, Attempt::Haft)]);
+        let bound = "You haft the flint flake and a dry branch into a spear. The tip is bound with nettle cordage.";
+        let bound_seen = "Near hafts the flint flake and a dry branch into a spear. The tip is bound with nettle cordage.";
+        assert_eq!(haft.results[0].message, bound);
+        assert!(events(&world, near)
+            .iter()
+            .all(|text| text != bound && text != bound_seen));
+        assert!(events(&world, quiet).contains(&bound_seen.to_string()));
+        assert!(events(&world, seen)
+            .iter()
+            .all(|text| !text.contains("haft")));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("bound with nettle cordage"));
+        assert_eq!(world.loose_ids(near, Material::Nettle).len(), 1);
+
+        let snare = world.step(&[intent("snare", near, Attempt::SetSnare)]);
+        let set = "You set a snare of nettle cordage.";
+        let set_seen = "Near sets a snare of nettle cordage.";
+        assert_eq!(snare.results[0].message, set);
+        assert!(events(&world, near)
+            .iter()
+            .all(|text| text != set && text != set_seen));
+        assert!(events(&world, quiet).contains(&set_seen.to_string()));
+        assert!(events(&world, seen)
+            .iter()
+            .all(|text| !text.contains("nettle")));
+        assert!(world.loose_ids(near, Material::Nettle).is_empty());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A nettle snare is set here."));
+        assert!(!world
+            .observe(seen)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("nettle"));
     }
 }

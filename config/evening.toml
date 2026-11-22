@@ -102,6 +102,7 @@ resin_ticks = 24
 # has no withies for this many ticks. Then two bundles hang there again.
 # Someone who cannot see that willow does not get the line.
 willow_ticks = 24
+nettle_ticks = 24
 # After the flint nodule on the slope is gathered, look says the slope has
 # no flint for this many ticks. Then a nodule lies there again. Knapping the
 # one that was carried does not change the wait. Someone who cannot see that

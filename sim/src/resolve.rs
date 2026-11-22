@@ -22,6 +22,14 @@ const BARK_REFUSAL: &str = "Bark does not feed you.";
 /// A gather or a craft that needs a free arm. The second sentence names `drop`.
 const ARMS_FULL: &str = "Your arms are full. Drop something first.";
 
+/// Which cordage a snare, a weir, a bow, or a spear haft spends.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Line {
+    Hide,
+    Willow,
+    Nettle,
+}
+
 impl World {
     pub(crate) fn resolve(&mut self, intents: &[Intent]) -> Vec<CommandResult> {
         let mut results = Vec::new();
@@ -1744,6 +1752,7 @@ impl World {
                             | Material::Hook
                             | Material::Resin
                             | Material::Willow
+                            | Material::Nettle
                             | Material::Bone
                             | Material::Berry
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -2160,6 +2169,7 @@ impl World {
                     | Material::Paddle
                     | Material::Hook
                     | Material::Willow
+                    | Material::Nettle
                     | Material::Berry
             ) {
                 self.ground_ids(cell, material)
@@ -2263,6 +2273,14 @@ impl World {
                         "a honeycomb.".to_string()
                     } else if material == Material::Honey {
                         "a honeycomb. The bees sting.".to_string()
+                    } else if material == Material::Nettle
+                        && self
+                            .actor(intent.actor_id)
+                            .is_some_and(|person| person.mud < self.tuning.smear_at)
+                    {
+                        "a bundle of nettle cordage. The nettles sting.".to_string()
+                    } else if material == Material::Nettle {
+                        "a bundle of nettle cordage.".to_string()
                     } else if noun == "otter hide" {
                         format!("an otter hide{from}.")
                     } else if noun == "fox hide" {
@@ -2299,6 +2317,19 @@ impl World {
                     }
                     if material == Material::Willow {
                         self.arm_willow_stand(cell);
+                    }
+                    if material == Material::Nettle
+                        && self
+                            .actor(intent.actor_id)
+                            .is_some_and(|person| person.mud < self.tuning.smear_at)
+                    {
+                        let until = self.time.saturating_add(self.tuning.sting_ticks);
+                        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+                            person.stings_until = Some(until);
+                        }
+                    }
+                    if material == Material::Nettle {
+                        self.arm_nettle_stand(cell);
                     }
                     if material == Material::Flint {
                         self.arm_flint_bed(cell);
@@ -4528,6 +4559,9 @@ impl World {
         if let Some(id) = self.loose_ids(actor, Material::Willow).first().copied() {
             return Some((id, "The willow cordage is spent."));
         }
+        if let Some(id) = self.loose_ids(actor, Material::Nettle).first().copied() {
+            return Some((id, "The nettle cordage is spent."));
+        }
         None
     }
 
@@ -4834,6 +4868,13 @@ impl World {
             } else {
                 None
             };
+            let nettle = if strips.is_none() && willow.is_none() {
+                self.loose_ids(intent.actor_id, Material::Nettle)
+                    .first()
+                    .copied()
+            } else {
+                None
+            };
             self.items.remove(&flake);
             self.items.remove(&branch);
             if let Some(strips) = strips {
@@ -4842,16 +4883,22 @@ impl World {
             if let Some(willow) = willow {
                 self.items.remove(&willow);
             }
+            if let Some(nettle) = nettle {
+                self.items.remove(&nettle);
+            }
             let id = self.mint_item(Material::Spear, 0, cell, Some(intent.actor_id), Role::Loose);
             if let Some(spear) = self.items.get_mut(&id) {
                 spear.flint_tip = true;
-                spear.bound = strips.is_some() || willow.is_some();
+                spear.bound = strips.is_some() || willow.is_some() || nettle.is_some();
                 spear.bound_willow = willow.is_some();
+                spear.bound_nettle = nettle.is_some();
             }
             let rest = if strips.is_some() {
                 "the flint flake and a dry branch into a spear. The tip is bound with hide."
             } else if willow.is_some() {
                 "the flint flake and a dry branch into a spear. The tip is bound with willow cordage."
+            } else if nettle.is_some() {
+                "the flint flake and a dry branch into a spear. The tip is bound with nettle cordage."
             } else {
                 "the flint flake and a dry branch into a spear."
             };
@@ -7680,7 +7727,7 @@ impl World {
                 );
                 continue;
             }
-            let Some(willow) = self.take_snare_line(actor.id, actor.cell) else {
+            let Some(line) = self.take_snare_line(actor.id, actor.cell) else {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -7692,15 +7739,21 @@ impl World {
             };
             let ready = self.time.saturating_add(self.tuning.snare_ticks);
             self.snares.insert(actor.cell, ready);
-            if willow {
-                self.snare_willow.insert(actor.cell);
+            match line {
+                Line::Willow => {
+                    self.snare_willow.insert(actor.cell);
+                }
+                Line::Nettle => {
+                    self.snare_nettle.insert(actor.cell);
+                }
+                Line::Hide => {}
             }
             self.schedule(ready, crate::model::Wake::Snare(actor.cell));
             let name = self.name_of(actor.id);
-            let rest = if willow {
-                "a snare of willow cordage."
-            } else {
-                "a snare of hide strips."
+            let rest = match line {
+                Line::Hide => "a snare of hide strips.",
+                Line::Willow => "a snare of willow cordage.",
+                Line::Nettle => "a snare of nettle cordage.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "set", rest),
@@ -7883,9 +7936,9 @@ impl World {
             || !self.ground_ids(cell, Material::Cord).is_empty()
     }
 
-    /// Hide strips if any are here, otherwise a bundle of willow cordage.
+    /// Hide strips if any are here, otherwise willow cordage, otherwise nettle cordage.
     pub(crate) fn has_snare_line(&self, actor: crate::model::ActorId) -> bool {
-        self.has_cord(actor) || self.has_willow_cord(actor)
+        self.has_cord(actor) || self.has_willow_cord(actor) || self.has_nettle_cord(actor)
     }
 
     fn has_willow_cord(&self, actor: crate::model::ActorId) -> bool {
@@ -7894,23 +7947,37 @@ impl World {
             || !self.ground_ids(cell, Material::Willow).is_empty()
     }
 
-    /// `Some(false)` spends hide strips. `Some(true)` spends willow cordage.
-    /// Hide strips win when both are held, in the arms or on the ground.
+    fn has_nettle_cord(&self, actor: crate::model::ActorId) -> bool {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        !self.loose_ids(actor, Material::Nettle).is_empty()
+            || !self.ground_ids(cell, Material::Nettle).is_empty()
+    }
+
+    /// Hide strips, then willow cordage, then nettle cordage.
+    /// Hide strips win when more than one is held, in the arms or on the ground.
     fn take_snare_line(
         &mut self,
         actor: crate::model::ActorId,
         cell: crate::model::CellId,
-    ) -> Option<bool> {
+    ) -> Option<Line> {
         if self.take_one_cord(actor, cell) {
-            return Some(false);
+            return Some(Line::Hide);
         }
         if let Some(id) = self.loose_ids(actor, Material::Willow).first().copied() {
             self.items.remove(&id);
-            return Some(true);
+            return Some(Line::Willow);
         }
         if let Some(id) = self.ground_ids(cell, Material::Willow).first().copied() {
             self.items.remove(&id);
-            return Some(true);
+            return Some(Line::Willow);
+        }
+        if let Some(id) = self.loose_ids(actor, Material::Nettle).first().copied() {
+            self.items.remove(&id);
+            return Some(Line::Nettle);
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Nettle).first().copied() {
+            self.items.remove(&id);
+            return Some(Line::Nettle);
         }
         None
     }
@@ -10193,23 +10260,29 @@ impl World {
             })
     }
 
-    /// Cordage for the bow. Hide strips are spent before willow, and a bundle
-    /// in the arms is spent before one lying in the cell. `true` means willow.
-    fn bow_line(&self, actor: crate::model::ActorId) -> Option<(crate::model::ItemId, bool)> {
+    /// Cordage for the bow. Hide strips, then willow, then nettle.
+    /// A bundle in the arms is spent before one lying in the cell.
+    fn bow_line(&self, actor: crate::model::ActorId) -> Option<(crate::model::ItemId, Line)> {
         let cell = self.bow_cell(actor);
         if let Some(id) = self.loose_ids(actor, Material::Cord).first().copied() {
-            return Some((id, false));
+            return Some((id, Line::Hide));
         }
         if let Some(id) = self.ground_ids(cell, Material::Cord).first().copied() {
-            return Some((id, false));
+            return Some((id, Line::Hide));
         }
         if let Some(id) = self.loose_ids(actor, Material::Willow).first().copied() {
-            return Some((id, true));
+            return Some((id, Line::Willow));
         }
-        self.ground_ids(cell, Material::Willow)
+        if let Some(id) = self.ground_ids(cell, Material::Willow).first().copied() {
+            return Some((id, Line::Willow));
+        }
+        if let Some(id) = self.loose_ids(actor, Material::Nettle).first().copied() {
+            return Some((id, Line::Nettle));
+        }
+        self.ground_ids(cell, Material::Nettle)
             .first()
             .copied()
-            .map(|id| (id, true))
+            .map(|id| (id, Line::Nettle))
     }
 
     pub(crate) fn bow_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
@@ -10247,7 +10320,7 @@ impl World {
                 );
                 continue;
             };
-            let Some((line, willow)) = self.bow_line(intent.actor_id) else {
+            let Some((line, kind)) = self.bow_line(intent.actor_id) else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
@@ -10265,13 +10338,14 @@ impl World {
             self.items.remove(&line);
             let id = self.mint_item(Material::Bow, 0, cell, Some(intent.actor_id), Role::Loose);
             if let Some(bow) = self.items.get_mut(&id) {
-                bow.bound_willow = willow;
+                bow.bound_willow = kind == Line::Willow;
+                bow.bound_nettle = kind == Line::Nettle;
             }
             let name = self.name_of(intent.actor_id);
-            let rest = if willow {
-                "a bow from a dry branch and willow cordage."
-            } else {
-                "a bow from a dry branch and hide strips."
+            let rest = match kind {
+                Line::Hide => "a bow from a dry branch and hide strips.",
+                Line::Willow => "a bow from a dry branch and willow cordage.",
+                Line::Nettle => "a bow from a dry branch and nettle cordage.",
             };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "craft", rest),

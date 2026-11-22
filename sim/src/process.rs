@@ -49,6 +49,7 @@ impl World {
                 Wake::MossReturn(cell) => self.return_moss(cell),
                 Wake::ResinReturn(cell) => self.return_resin(cell),
                 Wake::WillowReturn(cell) => self.return_willow(cell),
+                Wake::NettleReturn(cell) => self.return_nettle(cell),
                 Wake::FlintReturn(cell) => self.return_flint(cell),
                 Wake::OchreReturn(cell) => self.return_ochre(cell),
                 Wake::ClayReturn(cell) => self.return_clay(cell),
@@ -267,6 +268,33 @@ impl World {
         self.add_pile(cell, Material::Willow, 2, 0);
         self.emit(
             "Willow cordage hangs on the willow again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The nettles have waited out their ticks. Two bundles of cordage grow there again.
+    /// Someone who cannot see the stand hears nothing.
+    fn return_nettle(&mut self, cell: CellId) {
+        let Some(at) = self.nettle_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.nettle_returns_at.remove(&cell);
+        if self.pile_count(cell, Material::Nettle) > 0
+            || !self.ground_ids(cell, Material::Nettle).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Nettle, 2, 0);
+        self.emit(
+            "Nettles grow here again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],
@@ -738,6 +766,7 @@ impl World {
             return;
         }
         self.snares.remove(&cell);
+        let nettle = self.snare_nettle.remove(&cell);
         let willow = self.snare_willow.remove(&cell);
         let valley = self
             .hare
@@ -754,10 +783,14 @@ impl World {
         } else {
             self.mint_item(Material::Meat, 0, cell, None, Role::Loose)
         };
-        let caught = if valley && willow {
+        let caught = if valley && nettle {
+            "The nettle snare catches a hare."
+        } else if valley && willow {
             "The willow snare catches a hare."
         } else if valley {
             "The snare catches a hare."
+        } else if nettle {
+            "The nettle snare catches small game."
         } else if willow {
             "The willow snare catches small game."
         } else {

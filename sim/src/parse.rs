@@ -13,10 +13,10 @@ drop branch|bark|berries|dark berries|pale berries|mushrooms|pot|mud|water|stone
 set clay                     a lump at a burning fire; it hardens into a bowl
 bind spear                   a carried stone and a carried branch; hold it at a fire
 knap                         a carried flint nodule into a sharp flake
-haft                         a carried flint flake and a dry branch into a spear; hide strips bind the tip when carried, otherwise willow cordage. Hold it at a fire
+haft                         a carried flint flake and a dry branch into a spear; hide strips bind the tip when carried, otherwise willow cordage, otherwise nettle cordage. Hold it at a fire
 point branch                 a carried dry branch into a wooden spear. The point is still green. No flint and no stone
 harden spear                 that wooden point, held in a burning fire. It is weaker than a flint spear. The fire is not used up
-craft bow                    a dry branch and hide strips or willow cordage, from the arms if you carry them, or lying in this cell. Hide strips are spent when both are here. The bow stays in the arms.
+craft bow                    a dry branch and hide strips, willow cordage, or nettle cordage, from the arms if you carry them, or lying in this cell. Hide strips are spent before willow, and willow before nettle. The bow stays in the arms.
 make bow                     the same bow
 dry branch                   a damp or soaked branch at a burning fire; after the wait it is dry and can haft. The fire is not used up.
 dry clothes                  wet, damp, or soaked clothes at a burning fire. You wait there until they are dry. Leaving the fire stops the wait. The fire is not used up.
@@ -50,7 +50,7 @@ carve awl                    a bone, with a flint flake or an iron knife, into a
 carve paddle                 a dry branch, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The wooden paddle stays in the arms. Holding it names the paddle when you paddle. Bare hands still paddle.
 carve hook                   a bone, from the arms or on the ground, with a flint flake or an iron knife. The tool is not used up. The bone fish hook stays in the arms.
 make awl                     the same bone awl
-set snare                    hide strips or willow cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent when both are here.
+set snare                    hide strips, willow cordage, or nettle cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, and willow before nettle.
 set trap                     the same snare
 shape clay                   a lump in your arms or at your feet into an unfired clay pot. It is not fired.
 fire pot                     an unfired pot at a burning fire; it hardens and can hold water. The fire is not used up.
@@ -60,7 +60,7 @@ thatch lean-to               a carried bundle of reeds on a lean-to already stan
 weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
-set weir                     one bundle of reeds and cordage, willow or hide strips, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
+set weir                     one bundle of reeds and cordage, hide strips or willow or nettle, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
 weave mat                    two bundles of reeds, from the arms or the pile at your feet, into a reed mat. Set it or drop it, then rest on it. The open wind becomes a little wind.
 set mat                      a carried reed mat, on this ground. It leaves the arms. rest works on it, as under a lean-to.
 make net                     the same net
@@ -80,6 +80,7 @@ gather eggs                  eggs from the bird's nest in the tree on the west s
 gather moss                  a handful from the damp bank of the brook. It can be pressed on a sting.
 gather resin                 a lump of pine resin from the pine south of the trail. It is pitch. The pine is bare, then the lumps lie there again.
 strip willow                 a bundle of willow cordage from the willow south of the brook. gather cordage is the same. The willow is bare, then the bundles hang there again. A bone fish hook spends a bundle as the line when the arms hold no hide strips.
+strip nettle                 a bundle of nettle cordage from the nettles east of the trail. gather nettle is the same. Bare hands sting. Mud on the skin does not. The nettles are bare, then they grow again. The bundle is cordage where hide strips or willow cordage work.
 press moss                   a carried handful on a sting. The stings clear.
 dress sting                  the same press
 use moss                     the same press
@@ -211,6 +212,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::DressSting)
         }
         "use" if rest == "moss" || rest == "the moss" => Ok(Attempt::DressSting),
+        "strip"
+            if rest == "nettle"
+                || rest == "nettles"
+                || rest == "the nettles"
+                || rest == "nettle cordage" =>
+        {
+            Ok(Attempt::Gather(Material::Nettle))
+        }
         "strip"
             if rest == "willow"
                 || rest == "the willow"
@@ -630,6 +639,9 @@ fn parse_material(text: &str) -> Result<Material, String> {
         | "lumps of pitch"
         | "lump of pine resin"
         | "lumps of pine resin" => Ok(Material::Resin),
+        "nettle" | "nettles" | "nettle cordage" | "bundle of nettle cordage" => {
+            Ok(Material::Nettle)
+        }
         "willow"
         | "willow cordage"
         | "bundle of willow cordage"
@@ -718,6 +730,7 @@ fn parse_target(text: &str) -> ExamineTarget {
         | "beaver hide" | "wolf cloak" | "otter cloak" | "fox cloak" | "hare cloak"
         | "beaver cloak" => ExamineTarget::Hide,
         "strips" | "hide strips" | "cord" => ExamineTarget::Cord,
+        "nettle" | "nettles" | "nettle cordage" => ExamineTarget::Nettle,
         "willow" | "willow cordage" | "withies" | "cordage" => ExamineTarget::Willow,
         "meat" | "raw meat" | "cooked meat" | "salted meat" | "smoked meat" => ExamineTarget::Meat,
         "fish" | "raw fish" | "cooked fish" => ExamineTarget::Fish,

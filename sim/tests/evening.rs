@@ -6997,9 +6997,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         last_look.text
     );
     assert!(
-        last_look
-            .text
-            .contains("South: valley floor. The corner beyond, to the west, has that wood."),
+        last_look.text.contains(
+            "South: valley floor, nettles. The corner beyond, to the west, has that wood."
+        ),
         "{}",
         last_look.text
     );
@@ -7091,9 +7091,9 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         left_look.text
     );
     assert!(
-        left_look
-            .text
-            .contains("South: valley floor. The corner beyond, to the west, has that wood."),
+        left_look.text.contains(
+            "South: valley floor, nettles. The corner beyond, to the west, has that wood."
+        ),
         "{}",
         left_look.text
     );
@@ -7210,7 +7210,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         wood_look.text.contains(
-            "South: valley floor. The corner beyond, to the west, has the rotting wood and the deer, in the open, and hoofprints mark the wood under the deer."
+            "South: valley floor, nettles. The corner beyond, to the west, has the rotting wood and the deer, in the open, and hoofprints mark the wood under the deer."
         ),
         "{}",
         wood_look.text
@@ -7341,7 +7341,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         .unwrap_or("");
     assert_eq!(
         south,
-        "South: valley floor. The corner beyond, to the west, has that wood. Past that wood is the west floor. Hoofprints mark that floor. The deer stands on the west floor."
+        "South: valley floor, nettles. The corner beyond, to the west, has that wood. Past that wood is the west floor. Hoofprints mark that floor. The deer stands on the west floor."
     );
     assert!(south.contains("Hoofprints mark that floor."), "{south}");
     assert!(!south.contains("to its west"), "{south}");
@@ -7578,7 +7578,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
         "West: hoofprints mark the outside floor. Step stands on that floor. The rotting wood is the next square south of that floor. Past that wood, the deer stands on the west floor, and hoofprints mark that floor."
     ));
     assert!(under_again.text.contains(
-        "South: valley floor. The corner beyond, to the west, has that wood. Past that wood is the west floor. Hoofprints mark that floor. The deer stands on the west floor."
+        "South: valley floor, nettles. The corner beyond, to the west, has that wood. Past that wood is the west floor. Hoofprints mark that floor. The deer stands on the west floor."
     ));
     assert!(
         !under_again.text.contains("1 person"),
@@ -7593,7 +7593,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert_eq!(world.sim_time(), wood_clock + 2);
     assert!(
         on_south.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood is the west floor. The deer has left it. Hoofprints mark that ground. South of the west floor is the south floor, still in sight. The deer stands on the south floor."
+            "South: valley floor, nettles. The corner beyond, to the west, has that wood. Past that wood is the west floor. The deer has left it. Hoofprints mark that ground. South of the west floor is the south floor, still in sight. The deer stands on the south floor."
         ),
         "{}",
         on_south.text
@@ -8136,7 +8136,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     );
     assert!(
         unseen.text.contains(
-            "South: valley floor. The corner beyond, to the west, has that wood. Past that wood is the west floor. The deer has left it. Hoofprints mark that ground. South of the west floor is the south floor, still in sight. Hoofprints mark the south floor."
+            "South: valley floor, nettles. The corner beyond, to the west, has that wood. Past that wood is the west floor. The deer has left it. Hoofprints mark that ground. South of the west floor is the south floor, still in sight. Hoofprints mark the south floor."
         ),
         "{}",
         unseen.text

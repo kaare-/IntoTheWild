@@ -86,6 +86,10 @@ pub struct Tuning {
     /// Look says the willow has no withies until then.
     #[serde(default = "default_willow_ticks")]
     pub willow_ticks: u64,
+    /// Ticks after the last bundle of nettle cordage is stripped before the nettles grow again.
+    /// Look says the nettles are bare until then.
+    #[serde(default = "default_nettle_ticks")]
+    pub nettle_ticks: u64,
     /// Ticks after the flint nodule on the slope is gathered before another lies there.
     /// Look says the slope has no flint until then. Knapping the carried nodule
     /// leaves the same wait.
@@ -291,6 +295,9 @@ fn default_resin_ticks() -> u64 {
 fn default_willow_ticks() -> u64 {
     24
 }
+fn default_nettle_ticks() -> u64 {
+    24
+}
 fn default_flint_ticks() -> u64 {
     24
 }
@@ -447,6 +454,8 @@ struct RawTime {
     resin_ticks: u64,
     #[serde(default = "default_willow_ticks")]
     willow_ticks: u64,
+    #[serde(default = "default_nettle_ticks")]
+    nettle_ticks: u64,
     #[serde(default = "default_flint_ticks")]
     flint_ticks: u64,
     #[serde(default = "default_ochre_ticks")]
@@ -568,6 +577,7 @@ impl Tuning {
             || raw.time.moss_ticks == 0
             || raw.time.resin_ticks == 0
             || raw.time.willow_ticks == 0
+            || raw.time.nettle_ticks == 0
             || raw.time.flint_ticks == 0
             || raw.time.ochre_ticks == 0
             || raw.time.clay_bank_ticks == 0
@@ -641,6 +651,7 @@ impl Tuning {
             moss_ticks: raw.time.moss_ticks,
             resin_ticks: raw.time.resin_ticks,
             willow_ticks: raw.time.willow_ticks,
+            nettle_ticks: raw.time.nettle_ticks,
             flint_ticks: raw.time.flint_ticks,
             ochre_ticks: raw.time.ochre_ticks,
             clay_bank_ticks: raw.time.clay_bank_ticks,
@@ -761,6 +772,7 @@ impl Tuning {
             Material::Hook => 0,
             Material::Resin => 0,
             Material::Willow => 0,
+            Material::Nettle => 0,
         }
     }
 }

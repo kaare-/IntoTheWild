@@ -219,6 +219,7 @@ impl World {
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Resin => self.examine_resin(actor_id),
             ExamineTarget::Willow => self.examine_willow(actor_id),
+            ExamineTarget::Nettle => self.examine_nettle(actor_id),
             ExamineTarget::Bow => self.examine_bow(actor_id),
             ExamineTarget::Paddle => self.examine_paddle(actor_id),
             ExamineTarget::Hook => self.examine_hook(actor_id),
@@ -426,6 +427,9 @@ impl World {
             }
             if let Some(willow) = self.seen_willow(actor_id) {
                 lines.push(willow);
+            }
+            if let Some(nettles) = self.seen_nettle(actor_id) {
+                lines.push(nettles);
             }
             if let Some(ice) = self.seen_frozen_pool(actor_id) {
                 lines.push(ice);
@@ -1160,6 +1164,15 @@ impl World {
         } else if self.willow_bare(actor.cell) {
             parts.push("The willow here has no withies.".into());
         }
+        let nettle_here = self.pile_count(actor.cell, Material::Nettle)
+            + self.ground_ids(actor.cell, Material::Nettle).len() as u32;
+        if nettle_here > 1 {
+            parts.push("Nettles grow here. They can be stripped for cordage.".into());
+        } else if nettle_here == 1 {
+            parts.push("A stand of nettles grows here. It can be stripped for cordage.".into());
+        } else if self.nettle_bare(actor.cell) {
+            parts.push("The nettles here are bare.".into());
+        }
         let iron_smelting = self.iron_smelting_count(actor.cell);
         let iron_lying = self.pile_count(actor.cell, Material::IronOre)
             + self.ground_ids(actor.cell, Material::IronOre).len() as u32
@@ -1336,21 +1349,30 @@ impl World {
             let willow = bows_here
                 .iter()
                 .any(|id| self.item(*id).is_some_and(|bow| bow.bound_willow));
-            let hide = bows_here
+            let nettle = bows_here
                 .iter()
-                .any(|id| self.item(*id).is_some_and(|bow| !bow.bound_willow));
+                .any(|id| self.item(*id).is_some_and(|bow| bow.bound_nettle));
+            let hide = bows_here.iter().any(|id| {
+                self.item(*id)
+                    .is_some_and(|bow| !bow.bound_willow && !bow.bound_nettle)
+            });
             if hide {
                 parts.push("A bow lies here. It is a dry branch bound with hide strips.".into());
             }
             if willow {
                 parts.push("A bow lies here. It is a dry branch bound with willow cordage.".into());
             }
+            if nettle {
+                parts.push("A bow lies here. It is a dry branch bound with nettle cordage.".into());
+            }
         }
         if !self.ground_ids(actor.cell, Material::Paddle).is_empty() {
             parts.push("A wooden paddle lies here.".into());
         }
         if self.snares.contains_key(&actor.cell) {
-            if self.snare_willow.contains(&actor.cell) {
+            if self.snare_nettle.contains(&actor.cell) {
+                parts.push("A nettle snare is set here.".into());
+            } else if self.snare_willow.contains(&actor.cell) {
                 parts.push("A willow snare is set here.".into());
             } else {
                 parts.push("A hide snare is set here.".into());
@@ -2802,23 +2824,115 @@ impl World {
         }
     }
 
-    fn bow_counts(&self, ids: &[crate::model::ItemId]) -> (u32, u32) {
+    /// Nettles this person can see but is not standing on.
+    fn seen_nettle(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            let count = self.pile_count(cell, Material::Nettle)
+                + self.ground_ids(cell, Material::Nettle).len() as u32;
+            if count > 1 {
+                lines.push(format!("Nettles grow to the {way}."));
+            } else if count == 1 {
+                lines.push(format!("A stand of nettles grows to the {way}."));
+            } else if self.nettle_bare(cell) {
+                lines.push(format!("The nettles to the {way} are bare."));
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_nettle(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let count = self.pile_count(cell, Material::Nettle)
+                + self.ground_ids(cell, Material::Nettle).len() as u32;
+            if count == 0 && !self.nettle_bare(cell) {
+                continue;
+            }
+            let place = self.place_phrase(origin, cell);
+            if count > 1 {
+                lines.push(format!(
+                    "Nettles grow {place}. They can be stripped for cordage."
+                ));
+            } else if count == 1 {
+                lines.push(format!(
+                    "A stand of nettles grows {place}. It can be stripped for cordage."
+                ));
+            } else if cell == origin {
+                lines.push("The nettles here are bare.".into());
+            } else {
+                let way = self.relative(origin, cell);
+                lines.push(format!("The nettles to the {way} are bare."));
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Nettle).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A bundle of nettle cordage is carried by {who} {cover}. It is stripped from nettles."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} bundles of nettle cordage are carried by {who} {cover}. They are stripped from nettles.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no nettles from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
+    fn bow_counts(&self, ids: &[crate::model::ItemId]) -> (u32, u32, u32) {
         let willow = ids
             .iter()
             .filter(|id| self.item(**id).is_some_and(|bow| bow.bound_willow))
             .count() as u32;
-        (ids.len() as u32 - willow, willow)
+        let nettle = ids
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|bow| bow.bound_nettle))
+            .count() as u32;
+        (ids.len() as u32 - willow - nettle, willow, nettle)
     }
 
     fn bow_kind_lines(
         &self,
         hide: u32,
         willow: u32,
+        nettle: u32,
         lying: bool,
         where_clause: &str,
     ) -> Vec<String> {
         let mut lines = Vec::new();
-        for (count, binding) in [(hide, "hide strips"), (willow, "willow cordage")] {
+        for (count, binding) in [
+            (hide, "hide strips"),
+            (willow, "willow cordage"),
+            (nettle, "nettle cordage"),
+        ] {
             if count == 0 {
                 continue;
             }
@@ -2849,8 +2963,8 @@ impl World {
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
             let ids = self.ground_ids(cell, Material::Bow);
-            let (hide, willow) = self.bow_counts(&ids);
-            if hide + willow == 0 {
+            let (hide, willow, nettle) = self.bow_counts(&ids);
+            if hide + willow + nettle == 0 {
                 continue;
             }
             let place = if origin == cell {
@@ -2858,15 +2972,15 @@ impl World {
             } else {
                 format!("to the {}", self.relative(origin, cell))
             };
-            lines.extend(self.bow_kind_lines(hide, willow, true, &place));
+            lines.extend(self.bow_kind_lines(hide, willow, nettle, true, &place));
         }
         for actor in self.actors.values() {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
             let ids = self.loose_ids(actor.id, Material::Bow);
-            let (hide, willow) = self.bow_counts(&ids);
-            if hide + willow == 0 {
+            let (hide, willow, nettle) = self.bow_counts(&ids);
+            if hide + willow + nettle == 0 {
                 continue;
             }
             let who = if actor.id == viewer {
@@ -2875,7 +2989,13 @@ impl World {
                 actor.name.as_str()
             };
             let cover = self.cover_phrase(actor.cell);
-            lines.extend(self.bow_kind_lines(hide, willow, false, &format!("{who} {cover}")));
+            lines.extend(self.bow_kind_lines(
+                hide,
+                willow,
+                nettle,
+                false,
+                &format!("{who} {cover}"),
+            ));
         }
         if lines.is_empty() {
             "You see no bow from here.".into()
@@ -3111,6 +3231,13 @@ impl World {
             && self.ground_ids(cell, Material::Willow).is_empty()
     }
 
+    /// The nettles were stripped bare and have not grown there again.
+    fn nettle_bare(&self, cell: crate::model::CellId) -> bool {
+        self.nettle_returns_at.contains_key(&cell)
+            && self.pile_count(cell, Material::Nettle) == 0
+            && self.ground_ids(cell, Material::Nettle).is_empty()
+    }
+
     /// The salt lick on this cell was gathered and has not formed again.
     fn salt_lick_bare(&self, cell: crate::model::CellId) -> bool {
         self.salt_returns_at.contains_key(&cell)
@@ -3274,7 +3401,9 @@ impl World {
                 let region = self.cell(cell).region.word();
                 format!("on the {region} to the {}", self.relative(origin, cell))
             };
-            let kind = if self.snare_willow.contains(&cell) {
+            let kind = if self.snare_nettle.contains(&cell) {
+                "nettle"
+            } else if self.snare_willow.contains(&cell) {
                 "willow"
             } else {
                 "hide"
@@ -3296,7 +3425,11 @@ impl World {
                 continue;
             }
             let place = self.place_phrase(origin, cell);
-            if self.snare_willow.contains(&cell) {
+            if self.snare_nettle.contains(&cell) {
+                lines.push(format!(
+                    "A nettle snare is set {place}. It is made of nettle cordage."
+                ));
+            } else if self.snare_willow.contains(&cell) {
                 lines.push(format!(
                     "A willow snare is set {place}. It is made of willow cordage."
                 ));
@@ -3716,6 +3849,10 @@ impl World {
             "a bundle of willow cordage".into()
         } else if item.material == "willow" {
             format!("{} bundles of willow cordage", count_word(item.count))
+        } else if item.material == "nettle" && item.count == 1 {
+            "a bundle of nettle cordage".into()
+        } else if item.material == "nettle" {
+            format!("{} bundles of nettle cordage", count_word(item.count))
         } else if item.material == "net" && item.count == 1 {
             "a fishing net".into()
         } else if item.material == "net" {
@@ -4199,6 +4336,13 @@ impl World {
     }
 
     fn flint_tip_words(&self, spear: &crate::model::Item) -> &'static str {
+        if spear.bound_nettle {
+            return if spear.hardened {
+                "a fire-hardened flint tip bound with nettle cordage"
+            } else {
+                "a flint tip bound with nettle cordage, not yet fire-hardened"
+            };
+        }
         match (spear.hardened, spear.bound, spear.bound_willow) {
             (true, true, true) => "a fire-hardened flint tip bound with willow cordage",
             (true, true, false) => "a fire-hardened flint tip bound with hide",
@@ -4625,6 +4769,13 @@ impl World {
             bits.push("willow cordage".into());
         } else if self.willow_bare(dest) {
             bits.push("a bare willow".into());
+        }
+        if self.pile_count(dest, Material::Nettle) > 0
+            || !self.ground_ids(dest, Material::Nettle).is_empty()
+        {
+            bits.push("nettles".into());
+        } else if self.nettle_bare(dest) {
+            bits.push("bare nettles".into());
         }
         if self.pile_count(dest, Material::IronOre) > 0
             || self.ground_ids(dest, Material::IronOre).len() > self.iron_smelting_count(dest)
@@ -8335,6 +8486,7 @@ impl World {
                 Material::Moss => "moss",
                 Material::Resin => "resin",
                 Material::Willow => "willow",
+                Material::Nettle => "nettles",
                 Material::Bow => "bow",
                 Material::Clay => "clay",
                 Material::Bowl => "bowl",
@@ -9812,7 +9964,10 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} sets "))?;
-        if rest != "a snare of hide strips." && rest != "a snare of willow cordage." {
+        if rest != "a snare of hide strips."
+            && rest != "a snare of willow cordage."
+            && rest != "a snare of nettle cordage."
+        {
             return None;
         }
         Some(crate::model::spoken_act(None, "set", rest))
@@ -10003,6 +10158,7 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} crafts "))?;
         if rest != "a bow from a dry branch and hide strips."
             && rest != "a bow from a dry branch and willow cordage."
+            && rest != "a bow from a dry branch and nettle cordage."
         {
             return None;
         }
@@ -10338,6 +10494,7 @@ impl World {
         let rest = event.text.strip_prefix(&format!("{name} catches "))?;
         if rest != "a fish from the brook with the bone fish hook. The hide strips are spent."
             && rest != "a fish from the brook with the bone fish hook. The willow cordage is spent."
+            && rest != "a fish from the brook with the bone fish hook. The nettle cordage is spent."
         {
             return None;
         }
@@ -10949,6 +11106,8 @@ impl World {
             && rest != "the flint flake and a dry branch into a spear. The tip is bound with hide."
             && rest
                 != "the flint flake and a dry branch into a spear. The tip is bound with willow cordage."
+            && rest
+                != "the flint flake and a dry branch into a spear. The tip is bound with nettle cordage."
         {
             return None;
         }
@@ -11198,6 +11357,7 @@ impl World {
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} gathers "))?;
         let rest = rest.strip_suffix(" The bees sting.").unwrap_or(rest);
+        let rest = rest.strip_suffix(" The nettles sting.").unwrap_or(rest);
         let bare = rest
             .strip_suffix(". You hear branches breaking.")
             .unwrap_or(rest)
@@ -11251,6 +11411,7 @@ impl World {
             "salt crust",
             "lump of pine resin",
             "bundle of willow cordage",
+            "bundle of nettle cordage",
             "fishing net",
             "reed mat",
         ];
@@ -12585,6 +12746,12 @@ impl World {
         {
             actions.push("strip willow".into());
         }
+        if (self.pile_count(actor.cell, Material::Nettle) > 0
+            || !self.ground_ids(actor.cell, Material::Nettle).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("strip nettle".into());
+        }
         if !self.loose_ids(actor_id, Material::Resin).is_empty()
             && self
                 .canoe_to_seal(actor_id)
@@ -13112,6 +13279,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Resin, false) => "lumps of pine resin",
         (Material::Willow, true) => "bundle of willow cordage",
         (Material::Willow, false) => "bundles of willow cordage",
+        (Material::Nettle, true) => "bundle of nettle cordage",
+        (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Bow, true) => "bow",
         (Material::Bow, false) => "bows",
         (Material::Net, true) => "fishing net",
