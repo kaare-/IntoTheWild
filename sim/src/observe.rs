@@ -686,6 +686,51 @@ impl World {
         Some(format!("You hear an owl hoot to the {way}."))
     }
 
+    /// Dusk and evening, some ticks and not others. Night and morning are quiet.
+    /// The nearest brook or still water inside hearing is the water they sit on.
+    /// The line is look, not a tick event.
+    fn frogs_call(&self) -> bool {
+        !self.night() && !self.morning() && self.time % 3 == 1
+    }
+
+    fn nearest_frog_water(&self, origin: CellId) -> Option<CellId> {
+        let mut best: Option<(i32, CellId)> = None;
+        for cell in &self.cells {
+            if cell.region != crate::model::Region::Brook && !cell.still {
+                continue;
+            }
+            let dist = chebyshev(origin, cell.id);
+            if dist > self.tuning.hearing {
+                continue;
+            }
+            let take = match best {
+                None => true,
+                Some((near, id)) => dist < near || (dist == near && cell.id < id),
+            };
+            if take {
+                best = Some((dist, cell.id));
+            }
+        }
+        best.map(|(_, id)| id)
+    }
+
+    fn frog_line(&self, actor_id: ActorId) -> Option<String> {
+        if !self.frogs_call() {
+            return None;
+        }
+        let origin = self.actor(actor_id)?.cell;
+        let water = self.nearest_frog_water(origin)?;
+        let distance = chebyshev(origin, water);
+        if distance == 0 {
+            return Some("Frogs croak here.".into());
+        }
+        if distance <= self.tuning.sight {
+            return Some("Frogs croak.".into());
+        }
+        let way = self.relative(origin, water);
+        Some(format!("You hear frogs croak to the {way}."))
+    }
+
     /// A fire underfoot or on the next cell. Farther light does not help.
     fn fire_nearby(&self, cell: CellId) -> bool {
         self.fires
@@ -4628,6 +4673,9 @@ impl World {
         }
         if let Some(owl) = self.owl_line(actor_id) {
             parts.push(owl);
+        }
+        if let Some(frogs) = self.frog_line(actor_id) {
+            parts.push(frogs);
         }
         if self.illness_word(actor.illness) == "ill" {
             parts.push("Your stomach has not settled.".into());

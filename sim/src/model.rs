@@ -17449,6 +17449,97 @@ mod owl {
 }
 
 #[cfg(test)]
+mod frogs {
+    use super::World;
+
+    #[test]
+    fn frogs_croak_at_dusk_near_water_and_not_as_an_event() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let still = world.spawn_at("Still", "t", 2, 1).unwrap();
+        let brook = world.spawn_at("Brook", "b", 0, 2).unwrap();
+        let far = world.spawn_at("Far", "f", 6, 4).unwrap();
+        assert!(!world.night());
+        assert!(!world.morning());
+        for person in [near, seen, quiet, still, brook, far] {
+            let look = world.observe(person).unwrap();
+            assert!(!look.text.to_lowercase().contains("frog"), "{}", look.text);
+            assert!(!look.text.contains("croak"), "{}", look.text);
+        }
+        world.step(&[]);
+        assert_eq!(world.sim_time(), 1);
+        let open = world.observe(near).unwrap();
+        assert!(open.text.contains("Frogs croak."), "{}", open.text);
+        assert!(!open.text.contains("croak to the"), "{}", open.text);
+        assert!(world.observe(seen).unwrap().text.contains("Frogs croak."));
+        assert!(!world.observe(seen).unwrap().text.contains("croak to the"));
+        let heard = world.observe(quiet).unwrap().text;
+        assert!(
+            heard.contains("You hear frogs croak to the north and west."),
+            "{heard}"
+        );
+        assert!(world
+            .observe(still)
+            .unwrap()
+            .text
+            .contains("Frogs croak here."));
+        assert!(world
+            .observe(brook)
+            .unwrap()
+            .text
+            .contains("Frogs croak here."));
+        assert!(!world
+            .observe(far)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("frog"));
+        for person in [near, seen, quiet, still, brook, far] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                !event.text.to_lowercase().contains("frog") && !event.text.contains("croak")
+            }));
+        }
+        world.step(&[]);
+        assert_eq!(world.sim_time(), 2);
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("frog"));
+        assert!(!world.observe(quiet).unwrap().text.contains("croak"));
+        while world.sim_time() < 73 {
+            world.step(&[]);
+        }
+        assert!(world.night());
+        assert_eq!(world.sim_time() % 3, 1);
+        assert!(!world
+            .observe(still)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("frog"));
+        assert!(!world.observe(quiet).unwrap().text.contains("croak"));
+        while !world.morning() {
+            world.step(&[]);
+        }
+        while world.sim_time() % 3 != 1 {
+            world.step(&[]);
+        }
+        assert!(world.morning());
+        assert!(!world
+            .observe(still)
+            .unwrap()
+            .text
+            .to_lowercase()
+            .contains("frog"));
+        assert!(!world.observe(near).unwrap().text.contains("croak"));
+    }
+}
+
+#[cfg(test)]
 mod cattail {
     use super::{Attempt, Dir, Material, World};
 
