@@ -161,6 +161,10 @@ pub enum Material {
     /// Carved from a bundle of reeds. Blown, it is heard like the bone whistle.
     /// It does not bolt the hare.
     Flute,
+    /// A hide sewn over a dry branch with cordage. Beaten, it is heard one
+    /// cell farther than the bone whistle. It does not bolt the hare.
+    /// A deer within hearing lifts its head and does not run.
+    Drum,
 }
 
 impl Material {
@@ -224,6 +228,7 @@ impl Material {
             Material::Quartz => "quartz",
             Material::Whistle => "whistle",
             Material::Flute => "flute",
+            Material::Drum => "drum",
         }
     }
 
@@ -287,6 +292,7 @@ impl Material {
             Material::Quartz => "clear stone of quartz",
             Material::Whistle => "bone whistle",
             Material::Flute => "reed flute",
+            Material::Drum => "drum",
         }
     }
 
@@ -564,6 +570,12 @@ pub enum Attempt {
     /// Blow the reed flute in the arms. The same reach as the bone whistle.
     /// The hare does not bolt.
     BlowFlute,
+    /// Sew a hide over a dry branch with cordage. The branch is the hoop.
+    /// The hide may be a deer hide, a hare hide, or another.
+    StretchDrum,
+    /// Beat the drum in the arms. Heard one cell farther than the bone whistle.
+    /// The hare does not bolt. A deer within hearing lifts its head.
+    BeatDrum,
 }
 
 impl Attempt {
@@ -655,6 +667,8 @@ impl Attempt {
                 | Attempt::BlowWhistle
                 | Attempt::CarveFlute
                 | Attempt::BlowFlute
+                | Attempt::StretchDrum
+                | Attempt::BeatDrum
         )
     }
 }
@@ -1331,6 +1345,9 @@ pub struct World {
     /// A reed flute just blown. The same reach as the whistle, and not a bolt.
     #[serde(default)]
     pub(crate) flute: Option<WhistleSound>,
+    /// A drum just beaten. One cell farther than the whistle. Not a bolt.
+    #[serde(default)]
+    pub(crate) drum: Option<WhistleSound>,
     /// Shade under the rock, where a handful of moss stays dry enough to light a fire.
     #[serde(default)]
     pub(crate) shade_moss: BTreeSet<CellId>,
@@ -1589,6 +1606,7 @@ impl World {
             bone_returns_at: BTreeMap::new(),
             whistle: None,
             flute: None,
+            drum: None,
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
@@ -22012,6 +22030,362 @@ mod whistle {
         assert_eq!(far.results[0].message, "You blow the bone whistle.");
         assert!(!far.results[0].message.contains("beaver"));
         assert_eq!(world.beaver_cell(), Some((0, 4)));
+    }
+
+    #[test]
+    fn a_drum_is_heard_farther_than_a_whistle_and_the_hare_stays() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let heard = world.spawn_at("Heard", "h", 1, 4).unwrap();
+        let far = world.spawn_at("Quiet", "q", 5, 0).unwrap();
+        let past = world.spawn_at("Past", "p", 6, 0).unwrap();
+        let hide = world.mint_item(
+            Material::Hide,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        world.items.get_mut(&hide).unwrap().hare = true;
+        world.mint_item(
+            Material::Branch,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        world.mint_item(
+            Material::Willow,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let sewn = world.step(&[intent("sew", near, Attempt::StretchDrum)]);
+        assert_eq!(
+            sewn.results[0].message,
+            "You sew a hare hide over a hoop of dry branch with willow cordage."
+        );
+        assert!(!sewn.results[0].message.contains("Near"));
+        assert!(!says(
+            &world,
+            near,
+            "Near sews a hare hide over a hoop of dry branch with willow cordage."
+        ));
+        assert!(says(
+            &world,
+            heard,
+            "Near sews a hare hide over a hoop of dry branch with willow cordage."
+        ));
+        assert_eq!(world.loose_ids(near, Material::Drum).len(), 1);
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        let played = world.step(&[intent("play", near, Attempt::BeatDrum)]);
+        assert_eq!(played.results[0].message, "You beat the drum.");
+        assert!(!played.results[0].message.contains("deer"));
+        assert!(!played.results[0].message.contains("hare"));
+        assert!(!says(&world, near, "Near beats the drum."));
+        assert!(says(&world, heard, "Near beats the drum."));
+        assert!(says(&world, heard, "A deer lifts its head."));
+        assert!(!says(&world, near, "A deer lifts its head."));
+        assert_eq!(world.deer_cell(), Some((3, 3)));
+        assert_eq!(world.hare_cell(), Some((2, 4)));
+        assert_eq!(world.fox_cell(), Some((5, 4)));
+        assert_eq!(world.otter_cell(), Some((1, 1)));
+        assert_eq!(world.beaver_cell(), Some((0, 3)));
+        let far_look = world.observe(far).unwrap();
+        assert!(
+            far_look
+                .text
+                .contains("You hear a drum to the south and west."),
+            "{}",
+            far_look.text
+        );
+        assert!(!far_look
+            .events
+            .iter()
+            .any(|event| event.text.contains("You hear a drum")));
+        assert!(!world
+            .observe(past)
+            .unwrap()
+            .text
+            .contains("You hear a drum"));
+        world.mint_item(
+            Material::Whistle,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let whistle = world.step(&[intent("whistle", near, Attempt::BlowWhistle)]);
+        assert_eq!(whistle.results[0].message, "You blow the bone whistle.");
+        assert_ne!(world.hare_cell(), Some((2, 4)));
+        let after = world.observe(far).unwrap().text;
+        assert!(!after.contains("You hear a whistle"), "{after}");
+        assert!(!after.contains("You hear a drum"), "{after}");
+
+        world
+            .loose_ids(near, Material::Drum)
+            .into_iter()
+            .for_each(|id| {
+                world.items.remove(&id);
+            });
+        let no_beat = world.step(&[intent("nodrum", near, Attempt::BeatDrum)]);
+        assert_eq!(no_beat.results[0].message, "You are not carrying a drum.");
+        assert!(!says(&world, heard, "You are not carrying a drum."));
+        let missed = world.step(&[intent("none", near, Attempt::StretchDrum)]);
+        assert_eq!(
+            missed.results[0].message,
+            "You have no hide to sew over a frame."
+        );
+        assert!(!says(
+            &world,
+            heard,
+            "You have no hide to sew over a frame."
+        ));
+        world.mint_item(
+            Material::Hide,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        world.mint_item(
+            Material::Branch,
+            1000,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let wet = world.step(&[intent("wet", near, Attempt::StretchDrum)]);
+        assert_eq!(wet.results[0].message, "The branch is not dry.");
+        assert!(!says(&world, heard, "The branch is not dry."));
+        world
+            .loose_ids(near, Material::Branch)
+            .into_iter()
+            .for_each(|id| {
+                world.items.remove(&id);
+            });
+        world.mint_item(
+            Material::Branch,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let bare = world.step(&[intent("bare", near, Attempt::StretchDrum)]);
+        assert_eq!(
+            bare.results[0].message,
+            "You have no cordage to sew a drum."
+        );
+        let deer_hide = world.mint_item(
+            Material::Hide,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        assert!(!world.item(deer_hide).unwrap().hare);
+        world.mint_item(
+            Material::Branch,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        world.mint_item(
+            Material::Nettle,
+            0,
+            cell_id(0, 4).unwrap(),
+            Some(near),
+            Role::Loose,
+        );
+        let deer_drum = world.step(&[intent("deer", near, Attempt::StretchDrum)]);
+        assert_eq!(
+            deer_drum.results[0].message,
+            "You sew a deer hide over a hoop of dry branch with nettle cordage."
+        );
+    }
+
+    #[test]
+    fn a_valley_hare_hide_sews_into_a_drum_and_a_far_ear_hears_it() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let heard = world.spawn_at("Heard", "h", 5, 1).unwrap();
+        let far = world.spawn_at("Quiet", "q", 1, 0).unwrap();
+        let past = world.spawn_at("Past", "p", 0, 0).unwrap();
+        let mut n = 0u32;
+        let mut act = |world: &mut World, attempt: Attempt| -> String {
+            n += 1;
+            let id = format!("valley{n}");
+            world.step(&[intent(&id, near, attempt)]).results[0]
+                .message
+                .clone()
+        };
+        let go = |world: &mut World,
+                  dirs: &[super::Dir],
+                  act: &mut dyn FnMut(&mut World, Attempt) -> String| {
+            for dir in dirs {
+                let message = act(world, Attempt::Move(*dir));
+                assert!(
+                    message.contains("walk") || message.contains("wade"),
+                    "{message}"
+                );
+            }
+        };
+        assert_eq!(
+            act(&mut world, Attempt::StretchDrum),
+            "You have no hide to sew over a frame."
+        );
+        assert_eq!(
+            act(&mut world, Attempt::BeatDrum),
+            "You are not carrying a drum."
+        );
+        go(
+            &mut world,
+            &[
+                super::Dir::North,
+                super::Dir::North,
+                super::Dir::East,
+                super::Dir::East,
+            ],
+            &mut act,
+        );
+        let stashed = act(&mut world, Attempt::Gather(Material::Branch));
+        assert!(stashed.starts_with("You gather"), "{stashed}");
+        let stashed_again = act(&mut world, Attempt::Gather(Material::Branch));
+        assert!(stashed_again.starts_with("You gather"), "{stashed_again}");
+        let down = act(&mut world, Attempt::Drop(Material::Branch));
+        assert!(down.contains("drop"), "{down}");
+        let down_again = act(&mut world, Attempt::Drop(Material::Branch));
+        assert!(down_again.contains("drop"), "{down_again}");
+        go(
+            &mut world,
+            &[
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::South,
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::South,
+                super::Dir::South,
+            ],
+            &mut act,
+        );
+        assert_eq!(
+            act(&mut world, Attempt::Gather(Material::Willow)),
+            "You gather a bundle of willow cordage."
+        );
+        assert_eq!(
+            act(&mut world, Attempt::Gather(Material::Willow)),
+            "You gather a bundle of willow cordage."
+        );
+        go(
+            &mut world,
+            &[
+                super::Dir::North,
+                super::Dir::North,
+                super::Dir::East,
+                super::Dir::East,
+            ],
+            &mut act,
+        );
+        let onto = act(&mut world, Attempt::Move(super::Dir::South));
+        assert!(onto.contains("walk") || onto.contains("wade"), "{onto}");
+        assert_eq!(
+            act(&mut world, Attempt::SetSnare),
+            "You set a snare of willow cordage."
+        );
+        for _ in 0..world.tuning.snare_ticks {
+            world.step(&[]);
+        }
+        assert!(world.hare_cell().is_none());
+        let dropped = act(&mut world, Attempt::Drop(Material::Willow));
+        assert!(dropped.contains("drop"), "{dropped}");
+        go(
+            &mut world,
+            &[
+                super::Dir::North,
+                super::Dir::North,
+                super::Dir::North,
+                super::Dir::East,
+                super::Dir::East,
+            ],
+            &mut act,
+        );
+        assert_eq!(
+            act(&mut world, Attempt::Gather(Material::Flint)),
+            "You gather a flint nodule."
+        );
+        assert_eq!(
+            act(&mut world, Attempt::Knap),
+            "You knap the flint nodule into a sharp flake."
+        );
+        go(
+            &mut world,
+            &[super::Dir::East, super::Dir::East, super::Dir::South],
+            &mut act,
+        );
+        let first_branch = act(&mut world, Attempt::Gather(Material::Branch));
+        assert!(first_branch.starts_with("You gather"), "{first_branch}");
+        assert_eq!(
+            act(&mut world, Attempt::Haft),
+            "You haft the flint flake and a dry branch into a spear."
+        );
+        go(
+            &mut world,
+            &[
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::West,
+                super::Dir::South,
+                super::Dir::South,
+            ],
+            &mut act,
+        );
+        assert!(act(&mut world, Attempt::Gather(Material::Willow)).contains("willow"));
+        assert_eq!(
+            act(&mut world, Attempt::Butcher),
+            "You butcher the hare carcass into a portion of raw meat, a hare hide, and a bone."
+        );
+        assert_eq!(
+            act(&mut world, Attempt::Gather(Material::Hide)),
+            "You gather a hare hide."
+        );
+        go(
+            &mut world,
+            &[
+                super::Dir::North,
+                super::Dir::North,
+                super::Dir::East,
+                super::Dir::East,
+                super::Dir::East,
+                super::Dir::East,
+            ],
+            &mut act,
+        );
+        assert!(act(&mut world, Attempt::Gather(Material::Branch)).starts_with("You gather"));
+        assert_eq!(
+            act(&mut world, Attempt::StretchDrum),
+            "You sew a hare hide over a hoop of dry branch with willow cordage."
+        );
+        assert_eq!(act(&mut world, Attempt::BeatDrum), "You beat the drum.");
+        assert!(says(&world, heard, "Near beats the drum."));
+        let far_look = world.observe(far).unwrap().text;
+        assert!(
+            far_look.contains("You hear a drum to the south and east."),
+            "{far_look}"
+        );
+        assert!(!world
+            .observe(past)
+            .unwrap()
+            .text
+            .contains("You hear a drum"));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("A hare startles and bolts") || event.text.contains("to the east")
+        }));
     }
 
     #[test]

@@ -60,6 +60,8 @@ carve whistle                a bone the same way, into a bone whistle. One bone 
 blow whistle                 the bone whistle in the arms. play whistle is the same. Someone who can see you hears the blow. Past sight, a look says which way, and one cell farther still. A hare within hearing bolts, a fox within hearing slips, and an otter or a beaver within hearing splashes, and those lines are not added to the blow. It is not a smoke signal. With no whistle, only you hear it
 carve flute                  a bundle of reeds, from the arms or on the ground, with a flint flake or an iron knife, into a reed flute. The tool is not used up. With no reeds, or no flake or knife, only you hear which is missing
 blow flute                   the reed flute in the arms. play flute is the same reach as the bone whistle. The hare does not bolt, the fox does not slip, and the otter and the beaver do not splash. With no flute, only you hear it
+sew drum                     a hide, a dry branch bent into the hoop, and cordage. stretch drum is the same. The hide may be a deer hide, a hare hide, or another, from the arms or lying here. Hide strips, then willow, then nettle. The branch and the cordage are spent. With one of them missing, only you hear which
+beat drum                    the drum in the arms. play drum is the same. Someone who can see you hears the beat. Past sight, a look says which way, one cell farther than the bone whistle, and one cell farther still. The hare does not bolt. A deer within hearing lifts its head, and that line is not added to the beat. With no drum, only you hear it
 make awl                     the same bone awl
 set snare                    hide strips, willow cordage, or nettle cordage, from the arms or the ground, into a snare in this cell. After a short wait it catches small game. The valley hare, on this cell or the next, leaves a hare carcass. The line is spent. Hide strips are spent before willow, and willow before nettle.
 set trap                     the same snare
@@ -486,6 +488,24 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::BlowFlute)
         }
+        "sew" | "stretch" | "make" | "craft"
+            if rest == "drum"
+                || rest == "a drum"
+                || rest == "the drum"
+                || rest == "hide drum"
+                || rest == "a hide drum" =>
+        {
+            Ok(Attempt::StretchDrum)
+        }
+        "beat" | "play"
+            if rest == "drum"
+                || rest == "a drum"
+                || rest == "the drum"
+                || rest == "hide drum"
+                || rest == "a hide drum" =>
+        {
+            Ok(Attempt::BeatDrum)
+        }
         "carve"
             if rest == "hook"
                 || rest == "a hook"
@@ -857,6 +877,7 @@ fn parse_material(text: &str) -> Result<Material, String> {
             Ok(Material::Whistle)
         }
         "flute" | "reed flute" | "a reed flute" | "the reed flute" => Ok(Material::Flute),
+        "drum" | "a drum" | "the drum" | "hide drum" => Ok(Material::Drum),
         "salt" | "salt crust" => Ok(Material::Salt),
         "honey" | "honeycomb" | "bees nest" | "bee nest" => Ok(Material::Honey),
         "egg" | "eggs" => Ok(Material::Egg),

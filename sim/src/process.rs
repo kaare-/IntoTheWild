@@ -2294,6 +2294,29 @@ impl World {
         self.yield_beaver(beaver.cell);
     }
 
+    /// A drum within ordinary hearing. The deer lifts its head and does not run.
+    /// The beat's reply does not carry this line. The hare is left where it stands.
+    pub(crate) fn drum_startle_deer(&mut self, beater: CellId) {
+        let Some(deer) = self.deer.clone() else {
+            return;
+        };
+        if chebyshev(beater, deer.cell) > self.tuning.hearing {
+            return;
+        }
+        self.emit(
+            "A deer lifts its head.",
+            Scope::Cell(deer.cell),
+            vec![],
+            vec![deer.cell],
+            vec![],
+            vec![],
+            None,
+        );
+        if let Some(deer) = self.deer.as_mut() {
+            deer.held = true;
+        }
+    }
+
     /// A missed throw. The hare bolts to a dry neighbor farther from the hunter.
     /// None when it has nowhere to go.
     pub(crate) fn bolt_hunted_hare(&mut self, hunter: CellId) -> Option<&'static str> {

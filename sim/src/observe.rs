@@ -474,6 +474,9 @@ impl World {
             if let Some(flute) = self.seen_flute(actor_id) {
                 lines.push(flute);
             }
+            if let Some(drum) = self.seen_drum(actor_id) {
+                lines.push(drum);
+            }
         }
         lines.push("Around you:".into());
         for dir in Dir::all() {
@@ -1949,6 +1952,26 @@ impl World {
         }
         let way = self.relative(origin, sound.cell);
         Some(format!("You hear a flute to the {way}."))
+    }
+
+    /// A drum just beaten, past sight. The whistle's two cells, and one cell
+    /// farther. Someone who can see the beater already has the beat.
+    /// The hare does not bolt.
+    fn seen_drum(&self, viewer: ActorId) -> Option<String> {
+        let sound = self.drum?;
+        if self.time > sound.until {
+            return None;
+        }
+        let origin = self.actor(viewer)?.cell;
+        let distance = chebyshev(origin, sound.cell);
+        let near = self.tuning.sight.saturating_add(1);
+        let far = near.saturating_add(1);
+        let farther = far.saturating_add(1);
+        if distance != near && distance != far && distance != farther {
+            return None;
+        }
+        let way = self.relative(origin, sound.cell);
+        Some(format!("You hear a drum to the {way}."))
     }
 
     /// Smoke from a fire past sight, still inside the smoke range.
@@ -4876,6 +4899,10 @@ impl World {
             "a reed flute".into()
         } else if item.material == "flute" {
             format!("{} reed flutes", count_word(item.count))
+        } else if item.material == "drum" && item.count == 1 {
+            "a drum".into()
+        } else if item.material == "drum" {
+            format!("{} drums", count_word(item.count))
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
         } else if item.material == "fish" {
@@ -9626,6 +9653,7 @@ impl World {
                 Material::Quartz => "quartz",
                 Material::Whistle => "bone whistle",
                 Material::Flute => "reed flute",
+                Material::Drum => "drum",
             };
             format!("You see no {name} from here.")
         } else {
@@ -10654,6 +10682,7 @@ impl World {
                     && self.weir_for_these_eyes(viewer, event).is_none()
                     && self.carve_for_these_eyes(viewer, event).is_none()
                     && self.blow_for_these_eyes(viewer, event).is_none()
+                    && self.drum_for_these_eyes(viewer, event).is_none()
                     && self.bone_pierce_for_these_eyes(viewer, event).is_none()
                     && self.salt_for_these_eyes(viewer, event).is_none()
                     && self.press_for_these_eyes(viewer, event).is_none()
@@ -12481,6 +12510,23 @@ impl World {
             Some("You blow the bone whistle.".into())
         } else if event.text == format!("{name} blows the reed flute.") {
             Some("You blow the reed flute.".into())
+        } else {
+            None
+        }
+    }
+
+    /// The person who sewed or beat the drum already has the reply.
+    fn drum_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        if event.text == format!("{name} beats the drum.") {
+            return Some("You beat the drum.".into());
+        }
+        let rest = event.text.strip_prefix(&format!("{name} sews "))?;
+        if rest.contains("over a hoop of dry branch") {
+            Some(format!("You sew {rest}"))
         } else {
             None
         }
@@ -14683,6 +14729,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Whistle, false) => "bone whistles",
         (Material::Flute, true) => "reed flute",
         (Material::Flute, false) => "reed flutes",
+        (Material::Drum, true) => "drum",
+        (Material::Drum, false) => "drums",
         (Material::Nettle, true) => "bundle of nettle cordage",
         (Material::Nettle, false) => "bundles of nettle cordage",
         (Material::Cattail, _) => "cattail roots",

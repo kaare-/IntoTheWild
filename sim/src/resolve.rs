@@ -129,6 +129,8 @@ impl World {
         let mut whistle_blows = Vec::new();
         let mut flute_carves = Vec::new();
         let mut flute_blows = Vec::new();
+        let mut drum_stretches = Vec::new();
+        let mut drum_beats = Vec::new();
         let mut salts = Vec::new();
         let mut salt_fish = Vec::new();
         let mut smoke_fish = Vec::new();
@@ -265,6 +267,8 @@ impl World {
                         Attempt::BlowWhistle => whistle_blows.push(intent),
                         Attempt::CarveFlute => flute_carves.push(intent),
                         Attempt::BlowFlute => flute_blows.push(intent),
+                        Attempt::StretchDrum => drum_stretches.push(intent),
+                        Attempt::BeatDrum => drum_beats.push(intent),
                         Attempt::SaltMeat => salts.push(intent),
                         Attempt::SaltFish => salt_fish.push(intent),
                         Attempt::SmokeFish => smoke_fish.push(intent),
@@ -430,6 +434,8 @@ impl World {
         self.apply_whistle_blows(whistle_blows, &mut results);
         self.apply_flute_carves(flute_carves, &mut results);
         self.apply_flute_blows(flute_blows, &mut results);
+        self.apply_drum_stretches(drum_stretches, &mut results);
+        self.apply_drum_beats(drum_beats, &mut results);
         self.apply_salts(salts, &mut results);
         self.apply_salt_fish(salt_fish, &mut results);
         self.apply_smoke_fish(smoke_fish, &mut results);
@@ -984,6 +990,32 @@ impl World {
                     Err("Your hands are on the log.".into())
                 } else if self.loose_ids(actor.id, Material::Flute).is_empty() {
                     Err("You are not carrying a reed flute.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::StretchDrum => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if let Some(message) = self.drum_refusal(actor.id) {
+                    Err(message.into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::BeatDrum => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if gripping {
+                    Err("Your hands are on the log.".into())
+                } else if self.loose_ids(actor.id, Material::Drum).is_empty() {
+                    Err("You are not carrying a drum.".into())
                 } else {
                     Ok(true)
                 }
@@ -2039,6 +2071,7 @@ impl World {
                             | Material::Bone
                             | Material::Berry
                             | Material::Flute
+                            | Material::Drum
                     ) || self.ground_ids(actor.cell, *material).is_empty())
                 {
                     let bare = if *material == Material::BitterBerry {
@@ -2511,6 +2544,7 @@ impl World {
                     | Material::Quartz
                     | Material::Whistle
                     | Material::Flute
+                    | Material::Drum
                     | Material::Willow
                     | Material::Nettle
                     | Material::BarkCup
@@ -8734,6 +8768,153 @@ impl World {
                 actor.id,
                 true,
                 crate::model::spoken_act(None, "blow", rest),
+                results,
+            );
+        }
+    }
+
+    /// A hide that is not already a cloak. Arms, then one lying in this cell.
+    fn drum_hide_id(&self, actor: crate::model::ActorId) -> Option<crate::model::ItemId> {
+        let open =
+            |id: crate::model::ItemId| self.item(id).is_some_and(|hide| !hide.worn && !hide.sewn);
+        if let Some(id) = self
+            .loose_ids(actor, Material::Hide)
+            .into_iter()
+            .find(|id| open(*id))
+        {
+            return Some(id);
+        }
+        self.ground_ids(self.bow_cell(actor), Material::Hide)
+            .into_iter()
+            .find(|id| open(*id))
+    }
+
+    fn drum_hide_word(&self, id: crate::model::ItemId) -> &'static str {
+        let Some(hide) = self.item(id) else {
+            return "deer hide";
+        };
+        if hide.hare {
+            "hare hide"
+        } else if hide.fox {
+            "fox hide"
+        } else if hide.otter {
+            "otter hide"
+        } else if hide.beaver {
+            "beaver hide"
+        } else if hide.wolf {
+            "wolf hide"
+        } else {
+            "deer hide"
+        }
+    }
+
+    /// Hide, then a dry branch for the hoop, then cordage. The first gap is the refusal.
+    pub(crate) fn drum_refusal(&self, actor: crate::model::ActorId) -> Option<&'static str> {
+        if self.drum_hide_id(actor).is_none() {
+            return Some("You have no hide to sew over a frame.");
+        }
+        let cell = self.bow_cell(actor);
+        let dry = self.bow_branch_id(actor).is_some();
+        let any_branch = !self.loose_ids(actor, Material::Branch).is_empty()
+            || !self.ground_ids(cell, Material::Branch).is_empty();
+        if !dry && any_branch {
+            return Some("The branch is not dry.");
+        }
+        if !dry {
+            return Some("You have no dry branch for a hoop.");
+        }
+        if self.bow_line(actor).is_none() {
+            Some("You have no cordage to sew a drum.")
+        } else {
+            None
+        }
+    }
+
+    fn apply_drum_stretches(&mut self, stretches: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in stretches {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if let Some(message) = self.drum_refusal(actor.id) {
+                self.finish(intent.command_id, actor.id, false, message, results);
+                continue;
+            }
+            let Some(hide) = self.drum_hide_id(actor.id) else {
+                continue;
+            };
+            let Some(branch) = self.bow_branch_id(actor.id) else {
+                continue;
+            };
+            let Some((line, kind)) = self.bow_line(actor.id) else {
+                continue;
+            };
+            let hide_word = self.drum_hide_word(hide);
+            let cord = match kind {
+                Line::Hide => "hide strips",
+                Line::Willow => "willow cordage",
+                Line::Nettle => "nettle cordage",
+            };
+            self.items.remove(&hide);
+            self.items.remove(&branch);
+            self.items.remove(&line);
+            let id = self.mint_item(Material::Drum, 0, actor.cell, Some(actor.id), Role::Loose);
+            let name = self.name_of(actor.id);
+            let rest = format!("a {hide_word} over a hoop of dry branch with {cord}.");
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "sew", &rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "sew", &rest),
+                results,
+            );
+        }
+    }
+
+    fn apply_drum_beats(&mut self, beats: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in beats {
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Drum).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a drum.",
+                    results,
+                );
+                continue;
+            }
+            self.drum = Some(crate::model::WhistleSound {
+                cell: actor.cell,
+                until: self.time.saturating_add(1),
+            });
+            self.drum_startle_deer(actor.cell);
+            let name = self.name_of(actor.id);
+            let rest = "the drum.";
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "beat", rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "beat", rest),
                 results,
             );
         }
