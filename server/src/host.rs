@@ -413,7 +413,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 }
                 Attempt::PutInBasket(_) => true,
                 Attempt::Drop(Material::Basket) => true,
-                Attempt::Eat(_) | Attempt::Roast | Attempt::Drink => true,
+                Attempt::Eat(_) | Attempt::Roast | Attempt::Drink | Attempt::BreakIce => true,
                 Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest => true,
                 Attempt::Gather(_)
                     if !result.success
@@ -1008,6 +1008,80 @@ mod tests {
         assert_eq!(host.replies_for(&near.token).len(), 1);
         assert!(host.clock().sim_time < 17);
         assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_hole_in_the_ice_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-ice-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let none = "There is no ice here.";
+        host.submit(&near.token, "early", "break ice", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, none);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let look = host.observe(token).unwrap();
+            assert!(look.events.iter().all(|event| event.text != none));
+        }
+        for (id, step) in [("n1", "n"), ("n2", "n"), ("w1", "w"), ("w2", "w")] {
+            host.submit(&near.token, id, step, None);
+            host.advance(1).unwrap();
+        }
+        host.submit(&near.token, "stone-step", "n", None);
+        host.advance(1).unwrap();
+        host.submit(&near.token, "stone", "gather stone", None);
+        let gathered = host.advance(1).unwrap();
+        assert_eq!(gathered.replies[0].message, "You gather a stone.");
+        host.submit(&near.token, "back", "s", None);
+        host.advance(1).unwrap();
+        while host.clock().sim_time < 12 {
+            host.advance(1).unwrap();
+        }
+        let reply = "You break a hole in the ice with the stone.";
+        let heard = "Near breaks a hole in the ice with the stone.";
+        host.submit(&near.token, "open", "break ice", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, reply);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        assert_eq!(closed.replies[0].command_id, "open");
+        assert!(host
+            .observe(&near.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != reply && event.text != heard }));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        let quiet_look = host.observe(&quiet.token).unwrap();
+        assert!(quiet_look.events.iter().all(|event| event.text != heard));
+        assert!(quiet_look
+            .events
+            .iter()
+            .any(|event| event.text.contains("You hear ice break")));
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        assert!(host.replies_for(&seen.token).is_empty());
         let _ = std::fs::remove_file(&data);
         let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
         let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
