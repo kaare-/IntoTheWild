@@ -1860,8 +1860,8 @@ impl World {
             if let Some(company) = self.company_here(actor_id) {
                 parts.push(company);
             }
-            if let Some(baskets) = self.carried_baskets_here(actor_id) {
-                parts.push(baskets);
+            if let Some(arms) = self.carried_arms_here(actor_id) {
+                parts.push(arms);
             }
         }
         parts.join(" ")
@@ -5319,9 +5319,9 @@ impl World {
             line.push(' ');
             line.push_str(&company);
         }
-        if let Some(baskets) = self.carried_baskets_here(actor_id) {
+        if let Some(arms) = self.carried_arms_here(actor_id) {
             line.push(' ');
-            line.push_str(&baskets);
+            line.push_str(&arms);
         }
         let stocked = self.actor(actor_id).is_some_and(|actor| {
             self.pile_count(actor.cell, Material::Branch) > 0
@@ -5354,18 +5354,15 @@ impl World {
         }
     }
 
-    /// A bark basket in someone else's arms on this cell. Look names it, full or holding.
-    fn carried_baskets_here(&self, viewer: ActorId) -> Option<String> {
+    /// What someone else on this cell carries. The basket stays in that same brief list.
+    fn carried_arms_here(&self, viewer: ActorId) -> Option<String> {
         let mut lines = Vec::new();
         for id in self.others_here(viewer) {
-            if self.loose_ids(id, Material::Basket).is_empty() {
+            let bits = self.arm_bits(id);
+            if bits.is_empty() {
                 continue;
             }
-            lines.push(format!(
-                "{} carries {}.",
-                self.name_of(id),
-                self.basket_arm_phrase(id)
-            ));
+            lines.push(format!("{} carries {}.", self.name_of(id), join_and(&bits)));
         }
         if lines.is_empty() {
             None
@@ -6141,9 +6138,26 @@ impl World {
     /// The carrying sentence look already uses. Empty arms say so.
     /// A worn sewn cloak is the next sentence, not another thing in the list.
     pub fn arms_line(&self, actor_id: ActorId) -> String {
+        if self.carry_views(actor_id).is_empty() {
+            return "Your arms are empty.".into();
+        }
+        let bits = self.arm_bits(actor_id);
+        let have = if bits.is_empty() {
+            "Your arms are empty.".to_string()
+        } else {
+            format!("You have {}.", bits.join(", "))
+        };
+        match self.worn_cloak_phrase(actor_id) {
+            Some(cloak) => format!("{have} You wear {cloak}."),
+            None => have,
+        }
+    }
+
+    /// The brief list inside `You have`. The basket, when there is one, is last.
+    fn arm_bits(&self, actor_id: ActorId) -> Vec<String> {
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
-            return "Your arms are empty.".into();
+            return Vec::new();
         }
         let drinks = carrying
             .iter()
@@ -6210,15 +6224,7 @@ impl World {
             let basket = bits.remove(at);
             bits.push(basket);
         }
-        let have = if bits.is_empty() {
-            "Your arms are empty.".to_string()
-        } else {
-            format!("You have {}.", bits.join(", "))
-        };
-        match self.worn_cloak_phrase(actor_id) {
-            Some(cloak) => format!("{have} You wear {cloak}."),
-            None => have,
-        }
+        bits
     }
 
     fn person_text(&self, actor_id: ActorId) -> String {
@@ -16162,6 +16168,14 @@ fn cup_drink_phrase(drinks: u32, raw_drinks: u32, sealed: bool) -> String {
             "{cup} with {boiled} drinks of water and {raw_drinks} drinks of raw water in it"
         ),
         (false, false, _) => cup.into(),
+    }
+}
+
+fn join_and(bits: &[String]) -> String {
+    match bits {
+        [] => String::new(),
+        [only] => only.clone(),
+        [head @ .., last] => format!("{} and {last}", head.join(", ")),
     }
 }
 

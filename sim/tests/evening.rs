@@ -13958,8 +13958,9 @@ fn a_carried_basket_holds_two_more_things() {
         .all(|event| !event.text.contains("into the bark basket")));
     let seen_holding = world.observe(seen).unwrap().text;
     assert!(
-        seen_holding.contains("Near carries a bark basket holding a handful of berries.")
-            && !seen_holding.contains("a full bark basket"),
+        seen_holding.contains(
+            "Near carries four dry branches and a bark basket holding a handful of berries."
+        ) && !seen_holding.contains("a full bark basket"),
         "{seen_holding}"
     );
     let pot = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
@@ -13998,7 +13999,7 @@ fn a_carried_basket_holds_two_more_things() {
     let seen_look = world.observe(seen).unwrap().text;
     assert!(
         seen_look.contains(
-            "Near is here. Near carries a full bark basket holding a handful of berries and a pot."
+            "Near is here. Near carries four dry branches and a full bark basket holding a handful of berries and a pot."
         ),
         "{seen_look}"
     );
@@ -14012,7 +14013,7 @@ fn a_carried_basket_holds_two_more_things() {
         .observe(quiet)
         .unwrap()
         .text
-        .contains("Near carries a full bark basket"));
+        .contains("Near carries four dry branches"));
     let exam = world.examine(near, ExamineTarget::Basket);
     assert!(
         exam.contains("It holds a handful of berries and a pot."),
