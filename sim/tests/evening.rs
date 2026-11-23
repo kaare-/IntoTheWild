@@ -10046,7 +10046,7 @@ fn a_flint_tipped_spear_hardens_in_the_rock_fire() {
         "{waiting}"
     );
     let early = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
-    let waiting_tip = "The flint tip is still hardening in the fire.";
+    let waiting_tip = "The flint tip is still hardening in the fire. A little longer.";
     assert_eq!(early.results[0].message, waiting_tip);
     assert!(!early.results[0].success);
     assert!(world
@@ -10080,7 +10080,27 @@ fn a_flint_tipped_spear_hardens_in_the_rock_fire() {
             .text
             .contains("The flint tip of your spear is hardening in the fire."));
     }
-    world.step(&[]);
+    let late = world.step(&[cmd("late", near, Attempt::Hunt)]);
+    let almost = "The flint tip is still hardening in the fire. It is almost ready.";
+    assert_eq!(late.results[0].message, almost);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == almost));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != almost));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != almost));
     assert_eq!(world.sim_time(), started + 4);
     let sentence = "You harden the flint tip of the spear in the fire.";
     let witnessed = "Near hardens the flint tip of the spear in the fire.";

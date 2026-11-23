@@ -6977,19 +6977,42 @@ impl World {
             .find(|id| self.item(*id).is_some_and(|spear| spear.wooden_tip))
     }
 
-    fn unhardened_spear_line(&self, actor: crate::model::ActorId) -> &'static str {
+    fn unhardened_spear_line(&self, actor: crate::model::ActorId) -> String {
         if self.flint_tip_is_hardening(actor) {
-            "The flint tip is still hardening in the fire."
+            self.hardening_tip_line(actor)
         } else if self
             .loose_ids(actor, Material::Spear)
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))
         {
-            "The flint tip is not set. Pitch it with pine resin, or hold it at a fire."
+            "The flint tip is not set. Pitch it with pine resin, or hold it at a fire.".into()
         } else if self.wooden_spear(actor).is_some() {
-            "The wooden point is not hardened."
+            "The wooden point is not hardened.".into()
         } else {
-            "The spear's point is not hardened."
+            "The spear's point is not hardened.".into()
+        }
+    }
+
+    /// The wait still running on a flint tip. More than one tick is a little
+    /// longer. The last tick, and the tick it finishes, is almost ready.
+    fn hardening_tip_line(&self, actor: crate::model::ActorId) -> String {
+        let left = self
+            .loose_ids(actor, Material::Spear)
+            .iter()
+            .filter_map(|id| {
+                self.item(*id).and_then(|spear| {
+                    (spear.flint_tip && !spear.hardened)
+                        .then_some(spear.firing_ready_at)
+                        .flatten()
+                })
+            })
+            .min()
+            .map(|ready| ready.saturating_sub(self.time))
+            .unwrap_or(0);
+        if left <= 1 {
+            "The flint tip is still hardening in the fire. It is almost ready.".into()
+        } else {
+            "The flint tip is still hardening in the fire. A little longer.".into()
         }
     }
 
@@ -8463,7 +8486,7 @@ impl World {
                     continue;
                 }
                 let message = if self.loose_ids(actor.id, Material::Spear).is_empty() {
-                    "You are not carrying a spear."
+                    "You are not carrying a spear.".to_string()
                 } else {
                     self.unhardened_spear_line(actor.id)
                 };
