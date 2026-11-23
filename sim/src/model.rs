@@ -6770,7 +6770,7 @@ mod salt_lick {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no salt here to gather." }));
+            .all(|event| { event.text != "There is no salt here to gather." }));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -7506,7 +7506,7 @@ mod eggs {
             .collect();
         assert!(quiet_events
             .iter()
-            .any(|event| event == "There are no eggs here to gather."));
+            .all(|event| event != "There are no eggs here to gather."));
         assert!(quiet_events
             .iter()
             .all(|event| !event.contains("gathers the eggs")));
@@ -7823,7 +7823,7 @@ mod moss {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "There is no moss here to gather."));
+            .all(|event| event.text != "There is no moss here to gather."));
         assert!(world
             .observe(quiet)
             .unwrap()
@@ -15925,7 +15925,7 @@ mod pine_resin {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "There is no resin here to gather."));
+            .all(|event| event.text != "There is no resin here to gather."));
         assert!(world
             .observe(near)
             .unwrap()
@@ -16236,7 +16236,7 @@ mod willow {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no willow here to gather." }));
+            .all(|event| { event.text != "There is no willow here to gather." }));
         assert!(world
             .observe(near)
             .unwrap()
@@ -21062,7 +21062,7 @@ mod nettle {
             miss.results[0].message,
             "There is no nettle here to gather."
         );
-        assert!(events(&world, near).contains(&"There is no nettle here to gather.".to_string()));
+        assert!(!events(&world, near).contains(&"There is no nettle here to gather.".to_string()));
         assert!(events(&world, seen)
             .iter()
             .all(|text| !text.contains("nettle")));
@@ -21689,7 +21689,7 @@ mod willow_bark {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no willow bark here to gather." }));
+            .all(|event| { event.text != "There is no willow bark here to gather." }));
         assert!(world
             .observe(near)
             .unwrap()
@@ -21839,7 +21839,7 @@ mod cattail {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no cattail here to gather." }));
+            .all(|event| { event.text != "There is no cattail here to gather." }));
         assert!(world
             .observe(near)
             .unwrap()
@@ -21859,7 +21859,7 @@ mod cattail {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no cattail here to gather." }));
+            .all(|event| { event.text != "There is no cattail here to gather." }));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
@@ -22051,7 +22051,7 @@ mod cattail {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no cattail here to gather." }));
+            .all(|event| { event.text != "There is no cattail here to gather." }));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
@@ -22251,7 +22251,7 @@ mod cattail {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no cattail fluff here to gather." }));
+            .all(|event| { event.text != "There is no cattail fluff here to gather." }));
         assert!(world
             .observe(near)
             .unwrap()
@@ -22475,7 +22475,7 @@ mod cattail {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no cattail fluff here to gather." }));
+            .all(|event| { event.text != "There is no cattail fluff here to gather." }));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -23295,7 +23295,7 @@ mod gather_step {
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There is no willow here to gather." }));
+            .all(|event| { event.text != "There is no willow here to gather." }));
         assert!(world
             .observe(near)
             .unwrap()
@@ -26132,7 +26132,7 @@ mod worms {
             missed.results[0].message,
             "There is no quartz here to gather."
         );
-        assert!(says(&world, near, "There is no quartz here to gather."));
+        assert!(!says(&world, near, "There is no quartz here to gather."));
         assert!(!says(&world, seen, "There is no quartz here to gather."));
         assert!(!says(&world, quiet, "There is no quartz here to gather."));
         for (n, step) in [Dir::North, Dir::East, Dir::North, Dir::East]

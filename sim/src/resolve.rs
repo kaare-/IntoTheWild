@@ -251,6 +251,15 @@ impl World {
                     // A gather that finds the arms full is the reply only.
                     let full_arms_gather =
                         matches!(intent.attempt, Attempt::Gather(_)) && message == ARMS_FULL;
+                    // An empty pile, with no step named, is the reply only.
+                    // A weave that finds the arms full is the same.
+                    let empty_pile = matches!(intent.attempt, Attempt::Gather(_))
+                        && message.contains("here to gather.")
+                        && !message.contains("Step ");
+                    let full_arms_weave = matches!(
+                        intent.attempt,
+                        Attempt::WeaveBasket | Attempt::WeaveNet | Attempt::WeaveMat
+                    ) && message == ARMS_FULL;
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -274,7 +283,9 @@ impl World {
                             && !pick_refusal
                             && !dry_dig_refusal
                             && !pitch_refusal
-                            && !full_arms_gather;
+                            && !full_arms_gather
+                            && !empty_pile
+                            && !full_arms_weave;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {

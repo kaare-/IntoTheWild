@@ -2188,6 +2188,12 @@ fn a_branch_snap_is_heard_one_cell_past_sight() {
         "There is no branch here to gather."
     );
     assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "There is no branch here to gather."));
+    assert!(world
         .observe(near)
         .unwrap()
         .events
@@ -10874,7 +10880,7 @@ fn a_lump_of_ochre_on_the_rock_face_can_be_carried() {
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text == "There is no ochre here to gather."));
+        .all(|event| event.text != "There is no ochre here to gather."));
     assert!(world
         .observe(seen)
         .unwrap()
@@ -14216,15 +14222,12 @@ fn full_arms_name_drop_and_the_refusal_stays_with_that_person() {
         .all(|event| event.text != sentence));
     let weave = world.step(&[cmd("basket", near, Attempt::WeaveBasket)]);
     assert_eq!(weave.results[0].message, sentence);
-    let yours: Vec<_> = world
+    assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .filter(|event| event.text == sentence)
-        .map(|event| event.text.clone())
-        .collect();
-    assert_eq!(yours.len(), 1, "{yours:?}");
+        .all(|event| event.text != sentence));
     for witness in [seen, quiet] {
         assert!(
             world
