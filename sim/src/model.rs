@@ -23523,7 +23523,7 @@ mod arms {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == sentence));
+            .all(|event| event.text != sentence));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
@@ -23600,7 +23600,7 @@ mod arms {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == sentence));
+            .all(|event| event.text != sentence));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)

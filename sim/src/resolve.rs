@@ -248,6 +248,9 @@ impl World {
                     // No hafted spear, no pine resin, or a tip already set
                     // is the reply only.
                     let pitch_refusal = matches!(intent.attempt, Attempt::PitchSpear);
+                    // A gather that finds the arms full is the reply only.
+                    let full_arms_gather =
+                        matches!(intent.attempt, Attempt::Gather(_)) && message == ARMS_FULL;
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -270,7 +273,8 @@ impl World {
                             && !needle_refusal
                             && !pick_refusal
                             && !dry_dig_refusal
-                            && !pitch_refusal;
+                            && !pitch_refusal
+                            && !full_arms_gather;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {

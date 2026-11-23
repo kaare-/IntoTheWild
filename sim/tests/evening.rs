@@ -14208,6 +14208,12 @@ fn full_arms_name_drop_and_the_refusal_stays_with_that_person() {
     let sentence = "Your arms are full. Drop something first.";
     let gather = world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
     assert_eq!(gather.results[0].message, sentence);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != sentence));
     let weave = world.step(&[cmd("basket", near, Attempt::WeaveBasket)]);
     assert_eq!(weave.results[0].message, sentence);
     let yours: Vec<_> = world
@@ -14218,7 +14224,7 @@ fn full_arms_name_drop_and_the_refusal_stays_with_that_person() {
         .filter(|event| event.text == sentence)
         .map(|event| event.text.clone())
         .collect();
-    assert_eq!(yours.len(), 2, "{yours:?}");
+    assert_eq!(yours.len(), 1, "{yours:?}");
     for witness in [seen, quiet] {
         assert!(
             world
