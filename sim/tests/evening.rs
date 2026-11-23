@@ -5963,6 +5963,24 @@ fn a_stone_and_a_branch_bind_into_a_spear_whose_point_hardens() {
     assert_eq!(world.material_tally(Material::Spear), 1);
 }
 
+fn step_words(from: (i32, i32), to: (i32, i32)) -> String {
+    let ns = match (to.1 - from.1).signum() {
+        -1 => "north",
+        1 => "south",
+        _ => "",
+    };
+    let ew = match (to.0 - from.0).signum() {
+        1 => "east",
+        -1 => "west",
+        _ => "",
+    };
+    match (ns, ew) {
+        ("", ew) => ew.to_string(),
+        (ns, "") => ns.to_string(),
+        (ns, ew) => format!("{ns} and {ew}"),
+    }
+}
+
 fn xy_dist(a: (i32, i32), b: (i32, i32)) -> i32 {
     (a.0 - b.0).abs().max((a.1 - b.1).abs())
 }
@@ -6044,9 +6062,10 @@ fn a_hardened_spear_hunts_the_deer_and_the_carcass_cooks() {
     );
     match hash % 3 {
         0 => {
+            let way = step_words(world.actor_cell(near).unwrap(), deer_at);
             assert_eq!(
                 drawn.results[0].message,
-                "You bring the deer down. A carcass lies where it stood."
+                format!("You bring the deer down. A carcass lies to the {way}.")
             );
             assert!(world.deer_cell().is_none());
             assert_eq!(world.material_tally(Material::Carcass), 1);

@@ -1489,7 +1489,7 @@ impl World {
                 } else if !self.has_butcher_tool(actor.id) {
                     Err("You need a flint spear or an iron knife.".into())
                 } else if self.ground_ids(actor.cell, Material::Carcass).is_empty() {
-                    Err("There is no carcass here to butcher.".into())
+                    Err(self.no_carcass_here(actor.cell).into())
                 } else {
                     Ok(true)
                 }
@@ -12300,6 +12300,10 @@ impl World {
         self.arm_deer_return();
         let id = self.mint_item(Material::Carcass, 0, deer.cell, None, Role::Loose);
         let rest = "the deer down with the bow. The flint flake is spent.";
+        let mut yours = crate::model::spoken_act(None, "bring", rest);
+        if let Some(place) = self.carcass_lies_off(actor.id, deer.cell) {
+            yours.push_str(&place);
+        }
         self.emit(
             crate::model::spoken_act(Some(name.as_str()), "bring", rest),
             Scope::Cell(deer.cell),
@@ -12309,13 +12313,7 @@ impl World {
             vec![],
             None,
         );
-        self.finish(
-            intent.command_id.clone(),
-            actor.id,
-            true,
-            crate::model::spoken_act(None, "bring", rest),
-            results,
-        );
+        self.finish(intent.command_id.clone(), actor.id, true, yours, results);
     }
 
     /// A hardened spear on the deer's own cell. No draw: the point is already there.
@@ -12337,11 +12335,21 @@ impl World {
         self.deer = None;
         self.arm_deer_return();
         let id = self.mint_item(Material::Carcass, 0, deer_cell, None, Role::Loose);
+        let place = self.carcass_lies_off(intent.actor_id, deer_cell);
         let (heard, yours) = if flint {
             let rest = "the deer down with the flint spear.";
+            let mut yours = crate::model::spoken_act(None, "bring", rest);
+            if let Some(place) = place.as_deref() {
+                yours.push_str(place);
+            }
             (
                 crate::model::spoken_act(Some(name.as_str()), "bring", rest),
-                crate::model::spoken_act(None, "bring", rest),
+                yours,
+            )
+        } else if let Some(place) = place.as_deref() {
+            (
+                format!("{name} brings the deer down."),
+                format!("You bring the deer down.{place}"),
             )
         } else {
             (

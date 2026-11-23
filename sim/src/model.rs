@@ -3954,6 +3954,62 @@ impl World {
         }
     }
 
+    /// A carcass one step off, on a side or a corner. Nothing already here.
+    pub(crate) fn carcass_step_cue(&self, cell: CellId) -> Option<String> {
+        if !self.ground_ids(cell, Material::Carcass).is_empty() {
+            return None;
+        }
+        let (x, y) = cell_xy(cell);
+        let mut ways = Vec::new();
+        for dir in Dir::all() {
+            let (dx, dy) = dir.delta();
+            let Some(dest) = cell_id(x + dx, y + dy) else {
+                continue;
+            };
+            if !self.ground_ids(dest, Material::Carcass).is_empty() {
+                ways.push(dir.word().to_string());
+            }
+        }
+        if ways.is_empty() {
+            for (dx, dy) in [(-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let Some(dest) = cell_id(x + dx, y + dy) else {
+                    continue;
+                };
+                if !self.ground_ids(dest, Material::Carcass).is_empty() {
+                    ways.push(self.relative(cell, dest));
+                }
+            }
+        }
+        match ways.len() {
+            0 => None,
+            1 => Some(format!(" Step {}.", ways[0])),
+            _ => {
+                let last = ways.pop()?;
+                Some(format!(" Step {} or {last}.", ways.join(", ")))
+            }
+        }
+    }
+
+    pub(crate) fn no_carcass_here(&self, cell: CellId) -> String {
+        match self.carcass_step_cue(cell) {
+            Some(cue) => format!("There is no carcass here to butcher.{cue}"),
+            None => "There is no carcass here to butcher.".into(),
+        }
+    }
+
+    /// Where a kill left the body, when the hunter is not standing on it.
+    pub(crate) fn carcass_lies_off(&self, actor: ActorId, cell: CellId) -> Option<String> {
+        let here = self.actor(actor)?.cell;
+        if here == cell {
+            None
+        } else {
+            Some(format!(
+                " A carcass lies to the {}.",
+                self.relative(here, cell)
+            ))
+        }
+    }
+
     pub(crate) fn gather_step_cue(&self, cell: CellId, material: Material) -> Option<String> {
         if self.pile_count(cell, material) > 0 || !self.ground_ids(cell, material).is_empty() {
             return None;
@@ -8492,7 +8548,7 @@ mod bow_hunt {
         let shot = world.step(&[intent("shot", near, Attempt::Hunt)]);
         assert_eq!(
             shot.results[0].message,
-            "You bring the deer down with the bow. The flint flake is spent."
+            "You bring the deer down with the bow. The flint flake is spent. A carcass lies to the east."
         );
         assert!(world.deer_cell().is_none());
         let deer_cell = super::cell_id(6, 1).unwrap();
@@ -8542,7 +8598,7 @@ mod bow_hunt {
         let past = world.step(&[intent("past", near, Attempt::Hunt)]);
         assert_eq!(
             past.results[0].message,
-            "You bring the deer down with the bow. The flint flake is spent."
+            "You bring the deer down with the bow. The flint flake is spent. A carcass lies to the east."
         );
         assert_eq!(world.loose_ids(near, Material::Spear).len(), 1);
         assert!(world.loose_ids(near, Material::Flake).is_empty());
@@ -8776,6 +8832,86 @@ mod deer_return {
             .events
             .iter()
             .all(|event| { !event.text.contains("brings the deer") && event.text != arrived }));
+    }
+
+    #[test]
+    fn a_thrown_spear_names_where_the_carcass_lies() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let pine = super::cell_id(2, 4).unwrap();
+        let body = super::cell_id(3, 3).unwrap();
+        let near = world.spawn_at("Near", "n", 2, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        if let Some(deer) = world.deer.as_mut() {
+            deer.cell = body;
+            deer.held = true;
+        }
+        if let Some(hare) = world.hare.as_mut() {
+            hare.cell = super::cell_id(6, 4).unwrap();
+        }
+        let spear = world.mint_item(Material::Spear, 0, pine, Some(near), Role::Loose);
+        {
+            let point = world.items.get_mut(&spear).unwrap();
+            point.hardened = true;
+            point.flint_tip = true;
+        }
+        let mut spins = 0;
+        while super::contest_hash(world.seed, world.time, "hunt", "3,3:deer", near) % 3 != 0 {
+            world.step(&[]);
+            if let Some(deer) = world.deer.as_mut() {
+                deer.cell = body;
+                deer.held = true;
+            }
+            if let Some(hare) = world.hare.as_mut() {
+                hare.cell = super::cell_id(6, 4).unwrap();
+            }
+            spins += 1;
+            assert!(spins < 9, "no even hunt on this seed");
+        }
+        let hunt = world.step(&[intent("hunt", near, Attempt::Hunt)]);
+        let yours =
+            "You bring the deer down with the flint spear. A carcass lies to the north and east.";
+        let heard = "Near brings the deer down with the flint spear.";
+        assert_eq!(hunt.results[0].message, yours);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != heard));
+        let missed = world.step(&[intent("miss", near, Attempt::Butcher)]);
+        let step = "There is no carcass here to butcher. Step north and east.";
+        assert_eq!(missed.results[0].message, step);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == step));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != step));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != step));
     }
 }
 
