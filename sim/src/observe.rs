@@ -1275,7 +1275,7 @@ impl World {
             parts.push(self.fish_ground_line(id));
         }
         for _id in self.ground_ids(actor.cell, Material::Basket) {
-            parts.push("A bark basket lies here.".into());
+            parts.push(self.ground_basket_line(actor.cell));
         }
         for id in self.ground_ids(actor.cell, Material::BarkCup) {
             parts.push(format!("{} lies here.", self.bark_cup_name(id, true)));
@@ -12495,6 +12495,28 @@ impl World {
             return None;
         }
         Some(crate::model::spoken_act(None, "cut", rest))
+    }
+
+    /// A bark basket on this ground. Empty and full are named. A basket that
+    /// holds something and still has room keeps the plain line.
+    fn ground_basket_line(&self, cell: crate::model::CellId) -> String {
+        let load = self
+            .items
+            .values()
+            .filter(|item| {
+                item.cell == cell
+                    && item.carrier.is_none()
+                    && item.in_basket
+                    && item.material != Material::Basket
+            })
+            .count() as u32;
+        if load == 0 {
+            "An empty bark basket lies here.".into()
+        } else if load >= Self::BASKET_ROOM {
+            "A full bark basket lies here.".into()
+        } else {
+            "A bark basket lies here.".into()
+        }
     }
 
     fn basket_ids(&self, actor_id: ActorId) -> Vec<crate::model::ItemId> {

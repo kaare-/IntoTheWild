@@ -14422,7 +14422,11 @@ mod bark_return {
         let here = world.observe(near).unwrap().text;
         assert!(here.contains("Two bones lie here."), "{here}");
         assert!(here.contains("A pot sits here."), "{here}");
-        assert!(here.contains("A bark basket lies here."), "{here}");
+        assert!(here.contains("An empty bark basket lies here."), "{here}");
+        assert!(!here.contains("A bark basket lies here."), "{here}");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("empty bark basket") && !event.text.contains("A bark basket lies")
+        }));
         let basket_exam = world.examine(near, super::ExamineTarget::Basket);
         assert!(
             basket_exam.starts_with("An empty bark basket lies here"),
@@ -14479,6 +14483,32 @@ mod bark_return {
         let left = world.observe(near).unwrap().text;
         assert!(left.contains("A bone lies here."), "{left}");
         assert!(!left.contains("Two bones"), "{left}");
+    }
+
+    #[test]
+    fn a_full_basket_on_the_ground_says_so() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Basket, 0, cell, None, super::Role::Loose);
+        let pot = world.mint_item(Material::Pot, 0, cell, None, super::Role::Loose);
+        let bark = world.mint_item(Material::Bark, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&pot).unwrap().in_basket = true;
+        world.items.get_mut(&bark).unwrap().in_basket = true;
+        let full = "A full bark basket lies here.";
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(full), "{}", look.text);
+        assert!(!look.text.contains("An empty bark basket"), "{}", look.text);
+        assert!(look.events.iter().all(|event| event.text != full));
+        assert!(world.observe(seen).unwrap().text.contains(full));
+        assert!(!world.observe(quiet).unwrap().text.contains("bark basket"));
+        world.items.get_mut(&bark).unwrap().in_basket = false;
+        let holding = world.observe(near).unwrap().text;
+        assert!(holding.contains("A bark basket lies here."), "{holding}");
+        assert!(!holding.contains("An empty bark basket"), "{holding}");
+        assert!(!holding.contains("A full bark basket"), "{holding}");
     }
 
     #[test]
