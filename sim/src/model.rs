@@ -22958,12 +22958,28 @@ mod cattail {
             "Cattails stand in the hole in the ice. The roots can be dug. They are not the reeds."
         ));
         assert!(!holed.text.contains("The roots cannot be dug."));
-        assert!(holed.map.contains("@l"));
-        assert!(holed.legend.contains("l hole"));
+        assert!(holed.map.contains("@=l"), "{}", holed.map);
+        assert!(holed.legend.contains("=l frozen still with a hole"));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("frozen still with a hole")));
         assert!(world.observe(seen).unwrap().text.contains(
             "Cattails stand in the hole in the ice to the north and west. The roots can be dug. They are not the reeds."
         ));
-        assert!(world.observe(seen).unwrap().map.contains("pl"));
+        assert!(world.observe(seen).unwrap().map.contains("p=l"));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .legend
+            .contains("=l frozen still with a hole"));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .legend
+            .contains("frozen still with a hole"));
         let roots = world.step(&[intent("roots", near, Attempt::Gather(Material::Cattail))]);
         assert_eq!(roots.results[0].message, "You gather cattail roots.");
         assert!(world.observe(near).unwrap().events.iter().all(|event| {

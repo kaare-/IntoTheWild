@@ -1105,8 +1105,14 @@ mod tests {
         assert!(near_look.text.contains(
             "Cattails stand in the hole in the ice. The roots can be dug. They are not the reeds."
         ));
-        assert!(near_look.map.contains("@l"));
-        assert!(near_look.legend.contains("l hole"));
+        assert!(near_look.map.contains("@=l"), "{}", near_look.map);
+        assert!(near_look.legend.contains("=l frozen still with a hole"));
+        assert!(host.observe(&seen.token).unwrap().map.contains("p=l"));
+        assert!(!host
+            .observe(&quiet.token)
+            .unwrap()
+            .legend
+            .contains("frozen still with a hole"));
         assert!(near_look
             .events
             .iter()

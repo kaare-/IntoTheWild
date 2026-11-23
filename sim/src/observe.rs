@@ -11398,6 +11398,9 @@ impl World {
         if self.sees_deer_on_hoofprints(viewer) {
             legend.push_str("\nd\" deer on hoofprints");
         }
+        if self.sees_frozen_still_with_a_hole(viewer) {
+            legend.push_str("\n=l frozen still with a hole");
+        }
         legend
     }
 
@@ -11409,6 +11412,14 @@ impl World {
         self.fires
             .values()
             .any(|fire| chebyshev(origin, fire.cell) <= self.tuning.sight)
+    }
+
+    /// Frozen still water with an open hole, inside sight. The map keeps `=`
+    /// and `l` on that cell.
+    fn sees_frozen_still_with_a_hole(&self, viewer: ActorId) -> bool {
+        self.visible_cell_ids(viewer).into_iter().any(|cell| {
+            self.terrain_char(cell) == '=' && self.content_marks(viewer, cell).contains(&'l')
+        })
     }
 
     /// A deer standing on hoofprints this person can see. The map draws `d"`.
@@ -11429,11 +11440,19 @@ impl World {
             let mut line = format!("{y} ");
             for x in 0..crate::model::WIDTH {
                 let id = cell_id(x, y).unwrap();
-                let [left, right] = self.glyph(viewer, id);
+                let [left, mut right] = self.glyph(viewer, id);
+                let marks = self.content_marks(viewer, id);
+                let hole_on_ice =
+                    left != '?' && self.terrain_char(id) == '=' && marks.contains(&'l');
+                let person_here = left == '@' || left == 'p';
+                if hole_on_ice && person_here {
+                    right = '=';
+                }
                 line.push(left);
                 line.push(right);
-                let marks = self.content_marks(viewer, id);
-                if left != '?' && marks.len() > 1 {
+                if hole_on_ice && (person_here || (left != 'l' && right != 'l')) {
+                    line.push('l');
+                } else if left != '?' && marks.len() > 1 {
                     let deer_on_tracks = marks.first() == Some(&'d') && marks.contains(&'"');
                     line.push(if deer_on_tracks { '"' } else { '+' });
                 } else {
