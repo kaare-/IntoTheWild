@@ -10420,7 +10420,8 @@ impl World {
                     let noun = self.pile_noun_for(viewer, material, count);
                     let (kind, verb) = self.food_kind_for(viewer, material);
                     lines.push(format!(
-                        "A pile of {count} {noun} is in contact with the ground {}{}. The {kind} {verb} {}. {}{}{}{}{}",
+                        "A pile of {} {noun} is in contact with the ground {}{}. The {kind} {verb} {}. {}{}{}{}{}",
+                        count_word(count),
                         self.mark_place(origin, cell),
                         self.hoofprints_on_wood(origin, cell),
                         self.condition_word(self.pile_moisture(cell, material)),

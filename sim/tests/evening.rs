@@ -2116,7 +2116,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     assert_eq!(world.sim_time(), clock);
     assert!(
         from_mid.contains(
-            "A pile of 2 branches is in contact with the ground one cell north and two cells east, in the open, and hoofprints mark the ground there."
+            "A pile of two branches is in contact with the ground one cell north and two cells east, in the open, and hoofprints mark the ground there."
         ),
         "{from_mid}"
     );
@@ -2124,7 +2124,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let from_rock = world.examine(under, ExamineTarget::Wood);
     assert!(
         from_rock.contains(
-            "A pile of 2 branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
+            "A pile of two branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
         ),
         "{from_rock}"
     );
@@ -5784,7 +5784,7 @@ fn a_carried_sheet_and_a_carried_pot_are_one_sentence() {
     );
     let wood = world.examine(near, ExamineTarget::Wood);
     assert!(
-        wood.contains("A pile of 4 branches") || wood.contains("A pile of 4"),
+        wood.contains("A pile of four branches") || wood.contains("A pile of 4"),
         "{wood}"
     );
     let clock = world.sim_time();
@@ -5852,7 +5852,7 @@ fn one_thing_on_the_ground_is_named_and_is_not_a_pile() {
         berries.contains("A pile of 4 handfuls of berries"),
         "{berries}"
     );
-    assert!(wood.contains("A pile of 4 branches"), "{wood}");
+    assert!(wood.contains("A pile of four branches"), "{wood}");
 
     world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
     let one = world.observe(near).unwrap();
@@ -6937,7 +6937,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let wood_while = world.examine(near, ExamineTarget::Wood);
     assert_eq!(world.sim_time(), clock);
     assert!(wood_while.contains(
-        "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open."
+        "A pile of three branches is in contact with the ground one cell south and one cell west, in the open."
     ));
     assert!(wood_while.contains("A deer stands on the rotting branches."));
     assert!(
@@ -6978,7 +6978,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     assert!(!apart.text.contains("on the rotting wood"));
     let wood_after = world.examine(near, ExamineTarget::Wood);
     assert!(wood_after.contains(
-        "A pile of 3 branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
+        "A pile of three branches is in contact with the ground one cell south and one cell west, in the open, and hoofprints mark the ground there."
     ));
     assert!(
         !wood_after.contains("A deer"),
@@ -7002,7 +7002,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let snapped = world.examine(near, ExamineTarget::Wood);
     assert_eq!(world.sim_time(), snapped_clock);
     assert!(snapped.contains(
-        "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer stands on these branches."
+        "A pile of three branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer stands on these branches."
     ));
     assert!(!snapped.contains("eating"), "{snapped}");
     assert!(
@@ -7042,7 +7042,7 @@ fn examine_deer_counts_the_cells_the_way_the_tracks_do() {
     let eating = world.examine(near, ExamineTarget::Wood);
     assert_eq!(world.sim_time(), eating_clock);
     assert!(eating.contains(
-        "A pile of 3 branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer is eating the berries here. A handful is gone."
+        "A pile of three branches is in contact with the ground here, under the rock overhang. The wood is dry. Rain does not reach it. A deer is eating the berries here. A handful is gone."
     ));
     assert!(!eating.contains("last handful"), "{eating}");
     assert!(!eating.contains("these branches"), "{eating}");
