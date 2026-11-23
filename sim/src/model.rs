@@ -16243,6 +16243,17 @@ mod bank_drink {
         let place = "You are on the clay bank, in the open.";
         let look = world.observe(near).unwrap();
         assert!(look.text.contains(place), "{}", look.text);
+        let place_line = look
+            .text
+            .lines()
+            .find(|line| line.contains(place))
+            .unwrap_or("");
+        assert!(!place_line.contains("Seen"), "{place_line}");
+        assert!(look.text.lines().any(|line| line == "Seen is here."));
+        assert!(look
+            .events
+            .iter()
+            .all(|event| event.text != "Seen is here."));
         assert!(
             !look.text.contains("You are on the valley floor"),
             "{}",
@@ -16261,6 +16272,13 @@ mod bank_drink {
         assert!(look.events.iter().all(|event| event.text != place));
         let seen_look = world.observe(seen).unwrap();
         assert!(seen_look.text.contains(place), "{}", seen_look.text);
+        let seen_place = seen_look
+            .text
+            .lines()
+            .find(|line| line.contains(place))
+            .unwrap_or("");
+        assert!(!seen_place.contains("Near"), "{seen_place}");
+        assert!(seen_look.text.lines().any(|line| line == "Near is here."));
         assert!(seen_look.events.iter().all(|event| event.text != place));
         let quiet_look = world.observe(quiet).unwrap();
         assert!(!quiet_look.text.contains(place), "{}", quiet_look.text);

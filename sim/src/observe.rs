@@ -286,6 +286,17 @@ impl World {
             lines.push(rot);
         }
         lines.push(self.here_text(actor_id));
+        if self
+            .actor(actor_id)
+            .is_some_and(|actor| !self.cell(actor.cell).rock)
+        {
+            if let Some(company) = self.company_here(actor_id) {
+                lines.push(company);
+            }
+            if let Some(arms) = self.carried_arms_here(actor_id) {
+                lines.push(arms);
+            }
+        }
         lines.push(self.self_text(actor_id));
         if let Some(work) = self.work_view(actor_id) {
             lines.push(work.detail);
@@ -1865,14 +1876,6 @@ impl World {
             parts.push("The deer left hoofprints on the ground here.".into());
         } else if outside.is_none() && self.tracks.contains(&actor.cell) {
             parts.push("Hoofprints mark the ground.".into());
-        }
-        if !cell.rock {
-            if let Some(company) = self.company_here(actor_id) {
-                parts.push(company);
-            }
-            if let Some(arms) = self.carried_arms_here(actor_id) {
-                parts.push(arms);
-            }
         }
         parts.join(" ")
     }
