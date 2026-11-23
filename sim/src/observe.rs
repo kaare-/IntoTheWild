@@ -11902,6 +11902,7 @@ impl World {
                 self.event_visible(viewer, origin, event)
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
+                    && self.put_in_basket_for_these_eyes(viewer, event).is_none()
                     && self.drop_for_these_eyes(viewer, event).is_none()
                     && self.fold_for_these_eyes(viewer, event).is_none()
                     && self.grind_for_these_eyes(viewer, event).is_none()
@@ -12761,6 +12762,29 @@ impl World {
         } else {
             lines.join("\n")
         }
+    }
+
+    /// A thing put into the bark basket. The person already has the reply,
+    /// so the event list does not repeat it. Anyone else keeps the stored sentence.
+    /// `put fish` still uses its own first-person line.
+    fn put_in_basket_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} puts "))?;
+        let rest = rest.strip_suffix(" The basket is full.").unwrap_or(rest);
+        if rest == "the raw fish in the bark basket." {
+            return None;
+        }
+        if !rest.ends_with(" in the bark basket.") {
+            return None;
+        }
+        Some(event.text.clone())
     }
 
     /// A raw fish set into the bark basket, filled for the person who put it there.

@@ -563,6 +563,8 @@ pub enum Attempt {
     /// A sheet of bark folded into a cup that holds water. Not a clay pot.
     FoldCup,
     PutFish,
+    /// A carried thing, or one on this ground, into the bark basket in the arms.
+    PutInBasket(Material),
     Thatch,
     SetSnare,
     SetNet,
@@ -724,6 +726,7 @@ impl Attempt {
                 | Attempt::WeaveBasket
                 | Attempt::FoldCup
                 | Attempt::PutFish
+                | Attempt::PutInBasket(_)
                 | Attempt::Thatch
                 | Attempt::SetSnare
                 | Attempt::SetNet
@@ -14391,6 +14394,148 @@ mod bark_return {
                 .events
                 .iter()
                 .all(|event| event.text != carrying));
+        }
+    }
+
+    #[test]
+    fn a_carried_or_ground_thing_goes_into_the_basket_on_purpose() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("put berries in basket"),
+            Ok(Attempt::PutInBasket(Material::Berry))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("put mushroom in the basket"),
+            Ok(Attempt::PutInBasket(Material::Mushroom))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("place the pot into the basket"),
+            Ok(Attempt::PutInBasket(Material::Pot))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("stow bone in basket"),
+            Ok(Attempt::PutInBasket(Material::Bone))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("tuck a sheet of bark into the bark basket"),
+            Ok(Attempt::PutInBasket(Material::Bark))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("put fish in basket"),
+            Ok(Attempt::PutFish)
+        );
+        assert!(crate::parse::help_text().contains("put berries in basket"));
+        let none = world.step(&[intent("none", near, Attempt::PutInBasket(Material::Berry))]);
+        assert_eq!(
+            none.results[0].message,
+            "You are not carrying a bark basket."
+        );
+        assert!(!none.results[0].success);
+        let missing = "You are not carrying a bark basket.";
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != missing));
+        }
+        let wove = world.step(&[intent("weave", near, Attempt::WeaveBasket)]);
+        assert!(wove.results[0].success, "{}", wove.results[0].message);
+        let no_thing = world.step(&[intent("flute", near, Attempt::PutInBasket(Material::Flute))]);
+        assert_eq!(
+            no_thing.results[0].message,
+            "There is no reed flute here to put in the basket."
+        );
+        for id in [near, seen, quiet] {
+            assert!(world.observe(id).unwrap().events.iter().all(|event| {
+                event.text != "There is no reed flute here to put in the basket."
+            }));
+        }
+        let gathered = world.step(&[intent("berries", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a handful of berries."
+        );
+        let put = world.step(&[intent("put", near, Attempt::PutInBasket(Material::Berry))]);
+        assert_eq!(
+            put.results[0].message,
+            "You put a handful of berries in the bark basket."
+        );
+        let heard = "Near puts a handful of berries in the bark basket.";
+        let look = world.observe(near).unwrap();
+        assert!(
+            look.text
+                .contains("a bark basket holding a handful of berries"),
+            "{}",
+            look.text
+        );
+        assert!(look.events.iter().all(|event| event.text != heard));
+        assert!(look
+            .events
+            .iter()
+            .all(|event| event.text != "You put a handful of berries in the bark basket."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard));
+        assert!(world
+            .basket_held_sentence(near)
+            .contains("It can hold one more thing."));
+        let pot = world.step(&[intent("pot", near, Attempt::PutInBasket(Material::Pot))]);
+        assert_eq!(
+            pot.results[0].message,
+            "You put a pot in the bark basket. The basket is full."
+        );
+        let pot_heard = "Near puts a pot in the bark basket. The basket is full.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != pot_heard
+                && event.text != "You put a pot in the bark basket. The basket is full."));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == pot_heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != pot_heard));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("a full bark basket"));
+        assert!(world
+            .basket_held_sentence(near)
+            .contains("It cannot hold more."));
+        let full = world.step(&[intent("bone", near, Attempt::PutInBasket(Material::Bone))]);
+        assert_eq!(full.results[0].message, "The bark basket is full.");
+        assert!(!full.results[0].success);
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != "The bark basket is full."));
         }
     }
 }

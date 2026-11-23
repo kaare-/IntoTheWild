@@ -95,6 +95,7 @@ gather charcoal              a lump left when a small fire goes out, from rain o
 bank                         dry branches lying on a burning fire, covered with a handful of mud. After a short wait the wood chars into charcoal and the fire goes out. A fire that would burn out first is held until that wait. If the fire is put out, the wood comes back and does not char. The branches in your arms stay there. smother and cover fire are the same
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
+put berries in basket        a carried thing, or one on this ground, into the bark basket you carry. put mushroom in basket is the same, and so are place, stow, and tuck. With no basket, nothing of that kind, or a full basket, only you hear it.
 wear hide                    a carried hide, against the cold. A sewn cloak on you does not take a carry slot
 remove hide                  a worn hide; it returns to the arms and counts again
 eat berries                  sweet berries, raw
@@ -646,6 +647,10 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         {
             Ok(Attempt::PutFish)
         }
+        "put" | "place" | "stow" | "tuck" => match put_basket_noun(rest) {
+            Some(noun) => parse_material(noun).map(Attempt::PutInBasket),
+            None => Err("Put a carried thing in the basket. Try put berries in basket.".into()),
+        },
         "lay" if rest == "bark" => Ok(Attempt::LayBark),
         "roof" => Ok(Attempt::LayBark),
         "drink" => Ok(Attempt::Drink),
@@ -992,6 +997,40 @@ fn parse_dir(text: &str) -> Result<Dir, String> {
         "w" | "west" => Ok(Dir::West),
         _ => Err("Name a direction: n, s, e, or w.".into()),
     }
+}
+
+fn put_basket_noun(rest: &str) -> Option<&str> {
+    const TAILS: &[&str] = &[
+        " into the bark basket",
+        " in the bark basket",
+        " into a bark basket",
+        " in a bark basket",
+        " into the basket",
+        " in the basket",
+        " into a basket",
+        " in a basket",
+        " into basket",
+        " in basket",
+    ];
+    let rest = rest.trim();
+    let noun = TAILS.iter().find_map(|tail| rest.strip_suffix(tail))?;
+    let noun = noun.trim();
+    let noun = noun
+        .strip_prefix("the ")
+        .or_else(|| noun.strip_prefix("an "))
+        .or_else(|| noun.strip_prefix("a "))
+        .unwrap_or(noun)
+        .trim();
+    let noun = match noun {
+        "handful of berries" | "sweet berries" => "berries",
+        "handful of dark berries" | "poison berries" => "dark berries",
+        "handful of pale berries" => "pale berries",
+        "sheet of bark" | "dry sheet of bark" | "sheet" => "bark",
+        "cooked mushroom" => "mushroom",
+        "lump of clay" => "clay",
+        other => other,
+    };
+    Some(noun)
 }
 
 fn parse_material(text: &str) -> Result<Material, String> {

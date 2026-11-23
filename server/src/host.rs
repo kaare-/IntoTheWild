@@ -407,6 +407,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 {
                     true
                 }
+                Attempt::PutInBasket(_) => true,
                 _ => false,
             };
             if !spoken {
@@ -660,6 +661,88 @@ mod tests {
                 look.events
             );
         }
+        assert!(host.replies_for(&seen.token).is_empty());
+        assert_eq!(host.replies_for(&near.token).len(), 1);
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_put_into_the_basket_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-put-basket-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        for (id, line) in [("e1", "e"), ("e2", "e"), ("n1", "n"), ("n2", "n")] {
+            let queued = host.submit(&near.token, id, line, None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{}",
+                queued.message
+            );
+            host.advance(1).unwrap();
+        }
+        let none = "You are not carrying a bark basket.";
+        let queued = host.submit(&near.token, "none", "put berries in basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, none);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let wove = host.submit(&near.token, "weave", "weave basket", None);
+        assert!(!wove.immediate, "{}", wove.message);
+        host.advance(1).unwrap();
+        let missing = "There is no reed flute here to put in the basket.";
+        let queued = host.submit(&near.token, "flute", "put flute in basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, missing);
+        let put = "You put a handful of berries in the bark basket.";
+        let heard = "Near puts a handful of berries in the bark basket.";
+        let queued = host.submit(&near.token, "berries", "put berries in basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, put);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let full = "You put a pot in the bark basket. The basket is full.";
+        let queued = host.submit(&near.token, "pot", "put pot in basket", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, full, "{:?}", queued.message);
+        let queued = host.submit(&near.token, "bone", "put bone in basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, "The bark basket is full.");
+        let duplicate = host.submit(&near.token, "bone", "put bone in basket", None);
+        assert!(duplicate.duplicate);
+        assert_eq!(duplicate.message, "The bark basket is full.");
+        let near_look = host.observe(&near.token).unwrap();
+        assert!(near_look.events.iter().all(|event| {
+            event.text != none
+                && event.text != missing
+                && event.text != put
+                && event.text != heard
+                && event.text != full
+                && event.text != "The bark basket is full."
+                && event.text != "Near puts a pot in the bark basket. The basket is full."
+        }));
+        let seen_look = host.observe(&seen.token).unwrap();
+        assert!(seen_look.events.iter().all(|event| event.text != heard));
+        let quiet_look = host.observe(&quiet.token).unwrap();
+        assert!(quiet_look.events.iter().any(|event| event.text == heard));
         assert!(host.replies_for(&seen.token).is_empty());
         assert_eq!(host.replies_for(&near.token).len(), 1);
         assert!(host.clock().sim_time < 17);
