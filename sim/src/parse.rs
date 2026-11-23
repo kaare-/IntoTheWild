@@ -82,7 +82,7 @@ gather reeds                 a bundle at the brook's edge
 gather cattail               cattail roots from the shallows of the still. dig cattail roots is the same. They are not the reeds. Raw roots do not feed until they are cooked.
 gather cattail fluff         a handful of fluff from those cattails, when they are not under the ice. gather fluff is the same. It is not the roots. The cattails have no fluff once it is taken, then it hangs there again after the same wait as the roots. Ice holds that wait. It still lights a fire when it is damp, where moss does not. The open rain puts it out.
 thatch lean-to               a carried bundle of reeds on a lean-to already standing here. cover lean-to is the same. You are out of the wind, and the rain does not reach you
-weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. It holds one handful of berries, or one raw fish, that would not fit in the arms.
+weave basket                 a sheet of bark, from the arms or the pile at your feet, into a bark basket. While you carry it, it holds two more things.
 fold bark                    a sheet of bark into a bark cup. make bark cup is the same. The cup holds water. A clay pot is still a pot.
 seal bark cup                a lump of pine resin on a bark cup in the arms or at your feet. The lump is spent. pitch bark cup is the same. An unsealed cup lets a drink soak through after 8 ticks. A sealed cup keeps it. With no cup, or no pine resin, only you hear which one is missing.
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
@@ -188,6 +188,7 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "needle" if rest.is_empty() => Ok(Attempt::NameNeedle),
         "antler" if rest.is_empty() || rest == "pick" => Ok(Attempt::NameAntler),
         "pick" if rest.is_empty() => Ok(Attempt::NamePick),
+        "basket" if rest.is_empty() => Ok(Attempt::NameBasket),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)

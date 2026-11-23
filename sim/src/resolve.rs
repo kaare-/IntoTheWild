@@ -304,7 +304,8 @@ impl World {
                         | Attempt::NameMushroom
                         | Attempt::NameNeedle
                         | Attempt::NameAntler
-                        | Attempt::NamePick => hints.push(intent),
+                        | Attempt::NamePick
+                        | Attempt::NameBasket => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -486,7 +487,13 @@ impl World {
                 Attempt::NameNeedle => "Carve a bone needle.",
                 Attempt::NameAntler => "Carve an antler pick.",
                 Attempt::NamePick => "Dig worms from dry ground.",
+                Attempt::NameBasket => "",
                 _ => "Board, carve canoe, or paddle.",
+            };
+            let line = if matches!(intent.attempt, Attempt::NameBasket) {
+                self.basket_name_line(intent.actor_id)
+            } else {
+                line.to_string()
             };
             self.finish(intent.command_id, intent.actor_id, true, line, &mut results);
         }
@@ -615,7 +622,8 @@ impl World {
             | Attempt::NameMushroom
             | Attempt::NameNeedle
             | Attempt::NameAntler
-            | Attempt::NamePick => Ok(false),
+            | Attempt::NamePick
+            | Attempt::NameBasket => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -2883,11 +2891,8 @@ impl World {
                 if self.loose_ids(actor.id, Material::Basket).is_empty() {
                     return Err("You are not carrying a bark basket.".into());
                 }
-                if self.basket_holds_berries(actor.id) {
-                    return Err("The bark basket already holds a handful of berries.".into());
-                }
-                if self.basket_holds_fish(actor.id) {
-                    return Err("The bark basket already holds a raw fish.".into());
+                if !self.basket_has_room(actor.id) {
+                    return Err("The bark basket is full.".into());
                 }
                 if self.raw_fish_in_arms(actor.id).is_none() {
                     return Err("You are not carrying a raw fish.".into());
@@ -11583,28 +11588,35 @@ impl World {
         }
     }
 
+    /// Two more things fit in a carried bark basket. They do not take an arm slot.
+    pub(crate) const BASKET_ROOM: u32 = 2;
+
+    pub(crate) fn basket_load(&self, actor: crate::model::ActorId) -> u32 {
+        self.items
+            .values()
+            .filter(|item| item.carrier == Some(actor) && item.in_basket)
+            .count() as u32
+    }
+
     pub(crate) fn basket_has_room(&self, actor: crate::model::ActorId) -> bool {
         !self.loose_ids(actor, Material::Basket).is_empty()
-            && !self
-                .items
-                .values()
-                .any(|item| item.carrier == Some(actor) && item.in_basket)
+            && self.basket_load(actor) < Self::BASKET_ROOM
+    }
+
+    /// Bare `basket`. The reply stays with this person.
+    pub fn basket_name_line(&self, actor: crate::model::ActorId) -> String {
+        if self.loose_ids(actor, Material::Basket).is_empty() {
+            "Weave a bark basket from a sheet of bark. It holds two more things.".into()
+        } else {
+            format!(
+                "You carry a bark basket. {}",
+                self.basket_held_sentence(actor)
+            )
+        }
     }
 
     pub(crate) fn basket_can_hold_berries(&self, actor: crate::model::ActorId) -> bool {
         self.basket_has_room(actor)
-    }
-
-    fn basket_holds_berries(&self, actor: crate::model::ActorId) -> bool {
-        self.items.values().any(|item| {
-            item.carrier == Some(actor) && item.material == Material::Berry && item.in_basket
-        })
-    }
-
-    fn basket_holds_fish(&self, actor: crate::model::ActorId) -> bool {
-        self.items.values().any(|item| {
-            item.carrier == Some(actor) && item.material == Material::Fish && item.in_basket
-        })
     }
 
     /// A raw fish in the arms, not the one already sitting in the basket.
@@ -11623,24 +11635,9 @@ impl World {
     fn gather_overflows_into_basket(
         &self,
         actor: crate::model::ActorId,
-        material: Material,
+        _material: Material,
     ) -> bool {
-        if !self.basket_has_room(actor) {
-            return false;
-        }
-        match material {
-            Material::Berry => true,
-            Material::Fish => self
-                .actor(actor)
-                .map(|person| person.cell)
-                .is_some_and(|cell| {
-                    self.ground_ids(cell, Material::Fish)
-                        .first()
-                        .and_then(|id| self.item(*id))
-                        .is_some_and(|fish| !fish.cooked)
-                }),
-            _ => false,
-        }
+        self.basket_has_room(actor)
     }
 
     fn tuck_overflow_into_basket(
@@ -11652,12 +11649,6 @@ impl World {
             return;
         }
         if !self.basket_has_room(actor) {
-            return;
-        }
-        let fits = self.item(item_id).is_some_and(|item| {
-            item.material == Material::Berry || (item.material == Material::Fish && !item.cooked)
-        });
-        if !fits {
             return;
         }
         if let Some(item) = self.items.get_mut(&item_id) {

@@ -664,6 +664,8 @@ pub enum Attempt {
     NameAntler,
     /// Bare `pick`. Names the dry-ground dig. Does not dig.
     NamePick,
+    /// Bare `basket`. Names the weave. Does not weave one.
+    NameBasket,
 }
 
 impl Attempt {

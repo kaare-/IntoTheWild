@@ -13899,6 +13899,80 @@ fn a_clear_night_names_the_stars_and_a_raining_night_does_not() {
 }
 
 #[test]
+fn a_carried_basket_holds_two_more_things() {
+    assert_eq!(parse_attempt("basket").unwrap(), Attempt::NameBasket);
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+    let named = world.step(&[cmd("name", near, Attempt::NameBasket)]);
+    assert_eq!(
+        named.results[0].message,
+        "Weave a bark basket from a sheet of bark. It holds two more things."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("two more")));
+    let woven = world.step(&[cmd("weave", near, Attempt::WeaveBasket)]);
+    assert_eq!(woven.results[0].message, "You weave a bark basket.");
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Near weaves a bark basket."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("basket")));
+    for i in 0..4 {
+        let got = world.step(&[cmd(
+            &format!("branch-{i}"),
+            near,
+            Attempt::Gather(Material::Branch),
+        )]);
+        assert!(got.results[0].success, "{}", got.results[0].message);
+    }
+    let berry = world.step(&[cmd("berry", near, Attempt::Gather(Material::Berry))]);
+    assert!(berry.results[0].success, "{}", berry.results[0].message);
+    let pot = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
+    assert!(pot.results[0].success, "{}", pot.results[0].message);
+    let look = world.observe(near).unwrap().text;
+    assert!(
+        look.contains("four dry branches, a bark basket holding a handful of berries and a pot"),
+        "{look}"
+    );
+    let exam = world.examine(near, ExamineTarget::Basket);
+    assert!(
+        exam.contains("It holds a handful of berries and a pot."),
+        "{exam}"
+    );
+    let full = "Your arms are full. Drop something first.";
+    let refused = world.step(&[cmd("bark", near, Attempt::Gather(Material::Bark))]);
+    assert_eq!(refused.results[0].message, full);
+    assert!(!refused.results[0].success);
+    for person in [near, seen, quiet] {
+        assert!(world
+            .observe(person)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != full));
+    }
+    let again = world.step(&[cmd("name-2", near, Attempt::NameBasket)]);
+    assert!(
+        again.results[0].message.contains("It cannot hold more."),
+        "{}",
+        again.results[0].message
+    );
+}
+
+#[test]
 fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
     assert_eq!(parse_attempt("weave basket").unwrap(), Attempt::WeaveBasket);
     assert_eq!(parse_attempt("make basket").unwrap(), Attempt::WeaveBasket);
@@ -14085,7 +14159,7 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     assert_eq!(cast.results[0].message, "You spear a fish from the brook.");
     let holding = world.observe(near).unwrap().text;
     assert!(
-        holding.contains("a bark basket holding a raw fish, "),
+        holding.contains("a bark basket holding a raw fish"),
         "{holding}"
     );
     assert_eq!(holding.matches("raw fish").count(), 1, "{holding}");
@@ -14170,7 +14244,9 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
 
     let clay = world.step(&[cmd("clay", near, Attempt::Gather(Material::Clay))]);
     assert!(clay.results[0].success, "{}", clay.results[0].message);
-    let blocked = world.step(&[cmd("clay-2", near, Attempt::Gather(Material::Clay))]);
+    let second = world.step(&[cmd("clay-2", near, Attempt::Gather(Material::Clay))]);
+    assert!(second.results[0].success, "{}", second.results[0].message);
+    let blocked = world.step(&[cmd("mint", near, Attempt::Gather(Material::Mint))]);
     assert_eq!(
         blocked.results[0].message,
         "Your arms are full. Drop something first."

@@ -6176,6 +6176,11 @@ impl World {
                 Some(self.arm_bit(actor_id, item))
             })
             .collect();
+        let mut bits = bits;
+        if let Some(at) = bits.iter().position(|bit| bit.starts_with("a bark basket")) {
+            let basket = bits.remove(at);
+            bits.push(basket);
+        }
         let have = if bits.is_empty() {
             "Your arms are empty.".to_string()
         } else {
@@ -12448,39 +12453,140 @@ impl World {
         Some(crate::model::spoken_act(None, "cut", rest))
     }
 
-    fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
-        match self.basket_contents(actor_id) {
-            Some(Material::Berry) => "a bark basket holding a handful of berries".into(),
-            Some(Material::Fish) => match self.basket_fish_state(actor_id) {
-                "cooked" => "a bark basket holding a cooked fish".into(),
-                "smoked" => "a bark basket holding a smoked fish".into(),
-                "salted" => "a bark basket holding a salted fish".into(),
-                "spoiled" => "a bark basket holding a spoiled fish".into(),
-                "going" => "a bark basket holding a raw fish that is going bad".into(),
-                _ => "a bark basket holding a raw fish".into(),
+    fn basket_ids(&self, actor_id: ActorId) -> Vec<crate::model::ItemId> {
+        let mut ids: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| item.carrier == Some(actor_id) && item.in_basket)
+            .map(|item| item.id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    fn basket_counted(&self, id: crate::model::ItemId, count: u32) -> String {
+        let Some(item) = self.item(id) else {
+            return "something".into();
+        };
+        let word = self.condition_word(item.moisture);
+        match item.material {
+            Material::Branch if count == 1 => format!("a {word} branch"),
+            Material::Branch => format!("{} {word} branches", count_word(count)),
+            Material::Bark if count == 1 => format!("a {word} sheet of bark"),
+            Material::Bark => format!("{} {word} sheets of bark", count_word(count)),
+            Material::Berry if count == 1 => "a handful of berries".into(),
+            Material::Berry => format!("{} handfuls of berries", count_word(count)),
+            Material::Clay if count == 1 => "a lump of clay".into(),
+            Material::Clay => format!("{} lumps of clay", count_word(count)),
+            Material::Pot if count == 1 => "a pot".into(),
+            Material::Pot => format!("{} pots", count_word(count)),
+            Material::Ochre if count == 1 => "a lump of ochre".into(),
+            Material::Ochre => format!("{} lumps of ochre", count_word(count)),
+            Material::Fish if count == 1 => match self.fish_state(id) {
+                "cooked" => "a cooked fish".into(),
+                "smoked" => "a smoked fish".into(),
+                "salted" => "a salted fish".into(),
+                "spoiled" => "a spoiled fish".into(),
+                "going" => "a raw fish that is going bad".into(),
+                _ => "a raw fish".into(),
             },
-            _ => "a bark basket".into(),
+            Material::Fish => format!("{} fish", count_word(count)),
+            _ if count == 1 => format!("a {}", item.material.word()),
+            _ => format!("{} {}", count_word(count), item.material.word()),
         }
     }
 
-    fn basket_contents(&self, actor_id: ActorId) -> Option<Material> {
-        self.items.values().find_map(|item| {
-            (item.carrier == Some(actor_id) && item.in_basket).then_some(item.material)
-        })
+    fn basket_list(&self, actor_id: ActorId) -> String {
+        let ids = self.basket_ids(actor_id);
+        let mut groups: Vec<(crate::model::ItemId, u32)> = Vec::new();
+        for id in ids {
+            let Some(item) = self.item(id) else {
+                continue;
+            };
+            if let Some((first, count)) = groups.last_mut() {
+                let same = self.item(*first).is_some_and(|other| {
+                    other.material == item.material && other.moisture == item.moisture
+                });
+                if same {
+                    *count += 1;
+                    continue;
+                }
+            }
+            groups.push((id, 1));
+        }
+        let bits: Vec<_> = groups
+            .into_iter()
+            .map(|(id, count)| self.basket_counted(id, count))
+            .collect();
+        match bits.len() {
+            0 => String::new(),
+            1 => bits[0].clone(),
+            _ => {
+                let last = bits.len() - 1;
+                format!("{} and {}", bits[..last].join(", "), bits[last])
+            }
+        }
     }
 
-    fn basket_held_sentence(&self, actor_id: ActorId) -> String {
-        match self.basket_contents(actor_id) {
-            Some(Material::Berry) => "It holds a handful of berries.".into(),
-            Some(Material::Fish) => match self.basket_fish_state(actor_id) {
-                "cooked" => "It holds a cooked fish.".into(),
-                "smoked" => "It holds a smoked fish. It can be eaten cold.".into(),
-                "salted" => "It holds a salted fish. It can be eaten cold.".into(),
-                "spoiled" => "It holds a spoiled fish. It is not food.".into(),
-                "going" => "It holds a raw fish. It is going bad.".into(),
-                _ => "It holds a raw fish.".into(),
-            },
-            _ => "It is empty.".into(),
+    fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
+        let ids = self.basket_ids(actor_id);
+        if ids.is_empty() {
+            return "a bark basket".into();
+        }
+        if ids.len() == 1 {
+            if let Some(item) = self.item(ids[0]) {
+                if item.material == Material::Berry {
+                    return "a bark basket holding a handful of berries".into();
+                }
+                if item.material == Material::Fish {
+                    return match self.fish_state(ids[0]) {
+                        "cooked" => "a bark basket holding a cooked fish".into(),
+                        "smoked" => "a bark basket holding a smoked fish".into(),
+                        "salted" => "a bark basket holding a salted fish".into(),
+                        "spoiled" => "a bark basket holding a spoiled fish".into(),
+                        "going" => "a bark basket holding a raw fish that is going bad".into(),
+                        _ => "a bark basket holding a raw fish".into(),
+                    };
+                }
+            }
+        }
+        format!("a bark basket holding {}", self.basket_list(actor_id))
+    }
+
+    pub(crate) fn basket_held_sentence(&self, actor_id: ActorId) -> String {
+        let ids = self.basket_ids(actor_id);
+        if ids.is_empty() {
+            return "It is empty. It can hold two more things.".into();
+        }
+        let held = if ids.len() == 1 {
+            if let Some(item) = self.item(ids[0]) {
+                if item.material == Material::Berry {
+                    "It holds a handful of berries.".to_string()
+                } else if item.material == Material::Fish {
+                    match self.fish_state(ids[0]) {
+                        "cooked" => "It holds a cooked fish.".into(),
+                        "smoked" => "It holds a smoked fish. It can be eaten cold.".into(),
+                        "salted" => "It holds a salted fish. It can be eaten cold.".into(),
+                        "spoiled" => "It holds a spoiled fish. It is not food.".into(),
+                        "going" => "It holds a raw fish. It is going bad.".into(),
+                        _ => "It holds a raw fish.".into(),
+                    }
+                } else {
+                    format!("It holds {}.", self.basket_list(actor_id))
+                }
+            } else {
+                "It is empty. It can hold two more things.".into()
+            }
+        } else {
+            format!("It holds {}.", self.basket_list(actor_id))
+        };
+        let room = Self::BASKET_ROOM.saturating_sub(ids.len() as u32);
+        if room == 1 {
+            format!("{held} It can hold one more thing.")
+        } else if room == 0 {
+            format!("{held} It cannot hold more.")
+        } else {
+            held
         }
     }
 
@@ -12542,20 +12648,6 @@ impl World {
             "a raw fish".into()
         } else {
             bits.join(", ")
-        }
-    }
-
-    fn basket_fish_state(&self, actor_id: ActorId) -> &'static str {
-        let id = self
-            .items
-            .values()
-            .find(|item| {
-                item.carrier == Some(actor_id) && item.in_basket && item.material == Material::Fish
-            })
-            .map(|fish| fish.id);
-        match id {
-            Some(id) => self.fish_state(id),
-            None => "raw",
         }
     }
 
@@ -15305,12 +15397,14 @@ impl World {
             }
         }
         if self.pile_count(actor.cell, Material::Branch) > 0
-            && self.carry_count(actor_id) < self.tuning.carry_slots
+            && (self.carry_count(actor_id) < self.tuning.carry_slots
+                || self.basket_has_room(actor_id))
         {
             actions.push("gather branch".into());
         }
         if self.pile_count(actor.cell, Material::Bark) > 0
-            && self.carry_count(actor_id) < self.tuning.carry_slots
+            && (self.carry_count(actor_id) < self.tuning.carry_slots
+                || self.basket_has_room(actor_id))
         {
             actions.push("gather bark".into());
         }

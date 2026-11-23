@@ -222,6 +222,10 @@ impl Host {
                 true,
                 "Gather mushrooms, or cook them.".into(),
             ),
+            Attempt::NameBasket => {
+                let text = self.world.basket_name_line(actor_id);
+                self.settle(command_id, false, false, true, text)
+            }
             Attempt::Look => {
                 let text = self
                     .world
@@ -454,6 +458,12 @@ mod tests {
         let needle = host.submit(&near.token, "needle", "needle", None);
         assert!(needle.immediate, "{}", needle.message);
         assert_eq!(needle.message, "Carve a bone needle.");
+        let basket = host.submit(&near.token, "basket", "basket", None);
+        assert!(basket.immediate, "{}", basket.message);
+        assert_eq!(
+            basket.message,
+            "Weave a bark basket from a sheet of bark. It holds two more things."
+        );
         for (id, line) in [("m1", "n"), ("m2", "n"), ("m3", "n")] {
             let queued = host.submit(&near.token, id, line, None);
             assert!(
