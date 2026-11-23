@@ -408,6 +408,15 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                     true
                 }
                 Attempt::PutInBasket(_) => true,
+                Attempt::Eat(_) | Attempt::Roast | Attempt::Drink => true,
+                Attempt::Gather(_)
+                    if !result.success
+                        && (result.message
+                            == "Worms are in the dry ground here. Carve an antler into an antler pick to dig them."
+                            || result.message == "The dry ground here has no worms.") =>
+                {
+                    true
+                }
                 _ => false,
             };
             if !spoken {
@@ -743,6 +752,165 @@ mod tests {
         assert!(seen_look.events.iter().all(|event| event.text != heard));
         let quiet_look = host.observe(&quiet.token).unwrap();
         assert!(quiet_look.events.iter().any(|event| event.text == heard));
+        assert!(host.replies_for(&seen.token).is_empty());
+        assert_eq!(host.replies_for(&near.token).len(), 1);
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn eat_roast_drink_and_a_dry_dig_come_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-eat-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let carve =
+            "Worms are in the dry ground here. Carve an antler into an antler pick to dig them.";
+        let queued = host.submit(&near.token, "dig", "dig worms", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, carve);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let look = host.observe(token).unwrap();
+            assert!(
+                look.events.iter().all(|event| event.text != carve),
+                "{:?}",
+                look.events
+            );
+        }
+        for (id, line) in [("w1", "w"), ("w2", "w"), ("n1", "n")] {
+            let queued = host.submit(&near.token, id, line, None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{}",
+                queued.message
+            );
+            host.advance(1).unwrap();
+        }
+        let queued = host.submit(&near.token, "sip", "drink", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert!(
+            closed.replies[0]
+                .message
+                .starts_with("You drink from the brook."),
+            "{}",
+            closed.replies[0].message
+        );
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let drank = "Near drinks from the brook.";
+        let near_look = host.observe(&near.token).unwrap();
+        assert!(near_look.events.iter().all(|event| event.text != drank));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == drank));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != drank));
+        for (id, line) in [
+            ("e1", "e"),
+            ("n2", "n"),
+            ("shroom", "gather mushroom"),
+            ("e2", "e"),
+            ("e3", "e"),
+            ("e4", "e"),
+        ] {
+            let queued = host.submit(&near.token, id, line, None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{} {}",
+                line,
+                queued.message
+            );
+            host.advance(1).unwrap();
+        }
+        let cold = "There is no fire burning here.";
+        let queued = host.submit(&near.token, "cold", "roast", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, cold);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != cold));
+        }
+        let queued = host.submit(&near.token, "light", "light fire", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        host.advance(1).unwrap();
+        let roast = "You roast the mushroom over the fire.";
+        let roast_heard = "Near roasts the mushroom over the fire.";
+        let queued = host.submit(&near.token, "roast", "roast", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, roast);
+        let eat_heard = "Near eats the cooked mushroom.";
+        let queued = host.submit(&near.token, "eat", "eat mushroom", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert!(
+            closed.replies[0]
+                .message
+                .starts_with("You eat the cooked mushroom."),
+            "{}",
+            closed.replies[0].message
+        );
+        let away = "The brook is not here.";
+        let queued = host.submit(&near.token, "dry", "drink", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, away);
+        let again = host.submit(&near.token, "dry", "drink", None);
+        assert!(again.duplicate);
+        assert_eq!(again.message, away);
+        let near_look = host.observe(&near.token).unwrap();
+        assert!(near_look.events.iter().all(|event| {
+            event.text != roast
+                && event.text != roast_heard
+                && event.text != "You eat the cooked mushroom."
+                && !event.text.starts_with("You eat the cooked mushroom.")
+                && event.text != eat_heard
+                && event.text != away
+        }));
+        let quiet_look = host.observe(&quiet.token).unwrap();
+        assert!(quiet_look
+            .events
+            .iter()
+            .any(|event| event.text == roast_heard));
+        assert!(quiet_look
+            .events
+            .iter()
+            .any(|event| event.text == eat_heard));
+        assert!(quiet_look.events.iter().all(|event| event.text != away));
+        let seen_look = host.observe(&seen.token).unwrap();
+        assert!(seen_look
+            .events
+            .iter()
+            .all(|event| event.text != roast_heard && event.text != eat_heard));
         assert!(host.replies_for(&seen.token).is_empty());
         assert_eq!(host.replies_for(&near.token).len(), 1);
         assert!(host.clock().sim_time < 17);
