@@ -14317,6 +14317,67 @@ mod bark_return {
             .bark_returns_at
             .contains_key(&super::cell_id(1, 0).unwrap()));
     }
+
+    #[test]
+    fn a_bark_basket_on_the_ground_is_gathered_with_what_it_holds() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let miss = world.step(&[intent("none", near, Attempt::Gather(Material::Basket))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There is no basket here to gather."
+        );
+        assert!(!miss.results[0].success);
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| !event.text.contains("basket")));
+        }
+        let wove = world.step(&[intent("weave", near, Attempt::WeaveBasket)]);
+        assert!(wove.results[0].success, "{}", wove.results[0].message);
+        let basket = world.loose_ids(near, Material::Basket)[0];
+        let pot = world.mint_item(Material::Pot, 0, cell, None, super::Role::Loose);
+        world.items.get_mut(&pot).unwrap().in_basket = true;
+        world.items.get_mut(&basket).unwrap().carrier = None;
+        let got = world.step(&[intent("get", near, Attempt::Gather(Material::Basket))]);
+        assert_eq!(got.results[0].message, "You gather a bark basket.");
+        assert!(got.results[0].success);
+        assert_eq!(world.item(basket).unwrap().carrier, Some(near));
+        assert!(!world.item(basket).unwrap().in_basket);
+        assert_eq!(world.item(pot).unwrap().carrier, Some(near));
+        assert!(world.item(pot).unwrap().in_basket);
+        let look = world.observe(near).unwrap().text;
+        assert!(look.contains("a bark basket holding a pot"), "{look}");
+        let heard = "Near gathers a bark basket.";
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { event.text != heard && event.text != "You gather a bark basket." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard));
+        assert_eq!(
+            crate::parse::parse_attempt("get basket"),
+            Ok(Attempt::Gather(Material::Basket))
+        );
+    }
 }
 
 #[cfg(test)]

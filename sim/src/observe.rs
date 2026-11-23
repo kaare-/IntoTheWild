@@ -14322,6 +14322,7 @@ impl World {
             "reed flute",
             "cattail flour",
             "cattail flatbread",
+            "bark basket",
             "bark cup",
             "sealed bark cup",
             "soaked bark cup",

@@ -2463,6 +2463,7 @@ impl World {
                             | Material::Clay
                             | Material::Bowl
                             | Material::Pot
+                            | Material::Basket
                             | Material::Spear
                             | Material::Carcass
                             | Material::Meat
@@ -2939,6 +2940,7 @@ impl World {
                     | Material::Clay
                     | Material::Bowl
                     | Material::Pot
+                    | Material::Basket
                     | Material::Spear
                     | Material::Carcass
                     | Material::Meat
@@ -3074,6 +3076,12 @@ impl World {
                         if let Some(lying) = self.items.get_mut(&id) {
                             lying.carrier = Some(intent.actor_id);
                             lying.firing_ready_at = None;
+                            if material == Material::Basket {
+                                lying.in_basket = false;
+                            }
+                        }
+                        if material == Material::Basket {
+                            self.lift_basket_contents(intent.actor_id, cell, id);
                         }
                         id
                     } else {
@@ -3096,7 +3104,9 @@ impl World {
                         );
                         continue;
                     };
-                    self.tuck_overflow_into_basket(intent.actor_id, item);
+                    if material != Material::Basket {
+                        self.tuck_overflow_into_basket(intent.actor_id, item);
+                    }
                     let from = if material == Material::Pot {
                         format!(" from the ground {}", self.cover_phrase(cell))
                     } else {
@@ -11640,9 +11650,35 @@ impl World {
     fn gather_overflows_into_basket(
         &self,
         actor: crate::model::ActorId,
-        _material: Material,
+        material: Material,
     ) -> bool {
-        self.basket_has_room(actor)
+        material != Material::Basket && self.basket_has_room(actor)
+    }
+
+    /// Things still marked in a bark basket on this ground come up with it.
+    fn lift_basket_contents(
+        &mut self,
+        actor: crate::model::ActorId,
+        cell: crate::model::CellId,
+        basket: crate::model::ItemId,
+    ) {
+        let held: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| {
+                item.id != basket
+                    && item.cell == cell
+                    && item.carrier.is_none()
+                    && item.in_basket
+                    && item.role == Role::Loose
+            })
+            .map(|item| item.id)
+            .collect();
+        for id in held {
+            if let Some(item) = self.items.get_mut(&id) {
+                item.carrier = Some(actor);
+            }
+        }
     }
 
     fn tuck_overflow_into_basket(
