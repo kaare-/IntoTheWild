@@ -6269,7 +6269,7 @@ impl World {
         }
     }
 
-    fn flint_tip_is_hardening(&self, actor_id: ActorId) -> bool {
+    pub(crate) fn flint_tip_is_hardening(&self, actor_id: ActorId) -> bool {
         let Some(actor) = self.actor(actor_id) else {
             return false;
         };

@@ -6978,7 +6978,9 @@ impl World {
     }
 
     fn unhardened_spear_line(&self, actor: crate::model::ActorId) -> &'static str {
-        if self
+        if self.flint_tip_is_hardening(actor) {
+            "The flint tip is still hardening in the fire."
+        } else if self
             .loose_ids(actor, Material::Spear)
             .iter()
             .any(|id| self.item(*id).is_some_and(|spear| spear.flint_tip))

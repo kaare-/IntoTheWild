@@ -10045,7 +10045,34 @@ fn a_flint_tipped_spear_hardens_in_the_rock_fire() {
         !waiting.contains("The point of your spear is hardening"),
         "{waiting}"
     );
-    for _ in 0..3 {
+    let early = world.step(&[cmd("hunt", near, Attempt::Hunt)]);
+    let waiting_tip = "The flint tip is still hardening in the fire.";
+    assert_eq!(early.results[0].message, waiting_tip);
+    assert!(!early.results[0].success);
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == waiting_tip));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != waiting_tip));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != waiting_tip));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .text
+        .contains("The flint tip of your spear is hardening in the fire."));
+    for _ in 0..2 {
         world.step(&[]);
         assert!(world
             .observe(near)
