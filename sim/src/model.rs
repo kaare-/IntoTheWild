@@ -3272,6 +3272,44 @@ impl World {
         Err(())
     }
 
+    /// Sweet berries in the arms, in the pile, or as a handful on this ground.
+    pub(crate) fn sweet_berries_underfoot(&self, actor: ActorId) -> bool {
+        let Some(person) = self.actor(actor) else {
+            return false;
+        };
+        !self.loose_ids(actor, Material::Berry).is_empty()
+            || self.pile_count(person.cell, Material::Berry) > 0
+            || !self.ground_ids(person.cell, Material::Berry).is_empty()
+    }
+
+    /// Eat a handful without gathering it into the arms.
+    /// Full arms take the pile first, then a handful on the ground.
+    pub(crate) fn take_sweet_berry(&mut self, actor: ActorId) -> Result<Option<ItemId>, ()> {
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        let full = self.carry_count(actor) >= self.tuning.carry_slots;
+        if full && self.pile_count(cell, Material::Berry) > 0 {
+            if self.take_from_pile(cell, Material::Berry, 1).is_some() {
+                return Ok(None);
+            }
+        }
+        if full {
+            if let Some(id) = self.ground_ids(cell, Material::Berry).first().copied() {
+                self.items.remove(&id);
+                return Ok(Some(id));
+            }
+        }
+        if let Ok(item) = self.take_hand(actor, Material::Berry) {
+            return Ok(item);
+        }
+        if let Some(id) = self.ground_ids(cell, Material::Berry).first().copied() {
+            self.items.remove(&id);
+            return Ok(Some(id));
+        }
+        Err(())
+    }
+
     /// One loose handful, carried before the pile on this cell.
     pub(crate) fn take_hand(
         &mut self,
@@ -13272,6 +13310,85 @@ mod berry_return {
             "You gather a handful of berries."
         );
         assert_eq!(world.pile_count(rock, Material::Berry), 3);
+    }
+
+    #[test]
+    fn full_arms_eat_berries_underfoot_and_a_miss_stays_private() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        if let Some(deer) = world.deer.as_mut() {
+            deer.held = true;
+        }
+        let rock = super::cell_id(6, 1).unwrap();
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let says = |world: &World, actor: u32, line: &str| {
+            world
+                .observe(actor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line)
+        };
+        let none = world.step(&[intent("none", near, Attempt::Eat(Material::Berry))]);
+        let miss = "There are no sweet berries here to eat.";
+        assert_eq!(none.results[0].message, miss);
+        assert!(!none.results[0].success);
+        assert!(!says(&world, near, miss));
+        assert!(!says(&world, seen, miss));
+        assert!(!says(&world, quiet, miss));
+
+        world.actors.get_mut(&near).unwrap().cell = rock;
+        while world.carry_count(near) < world.tuning.carry_slots {
+            world.mint_item(Material::Stone, 0, rock, Some(near), super::Role::Loose);
+        }
+        let arms = world.carry_count(near);
+        let pile = world.pile_count(rock, Material::Berry);
+        assert!(pile > 0);
+        let eaten = world.step(&[intent("pile", near, Attempt::Eat(Material::Berry))]);
+        assert!(
+            eaten.results[0]
+                .message
+                .starts_with("You eat a handful of berries."),
+            "{}",
+            eaten.results[0].message
+        );
+        assert_eq!(world.pile_count(rock, Material::Berry), pile - 1);
+        assert_eq!(world.carry_count(near), arms);
+        let yours = eaten.results[0].message.clone();
+        let theirs = "Near eats a handful of berries.";
+        assert!(!says(&world, near, &yours));
+        assert!(!says(&world, near, theirs));
+        assert!(says(&world, seen, theirs));
+        assert!(!says(&world, quiet, theirs));
+
+        while world.pile_count(rock, Material::Berry) > 0 {
+            world.take_from_pile(rock, Material::Berry, 1);
+        }
+        world.mint_item(Material::Berry, 0, rock, None, super::Role::Loose);
+        let look = world.observe(near).unwrap().text;
+        assert!(
+            look.contains("A handful of berries lies here. It is good to eat raw."),
+            "{look}"
+        );
+        let ground = world.step(&[intent("ground", near, Attempt::Eat(Material::Berry))]);
+        assert!(
+            ground.results[0]
+                .message
+                .starts_with("You eat a handful of berries."),
+            "{}",
+            ground.results[0].message
+        );
+        assert!(world.ground_ids(rock, Material::Berry).is_empty());
+        assert_eq!(world.carry_count(near), arms);
+        assert!(!world
+            .observe(near)
+            .unwrap()
+            .text
+            .contains("A handful of berries lies here."));
+        assert!(!says(&world, near, "Near eats a handful of berries."));
+        assert!(says(&world, seen, "Near eats a handful of berries."));
+        assert!(!says(&world, quiet, ground.results[0].message.as_str()));
     }
 }
 

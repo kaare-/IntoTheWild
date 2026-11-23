@@ -15219,7 +15219,7 @@ impl World {
         {
             actions.push("weave basket".into());
         }
-        if self.has_material_at_hand(actor_id, Material::Berry) {
+        if self.sweet_berries_underfoot(actor_id) {
             actions.push("eat berries".into());
         }
         if self.raw_pale_near(actor_id) || self.cooked_pale_id(actor_id).is_some() {

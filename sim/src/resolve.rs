@@ -219,6 +219,8 @@ impl World {
                     // A mushroom bite that does not feed is the reply only.
                     let mushroom_eat_refusal =
                         matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
+                    // No sweet berries on this ground is the reply only.
+                    let berry_eat_refusal = matches!(intent.attempt, Attempt::Eat(Material::Berry));
                     // A roast miss is the reply only. A cook with no fire here is
                     // the same, including the step when a fire burns next door.
                     let roast_refusal = matches!(intent.attempt, Attempt::Roast);
@@ -256,6 +258,7 @@ impl World {
                             && !sticks_refusal
                             && !torch_refusal
                             && !mushroom_eat_refusal
+                            && !berry_eat_refusal
                             && !roast_refusal
                             && !cook_fire_refusal
                             && !hammer_refusal
@@ -2019,7 +2022,7 @@ impl World {
                             }
                         }
                         Material::Berry => {
-                            if self.has_material_at_hand(actor.id, Material::Berry) {
+                            if self.sweet_berries_underfoot(actor.id) {
                                 Ok(true)
                             } else {
                                 Err("There are no sweet berries here to eat.".into())
@@ -13776,8 +13779,7 @@ impl World {
                 self.eat_pale(intent, results);
                 continue;
             }
-            if material != Material::Berry || !self.has_material_at_hand(intent.actor_id, material)
-            {
+            if material != Material::Berry || !self.sweet_berries_underfoot(intent.actor_id) {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
@@ -13787,7 +13789,7 @@ impl World {
                 );
                 continue;
             }
-            let Ok(item) = self.take_hand(intent.actor_id, Material::Berry) else {
+            let Ok(item) = self.take_sweet_berry(intent.actor_id) else {
                 self.finish(
                     intent.command_id,
                     intent.actor_id,
