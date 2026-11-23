@@ -16127,6 +16127,16 @@ mod fish_hook {
             here.text
         );
         assert!(!here.text.contains("Ice covers it."), "{}", here.text);
+        let through = say(&mut world, "drink-hole", near, Attempt::Drink);
+        assert_eq!(
+            through,
+            "The still water is frozen. A hole is open in the ice."
+        );
+        for id in [near, seen, quiet] {
+            assert!(world.observe(id).unwrap().events.iter().all(|event| {
+                event.text != "The still water is frozen. A hole is open in the ice."
+            }));
+        }
         assert!(here
             .events
             .iter()

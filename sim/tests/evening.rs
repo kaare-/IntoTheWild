@@ -3099,8 +3099,17 @@ fn the_still_pool_freezes_at_tick_twelve_and_the_refusal_stays_private() {
         .iter()
         .any(|cell| cell.x == 1 && cell.y == 2 && !cell.frozen));
     let drink = world.step(&[cmd("drink", near, Attempt::Drink)]);
-    assert_eq!(drink.results[0].message, "The still water is frozen.");
+    assert_eq!(
+        drink.results[0].message,
+        "The still water is frozen. Ice covers it."
+    );
     assert_eq!(world.observe(near).unwrap().self_info.illness, "well");
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
     let gather = world.step(&[cmd("gather", near, Attempt::Gather(Material::Water))]);
     assert_eq!(gather.results[0].message, "The still water is frozen.");
     assert_eq!(world.material_tally(Material::Water), 0);
@@ -3277,19 +3286,28 @@ fn far_reads_the_ice_once_the_pool_in_sight_is_frozen() {
     assert!(world.observe(far).unwrap().text.contains(ice));
     assert!(!world.observe(west).unwrap().text.contains("frozen"));
     let drink = world.step(&[cmd("drink", near, Attempt::Drink)]);
-    assert_eq!(drink.results[0].message, "The still water is frozen.");
+    assert_eq!(
+        drink.results[0].message,
+        "The still water is frozen. Ice covers it."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
     assert!(world
         .observe(far)
         .unwrap()
         .events
         .iter()
-        .all(|event| event.text != "The still water is frozen."));
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
     assert!(world
         .observe(west)
         .unwrap()
         .events
         .iter()
-        .all(|event| event.text != "The still water is frozen."));
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
 }
 
 #[test]
@@ -3368,19 +3386,28 @@ fn the_day_thaws_the_still_pool_and_night_freezes_it_again() {
     assert!(!world.observe(west).unwrap().text.contains("frozen"));
     assert!(!world.observe(west).unwrap().text.contains("Ice covers"));
     let drink = world.step(&[cmd("ice", near, Attempt::Drink)]);
-    assert_eq!(drink.results[0].message, "The still water is frozen.");
+    assert_eq!(
+        drink.results[0].message,
+        "The still water is frozen. Ice covers it."
+    );
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
     assert!(world
         .observe(far)
         .unwrap()
         .events
         .iter()
-        .all(|event| event.text != "The still water is frozen."));
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
     assert!(world
         .observe(west)
         .unwrap()
         .events
         .iter()
-        .all(|event| event.text != "The still water is frozen."));
+        .all(|event| event.text != "The still water is frozen. Ice covers it."));
     let off = world.step(&[cmd("off", near, Attempt::Move(Dir::East))]);
     assert_eq!(off.results[0].message, "You walk east.");
     let back = world.step(&[cmd("back", near, Attempt::Move(Dir::West))]);
@@ -4985,12 +5012,16 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     pool.tuning.chill_at = 0;
     pool.tuning.rain_starts_at = 10_000;
     let sera = pool.spawn_at("Sera", "s", 2, 1).unwrap();
-    pool.step(&[cmd("ice", sera, Attempt::Drink)]);
+    let refused = pool.step(&[cmd("ice", sera, Attempt::Drink)]);
+    assert_eq!(
+        refused.results[0].message,
+        "The still water is frozen. Ice covers it."
+    );
     let frozen = pool.observe(sera).unwrap();
-    assert!(frozen
-        .events
-        .iter()
-        .all(|event| event.text != "The still water is frozen."));
+    assert!(frozen.events.iter().all(|event| {
+        event.text != "The still water is frozen."
+            && event.text != "The still water is frozen. Ice covers it."
+    }));
     assert_eq!(frozen.self_info.illness, "well");
     assert!(frozen.visible_cells.iter().any(|cell| cell.frozen));
     let otto = pool.spawn_at("Otto", "o", 0, 1).unwrap();
@@ -5019,13 +5050,14 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     }
     assert_eq!(thaw.actor_cell(sera), Some((2, 1)));
     let iced = thaw.step(&[cmd("ice", sera, Attempt::Drink)]);
-    assert_eq!(iced.results[0].message, "The still water is frozen.");
-    assert!(thaw
-        .observe(sera)
-        .unwrap()
-        .events
-        .iter()
-        .all(|event| event.text != "The still water is frozen."));
+    assert_eq!(
+        iced.results[0].message,
+        "The still water is frozen. Ice covers it."
+    );
+    assert!(thaw.observe(sera).unwrap().events.iter().all(|event| {
+        event.text != "The still water is frozen."
+            && event.text != "The still water is frozen. Ice covers it."
+    }));
     assert!(thaw
         .observe(sera)
         .unwrap()

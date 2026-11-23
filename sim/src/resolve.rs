@@ -676,7 +676,7 @@ impl World {
                 } else if self.drink_source(actor.cell) == Some(true)
                     && self.still_frozen(actor.cell)
                 {
-                    Err("The still water is frozen.".into())
+                    Err(self.frozen_still_drink(actor.cell).into())
                 } else {
                     Ok(true)
                 }
@@ -13952,6 +13952,15 @@ impl World {
         }
     }
 
+    /// A drink on frozen still water. The words are the look's: ice, or a hole.
+    fn frozen_still_drink(&self, cell: crate::model::CellId) -> &'static str {
+        if self.ice_hole(cell) {
+            "The still water is frozen. A hole is open in the ice."
+        } else {
+            "The still water is frozen. Ice covers it."
+        }
+    }
+
     /// Still water on this cell, the brook underfoot, or the brook beside this
     /// bank. The bool is true when the drink is still water. A bank where a
     /// baited hook can take a fish is the brook, not a step into the water.
@@ -13983,7 +13992,7 @@ impl World {
                     intent.command_id,
                     intent.actor_id,
                     false,
-                    "The still water is frozen.",
+                    self.frozen_still_drink(actor.cell),
                     results,
                 );
                 continue;
