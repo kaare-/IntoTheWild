@@ -4314,8 +4314,10 @@ fn clear_day_sun_hurts_bare_skin_and_stays_on_that_body() {
     assert_eq!(bare.self_info.sunburn, "burned");
     assert_eq!(bare.self_info.mud, "bare skin");
     assert!(bare.text.contains("The sky is clear."), "{}", bare.text);
+    assert!(bare.text.contains("Evening is coming."), "{}", bare.text);
     assert!(bare.text.contains("Your skin is burned."));
-    assert!(bare.text.contains("The sun burns. It hurts."));
+    assert!(!bare.text.contains("The sun burns"), "{}", bare.text);
+    assert!(!bare.text.contains("The sun is hot"), "{}", bare.text);
     assert!(bare.events.iter().any(|event| event.text == pink));
     assert!(bare.events.iter().any(|event| event.text == burned));
     assert!(bare
@@ -4435,11 +4437,12 @@ fn shade_and_rest_ease_a_sunburn_and_the_open_sky_does_not() {
         .unwrap()
         .text
         .contains("Your skin is burned."));
+    assert!(!world.observe(near).unwrap().text.contains("The sun burns"));
     assert!(world
         .observe(near)
         .unwrap()
         .text
-        .contains("The sun burns. It hurts."));
+        .contains("Evening is coming."));
     for (id, dir) in [
         ("n", Dir::North),
         ("n2", Dir::North),
@@ -4504,16 +4507,17 @@ fn shade_does_not_call_the_sun_hot_and_does_not_burn() {
     let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
     let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
     let hot = "The sun is hot on your skin.";
-    while !world.observe(near).unwrap().text.contains(hot) {
+    while world.observe(near).unwrap().self_info.sunburn != "pink" {
         world.step(&[]);
         assert!(!world.is_raining());
         assert!(world.sim_time() < 16);
     }
     let open = world.observe(near).unwrap();
     assert!(open.text.contains("The sky is clear."), "{}", open.text);
+    assert!(open.text.contains("Evening is coming."), "{}", open.text);
     assert!(open.text.contains("Your skin is pink."));
-    assert!(open.text.contains(hot));
-    assert!(world.observe(seen).unwrap().text.contains(hot));
+    assert!(!open.text.contains(hot), "{}", open.text);
+    assert!(!world.observe(seen).unwrap().text.contains(hot));
     let said = open
         .events
         .iter()
@@ -4571,9 +4575,50 @@ fn shade_does_not_call_the_sun_hot_and_does_not_burn() {
         .all(|event| !event.text.contains(hot) && !event.text.contains("The sun burns")));
     let still_open = world.observe(seen).unwrap();
     assert!(
-        still_open.text.contains(hot) || still_open.text.contains("The sun burns. It hurts."),
+        still_open.text.contains("Your skin is pink.")
+            || still_open.text.contains("Your skin is burned."),
         "{}",
         still_open.text
+    );
+    assert!(!still_open.text.contains(hot), "{}", still_open.text);
+    assert!(
+        !still_open.text.contains("The sun burns"),
+        "{}",
+        still_open.text
+    );
+}
+
+#[test]
+fn evening_and_the_ice_do_not_say_the_sun_burns_and_morning_does() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+    while world.sim_time() < 12 {
+        world.step(&[]);
+    }
+    let iced = world.observe(near).unwrap();
+    assert!(iced.text.contains("Evening is coming."), "{}", iced.text);
+    assert!(iced.text.contains("You are cold."), "{}", iced.text);
+    assert_eq!(iced.self_info.sunburn, "burned");
+    assert!(iced.text.contains("Your skin is burned."));
+    assert!(!iced.text.contains("The sun burns"), "{}", iced.text);
+    assert!(!iced.text.contains("The sun is hot"), "{}", iced.text);
+    let dawn = world.tuning.night_at + world.tuning.night_len;
+    while world.sim_time() < dawn || world.is_raining() {
+        world.step(&[]);
+        assert!(world.sim_time() < dawn + 4);
+    }
+    let morning = world.observe(near).unwrap();
+    assert!(
+        morning.text.contains("Morning is on the valley."),
+        "{}",
+        morning.text
+    );
+    assert!(!morning.text.contains("Evening is coming."));
+    assert!(
+        morning.text.contains("The sun is hot on your skin.")
+            || morning.text.contains("The sun burns. It hurts."),
+        "{}",
+        morning.text
     );
 }
 

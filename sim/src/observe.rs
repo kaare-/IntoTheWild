@@ -710,6 +710,16 @@ impl World {
         !self.raining && !self.night()
     }
 
+    /// The hot-sun lines are a morning look. Evening and night keep the
+    /// skin word and do not say the sun is hot. A body the ice has made
+    /// cold does not say it either.
+    fn sun_action_line(&self, actor: &crate::model::Actor) -> bool {
+        self.morning()
+            && self.sun_reaches_the_skin()
+            && !self.sun_sheltered(actor.cell)
+            && !(self.still_frozen(actor.cell) && actor.cold >= self.tuning.chilly_at)
+    }
+
     /// Night wind, from the same shelter the cold uses. The open rushes.
     /// A little wind is only a whisper. Rock and a thatched lean-to say nothing.
     /// The line is look, not a tick event.
@@ -5993,10 +6003,10 @@ impl World {
             parts.push("Your stomach has not settled.".into());
         }
         // The burn itself stays until it fades. These two lines say what the
-        // sun is doing now, so they wait for open sky that can still burn.
-        // Shade keeps the skin word and does not say the sun is hot.
+        // sun is doing now, and only on a clear morning. Evening, night,
+        // and a body the ice has made cold keep the skin word.
         // Rain on a burn already there says the sun has left the skin.
-        if self.sun_reaches_the_skin() && !self.sun_sheltered(actor.cell) {
+        if self.sun_action_line(actor) {
             if actor.sunburn >= self.tuning.burned_at {
                 parts.push("The sun burns. It hurts.".into());
             } else if actor.sunburn >= self.tuning.pink_at {
