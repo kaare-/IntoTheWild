@@ -43,8 +43,8 @@ struct Pending {
     late: bool,
 }
 
-/// A successful gather or light. The person who did it reads this as the
-/// command reply when the window closes. It is not copied into their events.
+/// A gather or a light the person reads when the window closes, including a
+/// gather the arms cannot hold. It is not copied into their events.
 #[derive(Clone, Debug, Serialize)]
 pub struct SpokenReply {
     pub command_id: String,
@@ -391,18 +391,25 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
     results
         .iter()
         .filter_map(|result| {
-            if !result.success {
+            let attempt = attempts.get(result.command_id.as_str())?;
+            let spoken = match attempt {
+                Attempt::Gather(_) | Attempt::Light if result.success => true,
+                Attempt::Gather(_)
+                    if !result.success
+                        && result.message == "Your arms are full. Drop something first." =>
+                {
+                    true
+                }
+                _ => false,
+            };
+            if !spoken {
                 return None;
             }
-            let attempt = attempts.get(result.command_id.as_str())?;
-            match attempt {
-                Attempt::Gather(_) | Attempt::Light => Some(SpokenReply {
-                    command_id: result.command_id.clone(),
-                    actor_id: result.actor_id,
-                    message: result.message.clone(),
-                }),
-                _ => None,
-            }
+            Some(SpokenReply {
+                command_id: result.command_id.clone(),
+                actor_id: result.actor_id,
+                message: result.message.clone(),
+            })
         })
         .collect()
 }
@@ -501,6 +508,90 @@ mod tests {
             .events
             .iter()
             .any(|event| { event.text == "Near gathers a flint nodule." }));
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_queued_gather_the_arms_cannot_hold_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-arms-full-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        for (id, line) in [("e1", "e"), ("e2", "e"), ("n1", "n"), ("n2", "n")] {
+            let queued = host.submit(&near.token, id, line, None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{}",
+                queued.message
+            );
+            host.advance(1).unwrap();
+        }
+        let full = "Your arms are full. Drop something first.";
+        let mut filled = false;
+        for (n, line) in [
+            "gather branch",
+            "gather branch",
+            "gather branch",
+            "gather branch",
+            "gather bark",
+            "gather berries",
+            "gather pot",
+            "gather bone",
+            "gather moss",
+            "gather quartz",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let id = format!("fill-{n}");
+            let queued = host.submit(&near.token, &id, line, None);
+            assert!(!queued.immediate, "{}", queued.message);
+            let closed = host.advance(1).unwrap();
+            if closed.replies.iter().any(|reply| reply.message == full) {
+                filled = true;
+                assert!(closed
+                    .replies
+                    .iter()
+                    .all(|reply| reply.actor_id == near.actor_id));
+                break;
+            }
+        }
+        assert!(filled, "a filler gather never found the arms full");
+        let queued = host.submit(&near.token, "ochre", "gather ochre", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        assert!(queued.message.starts_with("Queued for the window"));
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, full);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        assert_eq!(closed.replies[0].command_id, "ochre");
+        let again = host.submit(&near.token, "ochre", "gather ochre", None);
+        assert!(again.duplicate);
+        assert_eq!(again.message, full);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let look = host.observe(token).unwrap();
+            assert!(
+                look.events.iter().all(|event| event.text != full),
+                "{:?}",
+                look.events
+            );
+        }
+        assert!(host.replies_for(&seen.token).is_empty());
+        assert_eq!(host.replies_for(&near.token).len(), 1);
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);
         let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
         let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
