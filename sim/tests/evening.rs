@@ -6504,7 +6504,7 @@ fn deer_stands_on_the_trail_already_there() {
     assert!(world.hoofprints_at(3, 3));
     assert_eq!(
         world.examine(far, ExamineTarget::Here),
-        "You are on the valley floor, in the open. A deer trail passes here. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
     );
     let at_ten = world.observe(far).unwrap();
     let east_ten = at_ten
@@ -6599,7 +6599,7 @@ fn deer_stands_on_the_trail_already_there() {
     let step = world.spawn_at("Step", "s", 4, 1).unwrap();
     assert_eq!(
         world.examine(far, ExamineTarget::Here),
-        "You are on the valley floor, in the open. A deer trail passes here. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. Hoofprints mark the ground."
     );
     let at_fourteen = world.observe(far).unwrap();
     assert!(at_fourteen
@@ -6677,7 +6677,7 @@ fn deer_stands_on_the_trail_already_there() {
     let here = world.examine(far, ExamineTarget::Here);
     assert_eq!(
         here,
-        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Hoofprints mark the ground."
     );
     assert!(!here.contains("fresh"), "{here}");
     assert!(!here.contains("new hoofprints"), "{here}");
@@ -6694,7 +6694,7 @@ fn deer_stands_on_the_trail_already_there() {
         .unwrap_or("");
     assert_eq!(
         far_place,
-        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Worms are in the dry ground here. Carve an antler into an antler pick to dig them. Hoofprints mark the ground."
+        "You are on the valley floor, in the open. A deer trail passes here. A deer stands on that trail. Hoofprints mark the ground."
     );
     assert!(!far_place.contains("the outside floor"), "{far_place}");
     assert!(!far_place.contains("the south floor"), "{far_place}");

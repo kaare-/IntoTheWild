@@ -1512,7 +1512,7 @@ impl World {
             parts.push("The damp earth here has no worms.".into());
         } else if self.dry_worm_returns_at.contains_key(&actor.cell) {
             parts.push("The dry ground here has no worms.".into());
-        } else if self.dry_worms_open(actor.cell) {
+        } else if self.dry_worm_claim(actor.id, actor.cell) {
             parts.push(crate::model::DRY_WORM_CARVE.into());
         }
         if self.pile_count(actor.cell, Material::Mint) > 0
@@ -3231,9 +3231,7 @@ impl World {
             } else if self.dry_worm_returns_at.contains_key(&cell) {
                 lines.push(format!("The dry ground to the {way} has no worms."));
             } else if self.dry_worm_ready.contains(&cell) {
-                lines.push(format!(
-                    "Worms are in the dry ground to the {way}. Carve an antler into an antler pick to dig them."
-                ));
+                lines.push(format!("Worms are in the dry ground to the {way}."));
             }
         }
         if lines.is_empty() {

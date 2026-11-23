@@ -4542,6 +4542,13 @@ impl World {
         self.dry_pick_ground(cell) && !self.dry_worm_returns_at.contains_key(&cell)
     }
 
+    /// Look names the dry worms underfoot only when a dig would take them from this cell.
+    /// A worm pile one step off is a direction, not this claim.
+    pub(crate) fn dry_worm_claim(&self, actor: ActorId, cell: CellId) -> bool {
+        self.dry_worms_open(cell)
+            && (self.has_antler_pick(actor) || self.gather_step_cue(cell, Material::Worm).is_none())
+    }
+
     /// In the flowing brook, or on a cell that touches it. Still water is not the brook.
     pub(crate) fn fishing_water(&self, cell: CellId) -> bool {
         self.brook_stretch(cell).is_some()
@@ -25551,6 +25558,46 @@ mod worms {
             .unwrap()
             .text
             .contains("The damp earth here has no worms."));
+    }
+
+    #[test]
+    fn adjacent_worms_are_a_direction_and_the_dig_names_the_step() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        if let Some(deer) = world.deer.as_mut() {
+            deer.held = true;
+        }
+        let cell = cell_id(2, 3).unwrap();
+        let near = world.spawn_at("Near", "n", 2, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let look = world.observe(near).unwrap().text;
+        assert!(!look.contains(DRY_WORM_CARVE), "{look}");
+        assert!(
+            look.contains("Worms are in the damp earth to the north."),
+            "{look}"
+        );
+        assert!(
+            look.contains("Worms are in the damp earth to the west."),
+            "{look}"
+        );
+        let missed = world.step(&[intent("off", near, Attempt::Gather(Material::Worm))]);
+        let step = "There are no worms here to dig. Step north or west.";
+        assert_eq!(missed.results[0].message, step);
+        assert!(says(&world, near, step));
+        assert!(!says(&world, quiet, step));
+
+        world.mint_item(Material::Pick, 0, cell, Some(near), Role::Loose);
+        let held = world.observe(near).unwrap().text;
+        assert!(held.contains(DRY_WORM_CARVE), "{held}");
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            dug.results[0].message,
+            "You gather a worm from the dry ground with the antler pick."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "You gather a worm from the dry ground with the antler pick."
+        ));
     }
 
     #[test]

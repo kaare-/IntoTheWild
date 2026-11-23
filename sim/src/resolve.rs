@@ -9892,7 +9892,7 @@ impl World {
     }
 
     /// An antler pick in the arms. One on the ground is not in the hands.
-    fn has_antler_pick(&self, actor: crate::model::ActorId) -> bool {
+    pub(crate) fn has_antler_pick(&self, actor: crate::model::ActorId) -> bool {
         self.loose_ids(actor, Material::Pick)
             .iter()
             .any(|id| self.item(*id).is_some_and(|pick| !pick.in_basket))
