@@ -16098,6 +16098,32 @@ mod bank_drink {
         );
         assert_eq!(world.observe(pool).unwrap().self_info.illness, "ill");
     }
+
+    #[test]
+    fn examine_water_from_the_clay_bank_names_each_direction_once() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        let named = world.examine(near, super::ExamineTarget::Water);
+        let running = "is running water. It does not freeze. Drinking it turns your stomach only occasionally. Boiled in a pot over a fire, it does not.";
+        for way in ["north and west", "west", "south and west"] {
+            let line = format!("The brook to the {way}, in the open {running}");
+            assert_eq!(named.matches(line.as_str()).count(), 1, "{named}");
+        }
+        let still = "Still water to the north, in the open does not run. Drinking it turns your stomach almost every time. Boiled in a pot over a fire, it does not.";
+        assert_eq!(named.matches(still).count(), 1, "{named}");
+        let mut once = std::collections::BTreeSet::new();
+        for line in named.lines() {
+            assert!(once.insert(line), "twice: {line}\n{named}");
+        }
+        assert_eq!(named.lines().count(), 4, "{named}");
+        for person in [near, seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                !event.text.contains("running water") && !event.text.contains("Still water")
+            }));
+        }
+    }
 }
 
 #[cfg(test)]

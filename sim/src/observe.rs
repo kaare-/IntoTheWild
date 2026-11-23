@@ -10887,35 +10887,41 @@ impl World {
     fn examine_water(&self, viewer: ActorId) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
+        // The brook is two cells wide. Two cells in one direction are one line.
+        let mut push_once = |line: String| {
+            if !lines.iter().any(|kept| kept == &line) {
+                lines.push(line);
+            }
+        };
         for cell in self.visible_cell_ids(viewer) {
             let place = self.cell(cell);
             if place.region == crate::model::Region::Brook {
-                lines.push(format!(
+                push_once(format!(
                     "The brook {} is running water. It does not freeze. Drinking it turns your stomach only occasionally. Boiled in a pot over a fire, it does not.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still && self.still_frozen(cell) && self.ice_hole(cell) {
-                lines.push(format!(
+                push_once(format!(
                     "Still water {} is frozen. A hole is open in the ice.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still && self.still_frozen(cell) {
-                lines.push(format!(
+                push_once(format!(
                     "Still water {} is frozen. Ice covers it. A fire on it would keep it open.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still && self.still_would_freeze(cell) {
-                lines.push(format!(
+                push_once(format!(
                     "Still water {} is open because a fire is on it. Drinking it turns your stomach almost every time.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still && self.time >= self.tuning.chill_at {
-                lines.push(format!(
+                push_once(format!(
                     "Still water {} has thawed. The day warmed it. Drinking it turns your stomach almost every time.",
                     self.place_phrase(origin, cell)
                 ));
             } else if place.still {
-                lines.push(format!(
+                push_once(format!(
                     "Still water {} does not run. Drinking it turns your stomach almost every time. Boiled in a pot over a fire, it does not.",
                     self.place_phrase(origin, cell)
                 ));
@@ -10923,7 +10929,7 @@ impl World {
         }
         let carried = self.examine_material(viewer, Material::Water);
         if !carried.starts_with("You see no") {
-            lines.push(carried);
+            push_once(carried);
         }
         if lines.is_empty() {
             "You see no water from here.".into()
