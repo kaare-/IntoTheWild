@@ -14616,6 +14616,69 @@ mod bark_return {
                 .all(|event| event.text != "The bark basket is full."));
         }
     }
+
+    #[test]
+    fn an_empty_carried_basket_says_so_and_a_full_one_still_says_full() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveBasket)]);
+        assert!(woven.results[0].success, "{}", woven.results[0].message);
+        let empty = "You have an empty bark basket.";
+        let arms = world.step(&[intent("arms", near, Attempt::Arms)]);
+        assert_eq!(arms.results[0].message, empty);
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(empty), "{}", look.text);
+        assert!(look.events.iter().all(|event| event.text != empty));
+        let carried = "Near carries an empty bark basket.";
+        let seen_look = world.observe(seen).unwrap();
+        assert!(seen_look.text.contains(carried), "{}", seen_look.text);
+        assert!(seen_look
+            .events
+            .iter()
+            .all(|event| event.text != carried && event.text != empty));
+        let quiet_look = world.observe(quiet).unwrap();
+        assert!(
+            !quiet_look.text.contains("bark basket"),
+            "{}",
+            quiet_look.text
+        );
+        assert!(quiet_look
+            .events
+            .iter()
+            .all(|event| event.text != carried && event.text != empty));
+        let pot = world.step(&[intent("pot", near, Attempt::PutInBasket(Material::Pot))]);
+        assert!(pot.results[0].success, "{}", pot.results[0].message);
+        let holding = world.arms_line(near);
+        assert!(holding.contains("a bark basket holding a pot"), "{holding}");
+        assert!(!holding.contains("an empty bark basket"), "{holding}");
+        assert!(!holding.contains("a full bark basket"), "{holding}");
+        let bark = world.step(&[intent("bark", near, Attempt::PutInBasket(Material::Bark))]);
+        assert!(bark.results[0].success, "{}", bark.results[0].message);
+        let full = world.step(&[intent("full", near, Attempt::Arms)]);
+        assert!(
+            full.results[0]
+                .message
+                .contains("a full bark basket holding"),
+            "{}",
+            full.results[0].message
+        );
+        assert!(!full.results[0].message.contains("empty"));
+        let seen_full = world.observe(seen).unwrap();
+        assert!(
+            seen_full.text.contains("a full bark basket"),
+            "{}",
+            seen_full.text
+        );
+        assert!(!seen_full.text.contains("an empty bark basket"));
+        for id in [near, seen, quiet] {
+            assert!(world.observe(id).unwrap().events.iter().all(|event| {
+                !event.text.contains("empty bark basket")
+                    && !event.text.contains("full bark basket")
+            }));
+        }
+    }
 }
 
 #[cfg(test)]

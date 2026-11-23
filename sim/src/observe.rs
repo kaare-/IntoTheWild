@@ -6219,7 +6219,9 @@ impl World {
             .collect();
         let mut bits = bits;
         if let Some(at) = bits.iter().position(|bit| {
-            bit.starts_with("a bark basket") || bit.starts_with("a full bark basket")
+            bit.starts_with("a bark basket")
+                || bit.starts_with("a full bark basket")
+                || bit.starts_with("an empty bark basket")
         }) {
             let basket = bits.remove(at);
             bits.push(basket);
@@ -12573,7 +12575,7 @@ impl World {
     fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
         let ids = self.basket_ids(actor_id);
         if ids.is_empty() {
-            return "a bark basket".into();
+            return "an empty bark basket".into();
         }
         if ids.len() == 1 {
             if let Some(item) = self.item(ids[0]) {

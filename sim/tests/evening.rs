@@ -14073,7 +14073,7 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
     assert!(woven.results[0].success);
     let near_look = world.observe(near).unwrap();
     assert!(
-        near_look.text.contains("a bark basket"),
+        near_look.text.contains("an empty bark basket"),
         "{}",
         near_look.text
     );
