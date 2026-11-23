@@ -935,6 +935,15 @@ impl World {
         })
     }
 
+    /// The ground under your feet. The clay bank is a bank, not the valley floor.
+    fn standing_ground(&self, cell: crate::model::CellId) -> &'static str {
+        if self.clay_beds.contains_key(&cell) {
+            "clay bank"
+        } else {
+            self.cell(cell).region.word()
+        }
+    }
+
     fn here_text(&self, actor_id: ActorId) -> String {
         let actor = self.actor(actor_id).unwrap();
         let cell = self.cell(actor.cell);
@@ -980,7 +989,7 @@ impl World {
         } else {
             parts.push(format!(
                 "You are on the {}, {}.",
-                cell.region.word(),
+                self.standing_ground(actor.cell),
                 self.cover_phrase(actor.cell)
             ));
             if let Some(side) = self.outside_floor_next_door(actor.cell) {

@@ -16235,6 +16235,46 @@ mod bank_drink {
     }
 
     #[test]
+    fn the_clay_bank_place_line_names_the_bank() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let place = "You are on the clay bank, in the open.";
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(place), "{}", look.text);
+        assert!(
+            !look.text.contains("You are on the valley floor"),
+            "{}",
+            look.text
+        );
+        assert!(
+            look.text.contains("Clay lies on the bank here."),
+            "{}",
+            look.text
+        );
+        assert!(
+            look.text.contains("Wild mint grows on the wet bank here."),
+            "{}",
+            look.text
+        );
+        assert!(look.events.iter().all(|event| event.text != place));
+        let seen_look = world.observe(seen).unwrap();
+        assert!(seen_look.text.contains(place), "{}", seen_look.text);
+        assert!(seen_look.events.iter().all(|event| event.text != place));
+        let quiet_look = world.observe(quiet).unwrap();
+        assert!(!quiet_look.text.contains(place), "{}", quiet_look.text);
+        assert!(quiet_look.events.iter().all(|event| event.text != place));
+        let trail = world.spawn_at("Trail", "t", 4, 3).unwrap();
+        let trail_look = world.observe(trail).unwrap().text;
+        assert!(
+            trail_look.contains("You are on the valley floor, in the open."),
+            "{trail_look}"
+        );
+        assert!(!trail_look.contains(place), "{trail_look}");
+    }
+
+    #[test]
     fn a_drink_on_the_clay_bank_does_not_turn_the_stomach() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         world.tuning.illness_chance = 1000;
