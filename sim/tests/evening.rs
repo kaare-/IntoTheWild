@@ -9068,9 +9068,12 @@ fn a_carried_flint_nodule_knaps_into_one_sharp_flake() {
         .iter()
         .all(|event| !event.text.contains("knap") && !event.text.contains("flake")));
     let after = world.observe(near).unwrap().text;
-    assert_eq!(arms_sentence(&after), "You have a sharp flint flake.");
+    assert_eq!(
+        arms_sentence(&after),
+        "You have a sharp flint flake that is sharp enough to cut or haft later."
+    );
     assert!(
-        after.contains("It is sharp enough to cut or haft later."),
+        !after.contains("It is sharp enough to cut or haft later."),
         "{after}"
     );
     assert!(!after.contains("nodule"), "{after}");
@@ -9869,7 +9872,7 @@ fn a_flint_flake_and_a_dry_branch_haft_into_a_spear() {
     let before = world.observe(near).unwrap().text;
     assert_eq!(
         arms_sentence(&before),
-        "You have a sharp flint flake, a dry branch."
+        "You have a sharp flint flake that is sharp enough to cut or haft later, a dry branch."
     );
     let report = world.step(&[cmd("haft", near, Attempt::Haft)]);
     let sentence = "You haft the flint flake and a dry branch into a spear.";

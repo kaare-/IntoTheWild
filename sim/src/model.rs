@@ -11527,9 +11527,12 @@ mod flake_arms {
         let cell = world.actor(near).unwrap().cell;
         world.mint_item(Material::Flake, 0, cell, Some(near), super::Role::Loose);
         let one = world.observe(near).unwrap().text;
-        assert!(one.contains("You have a sharp flint flake."), "{one}");
         assert!(
-            one.contains("It is sharp enough to cut or haft later."),
+            one.contains("You have a sharp flint flake that is sharp enough to cut or haft later."),
+            "{one}"
+        );
+        assert!(
+            !one.contains("It is sharp enough to cut or haft later."),
             "{one}"
         );
         assert!(!one.contains("2 flake"), "{one}");
@@ -11548,9 +11551,14 @@ mod flake_arms {
         );
         world.mint_item(Material::Flake, 0, cell, Some(near), super::Role::Loose);
         let two = world.observe(near).unwrap().text;
-        assert!(two.contains("You have two sharp flint flakes."), "{two}");
         assert!(
-            two.contains("They are sharp enough to cut or haft later."),
+            two.contains(
+                "You have two sharp flint flakes that are sharp enough to cut or haft later."
+            ),
+            "{two}"
+        );
+        assert!(
+            !two.contains("They are sharp enough to cut or haft later."),
             "{two}"
         );
         assert!(!two.contains("2 flake"), "{two}");
@@ -11570,7 +11578,12 @@ mod flake_arms {
         );
         world.raining = true;
         let rain = world.observe(near).unwrap().text;
-        assert!(rain.contains("You have two sharp flint flakes."), "{rain}");
+        assert!(
+            rain.contains(
+                "You have two sharp flint flakes that are sharp enough to cut or haft later."
+            ),
+            "{rain}"
+        );
         assert!(!rain.contains("(dry)"), "{rain}");
         assert_eq!(
             world.examine(near, ExamineTarget::Flake),
@@ -11580,6 +11593,44 @@ mod flake_arms {
             world.examine(seen, ExamineTarget::Flake),
             "Two sharp flint flakes are carried by Near, in the rain. They are sharp enough to cut or haft later."
         );
+    }
+
+    #[test]
+    fn a_worm_does_not_inherit_the_flake_haft_line() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Flake, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Worm, 0, cell, Some(near), super::Role::Loose);
+        let arms = world.arms_line(near);
+        assert_eq!(
+            arms,
+            "You have a sharp flint flake that is sharp enough to cut or haft later, a worm."
+        );
+        let look = world.observe(near).unwrap();
+        assert!(look.text.contains(&arms), "{}", look.text);
+        assert!(
+            !look.text.contains("a worm. It is sharp enough"),
+            "{}",
+            look.text
+        );
+        assert!(
+            !look
+                .text
+                .contains("It is sharp enough to cut or haft later."),
+            "{}",
+            look.text
+        );
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.contains("sharp enough") }));
+        }
     }
 }
 

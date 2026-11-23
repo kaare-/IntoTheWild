@@ -5358,9 +5358,12 @@ impl World {
         } else if item.material == "flint" && item.count == 1 {
             format!("a {} flint nodule", item.condition)
         } else if item.material == "flake" && item.count == 1 {
-            "a sharp flint flake".into()
+            "a sharp flint flake that is sharp enough to cut or haft later".into()
         } else if item.material == "flake" {
-            format!("{} sharp flint flakes", count_word(item.count))
+            format!(
+                "{} sharp flint flakes that are sharp enough to cut or haft later",
+                count_word(item.count)
+            )
         } else if item.material == "branch" && item.count == 1 {
             format!("a {} branch", item.condition)
         } else if item.material == "bark" && item.count == 1 {
@@ -5964,12 +5967,6 @@ impl World {
             parts.push("The warmth of the fire is still on you.".into());
         }
         parts.push(self.arms_line(actor_id));
-        let flakes = self.loose_ids(actor_id, Material::Flake).len();
-        if flakes == 1 {
-            parts.push("It is sharp enough to cut or haft later.".into());
-        } else if flakes > 1 {
-            parts.push("They are sharp enough to cut or haft later.".into());
-        }
         if self.flint_tip_is_hardening(actor_id) {
             parts.push("The flint tip of your spear is hardening in the fire.".into());
         } else if self.wooden_point_is_hardening(actor_id) {
