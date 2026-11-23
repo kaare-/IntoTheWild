@@ -222,6 +222,13 @@ impl Host {
                 true,
                 "Gather mushrooms, or cook them.".into(),
             ),
+            Attempt::NameOnion => self.settle(
+                command_id,
+                false,
+                false,
+                true,
+                "Gather a wild onion, or eat it raw.".into(),
+            ),
             Attempt::NameBasket => {
                 let text = self.world.basket_name_line(actor_id);
                 self.settle(command_id, false, false, true, text)
@@ -430,6 +437,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 {
                     true
                 }
+                Attempt::Gather(Material::Onion) if !result.success => true,
                 _ => false,
             };
             if !spoken {

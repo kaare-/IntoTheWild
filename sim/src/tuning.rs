@@ -814,6 +814,7 @@ impl Tuning {
             Material::BoneNeedle => 0,
             Material::Antler => 0,
             Material::Pick => 0,
+            Material::Onion => 0,
         }
     }
 }

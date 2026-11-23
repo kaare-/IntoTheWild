@@ -284,6 +284,10 @@ impl World {
                         intent.attempt,
                         Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest
                     );
+                    // A wild onion that is not here, including the step, stays
+                    // with the person who tried.
+                    let onion_gather_miss =
+                        matches!(intent.attempt, Attempt::Gather(Material::Onion));
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -315,7 +319,8 @@ impl World {
                             && !basket_drop_miss
                             && !empty_pile
                             && !full_arms_weave
-                            && !mat_refusal;
+                            && !mat_refusal
+                            && !onion_gather_miss;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -336,7 +341,8 @@ impl World {
                         | Attempt::NameAntler
                         | Attempt::NamePick
                         | Attempt::NameBasket
-                        | Attempt::NameMat => hints.push(intent),
+                        | Attempt::NameMat
+                        | Attempt::NameOnion => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -520,6 +526,7 @@ impl World {
                 Attempt::NameSinew => "Pull sinew from a carcass.",
                 Attempt::NameTorch => "Make a pitch torch, or light one.",
                 Attempt::NameMushroom => "Gather mushrooms, or cook them.",
+                Attempt::NameOnion => "Gather a wild onion, or eat it raw.",
                 Attempt::NameNeedle => "Carve a bone needle.",
                 Attempt::NameAntler => "Carve an antler pick.",
                 Attempt::NamePick => "Dig worms from dry ground.",
@@ -664,7 +671,8 @@ impl World {
             | Attempt::NameAntler
             | Attempt::NamePick
             | Attempt::NameBasket
-            | Attempt::NameMat => Ok(false),
+            | Attempt::NameMat
+            | Attempt::NameOnion => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -2171,6 +2179,7 @@ impl World {
                             }
                         }
                         Material::Moss => Err("Moss is for a sting, not food.".into()),
+                        Material::Onion => Ok(true),
                         _ => Err("Bark is tinder, not food.".into()),
                     }
                 }
@@ -2571,6 +2580,7 @@ impl World {
                             | Material::Antler
                             | Material::Pick
                             | Material::Berry
+                            | Material::Onion
                             | Material::Flute
                             | Material::Drum
                     ) || self.ground_ids(actor.cell, *material).is_empty())
@@ -3095,6 +3105,7 @@ impl World {
                     | Material::Nettle
                     | Material::BarkCup
                     | Material::Berry
+                    | Material::Onion
             ) {
                 self.ground_ids(cell, material)
             } else {
@@ -14321,6 +14332,10 @@ impl World {
                 self.eat_honey(intent, results);
                 continue;
             }
+            if material == Material::Onion {
+                self.eat_onion(intent, results);
+                continue;
+            }
             if material == Material::Egg {
                 self.eat_eggs(intent, results);
                 continue;
@@ -14477,6 +14492,85 @@ impl World {
             "You eat a handful of pale berries. They do not feed you. They must be cooked.",
             results,
         );
+    }
+
+    fn eat_onion(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let taken = self.take_onion(intent.actor_id);
+        if taken.is_err() {
+            let cell = self
+                .actor(intent.actor_id)
+                .map(|actor| actor.cell)
+                .unwrap_or(0);
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                self.gather_miss(
+                    cell,
+                    Material::Onion,
+                    "There is no wild onion here to eat.".to_string(),
+                ),
+                results,
+            );
+            return;
+        }
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let relief = self.tuning.cook_relief / 4;
+        let after = before.saturating_sub(relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let name = self.name_of(intent.actor_id);
+        let rest = "a wild onion.";
+        let item = taken.ok().flatten();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            item.into_iter().collect(),
+            vec![],
+            None,
+        );
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if before == 0 {
+            message.push_str(" You were not hungry.");
+        } else {
+            message.push_str(" The hunger eases a little.");
+            let word = self.hunger_word(after);
+            if word != self.hunger_word(before) {
+                message.push_str(&format!(" You are {word}."));
+            } else if word != "not hungry" {
+                message.push_str(&format!(" You are still {word}."));
+            }
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    /// A wild onion from the arms, then the pile, then one lying on this ground.
+    fn take_onion(&mut self, actor: ActorId) -> Result<Option<crate::model::ItemId>, ()> {
+        if let Some(item_id) = self.loose_ids(actor, Material::Onion).first().copied() {
+            self.items.remove(&item_id);
+            return Ok(Some(item_id));
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return Err(());
+        };
+        if self.take_from_pile(cell, Material::Onion, 1).is_some() {
+            return Ok(None);
+        }
+        if let Some(item_id) = self.ground_ids(cell, Material::Onion).first().copied() {
+            self.items.remove(&item_id);
+            return Ok(Some(item_id));
+        }
+        Err(())
     }
 
     fn eat_honey(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {

@@ -186,6 +186,10 @@ pub enum Material {
     /// Carved from an antler. It digs worms from dry ground.
     /// Bare hands still dig damp earth. It is not a flint flake.
     Pick,
+    /// A wild onion from the open floor south of the trail.
+    /// Eaten raw, it eases hunger a little. It is not berries.
+    /// Wild garlic and spring greens are the same plant.
+    Onion,
 }
 
 impl Material {
@@ -256,6 +260,7 @@ impl Material {
             Material::BoneNeedle => "bone needle",
             Material::Antler => "antler",
             Material::Pick => "antler pick",
+            Material::Onion => "wild onion",
         }
     }
 
@@ -326,6 +331,7 @@ impl Material {
             Material::BoneNeedle => "bone needle",
             Material::Antler => "antler",
             Material::Pick => "antler pick",
+            Material::Onion => "wild onion",
         }
     }
 
@@ -485,6 +491,8 @@ pub enum ExamineTarget {
     Pick,
     /// A pitch torch. Lit or still dark.
     Torch,
+    /// A wild onion. Eaten raw. It is not berries.
+    Onion,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -646,6 +654,8 @@ pub enum Attempt {
     NameTorch,
     /// Bare `mushroom`. Names the verbs. Does not gather, cook, or eat one.
     NameMushroom,
+    /// Bare `onion`. Names the verbs. Does not gather or eat one.
+    NameOnion,
     /// Pine resin and a dry branch, or a sheet of bark, into a pitch torch.
     MakeTorch,
     /// Light a carried pitch torch from a fire here, or with tinder.
@@ -1538,6 +1548,9 @@ pub struct World {
     /// The wet bank where wild mint grows. Bare once the handful is taken.
     #[serde(default)]
     pub(crate) mint_banks: BTreeSet<CellId>,
+    /// The open floor where wild onions grow. The set stays after they are taken.
+    #[serde(default)]
+    pub(crate) onion_patches: BTreeSet<CellId>,
     /// When a bare wet bank grows mint again. Look says the bank has no mint until then.
     #[serde(default)]
     pub(crate) mint_returns_at: BTreeMap<CellId, u64>,
@@ -1827,6 +1840,7 @@ impl World {
             shade_moss: BTreeSet::new(),
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
+            onion_patches: BTreeSet::new(),
             mint_returns_at: BTreeMap::new(),
             needle_stands: BTreeSet::new(),
             needle_returns_at: BTreeMap::new(),
@@ -1947,6 +1961,11 @@ impl World {
         // The same wet bank, beside the brook and the still. One handful of mint.
         world.add_pile(clay, Material::Mint, 1, 0);
         world.mint_banks.insert(clay);
+        // Wild onions on the open floor one step south of the trail.
+        // Two bulbs. Eaten raw, they ease hunger a little. They are not berries.
+        let onions = cell_id(4, 4).unwrap();
+        world.add_pile(onions, Material::Onion, 2, 0);
+        world.onion_patches.insert(onions);
         let reeds = cell_id(0, 3).unwrap();
         world.add_pile(reeds, Material::Reed, 4, 0);
         world.reed_beds.insert(reeds, 4);
@@ -4102,8 +4121,9 @@ impl World {
             Material::IronOre
                 | Material::CopperOre
                 | Material::Flint
-                | Material::Stone
+                |             Material::Stone
                 | Material::Worm
+                | Material::Onion
         ) {
             return None;
         }
@@ -29499,5 +29519,240 @@ mod antler_pick {
         assert!(crate::parse::parse_attempt("carve antler").is_ok());
         assert!(crate::parse::parse_attempt("antler").is_ok());
         assert!(crate::parse::parse_attempt("pick").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod wild_onion {
+    use super::{Attempt, Dir, ExamineTarget, Material, World};
+
+    fn intent(id: &str, actor: u32, attempt: Attempt) -> super::Intent {
+        super::Intent {
+            command_id: id.into(),
+            actor_id: actor,
+            attempt,
+        }
+    }
+
+    fn says(world: &World, actor: u32, text: &str) -> bool {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == text)
+    }
+
+    #[test]
+    fn a_wild_onion_is_eaten_raw_and_eases_hunger_a_little() {
+        assert!(matches!(
+            crate::parse::parse_attempt("gather onion").unwrap(),
+            Attempt::Gather(Material::Onion)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather wild garlic").unwrap(),
+            Attempt::Gather(Material::Onion)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("gather spring greens").unwrap(),
+            Attempt::Gather(Material::Onion)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("eat onion").unwrap(),
+            Attempt::Eat(Material::Onion)
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("onion").unwrap(),
+            Attempt::NameOnion
+        ));
+        assert!(matches!(
+            crate::parse::parse_attempt("wild onion").unwrap(),
+            Attempt::NameOnion
+        ));
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let named = world.step(&[intent("name", near, Attempt::NameOnion)]);
+        assert_eq!(
+            named.results[0].message,
+            "Gather a wild onion, or eat it raw."
+        );
+        assert!(!says(&world, near, "Gather a wild onion, or eat it raw."));
+        let from_trail = world.observe(near).unwrap().text;
+        assert!(
+            from_trail.contains("Wild onions grow on the valley floor to the south."),
+            "{from_trail}"
+        );
+        assert!(
+            from_trail.contains("South: valley floor, wild onions."),
+            "{from_trail}"
+        );
+        let miss = world.step(&[intent("miss", near, Attempt::Gather(Material::Onion))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There is no wild onion here to gather. Step south."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "There is no wild onion here to gather. Step south."
+        ));
+        assert!(!says(&world, seen, "There is no wild onion here to gather. Step south."));
+        let eat_off = world.step(&[intent("eat-off", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            eat_off.results[0].message,
+            "There is no wild onion here to eat. Step south."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "There is no wild onion here to eat. Step south."
+        ));
+        let corner = world.step(&[intent("corner", seen, Attempt::Gather(Material::Onion))]);
+        assert_eq!(
+            corner.results[0].message,
+            "There is no wild onion here to gather. Step south and east."
+        );
+        assert!(!says(
+            &world,
+            seen,
+            "There is no wild onion here to gather. Step south and east."
+        ));
+
+        world.step(&[intent("south", near, Attempt::Move(Dir::South))]);
+        assert_eq!(world.actor_cell(near), Some((4, 4)));
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("Wild onions grow on the valley floor here."),
+            "{here}"
+        );
+        let examined = world.examine(near, ExamineTarget::Onion);
+        assert!(
+            examined.contains("Wild onions grow on the valley floor here, in the open."),
+            "{examined}"
+        );
+        assert!(examined.contains("They can be eaten raw."), "{examined}");
+        assert!(
+            examined.contains("They ease hunger a little."),
+            "{examined}"
+        );
+        assert!(examined.contains("They are not berries."), "{examined}");
+        assert!(!says(&world, near, &examined));
+
+        let hunger_before = world.actor(near).unwrap().hunger;
+        assert!(hunger_before > 0);
+        assert_eq!(world.hunger_word(hunger_before), "not hungry");
+        let raw = world.step(&[intent("raw", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            raw.results[0].message,
+            "You eat a wild onion. The hunger eases a little."
+        );
+        let relief = world.tuning.cook_relief / 4;
+        let tick = world.tuning.hunger_per_tick;
+        assert!(relief > 0);
+        assert_eq!(
+            world.actor(near).unwrap().hunger,
+            hunger_before.saturating_sub(relief) + tick
+        );
+        assert_eq!(world.pile_count(world.actor(near).unwrap().cell, Material::Onion), 1);
+        assert!(!says(&world, near, "You eat a wild onion."));
+        assert!(!says(&world, near, "Near eats a wild onion."));
+        assert!(says(&world, seen, "Near eats a wild onion."));
+        assert!(!says(&world, quiet, "Near eats a wild onion."));
+        assert!(world.observe(near).unwrap().text.contains(
+            "Wild onions grow on the valley floor here."
+        ));
+
+        world.actors.get_mut(&near).unwrap().hunger = 400;
+        let before_energy = world.actor(near).unwrap().energy;
+        let eased = world.step(&[intent("ease", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            eased.results[0].message,
+            "You eat a wild onion. The hunger eases a little. You are still hungry."
+        );
+        let relief = world.tuning.cook_relief / 4;
+        assert!(relief < world.tuning.cook_relief);
+        assert_eq!(
+            world.actor(near).unwrap().hunger,
+            400 - relief + world.tuning.hunger_per_tick
+        );
+        assert_eq!(
+            world.actor(near).unwrap().energy,
+            before_energy + world.tuning.energy_per_tick
+        );
+        assert_eq!(
+            world.observe(near).unwrap().self_info.hunger,
+            "hungry"
+        );
+        assert!(!says(&world, near, "Near eats a wild onion."));
+        assert!(!says(&world, near, "The hunger eases."));
+        assert_eq!(
+            world
+                .observe(seen)
+                .unwrap()
+                .events
+                .iter()
+                .filter(|event| event.text == "Near eats a wild onion.")
+                .count(),
+            2
+        );
+        assert!(!says(&world, quiet, "The hunger eases a little."));
+        let gone = world.observe(near).unwrap().text;
+        assert!(
+            gone.contains("The valley floor here has no wild onion."),
+            "{gone}"
+        );
+        let bare = world.step(&[intent("bare", near, Attempt::Gather(Material::Onion))]);
+        assert_eq!(
+            bare.results[0].message,
+            "There is no wild onion here to gather."
+        );
+        assert!(!says(&world, near, "There is no wild onion here to gather."));
+        assert!(!says(&world, seen, "There is no wild onion here to gather."));
+
+        let mut carried = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = carried.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = carried.spawn_at("Seen", "s", 4, 4).unwrap();
+        carried.actors.get_mut(&near).unwrap().hunger = 0;
+        let fresh = carried.step(&[intent("fresh", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            fresh.results[0].message,
+            "You eat a wild onion. You were not hungry."
+        );
+        assert_eq!(
+            carried.actor(near).unwrap().hunger,
+            carried.tuning.hunger_per_tick
+        );
+        assert!(!says(&carried, near, "Near eats a wild onion."));
+        assert!(says(&carried, seen, "Near eats a wild onion."));
+        let gathered = carried.step(&[intent("lift", near, Attempt::Gather(Material::Onion))]);
+        assert_eq!(gathered.results[0].message, "You gather a wild onion.");
+        assert!(!says(&carried, near, "You gather a wild onion."));
+        assert!(!says(&carried, near, "Near gathers a wild onion."));
+        assert!(says(&carried, seen, "Near gathers a wild onion."));
+        assert_eq!(
+            carried.observe(near).unwrap().text.contains("You have a wild onion."),
+            true
+        );
+        let looked = carried.examine(near, ExamineTarget::Onion);
+        assert!(
+            looked.contains("A wild onion is carried by you"),
+            "{looked}"
+        );
+        assert!(looked.contains("It is not berries."), "{looked}");
+        carried.actors.get_mut(&near).unwrap().hunger = carried.tuning.hungry_at;
+        let cleared = carried.step(&[intent("clear", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            cleared.results[0].message,
+            "You eat a wild onion. The hunger eases a little. You are not hungry."
+        );
+        assert_eq!(
+            carried.actor(near).unwrap().hunger,
+            carried.tuning.hungry_at - carried.tuning.cook_relief / 4
+                + carried.tuning.hunger_per_tick
+        );
+        assert!(!says(&carried, near, "Near eats a wild onion."));
+        assert!(says(&carried, seen, "Near eats a wild onion."));
     }
 }

@@ -100,6 +100,9 @@ get berries from basket      a named thing from the bark basket you carry, into 
 wear hide                    a carried hide, against the cold. A sewn cloak on you does not take a carry slot
 remove hide                  a worn hide; it returns to the arms and counts again
 eat berries                  sweet berries, raw
+gather onion               a wild onion on the valley floor south of the trail. gather wild onion, wild garlic, and spring greens are the same plant. One cell off, on a side or a corner, the reply names that step and does not move you. A miss stays with you
+eat onion                  a wild onion, raw. Hunger eases a little. It is not berries. A miss stays with you
+onion                        gather a wild onion, or eat it raw
 eat dark berries             the other patch of berries
 eat pale berries             pale berries
 eat meat                     cooked meat, or salted meat, or smoked meat; raw meat is not food
@@ -187,6 +190,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "sinew" if rest.is_empty() => Ok(Attempt::NameSinew),
         "torch" if rest.is_empty() => Ok(Attempt::NameTorch),
         "mushroom" | "mushrooms" if rest.is_empty() => Ok(Attempt::NameMushroom),
+        "onion" | "onions" if rest.is_empty() => Ok(Attempt::NameOnion),
+        "wild" if rest == "onion" || rest == "onions" => Ok(Attempt::NameOnion),
         "needle" if rest.is_empty() => Ok(Attempt::NameNeedle),
         "antler" if rest.is_empty() || rest == "pick" => Ok(Attempt::NameAntler),
         "pick" if rest.is_empty() => Ok(Attempt::NamePick),
@@ -1120,6 +1125,15 @@ fn parse_material(text: &str) -> Result<Material, String> {
         "worm" | "worms" | "a worm" => Ok(Material::Worm),
         "quartz" | "clear stone" | "clear stone of quartz" | "quartz stone" => Ok(Material::Quartz),
         "mint" | "handful of mint" | "wild mint" => Ok(Material::Mint),
+        "onion"
+        | "onions"
+        | "wild onion"
+        | "wild onions"
+        | "a wild onion"
+        | "garlic"
+        | "wild garlic"
+        | "spring greens"
+        | "greens" => Ok(Material::Onion),
         "pine needles" | "needles" | "handful of pine needles" | "pine needle" | "pine" => {
             Ok(Material::Needle)
         }
@@ -1187,6 +1201,15 @@ fn parse_eat(text: &str) -> Result<Attempt, String> {
     match text.trim() {
         "" | "berry" | "berries" | "sweet" | "sweet berries" => Ok(Attempt::Eat(Material::Berry)),
         "mushroom" | "mushrooms" => Ok(Attempt::Eat(Material::Mushroom)),
+        "onion"
+        | "onions"
+        | "wild onion"
+        | "wild onions"
+        | "a wild onion"
+        | "garlic"
+        | "wild garlic"
+        | "spring greens"
+        | "greens" => Ok(Attempt::Eat(Material::Onion)),
         "cattail" | "cattails" | "cattail root" | "cattail roots" | "roots" => {
             Ok(Attempt::Eat(Material::Cattail))
         }
@@ -1285,6 +1308,15 @@ fn parse_target(text: &str) -> ExamineTarget {
         "egg" | "eggs" | "bird nest" | "bird's nest" | "birds nest" => ExamineTarget::Eggs,
         "moss" => ExamineTarget::Moss,
         "mint" | "wild mint" | "handful of mint" => ExamineTarget::Mint,
+        "onion"
+        | "onions"
+        | "wild onion"
+        | "wild onions"
+        | "a wild onion"
+        | "garlic"
+        | "wild garlic"
+        | "spring greens"
+        | "greens" => ExamineTarget::Onion,
         "pine needles" | "needles" | "handful of pine needles" | "pine" => ExamineTarget::Needle,
         "bow drill" | "a bow drill" | "drill" | "a drill" => ExamineTarget::Drill,
         "resin" | "pine resin" | "pitch" | "lump of pitch" | "lump of pine resin" => {

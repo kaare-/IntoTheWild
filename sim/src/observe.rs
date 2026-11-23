@@ -218,6 +218,7 @@ impl World {
             ExamineTarget::Eggs => self.examine_eggs(actor_id),
             ExamineTarget::Moss => self.examine_moss(actor_id),
             ExamineTarget::Mint => self.examine_mint(actor_id),
+            ExamineTarget::Onion => self.examine_onion(actor_id),
             ExamineTarget::Needle => self.examine_needles(actor_id),
             ExamineTarget::Drill => self.examine_drill(actor_id),
             ExamineTarget::Resin => self.examine_resin(actor_id),
@@ -484,6 +485,9 @@ impl World {
             }
             if let Some(mint) = self.seen_mint(actor_id) {
                 lines.push(mint);
+            }
+            if let Some(onion) = self.seen_onion(actor_id) {
+                lines.push(onion);
             }
             if let Some(resin) = self.seen_resin(actor_id) {
                 lines.push(resin);
@@ -1569,6 +1573,13 @@ impl World {
             parts.push("Wild mint grows on the wet bank here.".into());
         } else if self.mint_bare(actor.cell) {
             parts.push("The wet bank here has no mint.".into());
+        }
+        if self.onion_stock(actor.cell) && self.onion_patches.contains(&actor.cell) {
+            parts.push("Wild onions grow on the valley floor here.".into());
+        } else if self.onion_bare(actor.cell) {
+            parts.push("The valley floor here has no wild onion.".into());
+        } else if let Some(lying) = self.onion_lying(actor.cell) {
+            parts.push(lying);
         }
         let resin_here = self.pile_count(actor.cell, Material::Resin)
             + self.ground_ids(actor.cell, Material::Resin).len() as u32;
@@ -3325,6 +3336,114 @@ impl World {
         }
     }
 
+    /// Wild onions this person can see but is not standing on.
+    fn seen_onion(&self, viewer: ActorId) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            if cell == origin {
+                continue;
+            }
+            let way = self.relative(origin, cell);
+            if self.onion_stock(cell) && self.onion_patches.contains(&cell) {
+                lines.push(format!(
+                    "Wild onions grow on the valley floor to the {way}."
+                ));
+            } else if self.onion_bare(cell) {
+                lines.push(format!(
+                    "The valley floor to the {way} has no wild onion."
+                ));
+            } else if self.onion_stock(cell) {
+                let count = self.pile_count(cell, Material::Onion)
+                    + self.ground_ids(cell, Material::Onion).len() as u32;
+                if count == 1 {
+                    lines.push(format!("A wild onion lies to the {way}."));
+                } else {
+                    lines.push(format!(
+                        "{} wild onions lie to the {way}.",
+                        capitalize(&count_word(count))
+                    ));
+                }
+            }
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
+        }
+    }
+
+    fn examine_onion(&self, viewer: ActorId) -> String {
+        let origin = self.actor(viewer).unwrap().cell;
+        let mut lines = Vec::new();
+        for cell in self.visible_cell_ids(viewer) {
+            let stock = self.onion_stock(cell);
+            let patch = self.onion_patches.contains(&cell);
+            if !stock && !patch {
+                continue;
+            }
+            if stock && patch {
+                lines.push(format!(
+                    "Wild onions grow on the valley floor {}. They can be eaten raw. They ease hunger a little. They are not berries.",
+                    self.place_phrase(origin, cell)
+                ));
+            } else if patch {
+                if cell == origin {
+                    lines.push("The valley floor here has no wild onion.".into());
+                } else {
+                    let way = self.relative(origin, cell);
+                    lines.push(format!(
+                        "The valley floor to the {way} has no wild onion."
+                    ));
+                }
+            } else {
+                let count = self.pile_count(cell, Material::Onion)
+                    + self.ground_ids(cell, Material::Onion).len() as u32;
+                let where_ = self.place_phrase(origin, cell);
+                if count == 1 {
+                    lines.push(format!(
+                        "A wild onion lies {where_}. It can be eaten raw. It eases hunger a little. It is not berries."
+                    ));
+                } else {
+                    lines.push(format!(
+                        "{} wild onions lie {where_}. They can be eaten raw. They ease hunger a little. They are not berries.",
+                        capitalize(&count_word(count))
+                    ));
+                }
+            }
+        }
+        for actor in self.actors.values() {
+            if chebyshev(origin, actor.cell) > self.tuning.sight {
+                continue;
+            }
+            let count = self.loose_ids(actor.id, Material::Onion).len() as u32;
+            if count == 0 {
+                continue;
+            }
+            let who = if actor.id == viewer {
+                "you"
+            } else {
+                actor.name.as_str()
+            };
+            let cover = self.cover_phrase(actor.cell);
+            if count == 1 {
+                lines.push(format!(
+                    "A wild onion is carried by {who} {cover}. It can be eaten raw. It eases hunger a little. It is not berries."
+                ));
+            } else {
+                lines.push(format!(
+                    "{} wild onions are carried by {who} {cover}. They can be eaten raw. They ease hunger a little. They are not berries.",
+                    capitalize(&count_word(count))
+                ));
+            }
+        }
+        if lines.is_empty() {
+            "You see no wild onion from here.".into()
+        } else {
+            lines.join(" ")
+        }
+    }
+
     /// Wild mint on a wet bank this person can see but is not standing on.
     fn seen_mint(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
@@ -4642,6 +4761,30 @@ impl World {
             && self.ground_ids(cell, Material::Mint).is_empty()
     }
 
+    fn onion_stock(&self, cell: crate::model::CellId) -> bool {
+        self.pile_count(cell, Material::Onion) > 0
+            || !self.ground_ids(cell, Material::Onion).is_empty()
+    }
+
+    /// The patch was gathered bare. A wild onion dropped back onto it is stock again.
+    fn onion_bare(&self, cell: crate::model::CellId) -> bool {
+        self.onion_patches.contains(&cell) && !self.onion_stock(cell)
+    }
+
+    /// A wild onion lying off the patch. The patch itself says it grows.
+    fn onion_lying(&self, cell: crate::model::CellId) -> Option<String> {
+        if self.onion_patches.contains(&cell) || !self.onion_stock(cell) {
+            return None;
+        }
+        let count = self.pile_count(cell, Material::Onion)
+            + self.ground_ids(cell, Material::Onion).len() as u32;
+        if count == 1 {
+            Some("A wild onion lies here.".into())
+        } else {
+            Some(format!("{} wild onions lie here.", capitalize(&count_word(count))))
+        }
+    }
+
     fn moss_bare(&self, cell: crate::model::CellId) -> bool {
         self.moss_returns_at.contains_key(&cell)
             && self.pile_count(cell, Material::Moss) == 0
@@ -5610,6 +5753,10 @@ impl World {
             "a handful of mint".into()
         } else if item.material == "mint" {
             format!("{} handfuls of mint", count_word(item.count))
+        } else if item.material == "wild onion" && item.count == 1 {
+            "a wild onion".into()
+        } else if item.material == "wild onion" {
+            format!("{} wild onions", count_word(item.count))
         } else if item.material == "pine needles" && item.count == 1 {
             "a handful of pine needles".into()
         } else if item.material == "pine needles" {
@@ -6877,6 +7024,19 @@ impl World {
             bits.push("wild mint".into());
         } else if self.mint_bare(dest) {
             bits.push("no mint".into());
+        }
+        if self.onion_stock(dest) && self.onion_patches.contains(&dest) {
+            bits.push("wild onions".into());
+        } else if self.onion_bare(dest) {
+            bits.push("no wild onion".into());
+        } else if self.onion_stock(dest) {
+            let count = self.pile_count(dest, Material::Onion)
+                + self.ground_ids(dest, Material::Onion).len() as u32;
+            if count == 1 {
+                bits.push("a wild onion".into());
+            } else {
+                bits.push("wild onions".into());
+            }
         }
         if self.pile_count(dest, Material::Resin) > 0
             || !self.ground_ids(dest, Material::Resin).is_empty()
@@ -10819,6 +10979,7 @@ impl World {
                 Material::Egg => "eggs",
                 Material::Moss => "moss",
                 Material::Mint => "mint",
+                Material::Onion => "wild onion",
                 Material::Needle => "pine needles",
                 Material::Drill => "bow drill",
                 Material::Resin => "resin",
@@ -14166,6 +14327,7 @@ impl World {
             "a handful of pale berries.",
             "a handful of berries.",
             "a handful of dark berries.",
+            "a wild onion.",
         ];
         if RESTS.contains(&rest) {
             Some(event.text.clone())
@@ -14553,6 +14715,7 @@ impl World {
             "the eggs",
             "handful of moss",
             "handful of mint",
+            "wild onion",
             "handful of pine needles",
             "salt crust",
             "lump of pine resin",
@@ -15741,6 +15904,18 @@ impl World {
         {
             actions.push("gather mushrooms".into());
         }
+        if (self.pile_count(actor.cell, Material::Onion) > 0
+            || !self.ground_ids(actor.cell, Material::Onion).is_empty())
+            && self.carry_count(actor_id) < self.tuning.carry_slots
+        {
+            actions.push("gather onion".into());
+        }
+        if !self.loose_ids(actor_id, Material::Onion).is_empty()
+            || self.pile_count(actor.cell, Material::Onion) > 0
+            || !self.ground_ids(actor.cell, Material::Onion).is_empty()
+        {
+            actions.push("eat onion".into());
+        }
         if self.pile_count(actor.cell, Material::Pot) > 0
             && self.carry_count(actor_id) < self.tuning.carry_slots
         {
@@ -16732,6 +16907,8 @@ fn pile_noun(material: Material, count: u32) -> &'static str {
         (Material::Moss, _) => "handful of moss",
         (Material::Mint, true) => "handful of mint",
         (Material::Mint, false) => "handfuls of mint",
+        (Material::Onion, true) => "wild onion",
+        (Material::Onion, false) => "wild onions",
         (Material::Drill, true) => "bow drill",
         (Material::Drill, false) => "bow drills",
         (Material::Needle, true) => "handful of pine needles",
