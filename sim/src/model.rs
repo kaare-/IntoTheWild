@@ -22290,6 +22290,7 @@ mod owl {
             "{}",
             open.text
         );
+        super::frogs::assert_sound_with_the_sky(&open.text, "You hear an owl hoot to the north.");
         assert!(world
             .observe(seen)
             .unwrap()
@@ -22356,23 +22357,22 @@ mod frogs {
         let open = world.observe(near).unwrap();
         assert!(open.text.contains("Frogs croak."), "{}", open.text);
         assert!(!open.text.contains("croak to the"), "{}", open.text);
+        assert_sound_with_the_sky(&open.text, "Frogs croak.");
         assert!(world.observe(seen).unwrap().text.contains("Frogs croak."));
         assert!(!world.observe(seen).unwrap().text.contains("croak to the"));
+        assert_sound_with_the_sky(&world.observe(seen).unwrap().text, "Frogs croak.");
         let heard = world.observe(quiet).unwrap().text;
         assert!(
             heard.contains("You hear frogs croak to the north and west."),
             "{heard}"
         );
-        assert!(world
-            .observe(still)
-            .unwrap()
-            .text
-            .contains("Frogs croak here."));
-        assert!(world
-            .observe(brook)
-            .unwrap()
-            .text
-            .contains("Frogs croak here."));
+        assert_sound_with_the_sky(&heard, "You hear frogs croak to the north and west.");
+        let on_still = world.observe(still).unwrap().text;
+        assert!(on_still.contains("Frogs croak here."), "{on_still}");
+        assert_sound_with_the_sky(&on_still, "Frogs croak here.");
+        let on_brook = world.observe(brook).unwrap().text;
+        assert!(on_brook.contains("Frogs croak here."), "{on_brook}");
+        assert_sound_with_the_sky(&on_brook, "Frogs croak here.");
         assert!(!world
             .observe(far)
             .unwrap()
@@ -22419,6 +22419,30 @@ mod frogs {
             .to_lowercase()
             .contains("frog"));
         assert!(!world.observe(near).unwrap().text.contains("croak"));
+    }
+
+    pub(super) fn assert_sound_with_the_sky(text: &str, sound: &str) {
+        let mut lines = text.lines();
+        let sky = lines.next().unwrap_or("");
+        assert!(
+            sky.starts_with("The valley is still dry")
+                || sky.starts_with("The light is going")
+                || sky.starts_with("Rain is falling")
+                || sky.starts_with("Night has fallen")
+                || sky.starts_with("Morning is on the valley"),
+            "{text}"
+        );
+        let heard = lines.next().unwrap_or("");
+        assert!(heard.contains(sound), "{text}");
+        let skin = text.find("Your skin is").expect(text);
+        let arms = text.find("Your arms are empty.").expect(text);
+        assert!(text.find(sound).unwrap() < skin, "{text}");
+        let between = &text[skin..arms];
+        assert!(!between.to_lowercase().contains("frog"), "{between}");
+        assert!(!between.contains("croak"), "{between}");
+        assert!(!between.to_lowercase().contains("owl"), "{between}");
+        assert!(!between.contains("hoot"), "{between}");
+        assert!(!between.contains("birdsong"), "{between}");
     }
 }
 
@@ -22477,6 +22501,7 @@ mod birdsong {
         assert!(open.contains("The sky is clear."), "{open}");
         assert!(!open.contains("Rain is falling"), "{open}");
         assert!(open.contains("You hear birdsong."), "{open}");
+        super::frogs::assert_sound_with_the_sky(&open, "You hear birdsong.");
         assert!(!open.contains("faint"), "{open}");
         assert!(!open.contains("owl"), "{open}");
         assert!(!open.contains("croak"), "{open}");

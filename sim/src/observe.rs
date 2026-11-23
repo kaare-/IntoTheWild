@@ -277,6 +277,9 @@ impl World {
         let actor = self.actor(actor_id).unwrap();
         let mut lines = Vec::new();
         lines.push(self.sky_line().to_string());
+        if let Some(heard) = self.ambient_animal_line(actor_id) {
+            lines.push(heard);
+        }
         if let Some(season) = self.season_line(actor_id) {
             lines.push(season);
         }
@@ -846,6 +849,26 @@ impl World {
             return Some("You hear birdsong, faint.".into());
         }
         Some("You hear birdsong.".into())
+    }
+
+    /// Frog, owl, and birdsong are the valley's distant animal sounds.
+    /// They sit with the sky, not between the skin and the arms.
+    fn ambient_animal_line(&self, actor_id: ActorId) -> Option<String> {
+        let mut parts = Vec::new();
+        if let Some(owl) = self.owl_line(actor_id) {
+            parts.push(owl);
+        }
+        if let Some(frogs) = self.frog_line(actor_id) {
+            parts.push(frogs);
+        }
+        if let Some(birds) = self.bird_line(actor_id) {
+            parts.push(birds);
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(" "))
+        }
     }
 
     /// A fire underfoot or on the next cell. Farther light does not help.
@@ -6230,15 +6253,6 @@ impl World {
         }
         if let Some(wind) = self.night_wind_line(actor_id) {
             parts.push(wind);
-        }
-        if let Some(owl) = self.owl_line(actor_id) {
-            parts.push(owl);
-        }
-        if let Some(frogs) = self.frog_line(actor_id) {
-            parts.push(frogs);
-        }
-        if let Some(birds) = self.bird_line(actor_id) {
-            parts.push(birds);
         }
         if self.illness_word(actor.illness) == "ill" {
             parts.push("Your stomach has not settled.".into());
