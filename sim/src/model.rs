@@ -10380,6 +10380,71 @@ mod reed_mat {
             "A reed mat lies here. It is woven from reeds. Rest is easier on it."
         );
     }
+
+    #[test]
+    fn a_full_arms_gather_is_not_required_when_the_pile_can_finish_the_mat() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        for _ in 0..4 {
+            world.mint_item(Material::Stone, 0, cell, Some(near), super::Role::Loose);
+        }
+        let one = world.step(&[intent("one", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(one.results[0].message, "You gather a bundle of reeds.");
+        let full = world.step(&[intent("two", near, Attempt::Gather(Material::Reed))]);
+        assert_eq!(
+            full.results[0].message,
+            "Your arms are full. Drop something first."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("arms are full")
+        }));
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveMat)]);
+        let named = "You weave a reed mat from a bundle in the arms and a bundle at the feet.";
+        let heard =
+            "Near weaves a reed mat from a bundle in the arms and a bundle at the feet.";
+        assert_eq!(woven.results[0].message, named);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != named && event.text != heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("reed mat")));
+    }
+
+    #[test]
+    fn a_bundle_lying_at_the_feet_finishes_the_mat() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Reed, 0, cell, Some(near), super::Role::Loose);
+        let short = world.step(&[intent("short", near, Attempt::WeaveMat)]);
+        assert_eq!(
+            short.results[0].message,
+            "You need two bundles of reeds to weave a mat."
+        );
+        assert_eq!(world.loose_ids(near, Material::Reed).len(), 1);
+        world.mint_item(Material::Reed, 0, cell, None, super::Role::Loose);
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveMat)]);
+        assert_eq!(
+            woven.results[0].message,
+            "You weave a reed mat from a bundle in the arms and a bundle at the feet."
+        );
+    }
 }
 
 #[cfg(test)]
@@ -23497,6 +23562,78 @@ mod cattail {
             bare.results[0].message.contains("mushroom"),
             "{}",
             bare.results[0].message
+        );
+    }
+
+    #[test]
+    fn two_cattail_roots_say_two_in_the_arms() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let first = world.mint_item(Material::Cattail, 0, cell, Some(near), super::Role::Loose);
+        let one = world.observe(near).unwrap();
+        assert!(
+            one.text.contains("You have cattail roots."),
+            "{}",
+            one.text
+        );
+        assert!(!one.text.contains("two cattail roots"), "{}", one.text);
+        let second = world.mint_item(Material::Cattail, 0, cell, Some(near), super::Role::Loose);
+        let two = world.observe(near).unwrap();
+        assert!(
+            two.text.contains("You have two cattail roots."),
+            "{}",
+            two.text
+        );
+        assert!(
+            world
+                .observe(seen)
+                .unwrap()
+                .text
+                .contains("Near carries two cattail roots."),
+            "{}",
+            world.observe(seen).unwrap().text
+        );
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            !event.text.contains("cattail roots")
+        }));
+        assert!(two
+            .events
+            .iter()
+            .all(|event| !event.text.contains("two cattail roots")));
+        world.items.get_mut(&first).unwrap().cooked = true;
+        world.items.get_mut(&second).unwrap().cooked = true;
+        let cooked = world.observe(near).unwrap();
+        assert!(
+            cooked.text.contains("You have two cooked cattail roots."),
+            "{}",
+            cooked.text
+        );
+        assert!(
+            !cooked.text.contains("You have cooked cattail roots."),
+            "{}",
+            cooked.text
+        );
+        assert!(world.observe(seen).unwrap().text.contains(
+            "Near carries two cooked cattail roots."
+        ));
+        assert!(cooked
+            .events
+            .iter()
+            .all(|event| !event.text.contains("two cooked cattail roots")));
+        world.items.remove(&second);
+        let single = world.observe(near).unwrap();
+        assert!(
+            single.text.contains("You have cooked cattail roots."),
+            "{}",
+            single.text
+        );
+        assert!(
+            !single.text.contains("two cooked"),
+            "{}",
+            single.text
         );
     }
 }

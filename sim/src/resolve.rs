@@ -2728,8 +2728,9 @@ impl World {
                     return Err("You are already carrying a reed mat.".into());
                 }
                 let carried = self.loose_ids(actor.id, Material::Reed).len() as u32;
+                let lying = self.ground_ids(actor.cell, Material::Reed).len() as u32;
                 let piled = self.pile_count(actor.cell, Material::Reed);
-                if carried + piled < 2 {
+                if carried + lying + piled < 2 {
                     return Err("You need two bundles of reeds to weave a mat.".into());
                 }
                 let spent = carried.min(2);
@@ -12257,36 +12258,57 @@ impl World {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
+            let arm_ids = self.loose_ids(actor.id, Material::Reed);
+            let ground_ids = self.ground_ids(actor.cell, Material::Reed);
+            let pile = self.pile_count(actor.cell, Material::Reed);
+            if arm_ids.len() as u32 + ground_ids.len() as u32 + pile < 2 {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You need two bundles of reeds to weave a mat.",
+                    results,
+                );
+                continue;
+            }
             let mut spent = Vec::new();
+            let mut from_arms = 0u32;
+            let mut from_feet = 0u32;
             let mut left = 2u32;
-            for id in self.loose_ids(actor.id, Material::Reed) {
+            for id in arm_ids {
                 if left == 0 {
                     break;
                 }
                 self.items.remove(&id);
                 spent.push(id);
+                from_arms += 1;
+                left -= 1;
+            }
+            for id in ground_ids {
+                if left == 0 {
+                    break;
+                }
+                self.items.remove(&id);
+                spent.push(id);
+                from_feet += 1;
                 left -= 1;
             }
             if left > 0 {
-                if self
-                    .take_from_pile(actor.cell, Material::Reed, left)
-                    .is_none()
-                {
-                    self.finish(
-                        intent.command_id,
-                        actor.id,
-                        false,
-                        "You need two bundles of reeds to weave a mat.",
-                        results,
-                    );
-                    continue;
-                }
+                self.take_from_pile(actor.cell, Material::Reed, left);
+                from_feet += left;
                 self.arm_reed_bed(actor.cell);
             }
             let id = self.mint_item(Material::Mat, 0, actor.cell, Some(actor.id), Role::Loose);
             spent.push(id);
             let name = self.name_of(actor.id);
-            let rest = "a reed mat.";
+            // One bundle already in the arms and one still on the ground or
+            // in the stand is a finished weave. The reply names both, so a
+            // second gather into full arms is not a step the mat requires.
+            let rest = if from_arms == 1 && from_feet == 1 {
+                "a reed mat from a bundle in the arms and a bundle at the feet."
+            } else {
+                "a reed mat."
+            };
             self.emit(
                 crate::model::spoken_act(Some(name.as_str()), "weave", rest),
                 Scope::Cell(actor.cell),

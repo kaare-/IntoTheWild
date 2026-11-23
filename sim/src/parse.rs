@@ -88,7 +88,7 @@ seal bark cup                a lump of pine resin on a bark cup in the arms or a
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
 set weir                     one bundle of reeds and cordage, hide strips or willow or nettle, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
-weave mat                    two bundles of reeds, from the arms or the pile at your feet, into a reed mat. Set it under the rock or in a lean-to, then rest. Tiredness eases more there than on the bare ground. In the open, the wind becomes a little wind.
+weave mat                    two bundles of reeds, from the arms, a bundle on the ground, or the pile at your feet, into a reed mat. Set it under the rock or in a lean-to, then rest. Tiredness eases more there than on the bare ground. In the open, the wind becomes a little wind.
 set mat                      a carried reed mat, on this ground. It leaves the arms. Under the rock or in a lean-to, rest on it eases tiredness more.
 make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending

@@ -5658,16 +5658,7 @@ impl World {
                 "cattail flour".into()
             }
         } else if item.material == "cattail" {
-            let ids = self.loose_ids(actor_id, Material::Cattail);
-            let cooked = ids
-                .iter()
-                .filter(|id| self.item(**id).is_some_and(|root| root.cooked))
-                .count();
-            if cooked > 0 && cooked == ids.len() {
-                "cooked cattail roots".into()
-            } else {
-                "cattail roots".into()
-            }
+            self.cattail_arm_bit(actor_id)
         } else if item.material == "net" && item.count == 1 {
             "a fishing net".into()
         } else if item.material == "net" {
@@ -5903,6 +5894,33 @@ impl World {
             self.meat_carry_phrase(actor_id, item.condition == "cooked")
         } else {
             counted_arm_fallback(item.count, &item.condition, &item.material)
+        }
+    }
+
+    /// One handful stays "cattail roots" or "cooked cattail roots". Two or more
+    /// say the count. A mix names each. Look rebuilds this; it is not an event.
+    fn cattail_arm_bit(&self, actor_id: ActorId) -> String {
+        let ids = self.loose_ids(actor_id, Material::Cattail);
+        let cooked = ids
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|root| root.cooked))
+            .count() as u32;
+        let raw = ids.len() as u32 - cooked;
+        let mut bits = Vec::new();
+        if raw == 1 {
+            bits.push("cattail roots".to_string());
+        } else if raw > 1 {
+            bits.push(format!("{} cattail roots", count_word(raw)));
+        }
+        if cooked == 1 {
+            bits.push("cooked cattail roots".to_string());
+        } else if cooked > 1 {
+            bits.push(format!("{} cooked cattail roots", count_word(cooked)));
+        }
+        if bits.is_empty() {
+            "cattail roots".into()
+        } else {
+            bits.join(" and ")
         }
     }
 
@@ -13261,6 +13279,10 @@ impl World {
         let name = self.name_of(viewer);
         let text = event.text.as_str();
         if text == format!("{name} weaves a reed mat.")
+            || text
+                == format!(
+                    "{name} weaves a reed mat from a bundle in the arms and a bundle at the feet."
+                )
             || text == format!("{name} sets a reed mat.")
             || text == format!("{name} rests on the reed mat.")
             || text == format!("{name} rests on the reed mat under the rock.")
