@@ -3147,22 +3147,32 @@ fn a_hearer_gets_the_crack_when_the_still_pool_freezes() {
         world.step(&[]);
     }
     assert_eq!(world.sim_time(), 12);
+    let under = "The still freezes under you.";
     let standing = world.observe(near).unwrap();
     assert!(standing
         .text
         .contains("The still water is frozen. Ice covers it."));
-    assert!(standing
+    assert!(standing.events.iter().all(|event| {
+        event.text != "The still water is frozen. Ice covers it."
+            && !event.text.contains("ice forming")
+            && !event.text.contains("Ice forms")
+    }));
+    let feet: Vec<_> = standing
         .events
         .iter()
-        .all(|event| { !event.text.contains("ice forming") && !event.text.contains("Ice forms") }));
+        .filter(|event| event.text == under)
+        .collect();
+    assert_eq!(feet.len(), 1);
+    assert_eq!(feet[0].time, 12);
     let seen = world.observe(far).unwrap();
     assert!(seen
         .text
         .contains("The still water to the north and west is frozen. Ice covers it."));
-    assert!(seen
-        .events
-        .iter()
-        .all(|event| { !event.text.contains("ice forming") && !event.text.contains("Ice forms") }));
+    assert!(seen.events.iter().all(|event| {
+        event.text != under
+            && !event.text.contains("ice forming")
+            && !event.text.contains("Ice forms")
+    }));
     let heard = world.observe(west).unwrap();
     assert!(!heard.text.contains("frozen"));
     assert!(!heard.text.contains("Ice covers"));
@@ -3176,7 +3186,7 @@ fn a_hearer_gets_the_crack_when_the_still_pool_freezes() {
     assert!(heard
         .events
         .iter()
-        .all(|event| event.text != "Ice forms on the still water."));
+        .all(|event| { event.text != "Ice forms on the still water." && event.text != under }));
     let past = world.observe(quiet).unwrap();
     assert!(past
         .events
@@ -3227,18 +3237,26 @@ fn a_hearer_gets_the_crack_when_the_still_pool_freezes() {
         .map(|event| event.time)
         .collect();
     assert_eq!(again, vec![next_night]);
+    let again_under: Vec<_> = world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| event.text == under)
+        .map(|event| event.time)
+        .collect();
+    assert_eq!(again_under, vec![next_night]);
     assert!(world
         .observe(near)
         .unwrap()
         .events
         .iter()
-        .all(|event| { !event.text.contains("ice forming") }));
-    assert!(world
-        .observe(far)
-        .unwrap()
-        .events
-        .iter()
-        .all(|event| { !event.text.contains("ice forming") }));
+        .all(|event| { !event.text.contains("ice forming") && !event.text.contains("Ice forms") }));
+    assert!(world.observe(far).unwrap().events.iter().all(|event| {
+        event.text != under
+            && !event.text.contains("ice forming")
+            && !event.text.contains("Ice forms")
+    }));
     assert_eq!(
         world
             .observe(quiet)

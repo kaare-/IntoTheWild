@@ -1574,9 +1574,11 @@ impl World {
         );
     }
 
-    /// The still pool has just frozen. Someone who can see it already has
-    /// the ice in look. Someone out of sight but within hearing gets the
-    /// crack. The day thaw, and every tick the ice simply holds, is silent.
+    /// The still pool has just frozen. Someone standing on it reads that
+    /// the still freezes under them. Someone who can see it and is not
+    /// standing there already has the ice in look. Someone out of sight
+    /// but within hearing gets the crack. The day thaw, and every tick
+    /// the ice simply holds, is silent.
     pub(crate) fn crack_on_freeze(&mut self) {
         let thawed: Vec<CellId> = self
             .ice_holes
@@ -1598,10 +1600,16 @@ impl World {
             .map(|cell| cell.id)
             .collect();
         for cell in cells {
+            let standing: Vec<_> = self
+                .actors
+                .values()
+                .filter(|person| person.cell == cell)
+                .map(|person| person.id)
+                .collect();
             self.emit(
                 "Ice forms on the still water.",
                 Scope::Cell(cell),
-                Vec::new(),
+                standing,
                 vec![cell],
                 Vec::new(),
                 Vec::new(),

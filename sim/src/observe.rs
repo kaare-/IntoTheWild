@@ -13708,6 +13708,16 @@ impl World {
         event.affected_cells.first().copied()
     }
 
+    /// The person standing on the still when it freezes. The stored line
+    /// stays third person for the record. They read it in the first person,
+    /// and they do not also hear the crack.
+    fn ice_for_these_feet(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if !self.ice_forming(event) || !event.affected_actors.contains(&viewer) {
+            return None;
+        }
+        Some("The still freezes under you.".into())
+    }
+
     /// Ice taking the still pool, heard from out of sight. Someone who can
     /// see the pool already has the ice in look, so the crack is not delivered
     /// there. Past hearing, nothing.
@@ -15184,6 +15194,9 @@ impl World {
         if let Some(line) = self.howl_for_these_ears(origin, event) {
             return line;
         }
+        if let Some(line) = self.ice_for_these_feet(viewer, event) {
+            return line;
+        }
         if let Some(line) = self.ice_for_these_ears(origin, event) {
             return line;
         }
@@ -15485,7 +15498,8 @@ impl World {
             Scope::Personal(actor) => actor == viewer,
             Scope::Cell(cell) => {
                 if self.ice_forming(event) {
-                    return self.hears_ice(origin, event);
+                    return event.affected_actors.contains(&viewer)
+                        || self.hears_ice(origin, event);
                 }
                 if self.ice_break_marker(event) && self.hears_an_ice_break(origin, event) {
                     return true;
