@@ -1860,6 +1860,9 @@ impl World {
             if let Some(company) = self.company_here(actor_id) {
                 parts.push(company);
             }
+            if let Some(baskets) = self.carried_baskets_here(actor_id) {
+                parts.push(baskets);
+            }
         }
         parts.join(" ")
     }
@@ -5316,6 +5319,10 @@ impl World {
             line.push(' ');
             line.push_str(&company);
         }
+        if let Some(baskets) = self.carried_baskets_here(actor_id) {
+            line.push(' ');
+            line.push_str(&baskets);
+        }
         let stocked = self.actor(actor_id).is_some_and(|actor| {
             self.pile_count(actor.cell, Material::Branch) > 0
                 || !self.ground_ids(actor.cell, Material::Branch).is_empty()
@@ -5344,6 +5351,26 @@ impl World {
                 self.names(&others),
                 if others.len() == 1 { "is" } else { "are" }
             ))
+        }
+    }
+
+    /// A bark basket in someone else's arms on this cell. Look names it, full or holding.
+    fn carried_baskets_here(&self, viewer: ActorId) -> Option<String> {
+        let mut lines = Vec::new();
+        for id in self.others_here(viewer) {
+            if self.loose_ids(id, Material::Basket).is_empty() {
+                continue;
+            }
+            lines.push(format!(
+                "{} carries {}.",
+                self.name_of(id),
+                self.basket_arm_phrase(id)
+            ));
+        }
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join(" "))
         }
     }
 
