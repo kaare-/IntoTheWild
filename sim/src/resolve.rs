@@ -2393,11 +2393,11 @@ impl World {
                         let bare = if self.damp_earth(actor.cell) {
                             "The damp earth here has no worms.".to_string()
                         } else if self.dry_worm_returns_at.contains_key(&actor.cell)
-                            && self.has_antler_pick(actor.id)
+                            && self.pick_for_dry_dig(actor.id, actor.cell)
                         {
                             "The dry ground here has no worms.".to_string()
                         } else if self.dry_worms_open(actor.cell)
-                            && !self.has_antler_pick(actor.id)
+                            && !self.pick_for_dry_dig(actor.id, actor.cell)
                             && self.gather_step_cue(actor.cell, Material::Worm).is_none()
                         {
                             crate::model::DRY_WORM_CARVE.to_string()
@@ -9898,9 +9898,18 @@ impl World {
             .any(|id| self.item(*id).is_some_and(|pick| !pick.in_basket))
     }
 
+    /// A pick in the hands, or one lying on this cell. A pick in a basket is neither.
+    /// The hands win only in the sense that either one can dig. The pick is not lifted.
+    fn pick_for_dry_dig(&self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
+        let standing = self.actor(actor).is_some_and(|person| person.cell == cell);
+        standing
+            && (self.has_antler_pick(actor) || !self.ground_ids(cell, Material::Pick).is_empty())
+    }
+
     /// A pick can dig here when the ground is not waiting out a previous dig.
+    /// A pick at the feet digs without a gather, the same way a bead at the feet hammers.
     fn pick_can_dig_dry(&self, actor: crate::model::ActorId, cell: crate::model::CellId) -> bool {
-        self.has_antler_pick(actor) && self.dry_worms_open(cell)
+        self.pick_for_dry_dig(actor, cell) && self.dry_worms_open(cell)
     }
 
     pub(crate) fn has_carve_tool(&self, actor: crate::model::ActorId) -> bool {

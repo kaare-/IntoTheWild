@@ -1687,7 +1687,7 @@ pub(crate) const DRY_WORM_CARVE: &str =
     "Worms are in the dry ground here. Carve an antler into an antler pick to dig them.";
 
 /// Look on that same ground when an antler pick is in the hands or at the feet.
-/// A dig that does not hold the pick still says [`DRY_WORM_CARVE`].
+/// A dig with no pick in the hands and none at the feet still says [`DRY_WORM_CARVE`].
 pub(crate) const DRY_WORM_DIG: &str =
     "Worms are in the dry ground here. Dig them with the antler pick.";
 
@@ -28029,9 +28029,24 @@ mod antler_pick {
         assert!(!says(&world, near, super::DRY_WORM_DIG));
         assert!(!says(&world, seen, super::DRY_WORM_DIG));
         let hands = world.step(&[intent("hands", near, Attempt::Gather(Material::Worm))]);
-        assert_eq!(hands.results[0].message, super::DRY_WORM_CARVE);
-        assert!(!says(&world, near, super::DRY_WORM_CARVE));
-        assert!(!says(&world, seen, super::DRY_WORM_CARVE));
+        let dig_you = "You gather a worm from the dry ground with the antler pick.";
+        let dig_them = "Near gathers a worm from the dry ground with the antler pick.";
+        assert_eq!(hands.results[0].message, dig_you);
+        assert_eq!(world.ground_ids(cell, Material::Pick).len(), 1);
+        assert!(world.loose_ids(near, Material::Pick).is_empty());
+        assert_eq!(world.loose_ids(near, Material::Worm).len(), 2);
+        assert!(!says(&world, near, dig_you));
+        assert!(!says(&world, near, dig_them));
+        assert!(says(&world, seen, dig_them));
+        assert!(!says(&world, quiet, dig_them));
+        let again = world.step(&[intent("feet-empty", near, Attempt::Gather(Material::Worm))]);
+        assert_eq!(
+            again.results[0].message,
+            "The dry ground here has no worms."
+        );
+        assert!(!says(&world, near, "The dry ground here has no worms."));
+        assert!(!says(&world, seen, "The dry ground here has no worms."));
+        assert!(!says(&world, quiet, "The dry ground here has no worms."));
 
         let looked = world.examine(near, ExamineTarget::Pick);
         assert!(looked.contains("An antler pick lies here."));
