@@ -226,6 +226,10 @@ impl Host {
                 let text = self.world.basket_name_line(actor_id);
                 self.settle(command_id, false, false, true, text)
             }
+            Attempt::NameMat => {
+                let text = self.world.mat_name_line(actor_id);
+                self.settle(command_id, false, false, true, text)
+            }
             Attempt::Look => {
                 let text = self
                     .world
@@ -410,6 +414,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 Attempt::PutInBasket(_) => true,
                 Attempt::Drop(Material::Basket) => true,
                 Attempt::Eat(_) | Attempt::Roast | Attempt::Drink => true,
+                Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest => true,
                 Attempt::Gather(_)
                     if !result.success
                         && (result.message
@@ -1001,6 +1006,127 @@ mod tests {
             .all(|event| event.text != heard && event.text != reply));
         assert!(host.replies_for(&seen.token).is_empty());
         assert_eq!(host.replies_for(&near.token).len(), 1);
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_reed_mat_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-mat-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let named = host.submit(&near.token, "mat", "mat", None);
+        assert!(named.immediate, "{}", named.message);
+        assert_eq!(
+            named.message,
+            "Weave a reed mat from two bundles of reeds. Lay it under the rock or in a lean-to, then rest."
+        );
+        let miss = "You need two bundles of reeds to weave a mat.";
+        let queued = host.submit(&near.token, "short", "weave mat", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, miss);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let look = host.observe(token).unwrap();
+            assert!(look.events.iter().all(|event| event.text != miss));
+        }
+        let wind = "The wind will not let you rest.";
+        host.submit(&near.token, "wind", "rest", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, wind);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let look = host.observe(token).unwrap();
+            assert!(look.events.iter().all(|event| event.text != wind));
+        }
+        for n in 1..=3 {
+            host.submit(&near.token, &format!("near-w{n}"), "w", None);
+            host.submit(&seen.token, &format!("seen-w{n}"), "w", None);
+            host.advance(1).unwrap();
+        }
+        host.submit(&near.token, "w4", "w", None);
+        host.advance(1).unwrap();
+        let woven = "You weave a reed mat.";
+        let heard = "Near weaves a reed mat.";
+        let queued = host.submit(&near.token, "weave", "weave mat", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, woven);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        assert!(host
+            .observe(&near.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != woven && event.text != heard));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && event.text != woven));
+        let set = "You set a reed mat.";
+        let set_heard = "Near sets a reed mat.";
+        host.submit(&near.token, "set", "set mat", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, set);
+        assert!(host
+            .observe(&near.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != set && event.text != set_heard));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == set_heard));
+        let rest = "You rest on the reed mat.";
+        let rest_heard = "Near rests on the reed mat.";
+        host.submit(&near.token, "rest", "sleep", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, rest);
+        assert!(host
+            .observe(&near.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != rest && event.text != rest_heard));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == rest_heard));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("mat") && !event.text.contains("rest")));
+        assert!(host.replies_for(&seen.token).is_empty());
         assert!(host.clock().sim_time < 17);
         assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);

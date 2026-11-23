@@ -269,6 +269,12 @@ impl World {
                         intent.attempt,
                         Attempt::WeaveBasket | Attempt::WeaveNet | Attempt::WeaveMat
                     ) && message == ARMS_FULL;
+                    // A reed mat that will not weave or set, and a rest the
+                    // wind will not allow, stay with the person who tried.
+                    let mat_refusal = matches!(
+                        intent.attempt,
+                        Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest
+                    );
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -297,7 +303,8 @@ impl World {
                             && !put_in_basket_miss
                             && !basket_drop_miss
                             && !empty_pile
-                            && !full_arms_weave;
+                            && !full_arms_weave
+                            && !mat_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
@@ -317,7 +324,8 @@ impl World {
                         | Attempt::NameNeedle
                         | Attempt::NameAntler
                         | Attempt::NamePick
-                        | Attempt::NameBasket => hints.push(intent),
+                        | Attempt::NameBasket
+                        | Attempt::NameMat => hints.push(intent),
                         Attempt::Gather(_) => gathers.push(intent),
                         Attempt::Drop(_) => drops.push(intent),
                         Attempt::Grab => grabs.push(intent),
@@ -500,11 +508,13 @@ impl World {
                 Attempt::NameNeedle => "Carve a bone needle.",
                 Attempt::NameAntler => "Carve an antler pick.",
                 Attempt::NamePick => "Dig worms from dry ground.",
-                Attempt::NameBasket => "",
+                Attempt::NameBasket | Attempt::NameMat => "",
                 _ => "Board, carve canoe, or paddle.",
             };
             let line = if matches!(intent.attempt, Attempt::NameBasket) {
                 self.basket_name_line(intent.actor_id)
+            } else if matches!(intent.attempt, Attempt::NameMat) {
+                self.mat_name_line(intent.actor_id)
             } else {
                 line.to_string()
             };
@@ -637,7 +647,8 @@ impl World {
             | Attempt::NameNeedle
             | Attempt::NameAntler
             | Attempt::NamePick
-            | Attempt::NameBasket => Ok(false),
+            | Attempt::NameBasket
+            | Attempt::NameMat => Ok(false),
             Attempt::Say(text) => {
                 let text = text.trim();
                 if text.is_empty() {
@@ -8855,8 +8866,19 @@ impl World {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
+            let mat = self.reed_mat_here(actor.cell);
+            let under_rock = self.cell(actor.cell).rock;
+            let under_lean = self.lean_tos.contains(&actor.cell);
+            // A mat under the rock or a lean-to is a bed. Bare shelter
+            // still rests, and it eases less.
+            let bed = mat && (under_rock || under_lean);
+            let relief = if bed {
+                self.tuning.eat_relief.saturating_mul(2)
+            } else {
+                self.tuning.eat_relief
+            };
             let before = actor.energy;
-            let after = before.saturating_sub(self.tuning.eat_relief);
+            let after = before.saturating_sub(relief);
             let was = self.energy_word(before);
             let now = self.energy_word(after);
             if let Some(person) = self.actors.get_mut(&intent.actor_id) {
@@ -8868,12 +8890,15 @@ impl World {
             self.ease_illness(intent.actor_id, hurried);
             let shade = self.tuning.sun_per_tick.saturating_mul(5);
             self.ease_sunburn(intent.actor_id, shade);
-            let under_rock = self.cell(actor.cell).rock;
-            let place = if under_rock {
+            let place = if mat && under_rock {
+                " on the reed mat under the rock"
+            } else if mat && under_lean {
+                " on the reed mat under the lean-to"
+            } else if under_rock {
                 " under the rock"
-            } else if self.lean_tos.contains(&actor.cell) {
+            } else if under_lean {
                 " under the lean-to"
-            } else if self.reed_mat_here(actor.cell) {
+            } else if mat {
                 " on the reed mat"
             } else {
                 ""
@@ -8891,6 +8916,9 @@ impl World {
             let mut message = format!("You rest{place}.");
             if was != now {
                 message.push_str(&format!(" You are {now}."));
+            }
+            if bed {
+                message.push_str(" The tiredness eases.");
             }
             self.finish(intent.command_id, intent.actor_id, true, message, results);
         }
@@ -11671,6 +11699,22 @@ impl World {
         let first = chars.next().unwrap_or('A').to_uppercase().to_string();
         let rest: String = chars.collect();
         format!("The bark basket is full. {first}{rest} will not fit.")
+    }
+
+    /// Bare `mat`. The reply stays with this person.
+    pub fn mat_name_line(&self, actor: crate::model::ActorId) -> String {
+        let cell = self.actor(actor).map(|person| person.cell).unwrap_or(0);
+        if !self.loose_ids(actor, Material::Mat).is_empty() {
+            "You carry a reed mat. Set it under the rock or in a lean-to, then rest.".into()
+        } else if self.reed_mat_here(cell) {
+            if self.cell(cell).rock || self.lean_tos.contains(&cell) {
+                "A reed mat lies here. Rest on it, and the tiredness eases more.".into()
+            } else {
+                "A reed mat lies here. Rest on it.".into()
+            }
+        } else {
+            "Weave a reed mat from two bundles of reeds. Lay it under the rock or in a lean-to, then rest.".into()
+        }
     }
 
     /// Bare `basket`. The reply stays with this person.

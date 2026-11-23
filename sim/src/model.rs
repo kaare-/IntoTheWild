@@ -668,6 +668,8 @@ pub enum Attempt {
     NamePick,
     /// Bare `basket`. Names the weave. Does not weave one.
     NameBasket,
+    /// Bare `mat`. Names the weave and the bed. Does not weave one.
+    NameMat,
 }
 
 impl Attempt {
@@ -10267,6 +10269,110 @@ mod reed_mat {
             .iter()
             .any(|event| event.text == "Near drops a reed mat. It is in contact with the ground."));
         assert_eq!(world.material_tally(Material::Mat), 1);
+    }
+
+    #[test]
+    fn a_mat_under_shelter_eases_tiredness_more_than_bare_ground() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let named = world.step(&[intent("name", near, Attempt::NameMat)]);
+        assert_eq!(
+            named.results[0].message,
+            "Weave a reed mat from two bundles of reeds. Lay it under the rock or in a lean-to, then rest."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Weave a reed mat") }));
+        let high = world.tuning.spent_at + world.tuning.eat_relief;
+        world.actors.get_mut(&near).unwrap().energy = high;
+        let bare = world.step(&[intent("bare", near, Attempt::Rest)]);
+        assert_eq!(bare.results[0].message, "You rest under the rock.");
+        assert_eq!(world.observe(near).unwrap().self_info.energy, "spent");
+        world.actors.get_mut(&near).unwrap().energy = high;
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Reed, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Reed, 0, cell, Some(near), super::Role::Loose);
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveMat)]);
+        assert_eq!(woven.results[0].message, "You weave a reed mat.");
+        let carrying = world.step(&[intent("carry-name", near, Attempt::NameMat)]);
+        assert_eq!(
+            carrying.results[0].message,
+            "You carry a reed mat. Set it under the rock or in a lean-to, then rest."
+        );
+        let set = world.step(&[intent("set", near, Attempt::SetMat)]);
+        assert_eq!(set.results[0].message, "You set a reed mat.");
+        let down = world.step(&[intent("down-name", near, Attempt::NameMat)]);
+        assert_eq!(
+            down.results[0].message,
+            "A reed mat lies here. Rest on it, and the tiredness eases more."
+        );
+        assert_eq!(
+            world.examine(near, ExamineTarget::Mat),
+            "A reed mat lies here. It is woven from reeds. Rest is easier on it."
+        );
+        world.actors.get_mut(&near).unwrap().energy = high;
+        let rested = world.step(&[intent("rest", near, Attempt::Rest)]);
+        assert_eq!(
+            rested.results[0].message,
+            "You rest on the reed mat under the rock. You are rested. The tiredness eases."
+        );
+        assert_eq!(world.observe(near).unwrap().self_info.energy, "rested");
+        let lay = world.observe(near).unwrap();
+        assert!(lay.events.iter().all(|event| {
+            !event.text.contains("rests on the reed mat")
+                && !event.text.contains("You rest on the reed mat")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near rests on the reed mat under the rock."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("mat") && !event.text.contains("rest") }));
+        let short = world.step(&[intent("short", near, Attempt::WeaveMat)]);
+        assert_eq!(
+            short.results[0].message,
+            "You need two bundles of reeds to weave a mat."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("two bundles") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("two bundles") }));
+
+        let mut sheltered = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = sheltered.spawn_at("Near", "n", 4, 3).unwrap();
+        let cell = sheltered.actor(near).unwrap().cell;
+        sheltered.lean_tos.insert(cell);
+        sheltered.mint_item(Material::Mat, 0, cell, None, super::Role::Loose);
+        let high = sheltered.tuning.spent_at + sheltered.tuning.eat_relief;
+        sheltered.actors.get_mut(&near).unwrap().energy = high;
+        let rested = sheltered.step(&[intent("lean", near, Attempt::Rest)]);
+        assert_eq!(
+            rested.results[0].message,
+            "You rest on the reed mat under the lean-to. You are rested. The tiredness eases."
+        );
+        assert_eq!(
+            sheltered.examine(near, ExamineTarget::Mat),
+            "A reed mat lies here. It is woven from reeds. Rest is easier on it."
+        );
     }
 }
 

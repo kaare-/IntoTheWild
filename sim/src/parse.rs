@@ -88,8 +88,8 @@ seal bark cup                a lump of pine resin on a bark cup in the arms or a
 weave net                    three bundles of reeds, from the arms or the pile at your feet, into a fishing net. fish with it takes a fish. The net is not used up.
 set net                      a carried fishing net, in the brook. It leaves the arms. After a short wait it catches a fish. The net stays until you gather it.
 set weir                     one bundle of reeds and cordage, hide strips or willow or nettle, in the brook. After a short wait a raw fish lies there. The reeds and the cordage are spent. The weir is gone. The brook is not fished out. This is not a spear, a hook, or a set net.
-weave mat                    two bundles of reeds, from the arms or the pile at your feet, into a reed mat. Set it or drop it, then rest on it. The open wind becomes a little wind.
-set mat                      a carried reed mat, on this ground. It leaves the arms. rest works on it, as under a lean-to.
+weave mat                    two bundles of reeds, from the arms or the pile at your feet, into a reed mat. Set it under the rock or in a lean-to, then rest. Tiredness eases more there than on the bare ground. In the open, the wind becomes a little wind.
+set mat                      a carried reed mat, on this ground. It leaves the arms. Under the rock or in a lean-to, rest on it eases tiredness more.
 make net                     the same net
 gather charcoal              a lump left when a small fire goes out, from rain or from the fuel ending
 bank                         dry branches lying on a burning fire, covered with a handful of mud. After a short wait the wood chars into charcoal and the fire goes out. A fire that would burn out first is held until that wait. If the fire is put out, the wood comes back and does not char. The branches in your arms stay there. smother and cover fire are the same
@@ -142,7 +142,7 @@ hammer bloom                 a carried bloom of iron at a hotter fire, or with a
 scrape hide                  a raw hide with a flint flake, a flint nodule, or a stone. A clear stone of quartz in the arms or underfoot is that stone, and it is not gathered and not used up. The hide is scraped. The tool stays. With none of those, only you hear it. An unscraped hide will not sew into a cloak
 pierce hide                  a carried or worn deer hide, with a copper awl; the hide is ready to sew. A wolf hide uses the same awl. An otter hide uses a bone awl the same way. A fox hide uses a copper awl or a bone awl the same way. A hare hide uses a copper awl or a bone awl the same way. A beaver hide uses a copper awl or a bone awl the same way
 sew hide                     a scraped and pierced deer hide into a cloak, worn against the cold. A scraped hide that is not pierced names the awl already in the arms, or the awl at the feet when the arms have none. An awl one cell off names that awl and the step. With none nearby, it names a copper awl or a bone awl. A pierced wolf hide sews into a warmer cloak. A pierced otter hide sews into a cloak that keeps the rain and the brook off. A pierced beaver hide sews into a cloak that sheds the rain and the brook. A pierced fox hide sews into a cloak that breaks the wind and cuts the cold the way a deer cloak does. A pierced hare hide sews into a light cloak that takes a little of the cold off and leaves the wind and the rain
-rest|sleep                   under the rock, a lean-to, or on a reed mat, tiredness eases; the open wind refuses
+rest|sleep                   under the rock, a lean-to, or on a reed mat, tiredness eases. On a reed mat under the rock or a lean-to, it eases more than on the bare ground there. The open wind refuses unless a mat is down. Bare mat says how to weave one.
 interrupt                    stop the work your body is in
 help"
 }
@@ -190,6 +190,8 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "antler" if rest.is_empty() || rest == "pick" => Ok(Attempt::NameAntler),
         "pick" if rest.is_empty() => Ok(Attempt::NamePick),
         "basket" if rest.is_empty() => Ok(Attempt::NameBasket),
+        "mat" if rest.is_empty() => Ok(Attempt::NameMat),
+        "reed" if rest == "mat" => Ok(Attempt::NameMat),
         "look" | "l" | "orient" => {
             if rest.is_empty() {
                 Ok(Attempt::Look)
@@ -482,7 +484,13 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
             Ok(Attempt::WeaveBasket)
         }
         "weave" | "make"
-            if rest == "mat" || rest == "a mat" || rest == "reed mat" || rest == "a reed mat" =>
+            if rest == "mat"
+                || rest == "a mat"
+                || rest == "reed mat"
+                || rest == "a reed mat"
+                || rest == "sleeping mat"
+                || rest == "a sleeping mat"
+                || rest == "reed sleeping mat" =>
         {
             Ok(Attempt::WeaveMat)
         }

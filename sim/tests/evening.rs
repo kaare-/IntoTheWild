@@ -12380,7 +12380,7 @@ fn rest_under_the_rock_eases_tiredness_and_the_open_wind_refuses() {
     assert!(after
         .events
         .iter()
-        .any(|event| event.text == "The wind will not let you rest."));
+        .all(|event| event.text != "The wind will not let you rest."));
     let far_after = world.observe(far).unwrap();
     assert!(far_after
         .events

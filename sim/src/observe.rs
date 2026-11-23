@@ -12976,10 +12976,19 @@ impl World {
             } else {
                 format!("to the {}", self.relative(origin, cell))
             };
-            if count == 1 {
-                lines.push(format!("A reed mat lies {place}. It is woven from reeds."));
+            let bed = if origin == cell && (self.cell(cell).rock || self.lean_tos.contains(&cell)) {
+                " Rest is easier on it."
             } else {
-                lines.push(format!("Reed mats lie {place}. Each is woven from reeds."));
+                ""
+            };
+            if count == 1 {
+                lines.push(format!(
+                    "A reed mat lies {place}. It is woven from reeds.{bed}"
+                ));
+            } else {
+                lines.push(format!(
+                    "Reed mats lie {place}. Each is woven from reeds.{bed}"
+                ));
             }
         }
         for actor in self.actors.values() {
@@ -13150,6 +13159,8 @@ impl World {
         if text == format!("{name} weaves a reed mat.")
             || text == format!("{name} sets a reed mat.")
             || text == format!("{name} rests on the reed mat.")
+            || text == format!("{name} rests on the reed mat under the rock.")
+            || text == format!("{name} rests on the reed mat under the lean-to.")
             || text == format!("{name} drops a reed mat. It is in contact with the ground.")
         {
             return Some(text.to_string());
