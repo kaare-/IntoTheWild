@@ -693,6 +693,12 @@ impl World {
         self.time >= self.tuning.night_at && !self.night()
     }
 
+    /// Rain and night are the skies that put the sun's gain to nothing.
+    /// Shade is a different cover. A burn already on the skin is not this.
+    fn sun_reaches_the_skin(&self) -> bool {
+        !self.raining && !self.night()
+    }
+
     /// Night wind, from the same shelter the cold uses. The open rushes.
     /// A little wind is only a whisper. Rock and a thatched lean-to say nothing.
     /// The line is look, not a tick event.
@@ -5840,10 +5846,14 @@ impl World {
         if self.illness_word(actor.illness) == "ill" {
             parts.push("Your stomach has not settled.".into());
         }
-        if actor.sunburn >= self.tuning.burned_at {
-            parts.push("The sun burns. It hurts.".into());
-        } else if actor.sunburn >= self.tuning.pink_at {
-            parts.push("The sun is hot on your skin.".into());
+        // The burn itself stays until it fades. These two lines say what the
+        // sun is doing now, so they wait for a sky that can still burn.
+        if self.sun_reaches_the_skin() {
+            if actor.sunburn >= self.tuning.burned_at {
+                parts.push("The sun burns. It hurts.".into());
+            } else if actor.sunburn >= self.tuning.pink_at {
+                parts.push("The sun is hot on your skin.".into());
+            }
         }
         if self.wearing_hide(actor_id) {
             let worn = |pred: fn(&crate::model::Item) -> bool| {

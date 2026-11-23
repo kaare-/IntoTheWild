@@ -4099,6 +4099,18 @@ fn clear_day_sun_hurts_bare_skin_and_stays_on_that_body() {
     }
     world.step(&[]);
     assert!(world.is_raining());
+    let soaked = world.observe(west).unwrap();
+    assert!(
+        soaked.text.contains("Your skin is burned.") || soaked.text.contains("Your skin is pink."),
+        "{}",
+        soaked.text
+    );
+    assert!(
+        !soaked.text.contains("The sun is hot on your skin."),
+        "{}",
+        soaked.text
+    );
+    assert!(!soaked.text.contains("The sun burns"), "{}", soaked.text);
     let washed = world.observe(near).unwrap();
     assert!(washed
         .events
@@ -4242,7 +4254,12 @@ fn a_night_in_the_open_settles_a_burn_and_nobody_else_hears_it() {
     let eased = world.observe(near).unwrap();
     assert_eq!(eased.self_info.sunburn, "pink");
     assert!(eased.text.contains("Your skin is pink."));
-    assert!(eased.text.contains("The sun is hot on your skin."));
+    assert!(world.is_raining());
+    assert!(
+        !eased.text.contains("The sun is hot on your skin."),
+        "{}",
+        eased.text
+    );
     assert!(!eased.text.contains("The sun burns"));
     let settled: Vec<_> = eased
         .events
