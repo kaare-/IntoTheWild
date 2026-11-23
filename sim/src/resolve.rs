@@ -235,8 +235,7 @@ impl World {
                     let cook_fire_refusal =
                         matches!(intent.attempt, Attempt::Cook | Attempt::CookCattail)
                             && (message.starts_with("There is no fire burning here")
-                                || (matches!(intent.attempt, Attempt::CookCattail)
-                                    && message == "There is nothing here to cook."));
+                                || message == "There is nothing here to cook.");
                     // A bead or an awl that is not at hand is the reply only,
                     // and so is the step when the bead is one cell off.
                     let hammer_refusal =
@@ -526,7 +525,7 @@ impl World {
                 Attempt::NameSinew => "Pull sinew from a carcass.",
                 Attempt::NameTorch => "Make a pitch torch, or light one.",
                 Attempt::NameMushroom => "Gather mushrooms, or cook them.",
-                Attempt::NameOnion => "Gather a wild onion, or eat it raw.",
+                Attempt::NameOnion => "Gather a wild onion, eat it raw, or cook it over a fire.",
                 Attempt::NameNeedle => "Carve a bone needle.",
                 Attempt::NameAntler => "Carve an antler pick.",
                 Attempt::NamePick => "Dig worms from dry ground.",
@@ -2409,6 +2408,7 @@ impl World {
                     || self.pile_count(actor.cell, Material::Mushroom) > 0
                     || self.raw_cattail_id(actor.id).is_some()
                     || self.pile_count(actor.cell, Material::Cattail) > 0
+                    || self.raw_onion_near(actor.id)
                 {
                     Ok(true)
                 } else if self.spoiled_meat_near(actor.id) {
@@ -5023,6 +5023,7 @@ impl World {
             && self.cookable_pile(person.cell) == 0
             && self.raw_meat_id(actor).is_none()
             && !self.raw_fish_near(actor)
+            && !self.raw_onion_near(actor)
         {
             if self.spoiled_meat_near(actor) {
                 return Some("The meat has spoiled.".into());
@@ -5510,6 +5511,10 @@ impl World {
                 self.cook_pale(intent, results);
                 continue;
             }
+            if self.raw_onion_near(intent.actor_id) {
+                self.heat_onion(intent, results, "cook");
+                continue;
+            }
             if self.cookable_carried(intent.actor_id) {
                 carried.push(intent);
             } else {
@@ -5653,7 +5658,84 @@ impl World {
             self.cook_cattail(intent, results, "roast");
             return;
         }
+        if self.raw_onion_near(intent.actor_id) {
+            self.heat_onion(intent, results, "roast");
+            return;
+        }
         self.heat_mushroom(intent, results, "roast");
+    }
+
+    /// Heat leaves the onion in the arms, or on the ground if it was the stand.
+    /// It feeds more once it is eaten. A raw bite still eases hunger a little.
+    fn heat_onion(&mut self, intent: Intent, results: &mut Vec<CommandResult>, stem: &str) {
+        if let Some(message) = self.cook_refusal(intent.actor_id) {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                self.roast_word(stem, message),
+                results,
+            );
+            return;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        let id = if let Some(id) = self.raw_onion_id(intent.actor_id) {
+            if let Some(onion) = self.items.get_mut(&id) {
+                onion.cooked = true;
+            }
+            id
+        } else if self.pile_count(cell, Material::Onion) > 0 {
+            let moisture = self.take_from_pile(cell, Material::Onion, 1).unwrap_or(0);
+            let id = self.mint_item(Material::Onion, moisture, cell, None, Role::Loose);
+            if let Some(onion) = self.items.get_mut(&id) {
+                onion.cooked = true;
+            }
+            id
+        } else if let Some(id) = self
+            .ground_ids(cell, Material::Onion)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|onion| !onion.cooked))
+        {
+            if let Some(onion) = self.items.get_mut(&id) {
+                onion.cooked = true;
+            }
+            self.arm_onion_patch(cell);
+            id
+        } else {
+            let message = if stem == "roast" {
+                "There is nothing here to roast."
+            } else {
+                "There is nothing here to cook."
+            };
+            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            return;
+        };
+        let rest = "the wild onion over the fire.";
+        let name = self.name_of(intent.actor_id);
+        let fire_event = self
+            .fire_at(cell)
+            .map(|fire| fire.lit_event)
+            .into_iter()
+            .collect();
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), stem, rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            fire_event,
+            None,
+        );
+        self.finish(
+            intent.command_id,
+            intent.actor_id,
+            true,
+            crate::model::spoken_act(None, stem, rest),
+            results,
+        );
     }
 
     /// Heat leaves the mushroom in the arms, or on the ground if it was a pile.
@@ -14498,6 +14580,10 @@ impl World {
     }
 
     fn eat_onion(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        if self.cooked_onion_id(intent.actor_id).is_some() {
+            self.eat_cooked_onion(intent, results);
+            return;
+        }
         let taken = self.take_onion(intent.actor_id);
         if taken.is_err() {
             let cell = self
@@ -14559,7 +14645,7 @@ impl World {
 
     /// A wild onion from the arms, then the pile, then one lying on this ground.
     fn take_onion(&mut self, actor: ActorId) -> Result<Option<crate::model::ItemId>, ()> {
-        if let Some(item_id) = self.loose_ids(actor, Material::Onion).first().copied() {
+        if let Some(item_id) = self.raw_onion_id(actor) {
             self.items.remove(&item_id);
             return Ok(Some(item_id));
         }
@@ -14570,12 +14656,68 @@ impl World {
             self.arm_onion_patch(cell);
             return Ok(None);
         }
-        if let Some(item_id) = self.ground_ids(cell, Material::Onion).first().copied() {
+        if let Some(item_id) = self
+            .ground_ids(cell, Material::Onion)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|onion| !onion.cooked))
+        {
             self.items.remove(&item_id);
             self.arm_onion_patch(cell);
             return Ok(Some(item_id));
         }
         Err(())
+    }
+
+    /// A cooked onion feeds like a meal. A raw bite still eases hunger a little.
+    fn eat_cooked_onion(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+        let Some(id) = self.cooked_onion_id(intent.actor_id) else {
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                "There is no cooked onion here to eat.",
+                results,
+            );
+            return;
+        };
+        let before = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.hunger)
+            .unwrap_or(0);
+        let after = before.saturating_sub(self.tuning.cook_relief);
+        if let Some(person) = self.actors.get_mut(&intent.actor_id) {
+            person.hunger = after;
+        }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        self.items.remove(&id);
+        self.arm_onion_patch(cell);
+        let name = self.name_of(intent.actor_id);
+        let rest = "the cooked onion.";
+        self.emit(
+            crate::model::spoken_act(Some(name.as_str()), "eat", rest),
+            Scope::Cell(cell),
+            vec![intent.actor_id],
+            vec![cell],
+            vec![id],
+            vec![],
+            None,
+        );
+        let mut message = crate::model::spoken_act(None, "eat", rest);
+        if before == 0 {
+            message.push_str(" You were not hungry.");
+        } else {
+            message.push_str(" The hunger eases.");
+            let word = self.hunger_word(after);
+            if word != self.hunger_word(before) {
+                message.push_str(&format!(" You are {word}."));
+            } else if word != "not hungry" {
+                message.push_str(&format!(" You are still {word}."));
+            }
+        }
+        self.finish(intent.command_id, intent.actor_id, true, message, results);
     }
 
     fn eat_honey(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {

@@ -2905,9 +2905,7 @@ impl World {
         if !self.onion_patches.contains(&cell) || self.onion_returns_at.contains_key(&cell) {
             return;
         }
-        if self.pile_count(cell, Material::Onion) > 0
-            || !self.ground_ids(cell, Material::Onion).is_empty()
-        {
+        if self.pile_count(cell, Material::Onion) > 0 || self.raw_onion_on_ground(cell) {
             return;
         }
         let at = self.time.saturating_add(self.tuning.mushroom_ticks);
@@ -3918,6 +3916,7 @@ impl World {
             || self.raw_pale_id(actor).is_some()
             || self.raw_cattail_id(actor).is_some()
             || self.raw_flour_id(actor).is_some()
+            || self.raw_onion_id(actor).is_some()
     }
 
     /// Raw cattail roots in the arms. Cooked roots are already food.
@@ -4316,6 +4315,46 @@ impl World {
                 .ground_ids(cell, Material::Egg)
                 .iter()
                 .any(|id| self.item(*id).is_some_and(|eggs| !eggs.cooked))
+    }
+
+    /// A raw wild onion in the arms. A cooked one is already a meal.
+    pub(crate) fn raw_onion_id(&self, actor: ActorId) -> Option<ItemId> {
+        self.loose_ids(actor, Material::Onion)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|onion| !onion.cooked))
+    }
+
+    /// One cooked onion, from the arms before the ground.
+    pub(crate) fn cooked_onion_id(&self, actor: ActorId) -> Option<ItemId> {
+        let carried = self
+            .loose_ids(actor, Material::Onion)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|onion| onion.cooked));
+        if carried.is_some() {
+            return carried;
+        }
+        let cell = self.actor(actor)?.cell;
+        self.ground_ids(cell, Material::Onion)
+            .into_iter()
+            .find(|id| self.item(*id).is_some_and(|onion| onion.cooked))
+    }
+
+    /// A raw onion in the arms, in the stand, or lying on this ground.
+    pub(crate) fn raw_onion_near(&self, actor: ActorId) -> bool {
+        if self.raw_onion_id(actor).is_some() {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.pile_count(cell, Material::Onion) > 0 || self.raw_onion_on_ground(cell)
+    }
+
+    /// A raw wild onion lying on this ground. A cooked one is food, not the stand.
+    pub(crate) fn raw_onion_on_ground(&self, cell: CellId) -> bool {
+        self.ground_ids(cell, Material::Onion)
+            .iter()
+            .any(|id| self.item(*id).is_some_and(|onion| !onion.cooked))
     }
 
     /// A raw mushroom in the arms. A cooked one is already food.
@@ -29604,9 +29643,13 @@ mod wild_onion {
         let named = world.step(&[intent("name", near, Attempt::NameOnion)]);
         assert_eq!(
             named.results[0].message,
-            "Gather a wild onion, or eat it raw."
+            "Gather a wild onion, eat it raw, or cook it over a fire."
         );
-        assert!(!says(&world, near, "Gather a wild onion, or eat it raw."));
+        assert!(!says(
+            &world,
+            near,
+            "Gather a wild onion, eat it raw, or cook it over a fire."
+        ));
         let from_trail = world.observe(near).unwrap().text;
         assert!(
             from_trail.contains("Wild onions grow on the valley floor to the south."),
@@ -29845,5 +29888,112 @@ mod wild_onion {
         assert!(!says(&world, quiet, "Near gathers a wild onion."));
         assert_eq!(world.pile_count(floor, Material::Onion), 1);
         assert!(world.onion_returns_at.is_empty());
+    }
+
+    #[test]
+    fn a_wild_onion_cooks_over_a_fire_and_eases_hunger_more_than_a_raw_bite() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cold = world.step(&[intent("cold", near, Attempt::Roast)]);
+        assert_eq!(cold.results[0].message, "There is no fire burning here.");
+        assert!(!says(&world, near, "There is no fire burning here."));
+        assert!(!says(&world, seen, "There is no fire burning here."));
+        assert!(!says(&world, quiet, "There is no fire burning here."));
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_fire(cell, 0);
+        let roasted = world.step(&[intent("roast", near, Attempt::Roast)]);
+        assert_eq!(
+            roasted.results[0].message,
+            "You roast the wild onion over the fire."
+        );
+        assert!(!says(&world, near, "You roast the wild onion over the fire."));
+        assert!(!says(&world, near, "Near roasts the wild onion over the fire."));
+        assert!(says(&world, seen, "Near roasts the wild onion over the fire."));
+        assert!(!says(&world, quiet, "Near roasts the wild onion over the fire."));
+        let look = world.observe(near).unwrap().text;
+        assert!(look.contains("A cooked onion lies here."), "{look}");
+        assert!(
+            look.contains("Wild onions grow on the valley floor here."),
+            "{look}"
+        );
+        world.actors.get_mut(&near).unwrap().hunger = 400;
+        let meal = world.step(&[intent("meal", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            meal.results[0].message,
+            "You eat the cooked onion. The hunger eases. You are not hungry."
+        );
+        assert!(!says(&world, near, "Near eats the cooked onion."));
+        assert!(says(&world, seen, "Near eats the cooked onion."));
+        assert!(!says(&world, quiet, "Near eats the cooked onion."));
+        world.actors.get_mut(&near).unwrap().hunger = 400;
+        let raw = world.step(&[intent("raw", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            raw.results[0].message,
+            "You eat a wild onion. The hunger eases a little. You are still hungry."
+        );
+        let little = world.tuning.cook_relief / 4;
+        assert!(world.tuning.cook_relief > little);
+        assert_eq!(
+            world.actor(near).unwrap().hunger,
+            400 - little + world.tuning.hunger_per_tick
+        );
+        let mut cooked_world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = cooked_world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = cooked_world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = cooked_world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = cooked_world.actor(near).unwrap().cell;
+        cooked_world.mint_fire(cell, 0);
+        let cooked = cooked_world.step(&[intent("cook", near, Attempt::Cook)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the wild onion over the fire."
+        );
+        assert!(!says(
+            &cooked_world,
+            near,
+            "You cook the wild onion over the fire."
+        ));
+        assert!(says(
+            &cooked_world,
+            seen,
+            "Near cooks the wild onion over the fire."
+        ));
+        assert!(!says(
+            &cooked_world,
+            quiet,
+            "Near cooks the wild onion over the fire."
+        ));
+        cooked_world.actors.get_mut(&near).unwrap().hunger = 400;
+        let meal = cooked_world.step(&[intent("meal", near, Attempt::Eat(Material::Onion))]);
+        assert_eq!(
+            meal.results[0].message,
+            "You eat the cooked onion. The hunger eases. You are not hungry."
+        );
+        assert_eq!(
+            cooked_world.actor(near).unwrap().hunger,
+            400u32.saturating_sub(cooked_world.tuning.cook_relief)
+                + cooked_world.tuning.hunger_per_tick
+        );
+        assert!(!says(&cooked_world, near, "Near eats the cooked onion."));
+        assert!(says(&cooked_world, seen, "Near eats the cooked onion."));
+        assert!(!says(&cooked_world, quiet, "Near eats the cooked onion."));
+        assert!(!says(&cooked_world, near, "The hunger eases."));
+        let last = cooked_world.step(&[intent("last", near, Attempt::Cook)]);
+        assert_eq!(
+            last.results[0].message,
+            "You cook the wild onion over the fire."
+        );
+        let gone = cooked_world.step(&[intent("gone", near, Attempt::Cook)]);
+        assert_eq!(gone.results[0].message, "There is nothing here to cook.");
+        assert!(!says(&cooked_world, near, "There is nothing here to cook."));
+        assert!(!says(&cooked_world, seen, "There is nothing here to cook."));
+        let bare = cooked_world.observe(near).unwrap().text;
+        assert!(
+            bare.contains("The valley floor here has no wild onion."),
+            "{bare}"
+        );
+        assert!(bare.contains("cooked onion"), "{bare}");
     }
 }

@@ -227,7 +227,7 @@ impl Host {
                 false,
                 false,
                 true,
-                "Gather a wild onion, or eat it raw.".into(),
+                "Gather a wild onion, eat it raw, or cook it over a fire.".into(),
             ),
             Attempt::NameBasket => {
                 let text = self.world.basket_name_line(actor_id);

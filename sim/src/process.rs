@@ -782,9 +782,7 @@ impl World {
         if !self.onion_patches.contains(&cell) {
             return;
         }
-        if self.pile_count(cell, Material::Onion) > 0
-            || !self.ground_ids(cell, Material::Onion).is_empty()
-        {
+        if self.pile_count(cell, Material::Onion) > 0 || self.raw_onion_on_ground(cell) {
             return;
         }
         self.add_pile(cell, Material::Onion, crate::model::ONION_STAND, 0);

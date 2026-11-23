@@ -1581,6 +1581,9 @@ impl World {
         } else if let Some(lying) = self.onion_lying(actor.cell) {
             parts.push(lying);
         }
+        if let Some(cooked) = self.cooked_onion_lying(actor.cell) {
+            parts.push(cooked);
+        }
         let resin_here = self.pile_count(actor.cell, Material::Resin)
             + self.ground_ids(actor.cell, Material::Resin).len() as u32;
         if resin_here > 1 {
@@ -3355,13 +3358,26 @@ impl World {
                 ));
             } else if self.onion_stock(cell) {
                 let count = self.pile_count(cell, Material::Onion)
-                    + self.ground_ids(cell, Material::Onion).len() as u32;
+                    + self
+                        .ground_ids(cell, Material::Onion)
+                        .iter()
+                        .filter(|id| self.item(**id).is_some_and(|onion| !onion.cooked))
+                        .count() as u32;
                 if count == 1 {
                     lines.push(format!("A wild onion lies to the {way}."));
                 } else {
                     lines.push(format!(
                         "{} wild onions lie to the {way}.",
                         capitalize(&count_word(count))
+                    ));
+                }
+            } else if let Some(cooked) = self.cooked_onion_count(cell) {
+                if cooked == 1 {
+                    lines.push(format!("A cooked onion lies to the {way}."));
+                } else {
+                    lines.push(format!(
+                        "{} cooked onions lie to the {way}.",
+                        capitalize(&count_word(cooked))
                     ));
                 }
             }
@@ -3398,16 +3414,33 @@ impl World {
                 }
             } else {
                 let count = self.pile_count(cell, Material::Onion)
-                    + self.ground_ids(cell, Material::Onion).len() as u32;
+                    + self
+                        .ground_ids(cell, Material::Onion)
+                        .iter()
+                        .filter(|id| self.item(**id).is_some_and(|onion| !onion.cooked))
+                        .count() as u32;
                 let where_ = self.place_phrase(origin, cell);
                 if count == 1 {
                     lines.push(format!(
                         "A wild onion lies {where_}. It can be eaten raw. It eases hunger a little. It is not berries."
                     ));
-                } else {
+                } else if count > 1 {
                     lines.push(format!(
                         "{} wild onions lie {where_}. They can be eaten raw. They ease hunger a little. They are not berries.",
                         capitalize(&count_word(count))
+                    ));
+                }
+            }
+            if let Some(cooked) = self.cooked_onion_count(cell) {
+                let where_ = self.place_phrase(origin, cell);
+                if cooked == 1 {
+                    lines.push(format!(
+                        "A cooked onion lies {where_}. It eases hunger more than a raw one."
+                    ));
+                } else {
+                    lines.push(format!(
+                        "{} cooked onions lie {where_}. They ease hunger more than a raw one.",
+                        capitalize(&count_word(cooked))
                     ));
                 }
             }
@@ -3416,24 +3449,39 @@ impl World {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
                 continue;
             }
-            let count = self.loose_ids(actor.id, Material::Onion).len() as u32;
-            if count == 0 {
+            let ids = self.loose_ids(actor.id, Material::Onion);
+            if ids.is_empty() {
                 continue;
             }
+            let cooked = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|onion| onion.cooked))
+                .count() as u32;
+            let raw = ids.len() as u32 - cooked;
             let who = if actor.id == viewer {
                 "you"
             } else {
                 actor.name.as_str()
             };
             let cover = self.cover_phrase(actor.cell);
-            if count == 1 {
+            if raw == 1 {
                 lines.push(format!(
                     "A wild onion is carried by {who} {cover}. It can be eaten raw. It eases hunger a little. It is not berries."
                 ));
-            } else {
+            } else if raw > 1 {
                 lines.push(format!(
                     "{} wild onions are carried by {who} {cover}. They can be eaten raw. They ease hunger a little. They are not berries.",
-                    capitalize(&count_word(count))
+                    capitalize(&count_word(raw))
+                ));
+            }
+            if cooked == 1 {
+                lines.push(format!(
+                    "A cooked onion is carried by {who} {cover}. It eases hunger more than a raw one."
+                ));
+            } else if cooked > 1 {
+                lines.push(format!(
+                    "{} cooked onions are carried by {who} {cover}. They ease hunger more than a raw one.",
+                    capitalize(&count_word(cooked))
                 ));
             }
         }
@@ -4762,8 +4810,28 @@ impl World {
     }
 
     fn onion_stock(&self, cell: crate::model::CellId) -> bool {
-        self.pile_count(cell, Material::Onion) > 0
-            || !self.ground_ids(cell, Material::Onion).is_empty()
+        self.pile_count(cell, Material::Onion) > 0 || self.raw_onion_on_ground(cell)
+    }
+
+    fn cooked_onion_count(&self, cell: crate::model::CellId) -> Option<u32> {
+        let count = self
+            .ground_ids(cell, Material::Onion)
+            .iter()
+            .filter(|id| self.item(**id).is_some_and(|onion| onion.cooked))
+            .count() as u32;
+        (count > 0).then_some(count)
+    }
+
+    fn cooked_onion_lying(&self, cell: crate::model::CellId) -> Option<String> {
+        let count = self.cooked_onion_count(cell)?;
+        if count == 1 {
+            Some("A cooked onion lies here.".into())
+        } else {
+            Some(format!(
+                "{} cooked onions lie here.",
+                capitalize(&count_word(count))
+            ))
+        }
     }
 
     /// The patch was gathered bare. A wild onion dropped back onto it is stock again.
@@ -4777,7 +4845,11 @@ impl World {
             return None;
         }
         let count = self.pile_count(cell, Material::Onion)
-            + self.ground_ids(cell, Material::Onion).len() as u32;
+            + self
+                .ground_ids(cell, Material::Onion)
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|onion| !onion.cooked))
+                .count() as u32;
         if count == 1 {
             Some("A wild onion lies here.".into())
         } else {
@@ -5753,6 +5825,10 @@ impl World {
             "a handful of mint".into()
         } else if item.material == "mint" {
             format!("{} handfuls of mint", count_word(item.count))
+        } else if item.material == "wild onion" && item.condition == "cooked" && item.count == 1 {
+            "a cooked onion".into()
+        } else if item.material == "wild onion" && item.condition == "cooked" {
+            format!("{} cooked onions", count_word(item.count))
         } else if item.material == "wild onion" && item.count == 1 {
             "a wild onion".into()
         } else if item.material == "wild onion" {
@@ -7027,11 +7103,22 @@ impl World {
         }
         if self.onion_stock(dest) && self.onion_patches.contains(&dest) {
             bits.push("wild onions".into());
+        } else if self.cooked_onion_count(dest).is_some() {
+            let count = self.cooked_onion_count(dest).unwrap_or(1);
+            if count == 1 {
+                bits.push("a cooked onion".into());
+            } else {
+                bits.push("cooked onions".into());
+            }
         } else if self.onion_bare(dest) {
             bits.push("no wild onion".into());
         } else if self.onion_stock(dest) {
             let count = self.pile_count(dest, Material::Onion)
-                + self.ground_ids(dest, Material::Onion).len() as u32;
+                + self
+                    .ground_ids(dest, Material::Onion)
+                    .iter()
+                    .filter(|id| self.item(**id).is_some_and(|onion| !onion.cooked))
+                    .count() as u32;
             if count == 1 {
                 bits.push("a wild onion".into());
             } else {
@@ -12084,7 +12171,10 @@ impl World {
                 }
                 continue;
             }
-            if item.material == Material::Mushroom || item.material == Material::Meat {
+            if item.material == Material::Mushroom
+                || item.material == Material::Meat
+                || item.material == Material::Onion
+            {
                 let word = item.cooked.then_some("cooked");
                 if let Some(group) = groups
                     .iter_mut()
@@ -14328,6 +14418,7 @@ impl World {
             "a handful of berries.",
             "a handful of dark berries.",
             "a wild onion.",
+            "the cooked onion.",
         ];
         if RESTS.contains(&rest) {
             Some(event.text.clone())
