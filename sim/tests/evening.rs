@@ -495,6 +495,97 @@ fn thirst_and_hunger_are_first_person_for_that_body() {
 }
 
 #[test]
+fn tiredness_is_first_person_for_that_body() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+    let mut ticks = 0;
+    while world.observe(near).unwrap().self_info.energy != "tiring" {
+        world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 40, "tiredness should arrive");
+    }
+    let near_look = world.observe(near).unwrap();
+    assert!(near_look.text.contains("You are tiring."));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "You are tiring."));
+    assert!(near_look
+        .events
+        .iter()
+        .all(|event| event.text != "Near is tiring."));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "Seen is tiring."));
+    let seen_look = world.observe(seen).unwrap();
+    assert!(seen_look
+        .events
+        .iter()
+        .any(|event| event.text == "You are tiring."));
+    assert!(seen_look
+        .events
+        .iter()
+        .any(|event| event.text == "Near is tiring."));
+    assert!(seen_look
+        .events
+        .iter()
+        .all(|event| event.text != "Seen is tiring."));
+    let quiet_look = world.observe(quiet).unwrap();
+    assert!(quiet_look
+        .events
+        .iter()
+        .any(|event| event.text == "You are tiring."));
+    assert!(quiet_look
+        .events
+        .iter()
+        .all(|event| { event.text != "Near is tiring." && event.text != "Seen is tiring." }));
+
+    while world.observe(near).unwrap().self_info.energy != "spent" {
+        world.step(&[]);
+        ticks += 1;
+        assert!(ticks < 80, "spent should arrive");
+    }
+    let spent = world.observe(near).unwrap();
+    assert!(spent.text.contains("You are spent."));
+    assert!(spent
+        .events
+        .iter()
+        .any(|event| event.text == "You are spent."));
+    assert!(spent
+        .events
+        .iter()
+        .all(|event| event.text != "Near is spent."));
+    let seen_spent = world.observe(seen).unwrap();
+    assert!(seen_spent
+        .events
+        .iter()
+        .any(|event| event.text == "Near is spent."));
+    assert!(seen_spent
+        .events
+        .iter()
+        .any(|event| event.text == "You are spent."));
+    assert!(seen_spent
+        .events
+        .iter()
+        .all(|event| event.text != "Seen is spent."));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { event.text != "Near is spent." && event.text != "Seen is spent." }));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "You are spent."));
+}
+
+#[test]
 fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     let mut world = world_at(1_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
@@ -2743,11 +2834,19 @@ fn seed_one_still_water_sickens_on_the_next_drink_and_the_brook_does_not() {
     assert!(pool
         .events
         .iter()
+        .any(|event| event.text == "Your stomach turns."));
+    assert!(pool
+        .events
+        .iter()
+        .all(|event| event.text != "Near's stomach turns."));
+    assert!(running
+        .events
+        .iter()
         .any(|event| event.text == "Near's stomach turns."));
     assert!(running
         .events
         .iter()
-        .all(|event| !event.text.contains("stomach")));
+        .all(|event| !event.text.contains("West's stomach")));
     assert!(witness
         .events
         .iter()
@@ -2759,7 +2858,7 @@ fn seed_one_still_water_sickens_on_the_next_drink_and_the_brook_does_not() {
     assert!(witness
         .events
         .iter()
-        .all(|event| !event.text.contains("stomach")));
+        .any(|event| event.text == "Near's stomach turns."));
 
     world.step(&[cmd("fill", west, Attempt::Gather(Material::Water))]);
     for id in ["e1", "e2", "e3", "e4", "e5"] {

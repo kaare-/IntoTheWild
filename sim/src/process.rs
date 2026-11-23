@@ -2652,22 +2652,14 @@ impl World {
             let name = actor.name.clone();
             let cell = actor.cell;
             let crossed = if before < spent_at && after >= spent_at {
-                Some(format!("{name} is spent."))
+                Some((format!("{name} is spent."), "You are spent.".to_string()))
             } else if before < tiring_at && after >= tiring_at {
-                Some(format!("{name} is tiring."))
+                Some((format!("{name} is tiring."), "You are tiring.".to_string()))
             } else {
                 None
             };
-            if let Some(text) = crossed {
-                self.emit(
-                    text,
-                    Scope::Personal(id),
-                    vec![id],
-                    vec![cell],
-                    vec![],
-                    vec![],
-                    None,
-                );
+            if let Some((witness, yours)) = crossed {
+                self.say_body(id, cell, witness, yours);
             }
         }
     }

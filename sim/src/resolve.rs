@@ -14033,8 +14033,18 @@ impl World {
             );
             let turned = illness_before < self.tuning.ill_at && illness_after >= self.tuning.ill_at;
             if turned {
+                let named = format!("{}'s stomach turns.", actor.name);
                 self.emit(
-                    format!("{}'s stomach turns.", actor.name),
+                    named,
+                    Scope::Cell(actor.cell),
+                    vec![actor.id],
+                    vec![actor.cell],
+                    vec![],
+                    vec![drink_event],
+                    None,
+                );
+                self.emit(
+                    "Your stomach turns.".to_string(),
                     Scope::Personal(actor.id),
                     vec![actor.id],
                     vec![actor.cell],

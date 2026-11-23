@@ -13150,7 +13150,7 @@ impl World {
             .then(|| event.text.clone())
     }
 
-    /// Thirst or hunger, said with the person's name for anyone who can see
+    /// A body need, said with the person's name for anyone who can see
     /// the cell. That person already has the first person, so this copy goes.
     fn body_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
@@ -13162,6 +13162,9 @@ impl World {
             || text == format!("{name}'s mouth is dry.")
             || text == format!("Hunger is in {name}'s stomach.")
             || text == format!("{name}'s stomach is empty.")
+            || text == format!("{name} is tiring.")
+            || text == format!("{name} is spent.")
+            || text == format!("{name}'s stomach turns.")
         {
             return Some(text.to_string());
         }
