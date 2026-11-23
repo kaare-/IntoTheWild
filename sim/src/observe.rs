@@ -27,7 +27,7 @@ d deer    x fox    r hare    z beaver    t otter
 \" tracks
 R rock roof    H bark roof
 f unfinished frame
-~ brook    = still water
+~ brook    = still water    l hole
 ^ slope    . ground
 ?? outside your sight";
 
@@ -1320,7 +1320,12 @@ impl World {
         let cattails_here = self.pile_count(actor.cell, Material::Cattail)
             + self.ground_ids(actor.cell, Material::Cattail).len() as u32;
         if cattails_here > 0 && self.cattail_stands.contains(&actor.cell) {
-            if self.still_frozen(actor.cell) {
+            if self.still_frozen(actor.cell) && self.ice_hole(actor.cell) {
+                parts.push(
+                    "Cattails stand in the hole in the ice. The roots can be dug. They are not the reeds."
+                        .into(),
+                );
+            } else if self.still_frozen(actor.cell) {
                 parts.push(
                     "Cattails stand under the ice. The roots cannot be dug. They are not the reeds."
                         .into(),
@@ -3808,7 +3813,11 @@ impl World {
             }
             let way = self.relative(origin, cell);
             let count = self.pile_count(cell, Material::Cattail);
-            if count > 0 && self.still_frozen(cell) {
+            if count > 0 && self.still_frozen(cell) && self.ice_hole(cell) {
+                lines.push(format!(
+                    "Cattails stand in the hole in the ice to the {way}. The roots can be dug. They are not the reeds."
+                ));
+            } else if count > 0 && self.still_frozen(cell) {
                 lines.push(format!(
                     "Cattails stand under the ice to the {way}. They are not the reeds."
                 ));
@@ -3847,7 +3856,11 @@ impl World {
             }
             let place = self.place_phrase(origin, cell);
             if self.cattail_stands.contains(&cell) && self.pile_count(cell, Material::Cattail) > 0 {
-                if self.still_frozen(cell) {
+                if self.still_frozen(cell) && self.ice_hole(cell) {
+                    lines.push(format!(
+                        "Cattails stand {place}, in the hole in the ice. The roots can be dug. They are not the reeds."
+                    ));
+                } else if self.still_frozen(cell) {
                     lines.push(format!(
                         "Cattails stand {place}, under the ice. The roots cannot be dug. They are not the reeds."
                     ));
@@ -7037,7 +7050,12 @@ impl World {
         if cell.still && cell.region != crate::model::Region::Brook {
             bits.push("still water".into());
         }
-        if self.pile_count(dest, Material::Cattail) > 0 && self.still_frozen(dest) {
+        if self.pile_count(dest, Material::Cattail) > 0
+            && self.still_frozen(dest)
+            && self.ice_hole(dest)
+        {
+            bits.push("cattails in the hole".into());
+        } else if self.pile_count(dest, Material::Cattail) > 0 && self.still_frozen(dest) {
             bits.push("cattails under the ice".into());
         } else if self.pile_count(dest, Material::Cattail) > 0 || self.cattail_bare(dest) {
             bits.push("cattails".into());
@@ -11665,6 +11683,12 @@ impl World {
         }
         if self.map_hoofprints(viewer, cell) {
             marks.push('"');
+        }
+        if self.ice_hole(cell)
+            && self.cattail_stands.contains(&cell)
+            && self.pile_count(cell, Material::Cattail) > 0
+        {
+            marks.push('l');
         }
         marks
     }

@@ -419,7 +419,8 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                     if !result.success
                         && (result.message
                             == "Worms are in the dry ground here. Carve an antler into an antler pick to dig them."
-                            || result.message == "The dry ground here has no worms.") =>
+                            || result.message == "The dry ground here has no worms."
+                            || result.message == "Ice covers the cattail roots.") =>
                 {
                     true
                 }
@@ -1053,6 +1054,20 @@ mod tests {
         while host.clock().sim_time < 12 {
             host.advance(1).unwrap();
         }
+        let covered = "Ice covers the cattail roots.";
+        host.submit(&near.token, "roots-ice", "dig roots", None);
+        let missed = host.advance(1).unwrap();
+        assert_eq!(missed.replies.len(), 1, "{:?}", missed.replies);
+        assert_eq!(missed.replies[0].message, covered);
+        assert_eq!(missed.replies[0].actor_id, near.actor_id);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != covered));
+        }
         let reply = "You break a hole in the ice with the stone.";
         let heard = "Near breaks a hole in the ice with the stone.";
         host.submit(&near.token, "open", "break ice", None);
@@ -1079,6 +1094,35 @@ mod tests {
             .events
             .iter()
             .any(|event| event.text.contains("You hear ice break")));
+        let dug = "You gather cattail roots.";
+        let named = "Near gathers cattail roots.";
+        host.submit(&near.token, "roots", "dig roots", None);
+        let gathered = host.advance(1).unwrap();
+        assert_eq!(gathered.replies.len(), 1, "{:?}", gathered.replies);
+        assert_eq!(gathered.replies[0].message, dug);
+        assert_eq!(gathered.replies[0].actor_id, near.actor_id);
+        let near_look = host.observe(&near.token).unwrap();
+        assert!(near_look.text.contains(
+            "Cattails stand in the hole in the ice. The roots can be dug. They are not the reeds."
+        ));
+        assert!(near_look.map.contains("@l"));
+        assert!(near_look.legend.contains("l hole"));
+        assert!(near_look
+            .events
+            .iter()
+            .all(|event| event.text != dug && event.text != named));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == named));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cattail")));
         assert!(host.clock().sim_time < 17);
         assert!(!host.clock().raining);
         assert!(host.replies_for(&seen.token).is_empty());

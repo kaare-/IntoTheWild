@@ -224,6 +224,9 @@ impl World {
                     let berry_eat_refusal = matches!(intent.attempt, Attempt::Eat(Material::Berry));
                     // No brook here, or ice on the still, is the reply only.
                     let drink_refusal = matches!(intent.attempt, Attempt::Drink);
+                    // Unbroken ice over the cattail roots is the reply only.
+                    let cattail_ice_refusal = matches!(intent.attempt, Attempt::Gather(_))
+                        && message == "Ice covers the cattail roots.";
                     // A roast miss is the reply only. A cook with no fire here is
                     // the same, including the step when a fire burns next door.
                     let roast_refusal = matches!(intent.attempt, Attempt::Roast);
@@ -289,6 +292,7 @@ impl World {
                             && !mushroom_eat_refusal
                             && !berry_eat_refusal
                             && !drink_refusal
+                            && !cattail_ice_refusal
                             && !roast_refusal
                             && !cook_fire_refusal
                             && !hammer_refusal
@@ -2417,6 +2421,7 @@ impl World {
                     }
                 } else if *material == Material::Cattail
                     && self.still_frozen(actor.cell)
+                    && !self.ice_hole(actor.cell)
                     && (self.pile_count(actor.cell, Material::Cattail) > 0
                         || !self.ground_ids(actor.cell, Material::Cattail).is_empty())
                 {

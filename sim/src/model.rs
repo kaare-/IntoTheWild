@@ -22930,13 +22930,7 @@ mod cattail {
         assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
         let dug = world.step(&[intent("ice", near, Attempt::Gather(Material::Cattail))]);
         assert_eq!(dug.results[0].message, "Ice covers the cattail roots.");
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| event.text == "Ice covers the cattail roots."));
-        for person in [seen, quiet] {
+        for person in [near, seen, quiet] {
             assert!(world
                 .observe(person)
                 .unwrap()
@@ -22945,6 +22939,49 @@ mod cattail {
                 .all(|event| { event.text != "Ice covers the cattail roots." }));
         }
         assert!(world.pile_count(world.actor(near).unwrap().cell, Material::Cattail) > 0);
+        assert!(world.observe(near).unwrap().map.contains("@="));
+        assert!(!world.observe(near).unwrap().map.contains('l'));
+        world.mint_item(
+            Material::Stone,
+            0,
+            world.actor(near).unwrap().cell,
+            Some(near),
+            super::Role::Loose,
+        );
+        let opened = world.step(&[intent("open", near, Attempt::BreakIce)]);
+        assert_eq!(
+            opened.results[0].message,
+            "You break a hole in the ice with the stone."
+        );
+        let holed = world.observe(near).unwrap();
+        assert!(holed.text.contains(
+            "Cattails stand in the hole in the ice. The roots can be dug. They are not the reeds."
+        ));
+        assert!(!holed.text.contains("The roots cannot be dug."));
+        assert!(holed.map.contains("@l"));
+        assert!(holed.legend.contains("l hole"));
+        assert!(world.observe(seen).unwrap().text.contains(
+            "Cattails stand in the hole in the ice to the north and west. The roots can be dug. They are not the reeds."
+        ));
+        assert!(world.observe(seen).unwrap().map.contains("pl"));
+        let roots = world.step(&[intent("roots", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(roots.results[0].message, "You gather cattail roots.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("gathers cattail roots")
+                && event.text != "You gather cattail roots."
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near gathers cattail roots."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cattail")));
     }
 
     #[test]
