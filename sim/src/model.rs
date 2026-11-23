@@ -670,6 +670,10 @@ pub enum Attempt {
     NameBasket,
     /// Bare `mat`. Names the weave and the bed. Does not weave one.
     NameMat,
+    /// `cook cattail` or `cook roots`. Roots only, not whatever else is in reach.
+    CookCattail,
+    /// `roast cattail` or `roast roots`. Roots only, and the line says roast.
+    RoastCattail,
 }
 
 impl Attempt {
@@ -687,6 +691,8 @@ impl Attempt {
                 | Attempt::Light
                 | Attempt::Cook
                 | Attempt::Roast
+                | Attempt::CookCattail
+                | Attempt::RoastCattail
                 | Attempt::Boil
                 | Attempt::Brew
                 | Attempt::SteepPine
@@ -23381,6 +23387,116 @@ mod cattail {
         assert_eq!(
             again.results[0].message,
             "You gather a handful of cattail fluff."
+        );
+    }
+
+    #[test]
+    fn cook_and_roast_name_the_cattail_roots() {
+        assert_eq!(
+            crate::parse::parse_attempt("roast cattail").unwrap(),
+            Attempt::RoastCattail
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("roast roots").unwrap(),
+            Attempt::RoastCattail
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("cook cattail roots").unwrap(),
+            Attempt::CookCattail
+        );
+        assert_eq!(crate::parse::parse_attempt("cook").unwrap(), Attempt::Cook);
+        assert_eq!(
+            crate::parse::parse_attempt("roast").unwrap(),
+            Attempt::Roast
+        );
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert!(lit.results[0].success, "{}", lit.results[0].message);
+        let missed = world.step(&[intent("miss", near, Attempt::RoastCattail)]);
+        assert_eq!(missed.results[0].message, "There is nothing here to roast.");
+        assert!(!missed.results[0].success);
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { event.text != "There is nothing here to roast." }));
+        }
+        let cold = world.step(&[intent("cold", quiet, Attempt::CookCattail)]);
+        assert!(cold.results[0]
+            .message
+            .starts_with("There is no fire burning here"));
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| { !event.text.starts_with("There is no fire burning here") }));
+        }
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Cattail, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Cattail, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Mushroom, 0, cell, Some(near), super::Role::Loose);
+        let roasted = world.step(&[intent("roast", near, Attempt::RoastCattail)]);
+        assert_eq!(
+            roasted.results[0].message,
+            "You roast the cattail roots over the fire."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("cattail roots") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near roasts the cattail roots over the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("cattail") }));
+        assert!(world
+            .items
+            .values()
+            .any(|item| item.material == Material::Mushroom && !item.cooked));
+        let cooked = world.step(&[intent("cook", near, Attempt::CookCattail)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the cattail roots over the fire."
+        );
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("cooks the cattail roots") }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| { event.text == "Near cooks the cattail roots over the fire." }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("cooks the cattail") }));
+        let bare = world.step(&[intent("bare", near, Attempt::Roast)]);
+        assert!(
+            bare.results[0].message.contains("mushroom"),
+            "{}",
+            bare.results[0].message
         );
     }
 }

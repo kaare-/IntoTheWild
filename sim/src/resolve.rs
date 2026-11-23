@@ -229,9 +229,13 @@ impl World {
                         && message == "Ice covers the cattail roots.";
                     // A roast miss is the reply only. A cook with no fire here is
                     // the same, including the step when a fire burns next door.
-                    let roast_refusal = matches!(intent.attempt, Attempt::Roast);
-                    let cook_fire_refusal = matches!(intent.attempt, Attempt::Cook)
-                        && message.starts_with("There is no fire burning here");
+                    let roast_refusal =
+                        matches!(intent.attempt, Attempt::Roast | Attempt::RoastCattail);
+                    let cook_fire_refusal =
+                        matches!(intent.attempt, Attempt::Cook | Attempt::CookCattail)
+                            && (message.starts_with("There is no fire burning here")
+                                || (matches!(intent.attempt, Attempt::CookCattail)
+                                    && message == "There is nothing here to cook."));
                     // A bead or an awl that is not at hand is the reply only,
                     // and so is the step when the bead is one cell off.
                     let hammer_refusal =
@@ -346,7 +350,10 @@ impl World {
                         Attempt::Light => lights.push(intent),
                         Attempt::DrillFire => drill_fires.push(intent),
                         Attempt::CarveDrill => drill_carves.push(intent),
-                        Attempt::Cook | Attempt::Roast => cooks.push(intent),
+                        Attempt::Cook
+                        | Attempt::Roast
+                        | Attempt::CookCattail
+                        | Attempt::RoastCattail => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
                         Attempt::SmearOchre => ochre_smears.push(intent),
@@ -2352,17 +2359,42 @@ impl World {
                     Ok(true)
                 }
             }
-            Attempt::Roast => {
+            Attempt::CookCattail => {
                 if busy {
                     Err("You are in the middle of something.".into())
                 } else if body_taken {
                     Err("You already committed to something else this window.".into())
                 } else if self.fire_at(actor.cell).is_none() {
                     Err(self.no_fire_here(actor.cell))
+                } else if self.raw_cattail_id(actor.id).is_none()
+                    && self.pile_count(actor.cell, Material::Cattail) == 0
+                {
+                    Err("There is nothing here to cook.".into())
+                } else {
+                    Ok(true)
+                }
+            }
+            Attempt::Roast | Attempt::RoastCattail => {
+                if busy {
+                    Err("You are in the middle of something.".into())
+                } else if body_taken {
+                    Err("You already committed to something else this window.".into())
+                } else if self.fire_at(actor.cell).is_none() {
+                    Err(self.no_fire_here(actor.cell))
+                } else if matches!(attempt, Attempt::RoastCattail) {
+                    if self.raw_cattail_id(actor.id).is_some()
+                        || self.pile_count(actor.cell, Material::Cattail) > 0
+                    {
+                        Ok(true)
+                    } else {
+                        Err("There is nothing here to roast.".into())
+                    }
                 } else if self.raw_meat_id(actor.id).is_some()
                     || self.raw_fish_id(actor.id).is_some()
                     || self.raw_mushroom_id(actor.id).is_some()
                     || self.pile_count(actor.cell, Material::Mushroom) > 0
+                    || self.raw_cattail_id(actor.id).is_some()
+                    || self.pile_count(actor.cell, Material::Cattail) > 0
                 {
                     Ok(true)
                 } else if self.spoiled_meat_near(actor.id) {
@@ -5388,6 +5420,14 @@ impl World {
         let mut carried = Vec::new();
         let mut piles: BTreeMap<crate::model::CellId, Vec<Intent>> = BTreeMap::new();
         for intent in cooks {
+            if matches!(intent.attempt, Attempt::RoastCattail) {
+                self.cook_cattail(intent, results, "roast");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::CookCattail) {
+                self.cook_cattail(intent, results, "cook");
+                continue;
+            }
             if matches!(intent.attempt, Attempt::Roast) {
                 self.roast_food(intent, results);
                 continue;
@@ -5419,7 +5459,7 @@ impl World {
             if self.raw_cattail_id(intent.actor_id).is_some()
                 || self.pile_count(cell, Material::Cattail) > 0
             {
-                self.cook_cattail(intent, results);
+                self.cook_cattail(intent, results, "cook");
                 continue;
             }
             if self.raw_flour_id(intent.actor_id).is_some() {
@@ -5559,6 +5599,22 @@ impl World {
             self.cook_fish(intent, results, "roast");
             return;
         }
+        let cell = self
+            .actor(intent.actor_id)
+            .map(|actor| actor.cell)
+            .unwrap_or(0);
+        if self.raw_mushroom_id(intent.actor_id).is_some()
+            || self.pile_count(cell, Material::Mushroom) > 0
+        {
+            self.heat_mushroom(intent, results, "roast");
+            return;
+        }
+        if self.raw_cattail_id(intent.actor_id).is_some()
+            || self.pile_count(cell, Material::Cattail) > 0
+        {
+            self.cook_cattail(intent, results, "roast");
+            return;
+        }
         self.heat_mushroom(intent, results, "roast");
     }
 
@@ -5629,9 +5685,15 @@ impl World {
 
     /// Heat leaves the roots in the arms, or on the ground if they were a pile.
     /// They do not feed anyone until they are eaten.
-    fn cook_cattail(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
+    fn cook_cattail(&mut self, intent: Intent, results: &mut Vec<CommandResult>, stem: &str) {
         if let Some(message) = self.cook_refusal(intent.actor_id) {
-            self.finish(intent.command_id, intent.actor_id, false, message, results);
+            self.finish(
+                intent.command_id,
+                intent.actor_id,
+                false,
+                self.roast_word(stem, message),
+                results,
+            );
             return;
         }
         let cell = self
@@ -5655,7 +5717,7 @@ impl World {
                 intent.command_id,
                 intent.actor_id,
                 false,
-                "There is nothing here to cook.",
+                self.roast_word(stem, "There is nothing here to cook.".into()),
                 results,
             );
             return;
@@ -5668,7 +5730,7 @@ impl World {
             .into_iter()
             .collect();
         self.emit(
-            crate::model::spoken_act(Some(name.as_str()), "cook", rest),
+            crate::model::spoken_act(Some(name.as_str()), stem, rest),
             Scope::Cell(cell),
             vec![intent.actor_id],
             vec![cell],
@@ -5680,7 +5742,7 @@ impl World {
             intent.command_id,
             intent.actor_id,
             true,
-            crate::model::spoken_act(None, "cook", rest),
+            crate::model::spoken_act(None, stem, rest),
             results,
         );
     }
