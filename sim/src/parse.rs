@@ -100,7 +100,7 @@ get berries from basket      a named thing from the bark basket you carry, into 
 wear hide                    a carried hide, against the cold. A sewn cloak on you does not take a carry slot
 remove hide                  a worn hide; it returns to the arms and counts again
 eat berries                  sweet berries, raw
-gather onion               a wild onion on the valley floor south of the trail. gather wild onion, wild garlic, and spring greens are the same plant. One cell off, on a side or a corner, the reply names that step and does not move you. A miss stays with you
+gather onion               a wild onion on the valley floor south of the trail. gather wild onion, wild garlic, and spring greens are the same plant. Once the stand is empty, they grow again after 24 ticks. One cell off, on a side or a corner, the reply names that step and does not move you. A miss stays with you
 eat onion                  a wild onion, raw. Hunger eases a little. It is not berries. A miss stays with you
 onion                        gather a wild onion, or eat it raw
 eat dark berries             the other patch of berries

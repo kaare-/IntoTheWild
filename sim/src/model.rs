@@ -1188,6 +1188,8 @@ pub enum Wake {
     BerryReturn(CellId),
     /// A mushroom patch on this cell has mushrooms again.
     MushroomReturn(CellId),
+    /// Wild onions grow on this floor again.
+    OnionReturn(CellId),
     /// A deer stands on the trail again after the last one was brought down.
     DeerReturn,
     /// An otter is in the brook again after the last one was brought down.
@@ -1551,6 +1553,9 @@ pub struct World {
     /// The open floor where wild onions grow. The set stays after they are taken.
     #[serde(default)]
     pub(crate) onion_patches: BTreeSet<CellId>,
+    /// When a bare onion stand grows again. Look says the floor has no wild onion until then.
+    #[serde(default)]
+    pub(crate) onion_returns_at: BTreeMap<CellId, u64>,
     /// When a bare wet bank grows mint again. Look says the bank has no mint until then.
     #[serde(default)]
     pub(crate) mint_returns_at: BTreeMap<CellId, u64>,
@@ -1711,6 +1716,9 @@ fn spear_said_bit(kind: SpearReach) -> u8 {
 /// Looks that still name pitch after the tick it first appears.
 const PITCH_LOOK_TICKS: u8 = 3;
 
+/// Two wild onions on the open floor. The same two grow back after the stand is empty.
+pub(crate) const ONION_STAND: u32 = 2;
+
 /// Look, and a dig with no pick, on dry ground that still has worms.
 pub(crate) const DRY_WORM_CARVE: &str =
     "Worms are in the dry ground here. Carve an antler into an antler pick to dig them.";
@@ -1841,6 +1849,7 @@ impl World {
             moss_returns_at: BTreeMap::new(),
             mint_banks: BTreeSet::new(),
             onion_patches: BTreeSet::new(),
+            onion_returns_at: BTreeMap::new(),
             mint_returns_at: BTreeMap::new(),
             needle_stands: BTreeSet::new(),
             needle_returns_at: BTreeMap::new(),
@@ -1964,7 +1973,7 @@ impl World {
         // Wild onions on the open floor one step south of the trail.
         // Two bulbs. Eaten raw, they ease hunger a little. They are not berries.
         let onions = cell_id(4, 4).unwrap();
-        world.add_pile(onions, Material::Onion, 2, 0);
+        world.add_pile(onions, Material::Onion, ONION_STAND, 0);
         world.onion_patches.insert(onions);
         let reeds = cell_id(0, 3).unwrap();
         world.add_pile(reeds, Material::Reed, 4, 0);
@@ -2485,6 +2494,9 @@ impl World {
             if material == Material::Mushroom {
                 self.arm_mushroom_patch(emptied);
             }
+            if material == Material::Onion {
+                self.arm_onion_patch(emptied);
+            }
         }
         Some(moisture)
     }
@@ -2885,6 +2897,22 @@ impl World {
         let at = self.time.saturating_add(self.tuning.mushroom_ticks);
         self.mushroom_returns_at.insert(cell, at);
         self.schedule(at, Wake::MushroomReturn(cell));
+    }
+
+    /// An emptied onion stand grows the same two again after `mushroom_ticks`.
+    /// A wake that finds a wild onion already there does not add a second stand.
+    pub(crate) fn arm_onion_patch(&mut self, cell: CellId) {
+        if !self.onion_patches.contains(&cell) || self.onion_returns_at.contains_key(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Onion) > 0
+            || !self.ground_ids(cell, Material::Onion).is_empty()
+        {
+            return;
+        }
+        let at = self.time.saturating_add(self.tuning.mushroom_ticks);
+        self.onion_returns_at.insert(cell, at);
+        self.schedule(at, Wake::OnionReturn(cell));
     }
 
     /// The patch is waiting. Look says the mushrooms are gone.
@@ -29754,5 +29782,68 @@ mod wild_onion {
         );
         assert!(!says(&carried, near, "Near eats a wild onion."));
         assert!(says(&carried, seen, "Near eats a wild onion."));
+    }
+
+    #[test]
+    fn wild_onions_grow_back_after_the_stand_is_empty() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let ticks = world.tuning.mushroom_ticks;
+        assert_eq!(ticks, 24);
+        assert_eq!(world.pile_count(super::cell_id(4, 4).unwrap(), Material::Onion), super::ONION_STAND);
+        world.step(&[intent("one", near, Attempt::Eat(Material::Onion))]);
+        assert!(world.onion_returns_at.is_empty());
+        world.step(&[intent("two", near, Attempt::Eat(Material::Onion))]);
+        let floor = super::cell_id(4, 4).unwrap();
+        assert_eq!(world.pile_count(floor, Material::Onion), 0);
+        assert!(world.onion_returns_at.contains_key(&floor));
+        let gone = world.observe(near).unwrap().text;
+        assert!(
+            gone.contains("The valley floor here has no wild onion."),
+            "{gone}"
+        );
+        let miss = world.step(&[intent("miss", near, Attempt::Gather(Material::Onion))]);
+        assert_eq!(
+            miss.results[0].message,
+            "There is no wild onion here to gather."
+        );
+        assert!(!says(&world, near, "There is no wild onion here to gather."));
+        assert!(!says(&world, seen, "There is no wild onion here to gather."));
+        assert!(!says(&world, quiet, "There is no wild onion here to gather."));
+        for _ in 0..ticks - 2 {
+            world.step(&[]);
+        }
+        let still = world.observe(near).unwrap().text;
+        assert!(
+            still.contains("The valley floor here has no wild onion."),
+            "{still}"
+        );
+        assert!(!says(&world, near, "Wild onions grow here again."));
+        world.step(&[]);
+        let back = world.observe(near).unwrap().text;
+        assert!(
+            back.contains("Wild onions grow on the valley floor here."),
+            "{back}"
+        );
+        assert!(!back.contains("The valley floor here has no wild onion."), "{back}");
+        assert_eq!(world.pile_count(floor, Material::Onion), super::ONION_STAND);
+        assert!(world.onion_returns_at.is_empty());
+        assert!(says(&world, near, "Wild onions grow here again."));
+        assert!(says(&world, seen, "Wild onions grow here again."));
+        assert!(!says(&world, quiet, "Wild onions grow here again."));
+        let from_trail = world.observe(seen).unwrap().text;
+        assert!(
+            from_trail.contains("Wild onions grow on the valley floor to the south and east."),
+            "{from_trail}"
+        );
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Onion))]);
+        assert_eq!(again.results[0].message, "You gather a wild onion.");
+        assert!(!says(&world, near, "You gather a wild onion."));
+        assert!(says(&world, seen, "Near gathers a wild onion."));
+        assert!(!says(&world, quiet, "Near gathers a wild onion."));
+        assert_eq!(world.pile_count(floor, Material::Onion), 1);
+        assert!(world.onion_returns_at.is_empty());
     }
 }

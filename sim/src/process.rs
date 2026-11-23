@@ -73,6 +73,7 @@ impl World {
                 Wake::BarkReturn(cell) => self.return_bark(cell),
                 Wake::BerryReturn(cell) => self.return_berries(cell),
                 Wake::MushroomReturn(cell) => self.return_mushrooms(cell),
+                Wake::OnionReturn(cell) => self.return_onions(cell),
                 Wake::DeerReturn => self.return_deer(),
                 Wake::OtterReturn => self.return_otter(),
                 Wake::FoxReturn => self.return_fox(),
@@ -759,6 +760,36 @@ impl World {
         self.add_pile(cell, Material::Mushroom, count, 0);
         self.emit(
             "Mushrooms lie here again.",
+            Scope::Cell(cell),
+            vec![],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+    }
+
+    /// The stand has waited out its ticks. The same two wild onions grow there again.
+    /// Someone who cannot see the cell hears nothing.
+    fn return_onions(&mut self, cell: CellId) {
+        let Some(at) = self.onion_returns_at.get(&cell).copied() else {
+            return;
+        };
+        if at != self.time {
+            return;
+        }
+        self.onion_returns_at.remove(&cell);
+        if !self.onion_patches.contains(&cell) {
+            return;
+        }
+        if self.pile_count(cell, Material::Onion) > 0
+            || !self.ground_ids(cell, Material::Onion).is_empty()
+        {
+            return;
+        }
+        self.add_pile(cell, Material::Onion, crate::model::ONION_STAND, 0);
+        self.emit(
+            "Wild onions grow here again.",
             Scope::Cell(cell),
             vec![],
             vec![cell],

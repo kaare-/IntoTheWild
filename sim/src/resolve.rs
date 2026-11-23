@@ -3236,6 +3236,9 @@ impl World {
                     if material != Material::Basket {
                         self.tuck_overflow_into_basket(intent.actor_id, item);
                     }
+                    if material == Material::Onion {
+                        self.arm_onion_patch(cell);
+                    }
                     let from = if material == Material::Pot {
                         format!(" from the ground {}", self.cover_phrase(cell))
                     } else {
@@ -14564,10 +14567,12 @@ impl World {
             return Err(());
         };
         if self.take_from_pile(cell, Material::Onion, 1).is_some() {
+            self.arm_onion_patch(cell);
             return Ok(None);
         }
         if let Some(item_id) = self.ground_ids(cell, Material::Onion).first().copied() {
             self.items.remove(&item_id);
+            self.arm_onion_patch(cell);
             return Ok(Some(item_id));
         }
         Err(())
