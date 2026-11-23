@@ -3043,9 +3043,13 @@ impl World {
                         self.mint_item(Material::Worm, 0, cell, Some(intent.actor_id), Role::Loose);
                     self.tuck_overflow_into_basket(intent.actor_id, item);
                     self.arm_dry_worms(cell);
-                    let rest = "a worm from the dry ground with the antler pick.";
+                    let rest = self.basket_gather_rest(
+                        intent.actor_id,
+                        item,
+                        "a worm from the dry ground with the antler pick.".into(),
+                    );
                     self.emit(
-                        crate::model::spoken_act(Some(name.as_str()), "gather", rest),
+                        crate::model::spoken_act(Some(name.as_str()), "gather", &rest),
                         Scope::Cell(cell),
                         vec![intent.actor_id],
                         vec![cell],
@@ -3057,7 +3061,7 @@ impl World {
                         intent.command_id,
                         intent.actor_id,
                         true,
-                        crate::model::spoken_act(None, "gather", rest),
+                        crate::model::spoken_act(None, "gather", &rest),
                         results,
                     );
                     continue;
@@ -3249,6 +3253,7 @@ impl World {
                     if material == Material::Net {
                         self.clear_set_net(cell);
                     }
+                    let rest = self.basket_gather_rest(intent.actor_id, item, rest);
                     let text = crate::model::spoken_act(Some(name.as_str()), "gather", &rest);
                     self.emit(
                         text,
@@ -11653,6 +11658,23 @@ impl World {
         }
         if let Some(item) = self.items.get_mut(&item_id) {
             item.in_basket = true;
+        }
+    }
+
+    /// A gather that would not fit in the arms names the basket it went into.
+    fn basket_gather_rest(
+        &self,
+        actor: crate::model::ActorId,
+        item_id: crate::model::ItemId,
+        rest: String,
+    ) -> String {
+        if !self.item(item_id).is_some_and(|item| item.in_basket) {
+            return rest;
+        }
+        if self.basket_load(actor) >= Self::BASKET_ROOM {
+            format!("{rest} It goes into the bark basket. The basket is full.")
+        } else {
+            format!("{rest} It goes into the bark basket.")
         }
     }
 

@@ -13939,9 +13939,49 @@ fn a_carried_basket_holds_two_more_things() {
         assert!(got.results[0].success, "{}", got.results[0].message);
     }
     let berry = world.step(&[cmd("berry", near, Attempt::Gather(Material::Berry))]);
-    assert!(berry.results[0].success, "{}", berry.results[0].message);
+    assert_eq!(
+        berry.results[0].message,
+        "You gather a handful of berries. It goes into the bark basket."
+    );
+    assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+        event.text == "Near gathers a handful of berries. It goes into the bark basket."
+    }));
+    assert!(world.observe(near).unwrap().events.iter().all(|event| {
+        event.text != "You gather a handful of berries. It goes into the bark basket."
+            && event.text != "Near gathers a handful of berries. It goes into the bark basket."
+    }));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("into the bark basket")));
     let pot = world.step(&[cmd("pot", near, Attempt::Gather(Material::Pot))]);
-    assert!(pot.results[0].success, "{}", pot.results[0].message);
+    assert_eq!(
+        pot.results[0].message,
+        "You gather a pot from the ground under the rock overhang. It goes into the bark basket. The basket is full."
+    );
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| {
+            event.text
+                == "Near gathers a pot from the ground under the rock overhang. It goes into the bark basket. The basket is full."
+        }));
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("The basket is full.") }));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("The basket is full.")));
     let look = world.observe(near).unwrap().text;
     assert!(
         look.contains(
@@ -14256,7 +14296,10 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     let spilled = world.step(&[cmd("spill", near, Attempt::Drop(Material::Fish))]);
     assert!(spilled.results[0].success, "{}", spilled.results[0].message);
     let tucked = world.step(&[cmd("tuck", near, Attempt::Gather(Material::Fish))]);
-    assert_eq!(tucked.results[0].message, "You gather a fish.");
+    assert_eq!(
+        tucked.results[0].message,
+        "You gather a fish. It goes into the bark basket. The basket is full."
+    );
     let tucked_look = world.observe(near).unwrap().text;
     assert!(
         tucked_look.contains("a full bark basket holding a raw fish"),

@@ -14218,6 +14218,10 @@ impl World {
         }
         let name = self.name_of(viewer);
         let rest = event.text.strip_prefix(&format!("{name} gathers "))?;
+        let rest = rest.strip_suffix(" The basket is full.").unwrap_or(rest);
+        let rest = rest
+            .strip_suffix(" It goes into the bark basket.")
+            .unwrap_or(rest);
         let rest = rest.strip_suffix(" The bees sting.").unwrap_or(rest);
         let rest = rest.strip_suffix(" The nettles sting.").unwrap_or(rest);
         let bare = rest
@@ -14280,6 +14284,7 @@ impl World {
             "cattail roots",
             "handful of cattail fluff",
             "worm",
+            "fish",
             "clear stone of quartz",
             "reed flute",
             "cattail flour",
