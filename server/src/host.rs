@@ -806,13 +806,11 @@ mod tests {
         assert!(!queued.immediate, "{}", queued.message);
         let closed = host.advance(1).unwrap();
         assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
-        assert!(
-            closed.replies[0]
-                .message
-                .starts_with("You drink from the brook."),
-            "{}",
-            closed.replies[0].message
+        assert_eq!(
+            closed.replies[0].message,
+            "You drink from the brook. You are not thirsty."
         );
+        assert!(!closed.replies[0].message.contains("eases"));
         assert_eq!(closed.replies[0].actor_id, near.actor_id);
         let drank = "Near drinks from the brook.";
         let near_look = host.observe(&near.token).unwrap();

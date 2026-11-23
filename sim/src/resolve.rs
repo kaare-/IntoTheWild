@@ -13987,9 +13987,10 @@ impl World {
             } else {
                 "You drink from the brook."
             };
-            let mut message = if thirst_before == 0 {
-                format!("{lead} You were not thirsty.")
-            } else if thirst_after < self.tuning.thirsty_at {
+            // Already not thirsty: the reply says so. It does not claim the thirst eases.
+            let mut message = if self.thirst_word(thirst_before) == "not thirsty" {
+                format!("{lead} You are not thirsty.")
+            } else if self.thirst_word(thirst_after) == "not thirsty" {
                 format!("{lead} The thirst eases.")
             } else {
                 format!("{lead} You are still thirsty.")

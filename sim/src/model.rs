@@ -16010,21 +16010,17 @@ mod bank_drink {
         assert_eq!(world.actor_cell(near), Some((2, 2)));
         let dry = world.observe(near).unwrap().self_info.wetness.clone();
         let drank = world.step(&[intent("sip", near, Attempt::Drink)]);
-        assert!(
-            drank.results[0]
-                .message
-                .starts_with("You drink from the brook."),
-            "{}",
-            drank.results[0].message
+        assert_eq!(
+            drank.results[0].message,
+            "You drink from the brook. You are not thirsty."
         );
+        assert!(!drank.results[0].message.contains("eases"));
+        assert_eq!(world.observe(near).unwrap().self_info.thirst, "not thirsty");
         assert_eq!(world.actor_cell(near), Some((2, 2)));
         assert_eq!(world.observe(near).unwrap().self_info.wetness, dry);
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| { !event.text.contains("Near drinks") }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("Near drinks") && event.text != "You are not thirsty."
+        }));
         assert!(world
             .observe(seen)
             .unwrap()

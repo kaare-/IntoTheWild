@@ -2617,7 +2617,7 @@ fn seed_one_still_water_sickens_on_the_next_drink_and_the_brook_does_not() {
     }
     let arrived = early.step(&[cmd("arrive", near, Attempt::Drink)]);
     assert_eq!(
-        arrived.results[0].message, "You drink the still water. The thirst eases.",
+        arrived.results[0].message, "You drink the still water. You are not thirsty.",
         "seed 1, the drink on arrival at the pool, is the safe draw"
     );
     assert_eq!(early.observe(near).unwrap().self_info.illness, "well");
@@ -2668,11 +2668,11 @@ fn seed_one_still_water_sickens_on_the_next_drink_and_the_brook_does_not() {
     ]);
     assert_eq!(
         drunk.results[0].message,
-        "You drink the still water. The thirst eases. Your stomach turns."
+        "You drink the still water. You are not thirsty. Your stomach turns."
     );
     assert_eq!(
         drunk.results[1].message,
-        "You drink from the brook. The thirst eases."
+        "You drink from the brook. You are not thirsty."
     );
     let pool = world.observe(near).unwrap();
     let running = world.observe(west).unwrap();
@@ -2746,7 +2746,7 @@ fn illness_fades_and_the_actor_hears_it_settle() {
     let drunk = world.step(&[cmd("still", near, Attempt::Drink)]);
     assert_eq!(
         drunk.results[0].message,
-        "You drink the still water. The thirst eases. Your stomach turns."
+        "You drink the still water. You are not thirsty. Your stomach turns."
     );
     assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
     assert_eq!(world.sim_time(), 6);
