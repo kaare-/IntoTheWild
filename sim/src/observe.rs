@@ -6177,7 +6177,9 @@ impl World {
             })
             .collect();
         let mut bits = bits;
-        if let Some(at) = bits.iter().position(|bit| bit.starts_with("a bark basket")) {
+        if let Some(at) = bits.iter().position(|bit| {
+            bit.starts_with("a bark basket") || bit.starts_with("a full bark basket")
+        }) {
             let basket = bits.remove(at);
             bits.push(basket);
         }
@@ -12550,7 +12552,12 @@ impl World {
                 }
             }
         }
-        format!("a bark basket holding {}", self.basket_list(actor_id))
+        let full = if ids.len() as u32 >= Self::BASKET_ROOM {
+            "full "
+        } else {
+            ""
+        };
+        format!("a {full}bark basket holding {}", self.basket_list(actor_id))
     }
 
     pub(crate) fn basket_held_sentence(&self, actor_id: ActorId) -> String {

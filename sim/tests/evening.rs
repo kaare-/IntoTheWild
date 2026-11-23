@@ -13944,7 +13944,9 @@ fn a_carried_basket_holds_two_more_things() {
     assert!(pot.results[0].success, "{}", pot.results[0].message);
     let look = world.observe(near).unwrap().text;
     assert!(
-        look.contains("four dry branches, a bark basket holding a handful of berries and a pot"),
+        look.contains(
+            "four dry branches, a full bark basket holding a handful of berries and a pot"
+        ),
         "{look}"
     );
     let exam = world.examine(near, ExamineTarget::Basket);
@@ -14257,7 +14259,7 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     assert_eq!(tucked.results[0].message, "You gather a fish.");
     let tucked_look = world.observe(near).unwrap().text;
     assert!(
-        tucked_look.contains("a bark basket holding a raw fish"),
+        tucked_look.contains("a full bark basket holding a raw fish"),
         "{tucked_look}"
     );
     assert_eq!(tucked_look.matches("raw fish").count(), 1, "{tucked_look}");
