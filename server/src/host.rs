@@ -419,7 +419,14 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                     true
                 }
                 Attempt::PutInBasket(_) | Attempt::TakeFromBasket(_) => true,
-                Attempt::Drop(Material::Basket) => true,
+                Attempt::Drop(_) => true,
+                Attempt::Gather(_)
+                    if !result.success
+                        && result.message.contains("here to gather.")
+                        && !result.message.contains("Step ") =>
+                {
+                    true
+                }
                 Attempt::Eat(_)
                     | Attempt::Roast
                     | Attempt::RoastCattail
@@ -1022,6 +1029,101 @@ mod tests {
             .all(|event| event.text != heard && event.text != reply));
         assert!(host.replies_for(&seen.token).is_empty());
         assert_eq!(host.replies_for(&near.token).len(), 1);
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_stone_drop_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-stone-drop-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let gone = "There is no berry here to gather.";
+        let queued = host.submit(&near.token, "berries", "gather berries", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, gone);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != gone));
+        }
+        let missing = "You are not carrying a loose stone.";
+        let queued = host.submit(&near.token, "none", "drop stone", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, missing);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != missing));
+        }
+        let steps = [
+            ("1", "w", "w", "w"),
+            ("2", "w", "n", "w"),
+            ("3", "n", "n", "w"),
+            ("4", "n", "look", "w"),
+            ("5", "n", "look", "look"),
+        ];
+        for (step, near_line, seen_line, quiet_line) in steps {
+            host.submit(&near.token, &format!("near-{step}"), near_line, None);
+            if seen_line != "look" {
+                host.submit(&seen.token, &format!("seen-{step}"), seen_line, None);
+            }
+            if quiet_line != "look" {
+                host.submit(&quiet.token, &format!("quiet-{step}"), quiet_line, None);
+            }
+            host.advance(1).unwrap();
+        }
+        let queued = host.submit(&near.token, "stone", "gather stone", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, "You gather a stone.");
+        let reply = "You drop a stone. It is in contact with the ground.";
+        let heard = "Near drops a stone. It is in contact with the ground.";
+        let queued = host.submit(&near.token, "drop", "drop stone", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, reply);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let near_look = host.observe(&near.token).unwrap();
+        assert!(near_look
+            .events
+            .iter()
+            .all(|event| event.text != reply && event.text != heard));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && event.text != reply));
         assert!(host.clock().sim_time < 17);
         assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);

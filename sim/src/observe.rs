@@ -13567,6 +13567,15 @@ impl World {
                 == format!(
                     "{name} weaves a reed mat from a bundle in the arms and a bundle at the feet."
                 )
+            || text
+                == format!(
+                    "{name} weaves a reed mat from a bundle in the arms and a bundle in the bark basket."
+                )
+            || text
+                == format!(
+                    "{name} weaves a reed mat from a bundle in the bark basket and a bundle at the feet."
+                )
+            || text == format!("{name} weaves a reed mat from two bundles in the bark basket.")
             || text == format!("{name} sets a reed mat.")
             || text == format!("{name} rests on the reed mat.")
             || text == format!("{name} rests on the reed mat under the rock.")

@@ -265,9 +265,8 @@ impl World {
                     // No basket, nothing to put, or a full basket is the reply only.
                     let put_in_basket_miss = matches!(intent.attempt, Attempt::PutInBasket(_));
                     let take_from_basket_miss = matches!(intent.attempt, Attempt::TakeFromBasket(_));
-                    // No bark basket in the arms is the reply only.
-                    let basket_drop_miss =
-                        matches!(intent.attempt, Attempt::Drop(Material::Basket));
+                    // A drop with nothing in the arms is the reply only.
+                    let drop_miss = matches!(intent.attempt, Attempt::Drop(_));
                     // An empty pile, with no step named, is the reply only.
                     // A weave that finds the arms full is the same.
                     let empty_pile = matches!(intent.attempt, Attempt::Gather(_))
@@ -315,7 +314,7 @@ impl World {
                             && !basket_gather_miss
                             && !put_in_basket_miss
                             && !take_from_basket_miss
-                            && !basket_drop_miss
+                            && !drop_miss
                             && !empty_pile
                             && !full_arms_weave
                             && !mat_refusal
@@ -12475,10 +12474,10 @@ impl World {
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 continue;
             };
-            let arm_ids = self.loose_ids(actor.id, Material::Reed);
+            let carried = self.loose_ids(actor.id, Material::Reed);
             let ground_ids = self.ground_ids(actor.cell, Material::Reed);
             let pile = self.pile_count(actor.cell, Material::Reed);
-            if arm_ids.len() as u32 + ground_ids.len() as u32 + pile < 2 {
+            if carried.len() as u32 + ground_ids.len() as u32 + pile < 2 {
                 self.finish(
                     intent.command_id,
                     actor.id,
@@ -12488,8 +12487,18 @@ impl World {
                 );
                 continue;
             }
+            let mut arm_ids = Vec::new();
+            let mut basket_ids = Vec::new();
+            for id in carried {
+                if self.item(id).is_some_and(|reed| reed.in_basket) {
+                    basket_ids.push(id);
+                } else {
+                    arm_ids.push(id);
+                }
+            }
             let mut spent = Vec::new();
             let mut from_arms = 0u32;
+            let mut from_basket = 0u32;
             let mut from_feet = 0u32;
             let mut left = 2u32;
             for id in arm_ids {
@@ -12499,6 +12508,15 @@ impl World {
                 self.items.remove(&id);
                 spent.push(id);
                 from_arms += 1;
+                left -= 1;
+            }
+            for id in basket_ids {
+                if left == 0 {
+                    break;
+                }
+                self.items.remove(&id);
+                spent.push(id);
+                from_basket += 1;
                 left -= 1;
             }
             for id in ground_ids {
@@ -12521,7 +12539,14 @@ impl World {
             // One bundle already in the arms and one still on the ground or
             // in the stand is a finished weave. The reply names both, so a
             // second gather into full arms is not a step the mat requires.
-            let rest = if from_arms == 1 && from_feet == 1 {
+            // A bundle taken from the bark basket is named too.
+            let rest = if from_arms == 1 && from_basket == 1 {
+                "a reed mat from a bundle in the arms and a bundle in the bark basket."
+            } else if from_basket == 1 && from_feet == 1 {
+                "a reed mat from a bundle in the bark basket and a bundle at the feet."
+            } else if from_basket == 2 {
+                "a reed mat from two bundles in the bark basket."
+            } else if from_arms == 1 && from_feet == 1 {
                 "a reed mat from a bundle in the arms and a bundle at the feet."
             } else {
                 "a reed mat."

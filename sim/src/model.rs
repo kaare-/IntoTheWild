@@ -10535,6 +10535,52 @@ mod reed_mat {
             "You weave a reed mat from a bundle in the arms and a bundle at the feet."
         );
     }
+
+    #[test]
+    fn a_reed_from_the_basket_is_named_when_the_mat_is_woven() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 1, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Basket, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Reed, 0, cell, Some(near), super::Role::Loose);
+        let stored = world.mint_item(Material::Reed, 0, cell, Some(near), super::Role::Loose);
+        world.items.get_mut(&stored).unwrap().in_basket = true;
+        let woven = world.step(&[intent("weave", near, Attempt::WeaveMat)]);
+        let named =
+            "You weave a reed mat from a bundle in the arms and a bundle in the bark basket.";
+        let heard =
+            "Near weaves a reed mat from a bundle in the arms and a bundle in the bark basket.";
+        assert_eq!(woven.results[0].message, named);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != named && event.text != heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("reed mat")));
+        assert!(world.items.get(&stored).is_none());
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Mat))]);
+        let one = world.mint_item(Material::Reed, 0, cell, Some(near), super::Role::Loose);
+        world.items.get_mut(&one).unwrap().in_basket = true;
+        let from_the_stand = world.step(&[intent("feet", near, Attempt::WeaveMat)]);
+        assert_eq!(
+            from_the_stand.results[0].message,
+            "You weave a reed mat from a bundle in the bark basket and a bundle at the feet."
+        );
+    }
 }
 
 #[cfg(test)]
@@ -24083,12 +24129,9 @@ mod bark_cup {
         let cell = world.actor(near).unwrap().cell;
         let miss = world.step(&[intent("miss", near, Attempt::Drop(Material::Pot))]);
         assert_eq!(miss.results[0].message, "You are not carrying a loose pot.");
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| { event.text == "You are not carrying a loose pot." }));
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You are not carrying a loose pot."
+        }));
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
