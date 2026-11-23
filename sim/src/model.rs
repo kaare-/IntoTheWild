@@ -11984,6 +11984,35 @@ mod wolf {
         }
     }
 
+    #[test]
+    fn a_miss_names_tracks_where_the_deer_stands() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let left = super::cell_id(3, 3).unwrap();
+        let stood = super::cell_id(4, 3).unwrap();
+        if let Some(deer) = world.deer.as_mut() {
+            deer.cell = stood;
+            deer.held = true;
+        }
+        world.leave_fresh_tracks(left);
+        world.leave_fresh_tracks(stood);
+        let look = world.observe(near).unwrap();
+        let tracks = "Deer tracks mark the ground one cell north and two cells east.";
+        assert!(look.text.contains(tracks), "{}", look.text);
+        assert!(
+            look.text
+                .contains("A deer stands one cell north and two cells east"),
+            "{}",
+            look.text
+        );
+        assert!(!look
+            .text
+            .contains("Deer tracks mark the ground to the north and east."));
+        assert!(look.events.iter().all(|event| event.text != tracks));
+        assert!(!world.observe(quiet).unwrap().text.contains("Deer tracks"));
+    }
+
     fn intent(id: &str, actor: u32, attempt: super::Attempt) -> super::Intent {
         super::Intent {
             command_id: id.into(),

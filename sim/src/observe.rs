@@ -1878,15 +1878,31 @@ impl World {
     }
 
     /// Deer tracks on a cell this person can see. The deer need not still be there.
-    /// Past sight, nothing. The sentence fades when `track_ticks` have passed.
+    /// A corner it just left is named where it stands, when look already counts
+    /// those cells. Past sight, nothing. The sentence fades when `track_ticks`
+    /// have passed.
     fn seen_deer_tracks(&self, viewer: ActorId) -> Option<String> {
         let origin = self.actor(viewer)?.cell;
+        let deer_cell = self.deer.as_ref().and_then(|deer| {
+            let cell = deer.cell;
+            (chebyshev(origin, cell) <= self.tuning.sight).then_some(cell)
+        });
         let mut lines = Vec::new();
+        let mut followed = false;
         for cell in self.visible_cell_ids(viewer) {
             if !self.deer_tracks_fresh(cell) {
                 continue;
             }
-            let line = if cell == origin {
+            let line = if self.track_is_a_stale_corner(viewer, origin, cell, deer_cell) {
+                if followed {
+                    continue;
+                }
+                followed = true;
+                format!(
+                    "Deer tracks mark the ground {}.",
+                    self.cell_offset(origin, deer_cell.unwrap_or(cell))
+                )
+            } else if cell == origin {
                 "Deer tracks mark the ground here.".to_string()
             } else {
                 format!(
@@ -1903,6 +1919,30 @@ impl World {
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// A diagonal print the deer has just left, while it still stands in sight
+    /// on a different bearing. A step due north, south, east, or west stays put.
+    /// A print whose compass collapses to a corner, while look already counts
+    /// the cells to the deer. That includes the cell it left and the cell it
+    /// stands on. A step due north, south, east, or west stays as it is.
+    fn track_is_a_stale_corner(
+        &self,
+        viewer: ActorId,
+        origin: CellId,
+        cell: CellId,
+        deer_cell: Option<CellId>,
+    ) -> bool {
+        if deer_cell.is_none() || cell == origin {
+            return false;
+        }
+        let (x1, y1) = cell_xy(origin);
+        let (x2, y2) = cell_xy(cell);
+        if x1 == x2 || y1 == y2 {
+            return false;
+        }
+        self.deer_look_line(viewer)
+            .is_some_and(|line| line.contains("cell"))
     }
 
     /// An otter on the brook, or on the bank beside it. Past sight, nothing.
