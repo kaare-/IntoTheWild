@@ -11369,7 +11369,7 @@ mod branch_return {
         world.step(&[]);
         let empty = world.observe(near).unwrap().text;
         assert!(
-            empty.contains("There are no branches under the rock."),
+            empty.contains("There are no branches on the ground under the rock."),
             "{empty}"
         );
         assert!(
@@ -11383,24 +11383,23 @@ mod branch_return {
         assert!(!empty.contains("A pile of branches lies here."), "{empty}");
         let seen_empty = world.observe(seen).unwrap().text;
         assert!(
-            seen_empty.contains("There are no branches under the rock to the east."),
+            seen_empty.contains("There are no branches on the ground under the rock to the east."),
             "{seen_empty}"
         );
         assert!(!world
             .observe(quiet)
             .unwrap()
             .text
-            .contains("branches under the rock"));
+            .contains("on the ground under the rock"));
         assert!(!world.branch_returns_at.contains_key(&open));
         let ticks = world.tuning.branch_ticks;
         let started = world.time;
         for _ in 0..ticks - 1 {
             world.step(&[]);
             let text = world.observe(near).unwrap().text;
-            let bare = text.contains("There are no branches under the rock.");
+            let bare = text.contains("There are no branches on the ground under the rock.");
             let ground = text.contains("A deer stands on the rock ground.");
             assert!(bare || ground, "clock {} {text}", world.time);
-            assert!(!(bare && ground), "clock {} {text}", world.time);
             assert!(
                 !text.contains("A deer stands on these branches."),
                 "clock {} {text}",
@@ -11424,7 +11423,9 @@ mod branch_return {
             again.text
         );
         assert!(
-            !again.text.contains("There are no branches under the rock."),
+            !again
+                .text
+                .contains("There are no branches on the ground under the rock."),
             "{}",
             again.text
         );
@@ -11438,7 +11439,9 @@ mod branch_return {
             seen_back.text
         );
         assert!(
-            !seen_back.text.contains("no branches under the rock"),
+            !seen_back
+                .text
+                .contains("no branches on the ground under the rock"),
             "{}",
             seen_back.text
         );
@@ -11480,7 +11483,7 @@ mod branch_return {
         world.step(&[]);
         let empty = world.observe(near).unwrap().text;
         assert!(
-            empty.contains("There are no branches under the rock."),
+            empty.contains("There are no branches on the ground under the rock."),
             "{empty}"
         );
         assert!(
@@ -11507,7 +11510,8 @@ mod branch_return {
         world.step(&[]);
         let away = world.observe(near).unwrap();
         assert!(
-            away.text.contains("There are no branches under the rock."),
+            away.text
+                .contains("There are no branches on the ground under the rock."),
             "{}",
             away.text
         );
@@ -11520,7 +11524,12 @@ mod branch_return {
             here.text
         );
         assert!(!here.text.contains("A deer stands on these branches."));
-        assert!(!here.text.contains("There are no branches under the rock."));
+        assert!(
+            here.text
+                .contains("There are no branches on the ground under the rock."),
+            "{}",
+            here.text
+        );
         assert!(here
             .events
             .iter()
@@ -11532,19 +11541,19 @@ mod branch_return {
         );
         assert!(
             !(seen_text.contains("these branches")
-                && seen_text.contains("no branches under the rock")),
+                && seen_text.contains("no branches on the ground under the rock")),
             "{seen_text}"
         );
         let quiet_text = world.observe(quiet).unwrap().text;
         assert!(!quiet_text.contains("rock ground"), "{quiet_text}");
         assert!(
-            !quiet_text.contains("branches under the rock"),
+            !quiet_text.contains("on the ground under the rock"),
             "{quiet_text}"
         );
         world.deer.as_mut().unwrap().cell = super::cell_id(2, 3).unwrap();
         let bare = world.observe(near).unwrap().text;
         assert!(
-            bare.contains("There are no branches under the rock."),
+            bare.contains("There are no branches on the ground under the rock."),
             "{bare}"
         );
         assert!(!bare.contains("A deer stands on the rock ground."));
@@ -14434,10 +14443,74 @@ mod counted_arms {
         }
         let exam = world.examine(near, ExamineTarget::Wood);
         assert!(
-            exam.contains("three dry branches are carried by you, in the open."),
+            exam.contains("Three dry branches are carried by you, in the open."),
             "{exam}"
         );
         assert!(!exam.contains("3 branch"), "{exam}");
+    }
+
+    #[test]
+    fn carried_branches_are_not_the_ground_under_the_rock() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Branch, 0, rock, Some(near), super::Role::Loose);
+        let holding = world.observe(seen).unwrap().text;
+        assert!(holding.contains("a pile of branches"), "{holding}");
+        assert!(holding.contains("Near carries a dry branch."), "{holding}");
+        assert!(!holding.contains("no branches on the ground"), "{holding}");
+        while world.pile_count(rock, Material::Branch) > 0 {
+            world.take_from_pile(rock, Material::Branch, 1);
+        }
+        world.step(&[]);
+        for _ in 0..2 {
+            world.mint_item(Material::Branch, 0, rock, Some(near), super::Role::Loose);
+        }
+        let gone = world.observe(seen).unwrap().text;
+        assert!(
+            gone.contains("There are no branches on the ground under the rock to the north."),
+            "{gone}"
+        );
+        assert!(gone.contains("Near carries three dry branches."), "{gone}");
+        assert!(
+            !gone.contains("There are no branches under the rock to the north."),
+            "{gone}"
+        );
+        assert!(world.observe(seen).unwrap().events.iter().all(|event| {
+            !event.text.contains("carries three dry branches")
+                && !event.text.contains("on the ground under the rock")
+        }));
+        let exam = world.examine(seen, ExamineTarget::Wood);
+        let first = exam.lines().next().unwrap_or("");
+        assert!(
+            first.starts_with("There are no branches on the ground under the rock to the north."),
+            "{exam}"
+        );
+        assert!(
+            exam.contains("Three dry branches are carried by Near, under the rock overhang."),
+            "{exam}"
+        );
+        assert!(!first.starts_with("A pile of"), "{exam}");
+        let own = world.examine(near, ExamineTarget::Wood);
+        assert!(
+            own.lines()
+                .next()
+                .unwrap_or("")
+                .starts_with("There are no branches on the ground under the rock."),
+            "{own}"
+        );
+        assert!(
+            own.contains("Three dry branches are carried by you, under the rock overhang."),
+            "{own}"
+        );
+        let quiet_text = world.observe(quiet).unwrap().text;
+        assert!(!quiet_text.contains("Near carries"), "{quiet_text}");
+        assert!(
+            !quiet_text.contains("on the ground under the rock"),
+            "{quiet_text}"
+        );
     }
 }
 

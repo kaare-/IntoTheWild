@@ -1248,8 +1248,8 @@ impl World {
             } else {
                 parts.push(format!("A {word} branch lies here."));
             }
-        } else if self.branch_bare(actor.cell) && !self.deer_on_empty_rock_ground(actor.cell) {
-            parts.push("There are no branches under the rock.".into());
+        } else if self.branch_bare(actor.cell) {
+            parts.push("There are no branches on the ground under the rock.".into());
         }
         if self.loose_ids(actor_id, Material::Branch).iter().any(|id| {
             self.item(*id)
@@ -4484,16 +4484,51 @@ impl World {
             }
             if self.branch_bare(cell) {
                 lines.push(format!(
-                    "There are no branches under the rock to the {}.",
+                    "There are no branches on the ground under the rock to the {}.",
                     self.relative(origin, cell)
                 ));
             }
+            lines.extend(self.carried_branches_on(cell));
         }
         if lines.is_empty() {
             None
         } else {
             Some(lines.join(" "))
         }
+    }
+
+    /// Branches in the arms on this cell. The ground pile is a different sentence.
+    fn carried_branches_on(&self, cell: crate::model::CellId) -> Vec<String> {
+        let mut people: Vec<_> = self
+            .actors
+            .values()
+            .filter(|actor| actor.cell == cell)
+            .collect();
+        people.sort_by_key(|actor| actor.id);
+        let mut lines = Vec::new();
+        for actor in people {
+            let ids = self.loose_ids(actor.id, Material::Branch);
+            if ids.is_empty() {
+                continue;
+            }
+            let moisture = ids
+                .iter()
+                .filter_map(|id| self.item(*id).map(|item| item.moisture))
+                .max()
+                .unwrap_or(0);
+            let word = self.condition_word(moisture);
+            let count = ids.len() as u32;
+            if count == 1 {
+                lines.push(format!("{} carries a {word} branch.", actor.name));
+            } else {
+                lines.push(format!(
+                    "{} carries {} {word} branches.",
+                    actor.name,
+                    count_word(count)
+                ));
+            }
+        }
+        lines
     }
 
     /// The rock's bark was taken and has not lain there again.
@@ -10277,11 +10312,14 @@ impl World {
     ) -> String {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
-        let cells = if let Some(cell) = only {
+        let mut cells = if let Some(cell) = only {
             vec![cell]
         } else {
             self.visible_cell_ids(viewer)
         };
+        if material == Material::Branch {
+            cells.sort_by_key(|cell| !self.cell(*cell).rock);
+        }
         for cell in cells {
             let count = self.pile_count(cell, material);
             if count == 0 && self.berry_patch_bare(cell, material) {
@@ -10306,6 +10344,19 @@ impl World {
                     format!("to the {}", self.relative(origin, cell))
                 };
                 lines.push(format!("The mushrooms that were {way} are gone."));
+            } else if count == 0
+                && material == Material::Branch
+                && self.cell(cell).rock
+                && self.branch_bare(cell)
+            {
+                if cell == origin {
+                    lines.push("There are no branches on the ground under the rock.".into());
+                } else {
+                    lines.push(format!(
+                        "There are no branches on the ground under the rock to the {}.",
+                        self.relative(origin, cell)
+                    ));
+                }
             } else if count == 0 && material == Material::Bark && self.bark_bare(cell) {
                 if cell == origin {
                     lines.push("There is no bark under the rock.".into());
@@ -10576,7 +10627,7 @@ impl World {
                 } else {
                     lines.push(format!(
                         "{} {word} branches are carried by {who}, {}.{wait}",
-                        count_word(ids.len() as u32),
+                        capitalize(&count_word(ids.len() as u32)),
                         self.cover_phrase(cell)
                     ));
                 }
@@ -10604,6 +10655,23 @@ impl World {
                     self.food_clause_for(viewer, material)
                 ));
             }
+        }
+        if material == Material::Branch {
+            let mut ground = Vec::new();
+            let mut carried = Vec::new();
+            let mut other = Vec::new();
+            for line in lines.drain(..) {
+                if line.contains("carried by") {
+                    carried.push(line);
+                } else if line.contains("under the rock") {
+                    ground.push(line);
+                } else {
+                    other.push(line);
+                }
+            }
+            lines.extend(ground);
+            lines.extend(carried);
+            lines.extend(other);
         }
         if material == Material::Bark && self.bark_known(viewer) && !lines.is_empty() {
             lines.push("Bark does not feed you.".into());
