@@ -565,6 +565,8 @@ pub enum Attempt {
     PutFish,
     /// A carried thing, or one on this ground, into the bark basket in the arms.
     PutInBasket(Material),
+    /// A named thing out of the bark basket, into the arms, or onto the ground when the arms are full.
+    TakeFromBasket(Material),
     Thatch,
     SetSnare,
     SetNet,
@@ -735,6 +737,7 @@ impl Attempt {
                 | Attempt::FoldCup
                 | Attempt::PutFish
                 | Attempt::PutInBasket(_)
+                | Attempt::TakeFromBasket(_)
                 | Attempt::Thatch
                 | Attempt::SetSnare
                 | Attempt::SetNet
@@ -14831,6 +14834,132 @@ mod bark_return {
                 .iter()
                 .all(|event| event.text != "The bark basket is full. A bone will not fit."));
         }
+    }
+
+    #[test]
+    fn a_named_thing_comes_out_of_the_basket_into_the_arms_or_onto_the_ground() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("get berries from basket"),
+            Ok(Attempt::TakeFromBasket(Material::Berry))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("take the pot from the basket"),
+            Ok(Attempt::TakeFromBasket(Material::Pot))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("get a handful of berries from the bark basket"),
+            Ok(Attempt::TakeFromBasket(Material::Berry))
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("get berries"),
+            Ok(Attempt::Gather(Material::Berry))
+        );
+        assert!(crate::parse::help_text().contains("get berries from basket"));
+        let none = world.step(&[intent(
+            "none",
+            near,
+            Attempt::TakeFromBasket(Material::Berry),
+        )]);
+        let missing_basket = "You are not carrying a bark basket.";
+        assert_eq!(none.results[0].message, missing_basket);
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != missing_basket));
+        }
+        let wove = world.step(&[intent("weave", near, Attempt::WeaveBasket)]);
+        assert!(wove.results[0].success, "{}", wove.results[0].message);
+        let empty = world.step(&[intent(
+            "empty",
+            near,
+            Attempt::TakeFromBasket(Material::Pot),
+        )]);
+        let no_pot = "There is no pot in the bark basket.";
+        assert_eq!(empty.results[0].message, no_pot);
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != no_pot));
+        }
+        world.step(&[intent("berries", near, Attempt::Gather(Material::Berry))]);
+        world.step(&[intent("put", near, Attempt::PutInBasket(Material::Berry))]);
+        let taken = world.step(&[intent(
+            "out",
+            near,
+            Attempt::TakeFromBasket(Material::Berry),
+        )]);
+        let yours = "You take a handful of berries from the bark basket.";
+        let heard = "Near takes a handful of berries from the bark basket.";
+        assert_eq!(taken.results[0].message, yours);
+        let berry = world
+            .items
+            .values()
+            .find(|item| item.material == Material::Berry && item.carrier == Some(near))
+            .unwrap();
+        assert!(!berry.in_basket);
+        let look = world.observe(near).unwrap();
+        assert!(look.events.iter().all(|event| event.text != yours && event.text != heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && event.text != yours));
+        world.step(&[intent("pot", near, Attempt::PutInBasket(Material::Pot))]);
+        let cell = world.actor(near).unwrap().cell;
+        for _ in 0..4 {
+            world.mint_item(Material::Stone, 0, cell, Some(near), super::Role::Loose);
+        }
+        assert!(world.carry_count(near) >= world.tuning.carry_slots);
+        let grounded = world.step(&[intent(
+            "ground",
+            near,
+            Attempt::TakeFromBasket(Material::Pot),
+        )]);
+        let down = "You take a pot from the bark basket. It is in contact with the ground.";
+        let down_heard = "Near takes a pot from the bark basket. It is in contact with the ground.";
+        assert_eq!(grounded.results[0].message, down);
+        let pot = world
+            .items
+            .values()
+            .find(|item| item.material == Material::Pot)
+            .unwrap();
+        assert!(pot.carrier.is_none());
+        assert!(!pot.in_basket);
+        assert_eq!(pot.cell, cell);
+        let after = world.observe(near).unwrap();
+        assert!(after
+            .events
+            .iter()
+            .all(|event| event.text != down && event.text != down_heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == down_heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != down_heard));
     }
 
     #[test]

@@ -12004,6 +12004,7 @@ impl World {
                     && self.shape_for_these_eyes(viewer, event).is_none()
                     && self.gather_for_these_eyes(viewer, event).is_none()
                     && self.put_in_basket_for_these_eyes(viewer, event).is_none()
+                    && self.take_from_basket_for_these_eyes(viewer, event).is_none()
                     && self.drop_for_these_eyes(viewer, event).is_none()
                     && self.fold_for_these_eyes(viewer, event).is_none()
                     && self.grind_for_these_eyes(viewer, event).is_none()
@@ -12900,6 +12901,24 @@ impl World {
         } else {
             lines.join("\n")
         }
+    }
+
+    /// A thing taken out of the bark basket. The person already has the reply,
+    /// so the event list does not repeat it. Anyone else keeps the stored sentence.
+    fn take_from_basket_for_these_eyes(
+        &self,
+        viewer: ActorId,
+        event: &crate::model::Event,
+    ) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let rest = event.text.strip_prefix(&format!("{name} takes "))?;
+        if !rest.contains(" from the bark basket.") {
+            return None;
+        }
+        Some(event.text.clone())
     }
 
     /// A thing put into the bark basket. The person already has the reply,

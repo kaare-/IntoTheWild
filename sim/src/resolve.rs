@@ -126,6 +126,7 @@ impl World {
         let mut mats = Vec::new();
         let mut puts = Vec::new();
         let mut basket_puts = Vec::new();
+        let mut basket_takes = Vec::new();
         let mut snares = Vec::new();
         let mut set_nets = Vec::new();
         let mut weirs = Vec::new();
@@ -264,6 +265,7 @@ impl World {
                         && message == "You are already carrying a bark basket.";
                     // No basket, nothing to put, or a full basket is the reply only.
                     let put_in_basket_miss = matches!(intent.attempt, Attempt::PutInBasket(_));
+                    let take_from_basket_miss = matches!(intent.attempt, Attempt::TakeFromBasket(_));
                     // No bark basket in the arms is the reply only.
                     let basket_drop_miss =
                         matches!(intent.attempt, Attempt::Drop(Material::Basket));
@@ -309,6 +311,7 @@ impl World {
                             && !full_arms_gather
                             && !basket_gather_miss
                             && !put_in_basket_miss
+                            && !take_from_basket_miss
                             && !basket_drop_miss
                             && !empty_pile
                             && !full_arms_weave
@@ -403,6 +406,7 @@ impl World {
                         Attempt::Beach => beaches.push(intent),
                         Attempt::PutFish => puts.push(intent),
                         Attempt::PutInBasket(_) => basket_puts.push(intent),
+                        Attempt::TakeFromBasket(_) => basket_takes.push(intent),
                         Attempt::SetSnare => snares.push(intent),
                         Attempt::SetNet => set_nets.push(intent),
                         Attempt::SetWeir => weirs.push(intent),
@@ -597,6 +601,7 @@ impl World {
         self.apply_beaches(beaches, &mut results);
         self.apply_puts(puts, &mut results);
         self.apply_basket_puts(basket_puts, &mut results);
+        self.apply_basket_takes(basket_takes, &mut results);
         self.apply_snares(snares, &mut results);
         self.apply_set_nets(set_nets, &mut results);
         self.apply_weirs(weirs, &mut results);
@@ -2992,6 +2997,24 @@ impl World {
                 }
                 if !self.basket_has_room(actor.id) {
                     return Err(self.basket_full_of(*material));
+                }
+                Ok(true)
+            }
+            Attempt::TakeFromBasket(material) => {
+                if gripping {
+                    return Err("Your hands are on the log.".into());
+                }
+                if self.loose_ids(actor.id, Material::Basket).is_empty() {
+                    return Err("You are not carrying a bark basket.".into());
+                }
+                if *material == Material::Basket {
+                    return Err("A bark basket does not come out of a bark basket.".into());
+                }
+                if self.basket_held_id(actor.id, *material).is_none() {
+                    return Err(format!(
+                        "There is no {} in the bark basket.",
+                        material.gather_noun()
+                    ));
                 }
                 Ok(true)
             }
@@ -11913,6 +11936,104 @@ impl World {
                 && material != Material::Water
                 && material != Material::Mud
                 && self.pile_count(cell, material) > 0)
+    }
+
+    fn basket_held_id(
+        &self,
+        actor: crate::model::ActorId,
+        material: Material,
+    ) -> Option<crate::model::ItemId> {
+        let mut ids: Vec<_> = self
+            .items
+            .values()
+            .filter(|item| {
+                item.carrier == Some(actor) && item.in_basket && item.material == material
+            })
+            .map(|item| item.id)
+            .collect();
+        ids.sort();
+        ids.into_iter().next()
+    }
+
+    /// A named thing leaves the bark basket. A free arm slot takes it. Full
+    /// arms leave it on the ground.
+    fn apply_basket_takes(&mut self, takes: Vec<Intent>, results: &mut Vec<CommandResult>) {
+        for intent in takes {
+            let Attempt::TakeFromBasket(material) = intent.attempt else {
+                continue;
+            };
+            let Some(actor) = self.actor(intent.actor_id).cloned() else {
+                continue;
+            };
+            if self.loose_ids(actor.id, Material::Basket).is_empty() {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "You are not carrying a bark basket.",
+                    results,
+                );
+                continue;
+            }
+            if material == Material::Basket {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    "A bark basket does not come out of a bark basket.",
+                    results,
+                );
+                continue;
+            }
+            let Some(id) = self.basket_held_id(actor.id, material) else {
+                self.finish(
+                    intent.command_id,
+                    actor.id,
+                    false,
+                    format!(
+                        "There is no {} in the bark basket.",
+                        material.gather_noun()
+                    ),
+                    results,
+                );
+                continue;
+            };
+            let into_arms = self.carry_count(actor.id) < self.tuning.carry_slots;
+            if let Some(item) = self.items.get_mut(&id) {
+                item.in_basket = false;
+                item.worn = false;
+                if into_arms {
+                    item.carrier = Some(actor.id);
+                    item.cell = actor.cell;
+                } else {
+                    item.carrier = None;
+                    item.cell = actor.cell;
+                }
+            }
+            let thing = format!("{} {}", material.article(), material.gather_noun());
+            let rest = if into_arms {
+                format!("{thing} from the bark basket.")
+            } else {
+                format!("{thing} from the bark basket. It is in contact with the ground.")
+            };
+            let name = self.name_of(actor.id);
+            self.emit(
+                crate::model::spoken_act(Some(name.as_str()), "take", &rest),
+                Scope::Cell(actor.cell),
+                vec![actor.id],
+                vec![actor.cell],
+                vec![id],
+                vec![],
+                None,
+            );
+            self.finish(
+                intent.command_id,
+                actor.id,
+                true,
+                crate::model::spoken_act(None, "take", &rest),
+                results,
+            );
+        }
     }
 
     fn apply_basket_puts(&mut self, puts: Vec<Intent>, results: &mut Vec<CommandResult>) {

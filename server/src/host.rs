@@ -411,7 +411,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 {
                     true
                 }
-                Attempt::PutInBasket(_) => true,
+                Attempt::PutInBasket(_) | Attempt::TakeFromBasket(_) => true,
                 Attempt::Drop(Material::Basket) => true,
                 Attempt::Eat(_)
                     | Attempt::Roast

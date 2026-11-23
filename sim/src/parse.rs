@@ -96,6 +96,7 @@ bank                         dry branches lying on a burning fire, covered with 
 make basket                  the same weave
 put fish                     a raw fish from the arms into that basket. Berries and a fish do not share it.
 put berries in basket        a carried thing, or one on this ground, into the bark basket you carry. put mushroom in basket is the same, and so are place, stow, and tuck. With no basket, nothing of that kind, or a full basket, only you hear it.
+get berries from basket      a named thing from the bark basket you carry, into the arms. take pot from basket is the same. If the arms are full, it lands on the ground. With no basket, or nothing of that kind in it, only you hear it.
 wear hide                    a carried hide, against the cold. A sewn cloak on you does not take a carry slot
 remove hide                  a worn hide; it returns to the arms and counts again
 eat berries                  sweet berries, raw
@@ -343,6 +344,13 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
                 || rest == "willow cordage" =>
         {
             Ok(Attempt::Gather(Material::Willow))
+        }
+        "get" | "take" if let Some(noun) = from_basket_noun(rest) => {
+            if noun.is_empty() {
+                Err("Name a thing in the basket. Try get berries from basket.".into())
+            } else {
+                parse_material(noun).map(Attempt::TakeFromBasket)
+            }
         }
         "gather" | "get" | "take" => parse_material(rest).map(Attempt::Gather),
         "drop" => parse_material(rest).map(Attempt::Drop),
@@ -1023,6 +1031,38 @@ fn cattail_roots_named(rest: &str) -> bool {
     )
 }
 
+fn from_basket_noun(rest: &str) -> Option<&str> {
+    const TAILS: &[&str] = &[
+        " from the bark basket",
+        " from a bark basket",
+        " from the basket",
+        " from a basket",
+        " from basket",
+    ];
+    let rest = rest.trim();
+    let noun = TAILS.iter().find_map(|tail| rest.strip_suffix(tail))?;
+    Some(basket_thing_noun(noun))
+}
+
+fn basket_thing_noun(noun: &str) -> &str {
+    let noun = noun.trim();
+    let noun = noun
+        .strip_prefix("the ")
+        .or_else(|| noun.strip_prefix("an "))
+        .or_else(|| noun.strip_prefix("a "))
+        .unwrap_or(noun)
+        .trim();
+    match noun {
+        "handful of berries" | "sweet berries" => "berries",
+        "handful of dark berries" | "poison berries" => "dark berries",
+        "handful of pale berries" => "pale berries",
+        "sheet of bark" | "dry sheet of bark" | "sheet" => "bark",
+        "cooked mushroom" => "mushroom",
+        "lump of clay" => "clay",
+        other => other,
+    }
+}
+
 fn put_basket_noun(rest: &str) -> Option<&str> {
     const TAILS: &[&str] = &[
         " into the bark basket",
@@ -1038,23 +1078,7 @@ fn put_basket_noun(rest: &str) -> Option<&str> {
     ];
     let rest = rest.trim();
     let noun = TAILS.iter().find_map(|tail| rest.strip_suffix(tail))?;
-    let noun = noun.trim();
-    let noun = noun
-        .strip_prefix("the ")
-        .or_else(|| noun.strip_prefix("an "))
-        .or_else(|| noun.strip_prefix("a "))
-        .unwrap_or(noun)
-        .trim();
-    let noun = match noun {
-        "handful of berries" | "sweet berries" => "berries",
-        "handful of dark berries" | "poison berries" => "dark berries",
-        "handful of pale berries" => "pale berries",
-        "sheet of bark" | "dry sheet of bark" | "sheet" => "bark",
-        "cooked mushroom" => "mushroom",
-        "lump of clay" => "clay",
-        other => other,
-    };
-    Some(noun)
+    Some(basket_thing_noun(noun))
 }
 
 fn parse_material(text: &str) -> Result<Material, String> {
