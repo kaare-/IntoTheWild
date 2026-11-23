@@ -5848,12 +5848,15 @@ impl World {
         }
         // The burn itself stays until it fades. These two lines say what the
         // sun is doing now, so they wait for a sky that can still burn.
+        // Rain on a burn already there says the sun has left the skin.
         if self.sun_reaches_the_skin() {
             if actor.sunburn >= self.tuning.burned_at {
                 parts.push("The sun burns. It hurts.".into());
             } else if actor.sunburn >= self.tuning.pink_at {
                 parts.push("The sun is hot on your skin.".into());
             }
+        } else if self.raining && actor.sunburn >= self.tuning.pink_at {
+            parts.push("The rain takes the sun off your skin.".into());
         }
         if self.wearing_hide(actor_id) {
             let worn = |pred: fn(&crate::model::Item) -> bool| {

@@ -3195,10 +3195,34 @@ impl World {
         );
         if first {
             self.first_rain = Some(id);
+            self.sun_off_in_the_rain();
         }
         self.douse_open_fires(id);
         self.douse_open_brands();
         self.douse_open_torches();
+    }
+
+    /// Rain starting on a pink or burned skin. The burn stays. The line is
+    /// that person's, in the words they read, once, not a second copy.
+    fn sun_off_in_the_rain(&mut self) {
+        let pink = self.tuning.pink_at;
+        let burned: Vec<(ActorId, CellId)> = self
+            .actors
+            .values()
+            .filter(|actor| actor.sunburn >= pink)
+            .map(|actor| (actor.id, actor.cell))
+            .collect();
+        for (id, cell) in burned {
+            self.emit(
+                "The rain takes the sun off your skin.".to_string(),
+                Scope::Personal(id),
+                vec![id],
+                vec![cell],
+                vec![],
+                vec![],
+                None,
+            );
+        }
     }
 
     fn douse_open_brands(&mut self) {
