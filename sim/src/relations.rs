@@ -4,6 +4,12 @@
 use crate::model::{CellId, ConstructionId, ItemId, Role, World};
 
 impl World {
+    /// The rock, a thatched roof, and a lean-to. The sun does not
+    /// land here, so a burn does not get worse.
+    pub(crate) fn sun_sheltered(&self, cell: CellId) -> bool {
+        self.exposure_millis(cell) == 0 || self.lean_tos.contains(&cell)
+    }
+
     pub(crate) fn exposure_millis(&self, cell: CellId) -> u32 {
         if self.cell(cell).rock {
             return self.tuning.rock_roof;

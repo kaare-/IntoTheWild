@@ -2718,8 +2718,9 @@ impl World {
             {
                 cold_gain /= 2;
             }
-            // Rain and night hide the sun. Open day sky is what burns.
-            let mut sun_gain = if raining || self.night() {
+            // Rain, night, and shade hide the sun. Open day sky is what burns.
+            let sheltered = self.sun_sheltered(cell);
+            let mut sun_gain = if raining || self.night() || sheltered {
                 0
             } else {
                 ((u64::from(sun_base) * u64::from(exposure)) / 1000) as u32
@@ -2744,7 +2745,6 @@ impl World {
             };
             // A clear day in the open does not ease a burn. Shade and the
             // night do, one sun-tick at a time. A rest spends more of those.
-            let sheltered = exposure == 0 || self.lean_tos.contains(&cell);
             let ease = if self.night() || sheltered {
                 sun_base
             } else {

@@ -5857,9 +5857,10 @@ impl World {
             parts.push("Your stomach has not settled.".into());
         }
         // The burn itself stays until it fades. These two lines say what the
-        // sun is doing now, so they wait for a sky that can still burn.
+        // sun is doing now, so they wait for open sky that can still burn.
+        // Shade keeps the skin word and does not say the sun is hot.
         // Rain on a burn already there says the sun has left the skin.
-        if self.sun_reaches_the_skin() {
+        if self.sun_reaches_the_skin() && !self.sun_sheltered(actor.cell) {
             if actor.sunburn >= self.tuning.burned_at {
                 parts.push("The sun burns. It hurts.".into());
             } else if actor.sunburn >= self.tuning.pink_at {

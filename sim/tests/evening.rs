@@ -4256,6 +4256,86 @@ fn shade_and_rest_ease_a_sunburn_and_the_open_sky_does_not() {
 }
 
 #[test]
+fn shade_does_not_call_the_sun_hot_and_does_not_burn() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+    let hot = "The sun is hot on your skin.";
+    while !world.observe(near).unwrap().text.contains(hot) {
+        world.step(&[]);
+        assert!(!world.is_raining());
+        assert!(world.sim_time() < 16);
+    }
+    let open = world.observe(near).unwrap();
+    assert!(open.text.contains("The sky is clear."), "{}", open.text);
+    assert!(open.text.contains("Your skin is pink."));
+    assert!(open.text.contains(hot));
+    assert!(world.observe(seen).unwrap().text.contains(hot));
+    let said = open
+        .events
+        .iter()
+        .filter(|event| event.text.contains(hot))
+        .count();
+    assert_eq!(said, 1);
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains(hot)));
+    for (id, dir) in [
+        ("n", Dir::North),
+        ("n2", Dir::North),
+        ("e", Dir::East),
+        ("e2", Dir::East),
+    ] {
+        world.step(&[cmd(id, near, Attempt::Move(dir))]);
+    }
+    assert_eq!(world.actor_cell(near), Some((6, 1)));
+    assert!(!world.is_raining());
+    let under = world.observe(near).unwrap();
+    assert!(
+        under
+            .text
+            .contains("You are on the valley floor, under the rock overhang."),
+        "{}",
+        under.text
+    );
+    assert!(!under.text.contains(hot), "{}", under.text);
+    assert!(!under.text.contains("The sun burns"), "{}", under.text);
+    assert_eq!(under.self_info.sunburn, "pink");
+    for _ in 0..3 {
+        world.step(&[]);
+    }
+    let stayed = world.observe(near).unwrap();
+    assert!(!world.is_raining());
+    assert!(!stayed.text.contains(hot), "{}", stayed.text);
+    assert!(!stayed.text.contains("The sun burns"), "{}", stayed.text);
+    assert_ne!(stayed.self_info.sunburn, "burned");
+    assert_eq!(
+        stayed
+            .events
+            .iter()
+            .filter(|event| event.text.contains(hot))
+            .count(),
+        said
+    );
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains(hot) && !event.text.contains("The sun burns")));
+    let still_open = world.observe(seen).unwrap();
+    assert!(
+        still_open.text.contains(hot) || still_open.text.contains("The sun burns. It hurts."),
+        "{}",
+        still_open.text
+    );
+}
+
+#[test]
 fn a_night_in_the_open_settles_a_burn_and_nobody_else_hears_it() {
     let mut world = World::valley(Tuning::evening(), 1);
     let near = world.spawn_at("Near", "n", 4, 3).unwrap();
