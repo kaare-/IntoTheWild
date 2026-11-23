@@ -2787,35 +2787,68 @@ impl World {
                     None,
                 );
             }
+            // A chill or a cold is said twice. The body reads first person.
+            // Someone who can see the cell keeps the name. The body does not
+            // also read that third person.
             let cold_line = if on_fire && cold_before >= chilly_at && cold_after < chilly_at {
-                Some(format!("{name} is warm at the fire."))
+                Some((format!("{name} is warm at the fire."), false))
             } else if on_fire && cold_before >= cold_at && cold_after < cold_at {
-                Some(format!("{name} is warming at the fire."))
+                Some((format!("{name} is warming at the fire."), false))
             } else if !on_fire && cold_before < cold_at && cold_after >= cold_at {
-                Some(if exposure >= 1000 {
-                    format!("{name} is cold. The wind is on them.")
-                } else {
-                    format!("{name} is cold.")
-                })
+                Some((
+                    if exposure >= 1000 {
+                        format!("{name} is cold. The wind is on them.")
+                    } else {
+                        format!("{name} is cold.")
+                    },
+                    true,
+                ))
             } else if !on_fire && cold_before < chilly_at && cold_after >= chilly_at {
-                Some(if exposure >= 1000 {
-                    format!("{name} is chilly. The wind is on them.")
-                } else {
-                    format!("{name} is chilly.")
-                })
+                Some((
+                    if exposure >= 1000 {
+                        format!("{name} is chilly. The wind is on them.")
+                    } else {
+                        format!("{name} is chilly.")
+                    },
+                    true,
+                ))
             } else {
                 None
             };
-            if let Some(text) = cold_line {
-                self.emit(
-                    text,
-                    Scope::Personal(id),
-                    vec![id],
-                    vec![cell],
-                    vec![],
-                    vec![],
-                    None,
-                );
+            if let Some((text, body)) = cold_line {
+                if body {
+                    let yours = text
+                        .replacen(&format!("{name} is "), "You are ", 1)
+                        .replacen("The wind is on them.", "The wind is on you.", 1);
+                    self.emit(
+                        text,
+                        Scope::Cell(cell),
+                        vec![id],
+                        vec![cell],
+                        vec![],
+                        vec![],
+                        None,
+                    );
+                    self.emit(
+                        yours,
+                        Scope::Personal(id),
+                        vec![id],
+                        vec![cell],
+                        vec![],
+                        vec![],
+                        None,
+                    );
+                } else {
+                    self.emit(
+                        text,
+                        Scope::Personal(id),
+                        vec![id],
+                        vec![cell],
+                        vec![],
+                        vec![],
+                        None,
+                    );
+                }
             }
             // The crossing is said once, to that body, without their name.
             // Look keeps the same words from the sunburn itself.

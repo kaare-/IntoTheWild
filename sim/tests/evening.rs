@@ -3852,11 +3852,27 @@ fn open_sky_chills_and_burns_while_shelter_and_mud_hold_them_off() {
     assert!(outside
         .events
         .iter()
-        .any(|event| event.text.contains("The wind is on them")));
+        .any(|event| event.text == "You are chilly. The wind is on you."));
+    assert!(outside
+        .events
+        .iter()
+        .any(|event| event.text == "You are cold. The wind is on you."));
+    assert!(outside.events.iter().all(|event| {
+        !event.text.contains("Sera is chilly")
+            && !event.text.contains("Sera is cold")
+            && !event.text.contains("on them")
+    }));
     assert!(under
         .events
         .iter()
-        .all(|event| !event.text.contains("wind is on")));
+        .any(|event| event.text == "Sera is chilly. The wind is on them."));
+    assert!(under
+        .events
+        .iter()
+        .any(|event| event.text == "Sera is cold. The wind is on them."));
+    assert!(under.events.iter().all(|event| {
+        !event.text.contains("You are chilly") && !event.text.contains("You are cold")
+    }));
 
     let mut mud = world_at(10_000);
     let bare = mud.spawn_at("Sera", "s", 0, 2).unwrap();
@@ -13700,10 +13716,22 @@ fn night_cold_in_the_open_is_faster_and_shelter_holds() {
         "{}",
         under_rock.text
     );
-    assert!(under_rock
+    assert!(night_open
+        .events
+        .iter()
+        .any(|event| event.text == "You are cold. The wind is on you."));
+    assert!(night_open
         .events
         .iter()
         .all(|event| !event.text.contains("Open is cold")));
+    assert!(under_rock
+        .events
+        .iter()
+        .any(|event| event.text == "Open is cold. The wind is on them."));
+    assert!(under_rock
+        .events
+        .iter()
+        .all(|event| event.text != "You are cold. The wind is on you."));
     assert!(world.sim_time() < world.tuning.night_at + world.tuning.night_len);
     let lit = world.step(&[
         cmd("light", rock, Attempt::Light),
@@ -15465,11 +15493,19 @@ fn a_thatched_lean_to_keeps_the_cold_off_like_the_rock() {
     assert!(day_thatch
         .events
         .iter()
-        .all(|event| !event.text.contains("Bare is chilly")));
+        .any(|event| event.text == "Bare is chilly."));
+    assert!(day_thatch
+        .events
+        .iter()
+        .all(|event| event.text != "You are chilly."));
     assert!(day_bare
         .events
         .iter()
-        .any(|event| event.text == "Bare is chilly."));
+        .any(|event| event.text == "You are chilly."));
+    assert!(day_bare
+        .events
+        .iter()
+        .all(|event| event.text != "Bare is chilly."));
     let saw_thatch = world.examine(seen, ExamineTarget::Person("Thatch".into()));
     let saw_bare = world.examine(seen, ExamineTarget::Person("Bare".into()));
     assert!(
@@ -15522,10 +15558,9 @@ fn a_thatched_lean_to_keeps_the_cold_off_like_the_rock() {
         "{}",
         night_open.text
     );
-    assert!(night_thatch
-        .events
-        .iter()
-        .all(|event| !event.text.contains("Bare is cold") && !event.text.contains("Open is cold")));
+    assert!(night_thatch.events.iter().all(|event| {
+        event.text != "You are cold." && event.text != "You are cold. The wind is on you."
+    }));
     let night_saw = world.examine(seen, ExamineTarget::Person("Thatch".into()));
     let night_bare_saw = world.examine(seen, ExamineTarget::Person("Bare".into()));
     assert!(

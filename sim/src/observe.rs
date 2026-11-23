@@ -11966,6 +11966,7 @@ impl World {
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
+                    && self.chill_for_these_eyes(viewer, event).is_none()
                     && self.canoe_for_these_eyes(viewer, event).is_none()
                     && self.light_for_these_eyes(viewer, event).is_none()
                     && self.drink_for_these_eyes(viewer, event).is_none()
@@ -13146,6 +13147,24 @@ impl World {
         LINES
             .contains(&event.text.as_str())
             .then(|| event.text.clone())
+    }
+
+    /// A chill or a cold, said with the person's name for anyone who can see
+    /// the cell. That person already has the first person, so this copy goes.
+    fn chill_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
+        if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
+            return None;
+        }
+        let name = self.name_of(viewer);
+        let text = event.text.as_str();
+        if text == format!("{name} is chilly.")
+            || text == format!("{name} is chilly. The wind is on them.")
+            || text == format!("{name} is cold.")
+            || text == format!("{name} is cold. The wind is on them.")
+        {
+            return Some(text.to_string());
+        }
+        None
     }
 
     /// A reed mat woven, set, dropped, or rested on. The person who did it
