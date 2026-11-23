@@ -10277,7 +10277,7 @@ fn a_fire_hardened_flint_spear_brings_the_deer_down_on_its_own_cell() {
         "{ground}"
     );
     assert!(ground.contains("A deer hide lies here."), "{ground}");
-    assert!(ground.contains("A bone lies here."), "{ground}");
+    assert!(ground.contains("Two bones lie here."), "{ground}");
     assert_eq!(world.material_tally(Material::Bone), 2);
     assert_eq!(world.material_tally(Material::Hide), 1);
     assert!(!ground.contains("A deer carcass lies here."), "{ground}");
@@ -13083,7 +13083,7 @@ fn an_iron_knife_butchers_a_carcass_and_stays_in_the_arms() {
             .observe(near)
             .unwrap()
             .text
-            .contains("A bone lies here."),
+            .contains("Two bones lie here."),
         "{}",
         world.observe(near).unwrap().text
     );

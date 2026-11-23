@@ -1657,8 +1657,9 @@ impl World {
         if !self.ground_ids(actor.cell, Material::Pick).is_empty() {
             parts.push("An antler pick lies here. It digs worms from dry ground.".into());
         }
-        if !self.ground_ids(actor.cell, Material::Bone).is_empty() {
-            parts.push("A bone lies here.".into());
+        let bones_here = self.ground_ids(actor.cell, Material::Bone).len();
+        if bones_here > 0 {
+            parts.push(bone_lie_line(bones_here as u32, "here", false));
         } else if self.bone_cache_bare(actor.cell) {
             parts.push("The rock has no bone.".into());
         }
@@ -4683,8 +4684,9 @@ impl World {
                 let region = self.cell(cell).region.word();
                 format!("on the {region} to the {}", self.relative(origin, cell))
             };
-            if !self.ground_ids(cell, Material::Bone).is_empty() {
-                lines.push(format!("A bone lies {place}."));
+            let bones = self.ground_ids(cell, Material::Bone).len() as u32;
+            if bones > 0 {
+                lines.push(bone_lie_line(bones, &place, false));
             } else if self.bone_cache_bare(cell) {
                 lines.push(format!(
                     "The rock to the {} has no bone.",
@@ -4980,13 +4982,11 @@ impl World {
         let origin = self.actor(viewer).unwrap().cell;
         let mut lines = Vec::new();
         for cell in self.visible_cell_ids(viewer) {
-            if self.ground_ids(cell, Material::Bone).is_empty() {
+            let bones = self.ground_ids(cell, Material::Bone).len() as u32;
+            if bones == 0 {
                 continue;
             }
-            lines.push(format!(
-                "A bone lies {}. It can be carved into an awl.",
-                self.place_phrase(origin, cell)
-            ));
+            lines.push(bone_lie_line(bones, &self.place_phrase(origin, cell), true));
         }
         for actor in self.actors.values() {
             if chebyshev(origin, actor.cell) > self.tuning.sight {
@@ -16451,6 +16451,26 @@ fn counted_arm_fallback(count: u32, condition: &str, material: &str) -> String {
         format!("{} {condition} {many}", count_word(count))
     } else {
         format!("{} {many}", count_word(count))
+    }
+}
+
+/// One bone, or two bones, on the ground. Examine adds that they can be carved.
+fn bone_lie_line(count: u32, place: &str, examine: bool) -> String {
+    let (lead, carve) = if count == 1 {
+        (
+            format!("A bone lies {place}."),
+            " It can be carved into an awl.",
+        )
+    } else {
+        (
+            format!("{} bones lie {place}.", capitalize(&count_word(count))),
+            " They can be carved into an awl.",
+        )
+    };
+    if examine {
+        format!("{lead}{carve}")
+    } else {
+        lead
     }
 }
 

@@ -14398,6 +14398,84 @@ mod bark_return {
     }
 
     #[test]
+    fn dropping_a_basket_beside_a_bone_leaves_both_bones() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        assert_eq!(world.ground_ids(cell, Material::Bone).len(), 1);
+        let wove = world.step(&[intent("weave", near, Attempt::WeaveBasket)]);
+        assert!(wove.results[0].success, "{}", wove.results[0].message);
+        let pot = world.step(&[intent("pot", near, Attempt::PutInBasket(Material::Pot))]);
+        assert_eq!(pot.results[0].message, "You put a pot in the bark basket.");
+        let extra = world.mint_item(Material::Bone, 0, cell, Some(near), super::Role::Loose);
+        world.items.get_mut(&extra).unwrap().in_basket = true;
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Basket))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop a bark basket. It is in contact with the ground."
+        );
+        assert_eq!(world.ground_ids(cell, Material::Bone).len(), 2);
+        assert_eq!(world.ground_ids(cell, Material::Pot).len(), 1);
+        assert!(world.items.values().all(|item| !item.in_basket));
+        let here = world.observe(near).unwrap().text;
+        assert!(here.contains("Two bones lie here."), "{here}");
+        assert!(here.contains("A pot sits here."), "{here}");
+        assert!(here.contains("A bark basket lies here."), "{here}");
+        let examined = world.examine(near, super::ExamineTarget::Bone);
+        assert_eq!(
+            examined,
+            "Two bones lie here, under the rock overhang. They can be carved into an awl."
+        );
+        let from_seen = world.observe(seen).unwrap().text;
+        assert!(
+            from_seen.contains("Two bones lie under the rock to the north."),
+            "{from_seen}"
+        );
+        let seen_exam = world.examine(seen, super::ExamineTarget::Bone);
+        assert!(
+            seen_exam.contains(
+                "Two bones lie to the north, under the rock overhang. They can be carved into an awl."
+            ),
+            "{seen_exam}"
+        );
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(!quiet_look.contains("bone"), "{quiet_look}");
+        let heard = "Near drops a bark basket. It is in contact with the ground.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && !event.text.contains("Two bones")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("Two bones") }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && !event.text.contains("bone")));
+        let one = world.step(&[intent("take", near, Attempt::Gather(Material::Bone))]);
+        assert_eq!(one.results[0].message, "You gather a bone.");
+        assert_eq!(world.ground_ids(cell, Material::Bone).len(), 1);
+        let left = world.observe(near).unwrap().text;
+        assert!(left.contains("A bone lies here."), "{left}");
+        assert!(!left.contains("Two bones"), "{left}");
+    }
+
+    #[test]
     fn a_carried_or_ground_thing_goes_into_the_basket_on_purpose() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 6, 1).unwrap();
