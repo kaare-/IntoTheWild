@@ -14090,14 +14090,14 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
         .any(|event| event.text == "You weave a bark basket."));
     let empty = world.examine(near, ExamineTarget::Basket);
     assert!(
-        empty.contains("a bark basket")
+        empty.contains("an empty bark basket")
             && empty.contains("woven from a sheet of bark")
-            && empty.contains("It is empty."),
+            && !empty.contains("It is empty."),
         "{empty}"
     );
     let seen = world.examine(far, ExamineTarget::Basket);
     assert!(
-        seen.contains("Near carries a bark basket") && seen.contains("It is empty."),
+        seen.contains("Near carries an empty bark basket") && !seen.contains("It is empty."),
         "{seen}"
     );
     assert_eq!(
@@ -14265,7 +14265,8 @@ fn a_raw_fish_goes_into_the_bark_basket_when_the_arms_are_full() {
     let out = world.step(&[cmd("drop-fish", near, Attempt::Drop(Material::Fish))]);
     assert!(out.results[0].success, "{}", out.results[0].message);
     let empty = world.examine(near, ExamineTarget::Basket);
-    assert!(empty.contains("It is empty."), "{empty}");
+    assert!(empty.contains("an empty bark basket"), "{empty}");
+    assert!(!empty.contains("It is empty."), "{empty}");
     let gathered = world.step(&[cmd("gather-fish", near, Attempt::Gather(Material::Fish))]);
     assert_eq!(gathered.results[0].message, "You gather a fish.");
     let in_arms = world.observe(near).unwrap().text;

@@ -735,10 +735,11 @@ mod tests {
         let queued = host.submit(&near.token, "bone", "put bone in basket", None);
         assert!(!queued.immediate, "{}", queued.message);
         let closed = host.advance(1).unwrap();
-        assert_eq!(closed.replies[0].message, "The bark basket is full.");
+        let refused = "The bark basket is full. A bone will not fit.";
+        assert_eq!(closed.replies[0].message, refused);
         let duplicate = host.submit(&near.token, "bone", "put bone in basket", None);
         assert!(duplicate.duplicate);
-        assert_eq!(duplicate.message, "The bark basket is full.");
+        assert_eq!(duplicate.message, refused);
         let near_look = host.observe(&near.token).unwrap();
         assert!(near_look.events.iter().all(|event| {
             event.text != none
@@ -746,7 +747,7 @@ mod tests {
                 && event.text != put
                 && event.text != heard
                 && event.text != full
-                && event.text != "The bark basket is full."
+                && event.text != "The bark basket is full. A bone will not fit."
                 && event.text != "Near puts a pot in the bark basket. The basket is full."
         }));
         let seen_look = host.observe(&seen.token).unwrap();

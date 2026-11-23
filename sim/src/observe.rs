@@ -12706,7 +12706,7 @@ impl World {
         for cell in self.visible_cell_ids(viewer) {
             if !self.ground_ids(cell, Material::Basket).is_empty() {
                 lines.push(format!(
-                    "A bark basket lies {}. It is woven from a sheet of bark. It is empty. {}",
+                    "An empty bark basket lies {}. It is woven from a sheet of bark. {}",
                     self.place_phrase(origin, cell),
                     self.rain_reaches_phrase(cell)
                 ));
@@ -12721,10 +12721,23 @@ impl World {
             } else {
                 format!("{} carries", self.name_of(other))
             };
+            let empty = self.basket_ids(other).is_empty();
+            let basket = if empty {
+                "an empty bark basket"
+            } else {
+                "a bark basket"
+            };
             let held = self.basket_held_sentence(other);
+            let held = if empty {
+                held.strip_prefix("It is empty. ")
+                    .unwrap_or(held.as_str())
+                    .to_string()
+            } else {
+                held
+            };
             let cell = self.actor(other).unwrap().cell;
             lines.push(format!(
-                "{who} a bark basket, {}. It is woven from a sheet of bark. {held}",
+                "{who} {basket}, {}. It is woven from a sheet of bark. {held}",
                 self.cover_phrase(cell)
             ));
         }

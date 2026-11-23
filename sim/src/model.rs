@@ -14423,6 +14423,12 @@ mod bark_return {
         assert!(here.contains("Two bones lie here."), "{here}");
         assert!(here.contains("A pot sits here."), "{here}");
         assert!(here.contains("A bark basket lies here."), "{here}");
+        let basket_exam = world.examine(near, super::ExamineTarget::Basket);
+        assert!(
+            basket_exam.starts_with("An empty bark basket lies here"),
+            "{basket_exam}"
+        );
+        assert!(!basket_exam.contains("It is empty."), "{basket_exam}");
         let examined = world.examine(near, super::ExamineTarget::Bone);
         assert_eq!(
             examined,
@@ -14605,7 +14611,10 @@ mod bark_return {
             .basket_held_sentence(near)
             .contains("It cannot hold more."));
         let full = world.step(&[intent("bone", near, Attempt::PutInBasket(Material::Bone))]);
-        assert_eq!(full.results[0].message, "The bark basket is full.");
+        assert_eq!(
+            full.results[0].message,
+            "The bark basket is full. A bone will not fit."
+        );
         assert!(!full.results[0].success);
         for id in [near, seen, quiet] {
             assert!(world
@@ -14613,7 +14622,7 @@ mod bark_return {
                 .unwrap()
                 .events
                 .iter()
-                .all(|event| event.text != "The bark basket is full."));
+                .all(|event| event.text != "The bark basket is full. A bone will not fit."));
         }
     }
 
@@ -14631,13 +14640,20 @@ mod bark_return {
         let look = world.observe(near).unwrap();
         assert!(look.text.contains(empty), "{}", look.text);
         assert!(look.events.iter().all(|event| event.text != empty));
+        let examined = "You carry an empty bark basket, under the rock overhang. It is woven from a sheet of bark. It can hold two more things.";
+        assert_eq!(world.examine(near, super::ExamineTarget::Basket), examined);
+        let seen_examined = "Near carries an empty bark basket, under the rock overhang. It is woven from a sheet of bark. It can hold two more things.";
+        assert_eq!(
+            world.examine(seen, super::ExamineTarget::Basket),
+            seen_examined
+        );
+        assert!(look.events.iter().all(|event| event.text != examined));
         let carried = "Near carries an empty bark basket.";
         let seen_look = world.observe(seen).unwrap();
         assert!(seen_look.text.contains(carried), "{}", seen_look.text);
-        assert!(seen_look
-            .events
-            .iter()
-            .all(|event| event.text != carried && event.text != empty));
+        assert!(seen_look.events.iter().all(|event| {
+            event.text != carried && event.text != empty && event.text != seen_examined
+        }));
         let quiet_look = world.observe(quiet).unwrap();
         assert!(
             !quiet_look.text.contains("bark basket"),

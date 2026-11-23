@@ -2914,7 +2914,11 @@ impl World {
                     return Err("You are not carrying a bark basket.".into());
                 }
                 if !self.basket_has_room(actor.id) {
-                    return Err("The bark basket is full.".into());
+                    return Err(if self.raw_fish_in_arms(actor.id).is_some() {
+                        self.basket_full_of(Material::Fish)
+                    } else {
+                        "You are not carrying a raw fish.".into()
+                    });
                 }
                 if self.raw_fish_in_arms(actor.id).is_none() {
                     return Err("You are not carrying a raw fish.".into());
@@ -2938,7 +2942,7 @@ impl World {
                     ));
                 }
                 if !self.basket_has_room(actor.id) {
-                    return Err("The bark basket is full.".into());
+                    return Err(self.basket_full_of(*material));
                 }
                 Ok(true)
             }
@@ -11660,6 +11664,15 @@ impl World {
             && self.basket_load(actor) < Self::BASKET_ROOM
     }
 
+    /// A put that finds the basket full names the thing that will not fit.
+    fn basket_full_of(&self, material: Material) -> String {
+        let named = format!("{} {}", material.article(), material.gather_noun());
+        let mut chars = named.chars();
+        let first = chars.next().unwrap_or('A').to_uppercase().to_string();
+        let rest: String = chars.collect();
+        format!("The bark basket is full. {first}{rest} will not fit.")
+    }
+
     /// Bare `basket`. The reply stays with this person.
     pub fn basket_name_line(&self, actor: crate::model::ActorId) -> String {
         if self.loose_ids(actor, Material::Basket).is_empty() {
@@ -11823,7 +11836,7 @@ impl World {
                     intent.command_id,
                     actor.id,
                     false,
-                    "The bark basket is full.",
+                    self.basket_full_of(material),
                     results,
                 );
                 continue;
