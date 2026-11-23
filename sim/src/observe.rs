@@ -5355,8 +5355,16 @@ impl World {
     fn arm_bit(&self, actor_id: ActorId, item: &CarryView) -> String {
         if item.material == "stone" && item.count == 1 {
             format!("a {} stone", item.condition)
+        } else if item.material == "stone" {
+            format!("{} {} stones", count_word(item.count), item.condition)
         } else if item.material == "flint" && item.count == 1 {
             format!("a {} flint nodule", item.condition)
+        } else if item.material == "flint" {
+            format!(
+                "{} {} flint nodules",
+                count_word(item.count),
+                item.condition
+            )
         } else if item.material == "flake" && item.count == 1 {
             "a sharp flint flake that is sharp enough to cut or haft later".into()
         } else if item.material == "flake" {
@@ -5366,6 +5374,8 @@ impl World {
             )
         } else if item.material == "branch" && item.count == 1 {
             format!("a {} branch", item.condition)
+        } else if item.material == "branch" {
+            format!("{} {} branches", count_word(item.count), item.condition)
         } else if item.material == "bark" && item.count == 1 {
             format!("a {} sheet of bark", item.condition)
         } else if item.material == "bark" {
@@ -5376,14 +5386,22 @@ impl World {
             )
         } else if item.material == "basket" && item.count == 1 {
             self.basket_arm_phrase(actor_id)
+        } else if item.material == "basket" {
+            format!("{} bark baskets", count_word(item.count))
         } else if item.material == "bark cup" && item.count == 1 {
             self.bark_cup_arm_phrase(actor_id)
+        } else if item.material == "bark cup" {
+            format!("{} bark cups", count_word(item.count))
         } else if item.material == "pot" && item.count == 1 {
             format!("a {} pot", item.condition)
+        } else if item.material == "pot" {
+            format!("{} {} pots", count_word(item.count), item.condition)
         } else if item.material == "clay" {
             self.clay_carry_phrase(actor_id)
         } else if item.material == "bowl" && item.count == 1 {
             "a fired bowl".into()
+        } else if item.material == "bowl" {
+            format!("{} fired bowls", count_word(item.count))
         } else if item.material == "carcass" && item.count == 1 {
             if self
                 .loose_ids(actor_id, Material::Carcass)
@@ -5484,6 +5502,8 @@ impl World {
             format!("{} lumps of ochre", count_word(item.count))
         } else if item.material == "salt" && item.count == 1 {
             "a salt crust".into()
+        } else if item.material == "salt" {
+            format!("{} salt crusts", count_word(item.count))
         } else if item.material == "honey" && item.count == 1 {
             "a honeycomb".into()
         } else if item.material == "honey" {
@@ -5604,14 +5624,20 @@ impl World {
             format!("{} lumps of iron ore", count_word(item.count))
         } else if item.material == "iron" && item.count == 1 {
             "a bloom of iron, metal from a hotter fire".into()
+        } else if item.material == "iron" {
+            format!("{} blooms of iron", count_word(item.count))
         } else if item.material == "iron knife" && item.count == 1 {
             "an iron knife".into()
+        } else if item.material == "iron knife" {
+            format!("{} iron knives", count_word(item.count))
         } else if item.material == "copper ore" && item.count == 1 {
             "a lump of copper ore".into()
         } else if item.material == "copper ore" {
             format!("{} lumps of copper ore", count_word(item.count))
         } else if item.material == "copper" && item.count == 1 {
             "a copper bead, metal from the fire".into()
+        } else if item.material == "copper" {
+            format!("{} copper beads", count_word(item.count))
         } else if item.material == "awl" && item.count == 1 {
             let bone = self
                 .loose_ids(actor_id, Material::Awl)
@@ -5623,8 +5649,35 @@ impl World {
             } else {
                 "a copper awl".into()
             }
+        } else if item.material == "awl" {
+            let ids = self.loose_ids(actor_id, Material::Awl);
+            let bone = ids
+                .iter()
+                .filter(|id| self.item(**id).is_some_and(|awl| awl.bone))
+                .count() as u32;
+            let copper = ids.len() as u32 - bone;
+            match (bone, copper) {
+                (0, n) => format!("{} copper awls", count_word(n)),
+                (n, 0) => format!("{} bone awls", count_word(n)),
+                (b, c) if b == 1 && c == 1 => "a bone awl and a copper awl".into(),
+                (b, c) => format!(
+                    "{} and {}",
+                    if b == 1 {
+                        "a bone awl".to_string()
+                    } else {
+                        format!("{} bone awls", count_word(b))
+                    },
+                    if c == 1 {
+                        "a copper awl".to_string()
+                    } else {
+                        format!("{} copper awls", count_word(c))
+                    }
+                ),
+            }
         } else if item.material == "bone" && item.count == 1 {
             "a bone".into()
+        } else if item.material == "bone" {
+            format!("{} bones", count_word(item.count))
         } else if item.material == "worm" && item.count == 1 {
             "a worm".into()
         } else if item.material == "worm" {
@@ -5661,6 +5714,8 @@ impl World {
             self.torch_arm_bit(actor_id, item)
         } else if item.material == "brand" && item.count == 1 {
             "a burning brand".into()
+        } else if item.material == "brand" {
+            format!("{} burning brands", count_word(item.count))
         } else if item.material == "fish" {
             self.fish_carry_phrase(actor_id)
         } else if item.material == "spear" {
@@ -5753,10 +5808,7 @@ impl World {
         } else if item.material == "meat" {
             self.meat_carry_phrase(actor_id, item.condition == "cooked")
         } else {
-            format!(
-                "{} {} carried by you ({})",
-                item.count, item.material, item.condition
-            )
+            counted_arm_fallback(item.count, &item.condition, &item.material)
         }
     }
 
@@ -16091,6 +16143,67 @@ fn portion_bit(kind: &str, count: u32) -> String {
         format!("a portion of {kind}")
     } else {
         format!("{} portions of {kind}", count_word(count))
+    }
+}
+
+/// The arms line for a material that has no sentence of its own.
+/// One is "a dry log". More than one is "two dry logs", never "2 log carried by you (dry)".
+fn counted_arm_fallback(count: u32, condition: &str, material: &str) -> String {
+    let (one, many, with_condition) = match material {
+        "log" => ("log", "logs", true),
+        "mud" => ("handful of mud", "handfuls of mud", true),
+        "branch" => ("branch", "branches", true),
+        "stone" => ("stone", "stones", true),
+        "bark" => ("sheet of bark", "sheets of bark", true),
+        "berry" => ("handful of berries", "handfuls of berries", true),
+        "poison berry" => (
+            "handful of poison berries",
+            "handfuls of poison berries",
+            true,
+        ),
+        "pale berry" => ("handful of pale berries", "handfuls of pale berries", true),
+        "pot" => ("pot", "pots", true),
+        "water" => ("drink of water", "drinks of water", false),
+        "hide" => ("hide", "hides", false),
+        "strips" => ("hide strips", "hide strips", false),
+        "carcass" => ("carcass", "carcasses", false),
+        "bone" => ("bone", "bones", false),
+        "salt" => ("salt crust", "salt crusts", false),
+        "antler" => ("antler", "antlers", false),
+        "antler pick" => ("antler pick", "antler picks", false),
+        "dugout canoe" => ("dugout canoe", "dugout canoes", false),
+        "awl" => ("awl", "awls", false),
+        "brand" => ("burning brand", "burning brands", false),
+        other => {
+            let many = if other.ends_with('s') {
+                other.to_string()
+            } else {
+                format!("{other}s")
+            };
+            return if count <= 1 {
+                format!("a {condition} {other}")
+            } else {
+                format!("{} {condition} {many}", count_word(count))
+            };
+        }
+    };
+    if count <= 1 {
+        let article = if one.starts_with(|c: char| matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')) {
+            "an"
+        } else {
+            "a"
+        };
+        if with_condition {
+            format!("{article} {condition} {one}")
+        } else if one == "hide strips" {
+            one.into()
+        } else {
+            format!("{article} {one}")
+        }
+    } else if with_condition {
+        format!("{} {condition} {many}", count_word(count))
+    } else {
+        format!("{} {many}", count_word(count))
     }
 }
 

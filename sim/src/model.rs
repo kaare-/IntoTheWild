@@ -14369,6 +14369,79 @@ mod bark_arms {
 }
 
 #[cfg(test)]
+mod counted_arms {
+    use super::{ExamineTarget, Material, World};
+
+    fn held(material: Material, n: u32) -> String {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        for _ in 0..n {
+            world.mint_item(material, 0, cell, Some(near), super::Role::Loose);
+        }
+        world.observe(near).unwrap().text
+    }
+
+    #[test]
+    fn three_branches_and_the_other_counts_take_a_plural() {
+        let one = held(Material::Branch, 1);
+        assert!(one.contains("You have a dry branch."), "{one}");
+        assert!(!one.contains("carried by you (dry)"), "{one}");
+        let three = held(Material::Branch, 3);
+        assert!(three.contains("You have three dry branches."), "{three}");
+        assert!(!three.contains("3 branch"), "{three}");
+        assert!(!three.contains("carried by you (dry)"), "{three}");
+
+        let stones = held(Material::Stone, 2);
+        assert!(stones.contains("You have two dry stones."), "{stones}");
+        assert!(!stones.contains("2 stone"), "{stones}");
+
+        let pots = held(Material::Pot, 2);
+        assert!(pots.contains("You have two dry pots."), "{pots}");
+        assert!(!pots.contains("2 pot"), "{pots}");
+
+        let bones = held(Material::Bone, 2);
+        assert!(bones.contains("You have two bones."), "{bones}");
+        assert!(!bones.contains("2 bone"), "{bones}");
+        assert!(!bones.contains("carried by you (dry)"), "{bones}");
+
+        let nodules = held(Material::Flint, 2);
+        assert!(
+            nodules.contains("You have two dry flint nodules."),
+            "{nodules}"
+        );
+        assert!(!nodules.contains("2 flint"), "{nodules}");
+
+        let sheets = held(Material::Bark, 2);
+        assert!(
+            sheets.contains("You have two dry sheets of bark."),
+            "{sheets}"
+        );
+        assert!(!sheets.contains("2 bark"), "{sheets}");
+
+        let berries = held(Material::Berry, 2);
+        assert!(
+            berries.contains("You have two dry handfuls of berries."),
+            "{berries}"
+        );
+        assert!(!berries.contains("2 berry"), "{berries}");
+
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 3, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        for _ in 0..3 {
+            world.mint_item(Material::Branch, 0, cell, Some(near), super::Role::Loose);
+        }
+        let exam = world.examine(near, ExamineTarget::Wood);
+        assert!(
+            exam.contains("three dry branches are carried by you, in the open."),
+            "{exam}"
+        );
+        assert!(!exam.contains("3 branch"), "{exam}");
+    }
+}
+
+#[cfg(test)]
 mod carve_paddle {
     use super::{Attempt, CellId, Dir, ExamineTarget, Intent, Material, World};
 

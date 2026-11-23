@@ -1164,7 +1164,8 @@ fn a_carried_pot_is_named_when_water_is_gathered_and_boiled() {
         .iter()
         .all(|event| !event.text.contains("drink of water")));
     let bare_arms = arms_sentence(&bare.observe(hands).unwrap().text);
-    assert!(bare_arms.contains("1 water"));
+    assert!(bare_arms.contains("a drink of water"), "{bare_arms}");
+    assert!(!bare_arms.contains("1 water"), "{bare_arms}");
     assert!(!bare_arms.contains("pot"));
 
     let mut world = world_at(10_000);
