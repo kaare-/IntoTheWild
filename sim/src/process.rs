@@ -2555,22 +2555,20 @@ impl World {
             let name = actor.name.clone();
             let cell = actor.cell;
             let crossed = if before < parched_at && after >= parched_at {
-                Some(format!("{name}'s mouth is dry."))
+                Some((
+                    format!("{name}'s mouth is dry."),
+                    "Your mouth is dry.".to_string(),
+                ))
             } else if before < thirsty_at && after >= thirsty_at {
-                Some(format!("Thirst is in {name}'s mouth."))
+                Some((
+                    format!("Thirst is in {name}'s mouth."),
+                    "Thirst is in your mouth.".to_string(),
+                ))
             } else {
                 None
             };
-            if let Some(text) = crossed {
-                self.emit(
-                    text,
-                    Scope::Personal(id),
-                    vec![id],
-                    vec![cell],
-                    vec![],
-                    vec![],
-                    None,
-                );
+            if let Some((witness, yours)) = crossed {
+                self.say_body(id, cell, witness, yours);
             }
         }
     }
@@ -2594,24 +2592,45 @@ impl World {
             let name = actor.name.clone();
             let cell = actor.cell;
             let crossed = if before < starving_at && after >= starving_at {
-                Some(format!("{name}'s stomach is empty."))
+                Some((
+                    format!("{name}'s stomach is empty."),
+                    "Your stomach is empty.".to_string(),
+                ))
             } else if before < hungry_at && after >= hungry_at {
-                Some(format!("Hunger is in {name}'s stomach."))
+                Some((
+                    format!("Hunger is in {name}'s stomach."),
+                    "Hunger is in your stomach.".to_string(),
+                ))
             } else {
                 None
             };
-            if let Some(text) = crossed {
-                self.emit(
-                    text,
-                    Scope::Personal(id),
-                    vec![id],
-                    vec![cell],
-                    vec![],
-                    vec![],
-                    None,
-                );
+            if let Some((witness, yours)) = crossed {
+                self.say_body(id, cell, witness, yours);
             }
         }
+    }
+
+    /// A body line. The person reads the first person. Someone who can see
+    /// the cell keeps the name. That person does not also read the name.
+    fn say_body(&mut self, id: ActorId, cell: CellId, witness: String, yours: String) {
+        self.emit(
+            witness,
+            Scope::Cell(cell),
+            vec![id],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
+        self.emit(
+            yours,
+            Scope::Personal(id),
+            vec![id],
+            vec![cell],
+            vec![],
+            vec![],
+            None,
+        );
     }
 
     fn apply_energy(&mut self) {

@@ -436,6 +436,65 @@ fn thirst_rises_without_a_command_and_the_brook_eases_it() {
 }
 
 #[test]
+fn thirst_and_hunger_are_first_person_for_that_body() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+    let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+    for _ in 0..25 {
+        world.step(&[]);
+    }
+    assert_eq!(world.observe(near).unwrap().self_info.thirst, "thirsty");
+    assert_eq!(world.observe(near).unwrap().self_info.hunger, "hungry");
+    let near_look = world.observe(near).unwrap();
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "Thirst is in your mouth."));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "Hunger is in your stomach."));
+    assert!(near_look.events.iter().all(|event| {
+        !event.text.contains("Near's") && !event.text.contains("Thirst is in Near")
+    }));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "Thirst is in Seen's mouth."));
+    assert!(near_look
+        .events
+        .iter()
+        .any(|event| event.text == "Hunger is in Seen's stomach."));
+    let seen_look = world.observe(seen).unwrap();
+    assert!(seen_look
+        .events
+        .iter()
+        .any(|event| event.text == "Thirst is in your mouth."));
+    assert!(seen_look
+        .events
+        .iter()
+        .any(|event| event.text == "Thirst is in Near's mouth."));
+    assert!(seen_look
+        .events
+        .iter()
+        .all(|event| !event.text.contains("Seen's")));
+    let quiet_look = world.observe(quiet).unwrap();
+    assert!(quiet_look
+        .events
+        .iter()
+        .any(|event| event.text == "Thirst is in your mouth."));
+    assert!(quiet_look
+        .events
+        .iter()
+        .any(|event| event.text == "Hunger is in your stomach."));
+    assert!(quiet_look
+        .events
+        .iter()
+        .all(|event| { !event.text.contains("Near") && !event.text.contains("Seen") }));
+}
+
+#[test]
 fn hunger_rises_without_a_command_and_a_fire_cooks_berries() {
     let mut world = world_at(1_000);
     let sera = world.spawn_at("Sera", "s", 6, 1).unwrap();
