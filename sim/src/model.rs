@@ -1686,6 +1686,11 @@ const PITCH_LOOK_TICKS: u8 = 3;
 pub(crate) const DRY_WORM_CARVE: &str =
     "Worms are in the dry ground here. Carve an antler into an antler pick to dig them.";
 
+/// Look on that same ground when an antler pick is in the hands or at the feet.
+/// A dig that does not hold the pick still says [`DRY_WORM_CARVE`].
+pub(crate) const DRY_WORM_DIG: &str =
+    "Worms are in the dry ground here. Dig them with the antler pick.";
+
 impl World {
     pub fn valley(tuning: Tuning, seed: u64) -> Self {
         let mut cells = Vec::with_capacity((WIDTH * HEIGHT) as usize);
@@ -25789,7 +25794,10 @@ mod worms {
 
         world.mint_item(Material::Pick, 0, cell, Some(near), Role::Loose);
         let held = world.observe(near).unwrap().text;
-        assert!(held.contains(DRY_WORM_CARVE), "{held}");
+        assert!(held.contains(DRY_WORM_DIG), "{held}");
+        assert!(!held.contains(DRY_WORM_CARVE), "{held}");
+        assert!(!says(&world, near, DRY_WORM_DIG));
+        assert!(!says(&world, quiet, DRY_WORM_DIG));
         let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Worm))]);
         assert_eq!(
             dug.results[0].message,
@@ -28004,11 +28012,9 @@ mod antler_pick {
             }
         }
         assert!(returned);
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .text
-            .contains("Worms are in the dry ground here."));
+        let back = world.observe(near).unwrap().text;
+        assert!(back.contains(super::DRY_WORM_DIG), "{back}");
+        assert!(!back.contains(super::DRY_WORM_CARVE), "{back}");
         assert!(world
             .observe(seen)
             .unwrap()
@@ -28017,6 +28023,11 @@ mod antler_pick {
 
         let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Pick))]);
         assert!(dropped.results[0].success);
+        let feet = world.observe(near).unwrap().text;
+        assert!(feet.contains(super::DRY_WORM_DIG), "{feet}");
+        assert!(!feet.contains(super::DRY_WORM_CARVE), "{feet}");
+        assert!(!says(&world, near, super::DRY_WORM_DIG));
+        assert!(!says(&world, seen, super::DRY_WORM_DIG));
         let hands = world.step(&[intent("hands", near, Attempt::Gather(Material::Worm))]);
         assert_eq!(hands.results[0].message, super::DRY_WORM_CARVE);
         assert!(!says(&world, near, super::DRY_WORM_CARVE));

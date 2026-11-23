@@ -1519,7 +1519,14 @@ impl World {
         } else if self.dry_worm_returns_at.contains_key(&actor.cell) {
             parts.push("The dry ground here has no worms.".into());
         } else if self.dry_worm_claim(actor.id, actor.cell) {
-            parts.push(crate::model::DRY_WORM_CARVE.into());
+            // The carve line is how you get a pick. Once one is in the hands
+            // or lying at the feet, the same ground names the dig.
+            let at_the_feet = !self.ground_ids(actor.cell, Material::Pick).is_empty();
+            if self.has_antler_pick(actor.id) || at_the_feet {
+                parts.push(crate::model::DRY_WORM_DIG.into());
+            } else {
+                parts.push(crate::model::DRY_WORM_CARVE.into());
+            }
         }
         if self.pile_count(actor.cell, Material::Mint) > 0
             || !self.ground_ids(actor.cell, Material::Mint).is_empty()
