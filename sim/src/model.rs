@@ -11997,6 +11997,10 @@ mod wolf {
         }
         world.leave_fresh_tracks(left);
         world.leave_fresh_tracks(stood);
+        let north = super::cell_id(2, 3).unwrap();
+        world.tracks.insert(north);
+        world.tracks.insert(left);
+        world.tracks.insert(stood);
         let look = world.observe(near).unwrap();
         let tracks = "Deer tracks mark the ground one cell north and two cells east.";
         assert!(look.text.contains(tracks), "{}", look.text);
@@ -12009,6 +12013,21 @@ mod wolf {
         assert!(!look
             .text
             .contains("Deer tracks mark the ground to the north and east."));
+        assert!(
+            !look.text.contains("North: valley floor, hoofprints"),
+            "{}",
+            look.text
+        );
+        assert!(!look.map.contains('"'), "{}", look.map);
+        assert!(look
+            .visible_cells
+            .iter()
+            .any(|cell| cell.x == 4 && cell.y == 3 && cell.deer && cell.tracks));
+        assert!(look
+            .visible_cells
+            .iter()
+            .filter(|cell| (cell.x, cell.y) == (2, 3) || (cell.x, cell.y) == (3, 3))
+            .all(|cell| !cell.tracks));
         assert!(look.events.iter().all(|event| event.text != tracks));
         assert!(!world.observe(quiet).unwrap().text.contains("Deer tracks"));
     }

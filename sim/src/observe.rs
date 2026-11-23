@@ -166,7 +166,7 @@ impl World {
             visible_cells: self
                 .visible_cell_ids(actor_id)
                 .into_iter()
-                .map(|cell| self.cell_view(cell))
+                .map(|cell| self.cell_view(actor_id, cell))
                 .collect(),
             events: self.recent_events(actor_id),
             allowed_actions: self.allowed_actions(actor_id),
@@ -6890,7 +6890,7 @@ impl World {
         {
             bits.push("a deer".into());
         }
-        if self.tracks.contains(&dest) {
+        if self.map_hoofprints(viewer, dest) {
             bits.push("hoofprints".into());
         }
         if self.otter.as_ref().is_some_and(|otter| otter.cell == dest) {
@@ -11202,7 +11202,7 @@ impl World {
                 let [left, right] = self.glyph(viewer, id);
                 line.push(left);
                 line.push(right);
-                if left != '?' && self.content_marks(id).len() > 1 {
+                if left != '?' && self.content_marks(viewer, id).len() > 1 {
                     line.push('+');
                 } else {
                     line.push(' ');
@@ -11222,7 +11222,11 @@ impl World {
             return ['?', '?'];
         }
         let terrain = self.terrain_char(cell);
-        let content = self.content_marks(cell).first().copied().unwrap_or(' ');
+        let content = self
+            .content_marks(viewer, cell)
+            .first()
+            .copied()
+            .unwrap_or(' ');
         let viewer_here = self.actor(viewer).map(|a| a.cell) == Some(cell);
         let others = self
             .actors
@@ -11260,7 +11264,31 @@ impl World {
 
     /// One letter for the cell, in the same order as before. Later marks are
     /// present but not drawn. The map adds `+` when this list is longer than one.
-    fn content_marks(&self, cell: CellId) -> Vec<char> {
+    /// Hoofprints on the map and the compass. While look counts the cells to
+    /// a deer still in sight, only that cell keeps the mark. Older cells the
+    /// deer has left stay off the map.
+    fn map_hoofprints(&self, viewer: ActorId, cell: CellId) -> bool {
+        if !self.tracks.contains(&cell) {
+            return false;
+        }
+        match self.counted_deer_cell(viewer) {
+            Some(deer) => cell == deer,
+            None => true,
+        }
+    }
+
+    fn counted_deer_cell(&self, viewer: ActorId) -> Option<CellId> {
+        let origin = self.actor(viewer)?.cell;
+        let deer = self.deer.as_ref()?.cell;
+        if chebyshev(origin, deer) > self.tuning.sight {
+            return None;
+        }
+        self.deer_look_line(viewer)
+            .filter(|line| line.contains("cell"))
+            .map(|_| deer)
+    }
+
+    fn content_marks(&self, viewer: ActorId, cell: CellId) -> Vec<char> {
         let mut marks = Vec::new();
         if self.fire_at(cell).is_some() {
             marks.push('*');
@@ -11421,7 +11449,7 @@ impl World {
         {
             marks.push('j');
         }
-        if self.tracks.contains(&cell) {
+        if self.map_hoofprints(viewer, cell) {
             marks.push('"');
         }
         marks
@@ -11440,7 +11468,7 @@ impl World {
             .max()
     }
 
-    fn cell_view(&self, cell: CellId) -> CellView {
+    fn cell_view(&self, viewer: ActorId, cell: CellId) -> CellView {
         let place = self.cell(cell);
         let (x, y) = cell_xy(cell);
         let loose_branches: Vec<u32> = self
@@ -11561,7 +11589,7 @@ impl World {
             frame: frame.into(),
             actors,
             deer: self.deer.as_ref().is_some_and(|deer| deer.cell == cell),
-            tracks: self.tracks.contains(&cell),
+            tracks: self.map_hoofprints(viewer, cell),
         }
     }
 
