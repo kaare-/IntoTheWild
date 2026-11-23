@@ -11398,6 +11398,9 @@ impl World {
         if self.sees_deer_on_hoofprints(viewer) {
             legend.push_str("\nd\" deer on hoofprints");
         }
+        if self.sees_frozen_still(viewer) {
+            legend = legend.replace("= still water", "= frozen still");
+        }
         if self.sees_frozen_still_with_a_hole(viewer) {
             legend.push_str("\n=l frozen still with a hole");
         }
@@ -11412,6 +11415,13 @@ impl World {
         self.fires
             .values()
             .any(|fire| chebyshev(origin, fire.cell) <= self.tuning.sight)
+    }
+
+    /// Frozen still water inside sight. The key names `=` as frozen still.
+    fn sees_frozen_still(&self, viewer: ActorId) -> bool {
+        self.visible_cell_ids(viewer)
+            .into_iter()
+            .any(|cell| self.terrain_char(cell) == '=' && self.still_frozen(cell))
     }
 
     /// Frozen still water with an open hole, inside sight. The map keeps `=`

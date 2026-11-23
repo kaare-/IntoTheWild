@@ -22939,6 +22939,37 @@ mod cattail {
                 .all(|event| { event.text != "Ice covers the cattail roots." }));
         }
         assert!(world.pile_count(world.actor(near).unwrap().cell, Material::Cattail) > 0);
+        let iced_key = world.observe(near).unwrap();
+        assert!(
+            iced_key.legend.contains("= frozen still"),
+            "{}",
+            iced_key.legend
+        );
+        assert!(
+            !iced_key.legend.contains("= still water"),
+            "{}",
+            iced_key.legend
+        );
+        assert!(!iced_key.legend.contains("=l frozen still with a hole"));
+        assert!(iced_key
+            .events
+            .iter()
+            .all(|event| !event.text.contains("= frozen still")));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .legend
+            .contains("= frozen still"));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .legend
+            .contains("= still water"));
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .legend
+            .contains("frozen still"));
         assert!(world.observe(near).unwrap().map.contains("@="));
         assert!(!world.observe(near).unwrap().map.contains('l'));
         world.mint_item(
@@ -22959,6 +22990,8 @@ mod cattail {
         ));
         assert!(!holed.text.contains("The roots cannot be dug."));
         assert!(holed.map.contains("@=l"), "{}", holed.map);
+        assert!(holed.legend.contains("= frozen still"), "{}", holed.legend);
+        assert!(!holed.legend.contains("= still water"), "{}", holed.legend);
         assert!(holed.legend.contains("=l frozen still with a hole"));
         assert!(world
             .observe(near)

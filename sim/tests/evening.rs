@@ -3164,6 +3164,23 @@ fn a_hearer_gets_the_crack_when_the_still_pool_freezes() {
         .collect();
     assert_eq!(feet.len(), 1);
     assert_eq!(feet[0].time, 12);
+    assert!(
+        standing.legend.contains("= frozen still"),
+        "{}",
+        standing.legend
+    );
+    assert!(!standing.legend.contains("= still water"));
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .legend
+        .contains("= frozen still"));
+    assert!(world
+        .observe(west)
+        .unwrap()
+        .legend
+        .contains("= still water"));
+    assert!(!world.observe(west).unwrap().legend.contains("frozen still"));
     let seen = world.observe(far).unwrap();
     assert!(seen
         .text
@@ -3208,11 +3225,10 @@ fn a_hearer_gets_the_crack_when_the_still_pool_freezes() {
     while world.sim_time() < dawn {
         world.step(&[]);
     }
-    assert!(world
-        .observe(near)
-        .unwrap()
-        .text
-        .contains("The day has thawed the still water."));
+    let thawed = world.observe(near).unwrap();
+    assert!(thawed.text.contains("The day has thawed the still water."));
+    assert!(thawed.legend.contains("= still water"), "{}", thawed.legend);
+    assert!(!thawed.legend.contains("= frozen still"));
     assert!(world
         .observe(west)
         .unwrap()
