@@ -438,6 +438,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                     true
                 }
                 Attempt::Gather(Material::Onion) if !result.success => true,
+                Attempt::Move(_) if result.success => true,
                 _ => false,
             };
             if !spoken {
@@ -1281,6 +1282,101 @@ mod tests {
             .all(|event| !event.text.contains("mat") && !event.text.contains("rest")));
         assert!(host.replies_for(&seen.token).is_empty());
         assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_walk_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-walk-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let queued = host.submit(&near.token, "south", "south", None);
+        assert!(
+            queued.message.starts_with("Queued for the window"),
+            "{}",
+            queued.message
+        );
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, "You walk south.");
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        assert_eq!(closed.replies[0].command_id, "south");
+        let yours = host.observe(&near.token).unwrap();
+        assert_eq!((yours.self_info.x, yours.self_info.y), (4, 4));
+        assert!(yours.events.iter().all(|event| {
+            event.text != "You walk south." && event.text != "Near walks south."
+        }));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near walks south."));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near walks south."));
+        for (n, id) in (0..5).zip(["w1", "w2", "w3", "w4", "w5"]) {
+            let queued = host.submit(&quiet.token, id, "west", None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{}",
+                queued.message
+            );
+            let closed = host.advance(1).unwrap();
+            let expected = if n == 4 {
+                "You wade west."
+            } else {
+                "You walk west."
+            };
+            assert_eq!(closed.replies[0].message, expected, "{:?}", closed.replies);
+            assert!(host.observe(&quiet.token).unwrap().events.iter().all(
+                |event| {
+                    event.text != expected
+                        && event.text != "Quiet walks west."
+                        && event.text != "Quiet wades west."
+                }
+            ));
+        }
+        let quiet_at = host.observe(&quiet.token).unwrap();
+        assert_eq!((quiet_at.self_info.x, quiet_at.self_info.y), (0, 3));
+        host.submit(&near.token, "west", "west", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, "You walk west.");
+        assert!(host.observe(&near.token).unwrap().events.iter().all(
+            |event| event.text != "You walk west." && event.text != "Near walks west."
+        ));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near walks west."));
+        let heard = host.observe(&quiet.token).unwrap();
+        assert!(heard
+            .events
+            .iter()
+            .any(|event| event.text == "You hear footsteps to the south and east."));
+        assert!(heard
+            .events
+            .iter()
+            .all(|event| event.text != "Near walks west."));
         assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);
         let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
