@@ -15466,28 +15466,12 @@ impl World {
         (text, "")
     }
 
-    /// The open wood south of the outside floor, named from whoever hears it.
+    /// Where a snap or a rot is heard from. The stored event has no place.
+    /// Each listener gets the cells from their own square toward that sound.
     fn event_place(&self, origin: CellId, cell: CellId, time: u64) -> String {
         let weather = self.weather_at(cell, time);
         if origin == cell {
             return format!("here, {weather}");
-        }
-        if let Some(floors) = self.named_wood_floors() {
-            if cell == floors.wood {
-                if self.cell(origin).rock {
-                    let (x, y) = cell_xy(floors.wood);
-                    let side = cell_id(x, y - 1)
-                        .and_then(|outside| orthogonal_step(outside, floors.wood))
-                        .unwrap_or("south");
-                    if self.open_loose_branches(cell) {
-                        return format!(
-                            "on the rotting wood, the next square {side} of the outside floor, {weather}"
-                        );
-                    }
-                    return format!("on the next square {side} of the outside floor, {weather}");
-                }
-                return format!("east of the west floor, {weather}");
-            }
         }
         format!("{}, {weather}", self.cell_offset(origin, cell))
     }
@@ -15500,11 +15484,6 @@ impl World {
         } else {
             "in the open"
         }
-    }
-
-    fn named_wood_floors(&self) -> Option<FloorsOffWood> {
-        self.floors_off_the_rotting_wood()
-            .or_else(|| self.tracked_wood_floors())
     }
 
     /// The same square after the pile is gone. The tracks still mark it.

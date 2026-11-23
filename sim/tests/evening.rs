@@ -2116,7 +2116,7 @@ fn open_branches_rot_on_the_clock_and_shelter_keeps_them() {
     assert_eq!(rock.branch_pile, 3);
     assert!(seen.events.iter().any(|event| {
         event.text
-            == "A branch rots away east of the west floor, in the open. You hear branches breaking."
+            == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
     }));
     let far = world.observe(otto).unwrap();
     assert!(far.events.iter().all(|event| !event.text.contains("rots")));
@@ -2187,7 +2187,7 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let brush = world.observe(sera).unwrap();
     assert!(brush.events.iter().any(|event| {
         event.text
-            == "A deer steps east. A branch snapped under the deer east of the west floor, in the open."
+            == "A deer steps east. A branch snapped under the deer one cell north and one cell east, in the open."
     }));
     assert_eq!(
         brush
@@ -2232,12 +2232,12 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
     let rotted = world.observe(sera).unwrap();
     assert!(rotted.events.iter().any(|event| {
         event.text
-            == "A branch rots away east of the west floor, in the open. You hear branches breaking."
+            == "A branch rots away one cell north and one cell east, in the open. You hear branches breaking."
     }));
     let under = world.spawn_at("Under", "u", 6, 1).unwrap();
     assert!(world.observe(under).unwrap().events.iter().any(|event| {
         event.text
-            == "A branch rots away on the rotting wood, the next square south of the outside floor, in the open. You hear branches breaking."
+            == "A branch rots away one cell south and one cell west, in the open. You hear branches breaking."
     }));
     let on_it = world.spawn_at("On", "on", 5, 2).unwrap();
     assert!(world.observe(on_it).unwrap().events.iter().any(|event| {
@@ -2323,6 +2323,85 @@ fn breaking_branches_are_heard_nearby_and_not_far_off() {
         .events
         .iter()
         .all(|event| !event.text.contains("branches breaking")));
+}
+
+#[test]
+fn one_snap_points_each_listener_toward_the_wood() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+    let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+    let far = world.spawn_at("Far", "f", 0, 4).unwrap();
+    for _ in 0..4 {
+        world.step(&[]);
+    }
+    assert_eq!(world.deer_cell(), Some((5, 2)));
+    let snap = |actor| {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|event| event.text.contains("A branch snapped under the deer"))
+            .unwrap()
+    };
+    let near_snap = snap(near);
+    let seen_snap = snap(seen);
+    let quiet_snap = snap(quiet);
+    assert_eq!(near_snap.id, seen_snap.id);
+    assert_eq!(seen_snap.id, quiet_snap.id);
+    assert_eq!(near_snap.time, 3);
+    assert_eq!(
+        near_snap.text,
+        "A deer steps east. A branch snapped under the deer one cell south and one cell west, in the open."
+    );
+    assert_eq!(
+        seen_snap.text,
+        "A deer steps east. A branch snapped under the deer one cell north and two cells east, in the open."
+    );
+    assert_eq!(
+        quiet_snap.text,
+        "A deer steps east. A branch snapped under the deer one cell north, in the open."
+    );
+    assert!(world.observe(far).unwrap().events.iter().all(|event| {
+        !event.text.contains("snapped") && !event.text.contains("branches breaking")
+    }));
+
+    while world.sim_time() < 9 {
+        world.step(&[]);
+    }
+    let rot = |actor| {
+        world
+            .observe(actor)
+            .unwrap()
+            .events
+            .into_iter()
+            .find(|event| event.time == 8 && event.text.contains("rots away"))
+            .unwrap()
+    };
+    let near_rot = rot(near);
+    let seen_rot = rot(seen);
+    let quiet_rot = rot(quiet);
+    assert_eq!(near_rot.id, seen_rot.id);
+    assert_eq!(seen_rot.id, quiet_rot.id);
+    assert_eq!(
+        near_rot.text,
+        "A branch rots away one cell south and one cell west, in the open. You hear branches breaking."
+    );
+    assert_eq!(
+        seen_rot.text,
+        "A branch rots away one cell north and two cells east, in the open. You hear branches breaking."
+    );
+    assert_eq!(
+        quiet_rot.text,
+        "A branch rots away one cell north, in the open. You hear branches breaking."
+    );
+    assert!(world
+        .observe(far)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| !event.text.contains("rots")));
 }
 
 #[test]
@@ -5027,10 +5106,9 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         snap,
-        "A deer steps east. A branch snapped under the deer east of the west floor, in the open."
+        "A deer steps east. A branch snapped under the deer one cell north and two cells east, in the open."
     );
     assert!(!snap.contains("in the rain"), "{snap}");
-    assert!(!snap.contains("cell"), "{snap}");
     let rot = far_look
         .events
         .iter()
@@ -5039,10 +5117,9 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         rot,
-        "A branch rots away east of the west floor, in the open. You hear branches breaking."
+        "A branch rots away one cell north and two cells east, in the open. You hear branches breaking."
     );
     assert!(!rot.contains("in the rain"), "{rot}");
-    assert!(!rot.contains("cell"), "{rot}");
     let rain = far_look
         .events
         .iter()
@@ -5058,11 +5135,10 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
         .unwrap_or("");
     assert_eq!(
         step_rot,
-        "The last branch rots away on the next square south of the outside floor, in the rain. You hear a branch break."
+        "The last branch rots away one cell south and one cell west, in the rain. You hear a branch break."
     );
     assert!(!step_rot.contains("branches breaking"), "{step_rot}");
     assert!(!step_rot.contains("A branch rots away"), "{step_rot}");
-    assert!(!step_rot.contains("cell"), "{step_rot}");
 }
 
 #[test]
