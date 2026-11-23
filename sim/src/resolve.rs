@@ -257,6 +257,9 @@ impl World {
                         && message == "You are already carrying a bark basket.";
                     // No basket, nothing to put, or a full basket is the reply only.
                     let put_in_basket_miss = matches!(intent.attempt, Attempt::PutInBasket(_));
+                    // No bark basket in the arms is the reply only.
+                    let basket_drop_miss =
+                        matches!(intent.attempt, Attempt::Drop(Material::Basket));
                     // An empty pile, with no step named, is the reply only.
                     // A weave that finds the arms full is the same.
                     let empty_pile = matches!(intent.attempt, Attempt::Gather(_))
@@ -292,6 +295,7 @@ impl World {
                             && !full_arms_gather
                             && !basket_gather_miss
                             && !put_in_basket_miss
+                            && !basket_drop_miss
                             && !empty_pile
                             && !full_arms_weave;
                     failures.push((intent, message, personal));
