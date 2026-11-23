@@ -11166,17 +11166,22 @@ impl World {
     /// `* fire` stays in the key only when a fire cell is inside sight,
     /// so the star is on the map. Smoke past sight does not add it.
     fn legend_for(&self, viewer: ActorId) -> String {
-        if self.sees_a_fire_cell(viewer) {
-            return LEGEND.to_string();
+        let mut legend = if self.sees_a_fire_cell(viewer) {
+            LEGEND.to_string()
+        } else {
+            LEGEND
+                .lines()
+                .map(|line| match line.trim_end().strip_suffix("* fire") {
+                    Some(kept) => kept.trim_end().to_string(),
+                    None => line.to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        if self.sees_deer_on_hoofprints(viewer) {
+            legend.push_str("\nd\" deer on hoofprints");
         }
-        LEGEND
-            .lines()
-            .map(|line| match line.trim_end().strip_suffix("* fire") {
-                Some(kept) => kept.trim_end().to_string(),
-                None => line.to_string(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        legend
     }
 
     /// A fire on a cell this person can see. The map draws the star there.
@@ -11187,6 +11192,14 @@ impl World {
         self.fires
             .values()
             .any(|fire| chebyshev(origin, fire.cell) <= self.tuning.sight)
+    }
+
+    /// A deer standing on hoofprints this person can see. The map draws `d"`.
+    fn sees_deer_on_hoofprints(&self, viewer: ActorId) -> bool {
+        self.visible_cell_ids(viewer).into_iter().any(|cell| {
+            let marks = self.content_marks(viewer, cell);
+            marks.first() == Some(&'d') && marks.contains(&'"')
+        })
     }
 
     fn map_string(&self, viewer: ActorId) -> String {
@@ -11202,8 +11215,10 @@ impl World {
                 let [left, right] = self.glyph(viewer, id);
                 line.push(left);
                 line.push(right);
-                if left != '?' && self.content_marks(viewer, id).len() > 1 {
-                    line.push('+');
+                let marks = self.content_marks(viewer, id);
+                if left != '?' && marks.len() > 1 {
+                    let deer_on_tracks = marks.first() == Some(&'d') && marks.contains(&'"');
+                    line.push(if deer_on_tracks { '"' } else { '+' });
                 } else {
                     line.push(' ');
                 }

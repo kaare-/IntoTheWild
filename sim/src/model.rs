@@ -12018,7 +12018,19 @@ mod wolf {
             "{}",
             look.text
         );
-        assert!(!look.map.contains('"'), "{}", look.map);
+        assert_eq!(map_cell(&look.map, 4, 3), ".d\"", "{}", look.map);
+        assert!(!map_cell(&look.map, 2, 3).contains('"'), "{}", look.map);
+        assert!(!map_cell(&look.map, 3, 3).contains('"'), "{}", look.map);
+        assert!(
+            look.legend.contains("d\" deer on hoofprints"),
+            "{}",
+            look.legend
+        );
+        assert!(!world
+            .observe(quiet)
+            .unwrap()
+            .legend
+            .contains("deer on hoofprints"));
         assert!(look
             .visible_cells
             .iter()
@@ -12030,6 +12042,12 @@ mod wolf {
             .all(|cell| !cell.tracks));
         assert!(look.events.iter().all(|event| event.text != tracks));
         assert!(!world.observe(quiet).unwrap().text.contains("Deer tracks"));
+
+        fn map_cell(map: &str, x: i32, y: i32) -> String {
+            let row = map.lines().nth((y + 1) as usize).unwrap_or("");
+            let start = 2 + (x as usize) * 3;
+            row.get(start..start + 3).unwrap_or("").to_string()
+        }
     }
 
     fn intent(id: &str, actor: u32, attempt: super::Attempt) -> super::Intent {
