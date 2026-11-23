@@ -391,14 +391,14 @@ fn thirst_rises_without_a_command_and_the_brook_eases_it() {
         "raw thirst stays off the observation"
     );
 
-    world.step(&[cmd("away", otto, Attempt::Drink)]);
-    let refused = world
+    let away = world.step(&[cmd("away", otto, Attempt::Drink)]);
+    assert_eq!(away.results[0].message, "The brook is not here.");
+    assert!(world
         .observe(otto)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text.contains("brook is not here"));
-    assert!(refused, "otto is not standing in the brook");
+        .all(|event| event.text != "The brook is not here."));
     assert_eq!(world.observe(otto).unwrap().self_info.thirst, "thirsty");
 
     let sip = world.step(&[cmd("sip", sera, Attempt::Drink)]);
@@ -2946,7 +2946,7 @@ fn the_still_pool_freezes_at_tick_twelve_and_the_refusal_stays_private() {
             .iter()
             .filter(|event| event.text == "The still water is frozen.")
             .count(),
-        2
+        1
     );
     for witness in [far, west] {
         assert!(world
@@ -4729,7 +4729,7 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
     assert!(frozen
         .events
         .iter()
-        .any(|event| event.text.contains("The still water is frozen.")));
+        .all(|event| event.text != "The still water is frozen."));
     assert_eq!(frozen.self_info.illness, "well");
     assert!(frozen.visible_cells.iter().any(|cell| cell.frozen));
     let otto = pool.spawn_at("Otto", "o", 0, 1).unwrap();
@@ -4757,13 +4757,19 @@ fn poison_berries_are_not_food_and_still_water_freezes() {
         thaw.step(&[cmd(&format!("west-{n}"), sera, Attempt::Move(Dir::West))]);
     }
     assert_eq!(thaw.actor_cell(sera), Some((2, 1)));
-    thaw.step(&[cmd("ice", sera, Attempt::Drink)]);
+    let iced = thaw.step(&[cmd("ice", sera, Attempt::Drink)]);
+    assert_eq!(iced.results[0].message, "The still water is frozen.");
     assert!(thaw
         .observe(sera)
         .unwrap()
         .events
         .iter()
-        .any(|event| event.text.contains("frozen")));
+        .all(|event| event.text != "The still water is frozen."));
+    assert!(thaw
+        .observe(sera)
+        .unwrap()
+        .text
+        .contains("The still water is frozen."));
     thaw.step(&[cmd("light", sera, Attempt::Light)]);
     let thawed = thaw.step(&[cmd("thaw", sera, Attempt::Drink)]);
     assert!(

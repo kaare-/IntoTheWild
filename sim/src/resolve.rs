@@ -221,6 +221,8 @@ impl World {
                         matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
                     // No sweet berries on this ground is the reply only.
                     let berry_eat_refusal = matches!(intent.attempt, Attempt::Eat(Material::Berry));
+                    // No brook here, or ice on the still, is the reply only.
+                    let drink_refusal = matches!(intent.attempt, Attempt::Drink);
                     // A roast miss is the reply only. A cook with no fire here is
                     // the same, including the step when a fire burns next door.
                     let roast_refusal = matches!(intent.attempt, Attempt::Roast);
@@ -259,6 +261,7 @@ impl World {
                             && !torch_refusal
                             && !mushroom_eat_refusal
                             && !berry_eat_refusal
+                            && !drink_refusal
                             && !roast_refusal
                             && !cook_fire_refusal
                             && !hammer_refusal
@@ -13669,8 +13672,13 @@ impl World {
                 );
                 continue;
             }
+            // The bank beside the brook is that same running water, and it
+            // does not roll the sickness of the still or of a wade in the brook.
+            let on_bank = !self.water_here(actor.cell);
             let chance = if still {
                 self.tuning.still_chance
+            } else if on_bank {
+                0
             } else {
                 self.tuning.illness_chance
             };

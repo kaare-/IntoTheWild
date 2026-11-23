@@ -15672,7 +15672,7 @@ mod bank_drink {
         let missed = world.step(&[intent("away", inland, Attempt::Drink)]);
         assert_eq!(missed.results[0].message, "The brook is not here.");
         assert!(!missed.results[0].success);
-        for person in [seen, quiet, near] {
+        for person in [seen, quiet, near, inland] {
             assert!(world
                 .observe(person)
                 .unwrap()
@@ -15680,6 +15680,58 @@ mod bank_drink {
                 .iter()
                 .all(|event| { event.text != "The brook is not here." }));
         }
+    }
+
+    #[test]
+    fn a_drink_on_the_clay_bank_does_not_turn_the_stomach() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        world.tuning.illness_chance = 1000;
+        world.tuning.still_chance = 1000;
+        let near = world.spawn_at("Near", "n", 2, 2).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 1).unwrap();
+        world.actors.get_mut(&near).unwrap().thirst = world.tuning.thirsty_at;
+        let drank = world.step(&[intent("sip", near, Attempt::Drink)]);
+        assert_eq!(
+            drank.results[0].message,
+            "You drink from the brook. The thirst eases."
+        );
+        assert!(drank.results[0].success);
+        let body = world.observe(near).unwrap();
+        assert_eq!(body.self_info.illness, "well");
+        assert!(body.events.iter().all(|event| {
+            !event.text.contains("stomach") && !event.text.contains("Near drinks")
+        }));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == "Near drinks from the brook."));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("drinks") && !event.text.contains("stomach") }));
+
+        world.actors.get_mut(&near).unwrap().cell = cell_id(1, 2).unwrap();
+        world.actors.get_mut(&near).unwrap().thirst = world.tuning.thirsty_at;
+        let running = world.step(&[intent("wade", near, Attempt::Drink)]);
+        assert_eq!(
+            running.results[0].message,
+            "You drink from the brook. The thirst eases. Your stomach turns."
+        );
+        assert_eq!(world.observe(near).unwrap().self_info.illness, "ill");
+
+        let pool = world.spawn_at("Pool", "p", 2, 1).unwrap();
+        world.actors.get_mut(&pool).unwrap().thirst = world.tuning.thirsty_at;
+        let still = world.step(&[intent("pool", pool, Attempt::Drink)]);
+        assert_eq!(
+            still.results[0].message,
+            "You drink the still water. The thirst eases. Your stomach turns."
+        );
+        assert_eq!(world.observe(pool).unwrap().self_info.illness, "ill");
     }
 }
 
