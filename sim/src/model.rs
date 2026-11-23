@@ -14377,6 +14377,21 @@ mod bark_return {
             crate::parse::parse_attempt("get basket"),
             Ok(Attempt::Gather(Material::Basket))
         );
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Basket))]);
+        assert_eq!(
+            again.results[0].message,
+            "You are already carrying a bark basket."
+        );
+        assert!(!again.results[0].success);
+        let carrying = "You are already carrying a bark basket.";
+        for id in [near, seen, quiet] {
+            assert!(world
+                .observe(id)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != carrying));
+        }
     }
 }
 

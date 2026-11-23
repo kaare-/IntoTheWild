@@ -400,6 +400,13 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 {
                     true
                 }
+                Attempt::Gather(_)
+                    if !result.success
+                        && (result.message == "There is no basket here to gather."
+                            || result.message == "You are already carrying a bark basket.") =>
+                {
+                    true
+                }
                 _ => false,
             };
             if !spoken {
@@ -584,6 +591,71 @@ mod tests {
             let look = host.observe(token).unwrap();
             assert!(
                 look.events.iter().all(|event| event.text != full),
+                "{:?}",
+                look.events
+            );
+        }
+        assert!(host.replies_for(&seen.token).is_empty());
+        assert_eq!(host.replies_for(&near.token).len(), 1);
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_missed_basket_gather_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-basket-miss-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        for (id, line) in [("e1", "e"), ("e2", "e"), ("n1", "n"), ("n2", "n")] {
+            let queued = host.submit(&near.token, id, line, None);
+            assert!(
+                queued.message.starts_with("Queued for the window"),
+                "{}",
+                queued.message
+            );
+            host.advance(1).unwrap();
+        }
+        let none = "There is no basket here to gather.";
+        let queued = host.submit(&near.token, "none", "gather basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, none);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let wove = host.submit(&near.token, "weave", "weave basket", None);
+        assert!(!wove.immediate, "{}", wove.message);
+        host.advance(1).unwrap();
+        let carrying = "You are already carrying a bark basket.";
+        let queued = host.submit(&near.token, "again", "gather basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, carrying);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        assert_eq!(closed.replies[0].command_id, "again");
+        let again = host.submit(&near.token, "again", "gather basket", None);
+        assert!(again.duplicate);
+        assert_eq!(again.message, carrying);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let look = host.observe(token).unwrap();
+            assert!(
+                look.events
+                    .iter()
+                    .all(|event| event.text != none && event.text != carrying),
                 "{:?}",
                 look.events
             );

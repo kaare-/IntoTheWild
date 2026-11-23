@@ -251,6 +251,9 @@ impl World {
                     // A gather that finds the arms full is the reply only.
                     let full_arms_gather =
                         matches!(intent.attempt, Attempt::Gather(_)) && message == ARMS_FULL;
+                    // No bark basket here, or one already in the arms, is the reply only.
+                    let basket_gather_miss = matches!(intent.attempt, Attempt::Gather(_))
+                        && message == "You are already carrying a bark basket.";
                     // An empty pile, with no step named, is the reply only.
                     // A weave that finds the arms full is the same.
                     let empty_pile = matches!(intent.attempt, Attempt::Gather(_))
@@ -284,6 +287,7 @@ impl World {
                             && !dry_dig_refusal
                             && !pitch_refusal
                             && !full_arms_gather
+                            && !basket_gather_miss
                             && !empty_pile
                             && !full_arms_weave;
                     failures.push((intent, message, personal));
@@ -2456,6 +2460,13 @@ impl World {
                         *material,
                         "There are no eggs here to gather.".to_string(),
                     ));
+                } else if *material == Material::Basket
+                    && self.pile_count(actor.cell, Material::Basket) == 0
+                    && self.ground_ids(actor.cell, Material::Basket).is_empty()
+                    && !self.loose_ids(actor.id, Material::Basket).is_empty()
+                    && self.gather_step_cue(actor.cell, Material::Basket).is_none()
+                {
+                    return Err("You are already carrying a bark basket.".into());
                 } else if self.pile_count(actor.cell, *material) == 0
                     && (!matches!(
                         *material,
