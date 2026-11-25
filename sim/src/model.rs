@@ -22421,12 +22421,22 @@ mod charcoal_bank {
             }
             assert_eq!(world.actor(near).unwrap().cell, rock);
         };
-        says(
-            &mut world,
+        let ore = world.step(&[intent(
             "ore",
+            near,
             Attempt::Gather(Material::IronOre),
-            "There is no iron ore here to gather. Step north and west.",
-        );
+        )]);
+        let ore_step = "There is no iron ore here to gather. Step north and west.";
+        assert_eq!(ore.results[0].message, ore_step);
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != ore_step));
+        }
+        assert_eq!(world.actor(near).unwrap().cell, rock);
         says(
             &mut world,
             "fire",
@@ -25715,12 +25725,15 @@ mod gather_step {
             beside.results[0].message,
             "There is no willow here to gather. Step west."
         );
-        assert!(world
-            .observe(near)
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| { event.text == "There is no willow here to gather. Step west." }));
+        let willow_step = "There is no willow here to gather. Step west.";
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != willow_step));
+        }
         for person in [seen, quiet] {
             assert!(world
                 .observe(person)
@@ -25822,6 +25835,26 @@ mod gather_step {
     }
 
     #[test]
+    fn pale_berries_one_cell_off_are_the_reply_only() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 0, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 6, 4).unwrap();
+        let step = "There is no pale berry here to gather. Step east.";
+        let miss = world.step(&[intent("pale", near, Attempt::Gather(Material::PaleBerry))]);
+        assert_eq!(miss.results[0].message, step);
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (0, 4));
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != step));
+        }
+    }
+
+    #[test]
     fn flint_and_worms_one_cell_off_name_the_step() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 3, 1).unwrap();
@@ -25834,9 +25867,13 @@ mod gather_step {
             "There is no flint here to gather. Step north and east."
         );
         assert_eq!(cell_xy(world.actor(near).unwrap().cell), (3, 1));
-        assert!(world.observe(near).unwrap().events.iter().any(|event| {
-            event.text == "There is no flint here to gather. Step north and east."
-        }));
+        let flint_step = "There is no flint here to gather. Step north and east.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != flint_step));
         for person in [seen, quiet] {
             assert!(world.observe(person).unwrap().events.iter().all(|event| {
                 !event.text.contains("flint") && !event.text.contains("Step north")
@@ -25849,12 +25886,13 @@ mod gather_step {
             "There are no worms here to dig. Step south and west."
         );
         assert_eq!(cell_xy(world.actor(near).unwrap().cell), (3, 1));
+        let worm_step = "There are no worms here to dig. Step south and west.";
         assert!(world
             .observe(near)
             .unwrap()
             .events
             .iter()
-            .any(|event| { event.text == "There are no worms here to dig. Step south and west." }));
+            .all(|event| event.text != worm_step));
         for person in [seen, quiet] {
             assert!(world.observe(person).unwrap().events.iter().all(|event| {
                 !event.text.contains("worms") && !event.text.contains("Step south")
@@ -25891,9 +25929,13 @@ mod gather_step {
             "There is no stone here to gather. Step north and west."
         );
         assert_eq!(cell_xy(world.actor(near).unwrap().cell), (6, 1));
-        assert!(world.observe(near).unwrap().events.iter().any(|event| {
-            event.text == "There is no stone here to gather. Step north and west."
-        }));
+        let stone_step = "There is no stone here to gather. Step north and west.";
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != stone_step));
         for person in [seen, quiet] {
             assert!(world.observe(person).unwrap().events.iter().all(|event| {
                 event.text != "There is no stone here to gather. Step north and west."
@@ -26272,7 +26314,7 @@ mod mint_tea {
             .unwrap()
             .events
             .iter()
-            .any(|event| event.text == "There is no mint here to gather. Step west."));
+            .all(|event| event.text != "There is no mint here to gather. Step west."));
         assert!(world
             .observe(seen)
             .unwrap()
@@ -28332,7 +28374,7 @@ mod worms {
             again.results[0].message,
             "The damp earth here has no worms. Step south and west."
         );
-        assert!(says(
+        assert!(!says(
             &world,
             near,
             "The damp earth here has no worms. Step south and west."
@@ -28449,7 +28491,7 @@ mod worms {
         let missed = world.step(&[intent("off", near, Attempt::Gather(Material::Worm))]);
         let step = "There are no worms here to dig. Step north or west.";
         assert_eq!(missed.results[0].message, step);
-        assert!(says(&world, near, step));
+        assert!(!says(&world, near, step));
         assert!(!says(&world, quiet, step));
 
         world.mint_item(Material::Pick, 0, cell, Some(near), Role::Loose);
@@ -28490,7 +28532,7 @@ mod worms {
             missed.results[0].message,
             "The damp earth here has no worms. Step south and west."
         );
-        assert!(says(
+        assert!(!says(
             &world,
             near,
             "The damp earth here has no worms. Step south and west."

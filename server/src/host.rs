@@ -429,10 +429,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                     true
                 }
                 Attempt::Gather(_)
-                    if !result.success
-                        && result
-                            .message
-                            .starts_with("There is no bark here to gather. Step ") =>
+                    if !result.success && result.message.contains(" Step ") =>
                 {
                     true
                 }
@@ -1692,6 +1689,66 @@ mod tests {
                 .events
                 .iter()
                 .all(|event| event.text != step));
+        }
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_pale_berry_gather_one_cell_off_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-pale-step-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        for (id, line) in [
+            ("s", "south"),
+            ("w1", "west"),
+            ("w2", "west"),
+            ("w3", "west"),
+        ] {
+            host.submit(&near.token, id, line, None);
+            let closed = host.advance(1).unwrap();
+            assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+            assert!(
+                closed.replies[0].message.starts_with("You walk"),
+                "{:?}",
+                closed.replies
+            );
+        }
+        let beside = host.observe(&near.token).unwrap();
+        assert_eq!((beside.self_info.x, beside.self_info.y), (1, 4));
+        let willow = "There is no willow here to gather. Step west.";
+        host.submit(&near.token, "willow", "gather willow", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, willow);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        host.submit(&near.token, "w4", "west", None);
+        let _ = host.advance(1).unwrap();
+        let pale = "There is no pale berry here to gather. Step east.";
+        host.submit(&near.token, "pale", "gather pale berries", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, pale);
+        assert_eq!(closed.replies[0].command_id, "pale");
+        let stayed = host.observe(&near.token).unwrap();
+        assert_eq!((stayed.self_info.x, stayed.self_info.y), (0, 4));
+        for token in [&near.token, &seen.token, &quiet.token] {
+            let events = &host.observe(token).unwrap().events;
+            assert!(events.iter().all(|event| event.text != pale));
+            assert!(events.iter().all(|event| event.text != willow));
         }
         assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);

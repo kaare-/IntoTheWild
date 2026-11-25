@@ -312,10 +312,12 @@ impl World {
                     // is not also in that person's log.
                     let edge_refusal = matches!(intent.attempt, Attempt::Move(_))
                         && message == "The valley does not go that way.";
-                    // Bark one cell off is the reply only. The step sentence
-                    // is not also in that person's log.
-                    let bark_step = matches!(intent.attempt, Attempt::Gather(_))
-                        && message.starts_with("There is no bark here to gather. Step ");
+                    // A gather one cell off is the reply only. The step
+                    // sentence is not also in that person's log. Bark,
+                    // pale berries, willow, flint, and the other stocks
+                    // that name a step all do this.
+                    let gather_step = matches!(intent.attempt, Attempt::Gather(_))
+                        && message.contains(" Step ");
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -353,7 +355,7 @@ impl World {
                             && !mat_refusal
                             && !onion_gather_miss
                             && !edge_refusal
-                            && !bark_step;
+                            && !gather_step;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
