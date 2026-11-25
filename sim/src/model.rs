@@ -22961,6 +22961,110 @@ mod cattail {
     }
 
     #[test]
+    fn dropping_cattail_roots_speaks_them_as_plural() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 2, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        assert_eq!(
+            crate::parse::parse_attempt("drop cattail").unwrap(),
+            Attempt::Drop(Material::Cattail)
+        );
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(dug.results[0].message, "You gather cattail roots.");
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Cattail))]);
+        let line = "You drop cattail roots. They are in contact with the ground.";
+        let heard = "Near drops cattail roots. They are in contact with the ground.";
+        assert_eq!(dropped.results[0].message, line);
+        let here = world.observe(near).unwrap();
+        assert!(!here.text.contains("a cattail roots"), "{}", here.text);
+        assert!(here
+            .events
+            .iter()
+            .all(|event| event.text != line && event.text != heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| !event.text.contains("cattail")));
+
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Cattail))]);
+        assert!(again.results[0].success, "{}", again.results[0].message);
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Basket, 0, cell, Some(near), super::Role::Loose);
+        let put = world.step(&[intent("put", near, Attempt::PutInBasket(Material::Cattail))]);
+        assert_eq!(put.results[0].message, "You put cattail roots in the bark basket.");
+        for n in 0..4 {
+            world.mint_item(Material::Stone, n, cell, Some(near), super::Role::Loose);
+        }
+        let taken = world.step(&[intent(
+            "take",
+            near,
+            Attempt::TakeFromBasket(Material::Cattail),
+        )]);
+        let down = "You take cattail roots from the bark basket. They are in contact with the ground.";
+        let down_heard =
+            "Near takes cattail roots from the bark basket. They are in contact with the ground.";
+        assert_eq!(taken.results[0].message, down);
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != down && event.text != down_heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == down_heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != down_heard));
+
+        let stowed = world.step(&[intent("stone", near, Attempt::PutInBasket(Material::Stone))]);
+        assert!(stowed.results[0].success, "{}", stowed.results[0].message);
+        let second = world.step(&[intent("stone2", near, Attempt::PutInBasket(Material::Stone))]);
+        assert!(second.results[0].success, "{}", second.results[0].message);
+        world.mint_item(Material::Cattail, 0, cell, Some(near), super::Role::Loose);
+        let full = world.step(&[intent("full", near, Attempt::PutInBasket(Material::Cattail))]);
+        assert_eq!(
+            full.results[0].message,
+            "The bark basket is full. Cattail roots will not fit."
+        );
+        assert!(!full.results[0].success);
+        let none = world.step(&[intent(
+            "none",
+            near,
+            Attempt::TakeFromBasket(Material::Cattail),
+        )]);
+        assert_eq!(
+            none.results[0].message,
+            "There are no cattail roots in the bark basket."
+        );
+        assert!(!none.results[0].success);
+        for person in [near, seen, quiet] {
+            let look = world.observe(person).unwrap();
+            assert!(
+                !look.text.contains("a cattail roots"),
+                "{}",
+                look.text
+            );
+            assert!(look.events.iter().all(|event| !event.text.contains("a cattail roots")));
+        }
+    }
+
+    #[test]
     fn cattail_roots_are_not_reeds_and_need_cooking() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 4, 3).unwrap();

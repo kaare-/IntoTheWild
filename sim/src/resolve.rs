@@ -3063,10 +3063,14 @@ impl World {
                     return Err("A bark basket does not go into a bark basket.".into());
                 }
                 if !self.basket_put_ready(actor.id, actor.cell, *material) {
-                    return Err(format!(
-                        "There is no {} here to put in the basket.",
-                        material.gather_noun()
-                    ));
+                    return Err(if *material == Material::Cattail {
+                        "There are no cattail roots here to put in the basket.".into()
+                    } else {
+                        format!(
+                            "There is no {} here to put in the basket.",
+                            material.gather_noun()
+                        )
+                    });
                 }
                 if !self.basket_has_room(actor.id) {
                     return Err(self.basket_full_of(*material));
@@ -3084,10 +3088,14 @@ impl World {
                     return Err("A bark basket does not come out of a bark basket.".into());
                 }
                 if self.basket_held_id(actor.id, *material).is_none() {
-                    return Err(format!(
-                        "There is no {} in the bark basket.",
-                        material.gather_noun()
-                    ));
+                    return Err(if *material == Material::Cattail {
+                        "There are no cattail roots in the bark basket.".into()
+                    } else {
+                        format!(
+                            "There is no {} in the bark basket.",
+                            material.gather_noun()
+                        )
+                    });
                 }
                 Ok(true)
             }
@@ -3588,6 +3596,8 @@ impl World {
                 format!("{name} drops the eggs. They are in contact with the ground.")
             } else if flour {
                 format!("{name} drops the cattail flour. It is in contact with the ground.")
+            } else if material == Material::Cattail {
+                format!("{name} drops cattail roots. They are in contact with the ground.")
             } else {
                 format!(
                     "{name} drops {} {noun}. It is in contact with the ground.",
@@ -3609,6 +3619,8 @@ impl World {
                 "You drop the eggs. They are in contact with the ground.".to_string()
             } else if flour {
                 "You drop the cattail flour. It is in contact with the ground.".to_string()
+            } else if material == Material::Cattail {
+                "You drop cattail roots. They are in contact with the ground.".to_string()
             } else {
                 format!(
                     "You drop {} {noun}. It is in contact with the ground.",
@@ -12005,9 +12017,18 @@ impl World {
             && self.basket_load(actor) < Self::BASKET_ROOM
     }
 
+    /// Cattail roots are plural. The other materials take an article.
+    fn lifted_phrase(material: Material) -> String {
+        if material == Material::Cattail {
+            "cattail roots".to_string()
+        } else {
+            format!("{} {}", material.article(), material.gather_noun())
+        }
+    }
+
     /// A put that finds the basket full names the thing that will not fit.
     fn basket_full_of(&self, material: Material) -> String {
-        let named = format!("{} {}", material.article(), material.gather_noun());
+        let named = Self::lifted_phrase(material);
         let mut chars = named.chars();
         let first = chars.next().unwrap_or('A').to_uppercase().to_string();
         let rest: String = chars.collect();
@@ -12212,10 +12233,14 @@ impl World {
                     intent.command_id,
                     actor.id,
                     false,
-                    format!(
-                        "There is no {} in the bark basket.",
-                        material.gather_noun()
-                    ),
+                    if material == Material::Cattail {
+                        "There are no cattail roots in the bark basket.".to_string()
+                    } else {
+                        format!(
+                            "There is no {} in the bark basket.",
+                            material.gather_noun()
+                        )
+                    },
                     results,
                 );
                 continue;
@@ -12232,9 +12257,11 @@ impl World {
                     item.cell = actor.cell;
                 }
             }
-            let thing = format!("{} {}", material.article(), material.gather_noun());
+            let thing = Self::lifted_phrase(material);
             let rest = if into_arms {
                 format!("{thing} from the bark basket.")
+            } else if material == Material::Cattail {
+                format!("{thing} from the bark basket. They are in contact with the ground.")
             } else {
                 format!("{thing} from the bark basket. It is in contact with the ground.")
             };
@@ -12316,19 +12343,19 @@ impl World {
                     intent.command_id,
                     actor.id,
                     false,
-                    format!(
-                        "There is no {} here to put in the basket.",
-                        material.gather_noun()
-                    ),
+                    if material == Material::Cattail {
+                        "There are no cattail roots here to put in the basket.".to_string()
+                    } else {
+                        format!(
+                            "There is no {} here to put in the basket.",
+                            material.gather_noun()
+                        )
+                    },
                     results,
                 );
                 continue;
             };
-            let mut rest = format!(
-                "{} {} in the bark basket.",
-                material.article(),
-                material.gather_noun()
-            );
+            let mut rest = format!("{} in the bark basket.", Self::lifted_phrase(material));
             if self.basket_load(actor.id) >= Self::BASKET_ROOM {
                 rest.push_str(" The basket is full.");
             }
