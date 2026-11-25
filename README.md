@@ -14,13 +14,39 @@ cd web && npm install && npm run build && cd ..
 cargo run -p villmarks-server
 ```
 
-The valley listens on [http://127.0.0.1:18431](http://127.0.0.1:18431). The action window is 20 seconds (`config/evening.toml`). Open a second browser tab and take a different name. `sessionStorage` keeps each tab's token.
+The valley listens on [http://127.0.0.1:18431](http://127.0.0.1:18431). The action window is 20 seconds (`config/evening.toml`). Open a second browser tab and take a different name. Each tab keeps its own token in `sessionStorage`; the last token also lands in `localStorage` so a closed tab can Resume the same body after a server restart.
 
 ```bash
 python3 agent/play.py --name Linde
 ```
 
-That client uses a scripted policy and no model key. To let an external model pick from the same allowed actions, set `VILLMARKS_MODEL_URL`, `VILLMARKS_MODEL_NAME`, and `VILLMARKS_MODEL_KEY`. The world does not wait on the model.
+That client uses a scripted policy and no model key. The first run writes `data/tokens/Linde.token`. The next run resumes that Bearer token instead of joining a second Linde. Pass `--fresh` to force a new body, or `--token` / `--token-file` to override. To let an external model pick from the same allowed actions, set `VILLMARKS_MODEL_URL`, `VILLMARKS_MODEL_NAME`, and `VILLMARKS_MODEL_KEY`. The world does not wait on the model.
+
+### Connect and reconnect
+
+One API for humans and agents. Join once, keep the Bearer token, present it again to return to the same body. The valley file (`--data`) must still exist.
+
+```bash
+# Join
+curl -s -X POST http://127.0.0.1:18431/v1/join \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Sera"}'
+# -> {"actor_id":1,"name":"Sera","token":"<hex>"}
+
+# Act and look (same routes the browser and Python use)
+curl -s http://127.0.0.1:18431/v1/observe -H "Authorization: Bearer <hex>"
+curl -s -X POST http://127.0.0.1:18431/v1/intent \
+  -H "Authorization: Bearer <hex>" \
+  -H 'Content-Type: application/json' \
+  -d '{"command_id":"sera-1","line":"look"}'
+
+# After a restart of the same --data file, the same token still works.
+# Python:
+python3 agent/play.py --name Sera --turns 1 --manual-advance
+# Browser: open the gate, Resume (token is prefilled from localStorage), or paste the hex.
+```
+
+Routes: `POST /v1/join`, `POST /v1/intent`, `GET /v1/observe`, `GET /v1/clock`, `POST /v1/advance` (manual mode), `GET /v1/ws?token=`. No passwords. Deleting the sqlite file reseeds the valley and invalidates old tokens.
 
 Useful flags:
 
