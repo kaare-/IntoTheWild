@@ -2825,14 +2825,11 @@ impl World {
                 actor.ochre = ochre_before.saturating_sub(ochre_loss);
             }
             if !on_fire && carried == hold && hold > 0 {
-                self.emit(
+                self.say_body(
+                    id,
+                    cell,
                     format!("{name} still has the warmth of the fire."),
-                    Scope::Personal(id),
-                    vec![id],
-                    vec![cell],
-                    vec![],
-                    vec![],
-                    None,
+                    "The warmth of the fire is still on you.".to_string(),
                 );
             }
             // A chill or a cold is said twice. The body reads first person.

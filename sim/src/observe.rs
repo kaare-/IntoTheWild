@@ -13531,6 +13531,7 @@ impl World {
             || text == format!("{name} is tiring.")
             || text == format!("{name} is spent.")
             || text == format!("{name}'s stomach turns.")
+            || text == format!("{name} still has the warmth of the fire.")
         {
             return Some(text.to_string());
         }

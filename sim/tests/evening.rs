@@ -5305,10 +5305,22 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
     assert!(stepped
         .text
         .contains("The heat of the fire does not reach you."));
-    assert!(stepped
+    let yours = "The warmth of the fire is still on you.";
+    let heard = "Sera still has the warmth of the fire.";
+    assert!(stepped.events.iter().any(|event| event.text == yours));
+    assert!(stepped.events.iter().all(|event| event.text != heard));
+    assert!(world
+        .observe(nils)
+        .unwrap()
         .events
         .iter()
-        .any(|event| event.text.contains("still has the warmth of the fire")));
+        .any(|event| event.text == heard));
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != yours));
     assert_eq!(world.observe(nils).unwrap().self_info.cold, "cold");
     world.step(&[cmd("back", sera, Attempt::Move(Dir::East))]);
     assert_eq!(world.actor_cell(sera), Some((5, 1)));
@@ -5339,10 +5351,14 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
     assert!(lingered
         .text
         .contains("The warmth of the fire is still on you."));
-    assert!(lingered
+    assert!(lingered.events.iter().any(|event| event.text == yours));
+    assert!(lingered.events.iter().all(|event| event.text != heard));
+    assert!(world
+        .observe(nils)
+        .unwrap()
         .events
         .iter()
-        .any(|event| event.text.contains("still has the warmth of the fire")));
+        .any(|event| event.text == heard));
     let mut ticks = 0;
     while world.observe(sera).unwrap().self_info.cold == "warm" {
         let body = world.observe(sera).unwrap();
