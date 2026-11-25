@@ -23,6 +23,8 @@ Bare gather berries takes the pile underfoot even when the arms already hold ber
 A gather one cell off that names the step comes back on the window, and that sentence stays with the person who tried.
 Two worm beds on the same diagonal are named once in the look.
 
+The page is a black terminal. Actions and replies sit on the left and fade as they age. The sign map and the place sit on the right, and empty ground stays black. The body line sits along the bottom.
+
 The simulation is a Rust library with no network, database, clock, or model calls. One Tokio and Axum process owns the valley. A TypeScript page and a Python client are players, not special cases. Design choices taken from EmpireMUD, Bunnyland, Aardwolf, and GemStone III are in [DESIGN.md](DESIGN.md). Nothing here is deployed.
 
 ## Run it

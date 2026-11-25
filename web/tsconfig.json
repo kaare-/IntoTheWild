@@ -6,7 +6,9 @@
     "strict": true,
     "noEmit": true,
     "lib": ["ES2022", "DOM"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/screen.test.ts"]
 }
