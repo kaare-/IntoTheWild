@@ -30438,4 +30438,108 @@ mod wild_onion {
         );
         assert!(bare.contains("cooked onion"), "{bare}");
     }
+
+    #[test]
+    fn a_cooked_onion_keeps_its_name_in_the_bark_basket() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 3).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Basket, 0, cell, Some(near), super::Role::Loose);
+        let cooked = world.mint_item(Material::Onion, 0, cell, Some(near), super::Role::Loose);
+        let raw = world.mint_item(Material::Onion, 0, cell, Some(near), super::Role::Loose);
+        world.items.get_mut(&cooked).unwrap().cooked = true;
+        let put = world.step(&[intent(
+            "put-cooked",
+            near,
+            Attempt::PutInBasket(Material::Onion),
+        )]);
+        assert_eq!(
+            put.results[0].message,
+            "You put a cooked onion in the bark basket."
+        );
+        assert!(!says(&world, near, "Near puts a cooked onion in the bark basket."));
+        assert!(says(&world, seen, "Near puts a cooked onion in the bark basket."));
+        assert!(!says(&world, quiet, "Near puts a cooked onion in the bark basket."));
+        let held = world.observe(near).unwrap().text;
+        assert!(
+            held.contains("a wild onion, a bark basket holding a cooked onion")
+                || held.contains("a bark basket holding a cooked onion"),
+            "{held}"
+        );
+        assert!(!held.contains("holding a wild onion"), "{held}");
+        let look = world.examine(near, super::ExamineTarget::Onion);
+        assert!(
+            look.contains(
+                "A cooked onion is in the bark basket carried by you, in the open."
+            ),
+            "{look}"
+        );
+        assert!(
+            look.contains("A wild onion is carried by you in the open."),
+            "{look}"
+        );
+        assert!(!look.contains("A wild onion is in the bark basket"), "{look}");
+        let put_raw = world.step(&[intent(
+            "put-raw",
+            near,
+            Attempt::PutInBasket(Material::Onion),
+        )]);
+        assert_eq!(
+            put_raw.results[0].message,
+            "You put a wild onion in the bark basket. The basket is full."
+        );
+        let both = world.observe(near).unwrap().text;
+        assert!(both.contains("a cooked onion and a wild onion") || both.contains("a wild onion and a cooked onion"), "{both}");
+        let extra = world.mint_item(Material::Onion, 0, cell, Some(near), super::Role::Loose);
+        world.items.get_mut(&extra).unwrap().cooked = true;
+        let full = world.step(&[intent(
+            "full",
+            near,
+            Attempt::PutInBasket(Material::Onion),
+        )]);
+        assert_eq!(
+            full.results[0].message,
+            "The bark basket is full. A cooked onion will not fit."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "The bark basket is full. A cooked onion will not fit."
+        ));
+        assert!(!says(
+            &world,
+            seen,
+            "The bark basket is full. A cooked onion will not fit."
+        ));
+        let took = world.step(&[intent(
+            "take",
+            near,
+            Attempt::TakeFromBasket(Material::Onion),
+        )]);
+        assert_eq!(
+            took.results[0].message,
+            "You take a cooked onion from the bark basket."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "Near takes a cooked onion from the bark basket."
+        ));
+        assert!(says(
+            &world,
+            seen,
+            "Near takes a cooked onion from the bark basket."
+        ));
+        assert!(!says(
+            &world,
+            quiet,
+            "Near takes a cooked onion from the bark basket."
+        ));
+        let after = world.observe(near).unwrap().text;
+        assert!(after.contains("holding a wild onion"), "{after}");
+        assert!(!after.contains("holding a cooked onion"), "{after}");
+        let _ = (cooked, raw);
+    }
 }

@@ -3073,7 +3073,11 @@ impl World {
                     });
                 }
                 if !self.basket_has_room(actor.id) {
-                    return Err(self.basket_full_of(*material));
+                    let phrase = self
+                        .basket_put_id(actor.id, actor.cell, *material)
+                        .map(|id| self.basket_thing_phrase(id))
+                        .unwrap_or_else(|| Self::lifted_phrase(*material));
+                    return Err(self.will_not_fit(&phrase));
                 }
                 Ok(true)
             }
@@ -12026,13 +12030,28 @@ impl World {
         }
     }
 
-    /// A put that finds the basket full names the thing that will not fit.
-    fn basket_full_of(&self, material: Material) -> String {
-        let named = Self::lifted_phrase(material);
-        let mut chars = named.chars();
+    /// The thing that moved. A cooked onion is not a wild onion.
+    fn basket_thing_phrase(&self, id: crate::model::ItemId) -> String {
+        let Some(item) = self.item(id) else {
+            return "something".into();
+        };
+        if item.material == Material::Onion && item.cooked {
+            "a cooked onion".into()
+        } else {
+            Self::lifted_phrase(item.material)
+        }
+    }
+
+    fn will_not_fit(&self, phrase: &str) -> String {
+        let mut chars = phrase.chars();
         let first = chars.next().unwrap_or('A').to_uppercase().to_string();
         let rest: String = chars.collect();
         format!("The bark basket is full. {first}{rest} will not fit.")
+    }
+
+    /// A put that finds the basket full names the thing that will not fit.
+    fn basket_full_of(&self, material: Material) -> String {
+        self.will_not_fit(&Self::lifted_phrase(material))
     }
 
     /// Bare `mat`. The reply stays with this person.
@@ -12257,7 +12276,7 @@ impl World {
                     item.cell = actor.cell;
                 }
             }
-            let thing = Self::lifted_phrase(material);
+            let thing = self.basket_thing_phrase(id);
             let rest = if into_arms {
                 format!("{thing} from the bark basket.")
             } else if material == Material::Cattail {
@@ -12314,11 +12333,15 @@ impl World {
                 continue;
             }
             if !self.basket_has_room(actor.id) {
+                let phrase = self
+                    .basket_put_id(actor.id, actor.cell, material)
+                    .map(|id| self.basket_thing_phrase(id))
+                    .unwrap_or_else(|| Self::lifted_phrase(material));
                 self.finish(
                     intent.command_id,
                     actor.id,
                     false,
-                    self.basket_full_of(material),
+                    self.will_not_fit(&phrase),
                     results,
                 );
                 continue;
@@ -12355,7 +12378,7 @@ impl World {
                 );
                 continue;
             };
-            let mut rest = format!("{} in the bark basket.", Self::lifted_phrase(material));
+            let mut rest = format!("{} in the bark basket.", self.basket_thing_phrase(id));
             if self.basket_load(actor.id) >= Self::BASKET_ROOM {
                 rest.push_str(" The basket is full.");
             }

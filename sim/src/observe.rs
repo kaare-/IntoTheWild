@@ -3477,36 +3477,54 @@ impl World {
             if ids.is_empty() {
                 continue;
             }
-            let cooked = ids
-                .iter()
-                .filter(|id| self.item(**id).is_some_and(|onion| onion.cooked))
-                .count() as u32;
-            let raw = ids.len() as u32 - cooked;
             let who = if actor.id == viewer {
-                "you"
+                "you".to_string()
             } else {
-                actor.name.as_str()
+                actor.name.clone()
             };
             let cover = self.cover_phrase(actor.cell);
-            if raw == 1 {
-                lines.push(format!(
-                    "A wild onion is carried by {who} {cover}. It can be eaten raw. It eases hunger a little. It is not berries."
-                ));
-            } else if raw > 1 {
-                lines.push(format!(
-                    "{} wild onions are carried by {who} {cover}. They can be eaten raw. They ease hunger a little. They are not berries.",
-                    capitalize(&count_word(raw))
-                ));
-            }
-            if cooked == 1 {
-                lines.push(format!(
-                    "A cooked onion is carried by {who} {cover}. It eases hunger more than a raw one."
-                ));
-            } else if cooked > 1 {
-                lines.push(format!(
-                    "{} cooked onions are carried by {who} {cover}. They ease hunger more than a raw one.",
-                    capitalize(&count_word(cooked))
-                ));
+            for in_basket in [false, true] {
+                let cooked = ids
+                    .iter()
+                    .filter(|id| {
+                        self.item(**id).is_some_and(|onion| {
+                            onion.cooked && onion.in_basket == in_basket
+                        })
+                    })
+                    .count() as u32;
+                let raw = ids
+                    .iter()
+                    .filter(|id| {
+                        self.item(**id).is_some_and(|onion| {
+                            !onion.cooked && onion.in_basket == in_basket
+                        })
+                    })
+                    .count() as u32;
+                let place = if in_basket {
+                    format!("in the bark basket carried by {who}, {cover}")
+                } else {
+                    format!("carried by {who} {cover}")
+                };
+                if raw == 1 {
+                    lines.push(format!(
+                        "A wild onion is {place}. It can be eaten raw. It eases hunger a little. It is not berries."
+                    ));
+                } else if raw > 1 {
+                    lines.push(format!(
+                        "{} wild onions are {place}. They can be eaten raw. They ease hunger a little. They are not berries.",
+                        capitalize(&count_word(raw))
+                    ));
+                }
+                if cooked == 1 {
+                    lines.push(format!(
+                        "A cooked onion is {place}. It eases hunger more than a raw one."
+                    ));
+                } else if cooked > 1 {
+                    lines.push(format!(
+                        "{} cooked onions are {place}. They ease hunger more than a raw one.",
+                        capitalize(&count_word(cooked))
+                    ));
+                }
             }
         }
         if lines.is_empty() {
@@ -12922,6 +12940,10 @@ impl World {
             Material::Pot => format!("{} pots", count_word(count)),
             Material::Ochre if count == 1 => "a lump of ochre".into(),
             Material::Ochre => format!("{} lumps of ochre", count_word(count)),
+            Material::Onion if item.cooked && count == 1 => "a cooked onion".into(),
+            Material::Onion if item.cooked => format!("{} cooked onions", count_word(count)),
+            Material::Onion if count == 1 => "a wild onion".into(),
+            Material::Onion => format!("{} wild onions", count_word(count)),
             Material::Fish if count == 1 => match self.fish_state(id) {
                 "cooked" => "a cooked fish".into(),
                 "smoked" => "a smoked fish".into(),
@@ -12945,7 +12967,9 @@ impl World {
             };
             if let Some((first, count)) = groups.last_mut() {
                 let same = self.item(*first).is_some_and(|other| {
-                    other.material == item.material && other.moisture == item.moisture
+                    other.material == item.material
+                        && other.moisture == item.moisture
+                        && (item.material != Material::Onion || other.cooked == item.cooked)
                 });
                 if same {
                     *count += 1;
