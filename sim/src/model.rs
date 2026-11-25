@@ -3941,11 +3941,36 @@ impl World {
             .find(|id| self.item(*id).is_some_and(|root| root.cooked))
     }
 
-    pub(crate) fn raw_cattail_near(&self, actor: ActorId) -> bool {
-        self.raw_cattail_id(actor).is_some()
-            || self
-                .actor(actor)
-                .is_some_and(|person| self.pile_count(person.cell, Material::Cattail) > 0)
+    /// A raw cattail root in the arms or lying on this ground. The stand is not food yet.
+    pub(crate) fn raw_cattail_held(&self, actor: ActorId) -> bool {
+        if self.raw_cattail_id(actor).is_some() {
+            return true;
+        }
+        let Some(cell) = self.actor(actor).map(|person| person.cell) else {
+            return false;
+        };
+        self.ground_ids(cell, Material::Cattail)
+            .into_iter()
+            .any(|id| self.item(id).is_some_and(|root| !root.cooked))
+    }
+
+    /// Eat, when no cooked roots are in reach. Roots in the arms or on the
+    /// ground must be cooked. A stand under unbroken ice is the ice.
+    /// Otherwise there is nothing to eat.
+    pub(crate) fn cattail_eat_miss(&self, actor: ActorId) -> &'static str {
+        if self.raw_cattail_held(actor) {
+            return "Raw cattail roots do not feed you. They must be cooked.";
+        }
+        let Some(person) = self.actor(actor) else {
+            return "There are no cattail roots here to eat.";
+        };
+        if self.still_frozen(person.cell)
+            && !self.ice_hole(person.cell)
+            && self.pile_count(person.cell, Material::Cattail) > 0
+        {
+            return "Ice covers the cattail roots.";
+        }
+        "There are no cattail roots here to eat."
     }
 
     /// Roots dry enough to pound. Raw first, then cooked. A soaked handful is not flour.
@@ -23267,6 +23292,15 @@ mod cattail {
             "Cattails grow here, in the shallows. The roots can be dug. They are not the reeds."
         ));
         assert!(!open.contains("Ice covers"));
+        let bare = world.step(&[intent("bare", near, Attempt::Eat(Material::Cattail))]);
+        assert_eq!(
+            bare.results[0].message,
+            "There are no cattail roots here to eat."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "There are no cattail roots here to eat."
+                && event.text != "Raw cattail roots do not feed you. They must be cooked."
+        }));
         while world.time < world.tuning.chill_at {
             world.step(&[]);
         }
@@ -23288,6 +23322,12 @@ mod cattail {
         assert!(!world.observe(quiet).unwrap().text.contains("cattail"));
         let dug = world.step(&[intent("ice", near, Attempt::Gather(Material::Cattail))]);
         assert_eq!(dug.results[0].message, "Ice covers the cattail roots.");
+        let eaten = world.step(&[intent("eat-ice", near, Attempt::Eat(Material::Cattail))]);
+        assert_eq!(eaten.results[0].message, "Ice covers the cattail roots.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "Ice covers the cattail roots."
+                && event.text != "Raw cattail roots do not feed you. They must be cooked."
+        }));
         for person in [near, seen, quiet] {
             assert!(world
                 .observe(person)

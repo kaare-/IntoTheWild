@@ -2056,11 +2056,8 @@ impl World {
                         Material::Cattail => {
                             if self.cooked_cattail_id(actor.id).is_some() {
                                 Ok(true)
-                            } else if self.raw_cattail_near(actor.id) {
-                                Err("Raw cattail roots do not feed you. They must be cooked."
-                                    .into())
                             } else {
-                                Err("There are no cattail roots here to eat.".into())
+                                Err(self.cattail_eat_miss(actor.id).into())
                             }
                         }
                         Material::Flour => {
@@ -14927,11 +14924,7 @@ impl World {
 
     fn eat_cattail(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {
         let Some(id) = self.cooked_cattail_id(intent.actor_id) else {
-            let message = if self.raw_cattail_near(intent.actor_id) {
-                "Raw cattail roots do not feed you. They must be cooked."
-            } else {
-                "There are no cattail roots here to eat."
-            };
+            let message = self.cattail_eat_miss(intent.actor_id);
             self.finish(intent.command_id, intent.actor_id, false, message, results);
             return;
         };
