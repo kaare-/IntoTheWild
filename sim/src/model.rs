@@ -23762,6 +23762,73 @@ mod cattail {
     }
 
     #[test]
+    fn dropped_roots_on_the_freezing_still_are_named() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 2, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 5, 3).unwrap();
+        let dug = world.step(&[intent("dig", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(dug.results[0].message, "You gather cattail roots.");
+        let dropped = world.step(&[intent("drop", near, Attempt::Drop(Material::Cattail))]);
+        assert_eq!(
+            dropped.results[0].message,
+            "You drop cattail roots. They are in contact with the ground."
+        );
+        let open = world.observe(near).unwrap();
+        assert!(
+            !open.text.contains("Ice covers the cattail roots here."),
+            "{}",
+            open.text
+        );
+        while world.time < world.tuning.chill_at {
+            world.step(&[]);
+        }
+        let line = "Ice covers the cattail roots here.";
+        let here = world.observe(near).unwrap();
+        assert!(
+            here.text.contains(
+                "Cattails stand under the ice. The roots cannot be dug. They are not the reeds."
+            ),
+            "{}",
+            here.text
+        );
+        assert!(here.text.contains(line), "{}", here.text);
+        assert!(here.events.iter().all(|event| event.text != line));
+        let west = world.observe(seen).unwrap();
+        assert!(
+            west.text.contains(
+                "Cattails stand under the ice to the west. They are not the reeds."
+            ),
+            "{}",
+            west.text
+        );
+        assert!(
+            west.text.contains("Ice covers the cattail roots to the west."),
+            "{}",
+            west.text
+        );
+        assert!(west.events.iter().all(|event| event.text != line));
+        assert!(!world.observe(quiet).unwrap().text.contains("cattail roots"));
+        let looked = world.examine(near, super::ExamineTarget::Cattail);
+        assert!(looked.contains(line), "{looked}");
+        assert!(looked.contains("Cattails stand here, in the open, under the ice."));
+        assert!(looked.contains("The roots cannot be dug. They are not the reeds."));
+        let from_west = world.examine(seen, super::ExamineTarget::Cattail);
+        assert!(
+            from_west.contains("Ice covers the cattail roots to the west."),
+            "{from_west}"
+        );
+        assert!(!world
+            .examine(quiet, super::ExamineTarget::Cattail)
+            .contains("cattail roots"));
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Cattail))]);
+        assert_eq!(again.results[0].message, "Ice covers the cattail roots.");
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "Ice covers the cattail roots." && event.text != line
+        }));
+    }
+
+    #[test]
     fn ice_covers_cattail_roots_until_the_still_thaws() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 2, 1).unwrap();

@@ -1374,6 +1374,9 @@ impl World {
                     "Cattails stand under the ice. The roots cannot be dug. They are not the reeds."
                         .into(),
                 );
+                if !self.ground_ids(actor.cell, Material::Cattail).is_empty() {
+                    parts.push("Ice covers the cattail roots here.".into());
+                }
                 if self.pile_count(actor.cell, Material::Fluff) == 0
                     && self.ground_ids(actor.cell, Material::Fluff).is_empty()
                 {
@@ -4043,6 +4046,9 @@ impl World {
                 lines.push(format!(
                     "Cattails stand under the ice to the {way}. They are not the reeds."
                 ));
+                if !self.ground_ids(cell, Material::Cattail).is_empty() {
+                    lines.push(format!("Ice covers the cattail roots to the {way}."));
+                }
             } else if count > 0 {
                 lines.push(format!(
                     "Cattails grow in the shallows to the {way}. They are not the reeds."
@@ -4086,6 +4092,14 @@ impl World {
                     lines.push(format!(
                         "Cattails stand {place}, under the ice. The roots cannot be dug. They are not the reeds."
                     ));
+                    if !self.ground_ids(cell, Material::Cattail).is_empty() {
+                        if cell == origin {
+                            lines.push("Ice covers the cattail roots here.".into());
+                        } else {
+                            let way = self.relative(origin, cell);
+                            lines.push(format!("Ice covers the cattail roots to the {way}."));
+                        }
+                    }
                 } else {
                     lines.push(format!(
                         "Cattails grow {place}, in the shallows. The roots can be dug. They are not the reeds."
