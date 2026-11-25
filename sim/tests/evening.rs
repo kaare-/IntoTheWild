@@ -14461,10 +14461,9 @@ fn a_bark_basket_holds_berries_that_would_not_fit_in_the_arms() {
     );
     assert!(near_look.text.contains("A sheet of bark lies here."));
     assert!(!near_look.text.contains("A pile of bark"));
-    assert!(near_look
-        .events
-        .iter()
-        .any(|event| event.text == "You weave a bark basket."));
+    assert!(near_look.events.iter().all(|event| {
+        event.text != "You weave a bark basket." && event.text != "Near weaves a bark basket."
+    }));
     let empty = world.examine(near, ExamineTarget::Basket);
     assert!(
         empty.contains("an empty bark basket")

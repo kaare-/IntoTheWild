@@ -269,6 +269,7 @@ impl World {
                     let drop_miss = matches!(intent.attempt, Attempt::Drop(_));
                     // An empty pile, with no step named, is the reply only.
                     // A weave that finds the arms full is the same.
+                    // A bark basket that will not weave stays with the person who tried.
                     let empty_pile = matches!(intent.attempt, Attempt::Gather(_))
                         && message.contains("here to gather.")
                         && !message.contains("Step ");
@@ -276,6 +277,7 @@ impl World {
                         intent.attempt,
                         Attempt::WeaveBasket | Attempt::WeaveNet | Attempt::WeaveMat
                     ) && message == ARMS_FULL;
+                    let basket_weave_refusal = matches!(intent.attempt, Attempt::WeaveBasket);
                     // A reed mat that will not weave or set, and a rest the
                     // wind will not allow, stay with the person who tried.
                     let mat_refusal = matches!(
@@ -317,6 +319,7 @@ impl World {
                             && !drop_miss
                             && !empty_pile
                             && !full_arms_weave
+                            && !basket_weave_refusal
                             && !mat_refusal
                             && !onion_gather_miss;
                     failures.push((intent, message, personal));

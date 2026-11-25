@@ -12312,6 +12312,7 @@ impl World {
                     && self.beaver_cloak_for_these_eyes(viewer, event).is_none()
                     && self.wolf_cloak_for_these_eyes(viewer, event).is_none()
                     && self.weave_net_for_these_eyes(viewer, event).is_none()
+                    && self.weave_for_these_eyes(viewer, event).is_none()
                     && self.mat_for_these_eyes(viewer, event).is_none()
                     && self.chill_for_these_eyes(viewer, event).is_none()
                     && self.body_for_these_eyes(viewer, event).is_none()
@@ -13651,7 +13652,7 @@ impl World {
         Some(crate::model::spoken_act(None, "catch", rest))
     }
 
-    /// A bark basket woven from a sheet of bark, filled for the weaver.
+    /// A bark basket woven from a sheet of bark. The weaver already read the sentence.
     fn weave_for_these_eyes(&self, viewer: ActorId, event: &crate::model::Event) -> Option<String> {
         if event.affected_actors.len() != 1 || event.affected_actors[0] != viewer {
             return None;
@@ -15626,9 +15627,6 @@ impl World {
             return line;
         }
         if let Some(line) = self.shape_for_these_eyes(viewer, event) {
-            return line;
-        }
-        if let Some(line) = self.weave_for_these_eyes(viewer, event) {
             return line;
         }
         if let Some(line) = self.craft_for_these_eyes(viewer, event) {

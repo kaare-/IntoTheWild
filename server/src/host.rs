@@ -434,7 +434,7 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                     | Attempt::CookCattail
                     | Attempt::Drink
                     | Attempt::BreakIce => true,
-                Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest => true,
+                Attempt::WeaveBasket | Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest => true,
                 Attempt::Gather(_)
                     if !result.success
                         && (result.message
@@ -1124,6 +1124,94 @@ mod tests {
             .events
             .iter()
             .all(|event| event.text != heard && event.text != reply));
+        assert!(host.clock().sim_time < 17);
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_bark_basket_weave_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-weave-basket-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let missing = "You need a sheet of bark to weave a basket.";
+        let queued = host.submit(&near.token, "none", "weave basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, missing);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != missing));
+        }
+        let steps = [
+            ("1", "e", "e", "w"),
+            ("2", "e", "e", "w"),
+            ("3", "n", "e", "w"),
+            ("4", "n", "n", "w"),
+        ];
+        for (step, near_line, seen_line, quiet_line) in steps {
+            host.submit(&near.token, &format!("near-{step}"), near_line, None);
+            host.submit(&seen.token, &format!("seen-{step}"), seen_line, None);
+            host.submit(&quiet.token, &format!("quiet-{step}"), quiet_line, None);
+            host.advance(1).unwrap();
+        }
+        let reply = "You weave a bark basket.";
+        let heard = "Near weaves a bark basket.";
+        let queued = host.submit(&near.token, "weave", "weave basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, reply);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        let again = host.submit(&near.token, "weave", "weave basket", None);
+        assert!(again.duplicate);
+        assert_eq!(again.message, reply);
+        assert!(host.observe(&near.token).unwrap().events.iter().all(|event| {
+            event.text != reply && event.text != heard
+        }));
+        assert!(host
+            .observe(&seen.token)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(host
+            .observe(&quiet.token)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != heard && event.text != reply));
+        let carrying = "You are already carrying a bark basket.";
+        let queued = host.submit(&near.token, "second", "weave basket", None);
+        assert!(!queued.immediate, "{}", queued.message);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies[0].message, carrying);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != carrying));
+        }
         assert!(host.clock().sim_time < 17);
         assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);
