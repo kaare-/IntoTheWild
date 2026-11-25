@@ -14130,6 +14130,99 @@ mod berry_return {
     }
 
     #[test]
+    fn gather_berries_takes_the_pile_underfoot_when_the_arms_hold_the_other() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        if let Some(deer) = world.deer.as_mut() {
+            deer.held = true;
+        }
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let says = |world: &World, actor: u32, line: &str| {
+            world
+                .observe(actor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line)
+        };
+        let sweet = world.step(&[intent("sweet", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(sweet.results[0].message, "You gather a handful of berries.");
+        world.deer = None;
+        let dark_cell = super::cell_id(4, 1).unwrap();
+        world.actors.get_mut(&near).unwrap().cell = dark_cell;
+        let look = world.observe(near).unwrap().text;
+        assert!(look.contains("Dark berries lie here"), "{look}");
+        assert!(!look.contains("poison"), "{look}");
+        let pile = world.pile_count(dark_cell, Material::BitterBerry);
+        assert!(pile > 1);
+        while world.carry_count(near) < world.tuning.carry_slots {
+            world.mint_item(Material::Stone, 0, dark_cell, Some(near), super::Role::Loose);
+        }
+        let full = world.step(&[intent("full", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(full.results[0].message, "Your arms are full. Drop something first.");
+        assert_eq!(world.pile_count(dark_cell, Material::BitterBerry), pile);
+        assert!(!says(&world, near, "Your arms are full. Drop something first."));
+        assert!(!says(&world, seen, "Your arms are full. Drop something first."));
+        world.step(&[intent("drop", near, Attempt::Drop(Material::Stone))]);
+        let got = world.step(&[intent("dark", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(got.results[0].message, "You gather a handful of dark berries.");
+        assert_eq!(world.loose_ids(near, Material::Berry).len(), 1);
+        assert_eq!(world.pile_count(dark_cell, Material::BitterBerry), pile - 1);
+        assert!(!got.results[0].message.contains("poison"));
+        let heard = "Near gathers a handful of dark berries.";
+        assert!(!says(&world, near, "You gather a handful of dark berries."));
+        assert!(says(&world, seen, heard));
+        assert!(!says(&world, quiet, heard));
+        world.step(&[intent("room", near, Attempt::Drop(Material::Stone))]);
+        world.step(&[intent("room-again", near, Attempt::Drop(Material::Stone))]);
+        world.actors.get_mut(&near).unwrap().tasted_bitter = true;
+        let known = world.step(&[intent("known", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            known.results[0].message,
+            "You gather a handful of poison berries."
+        );
+        assert!(says(&world, seen, heard));
+        assert!(!says(&world, seen, "Near gathers a handful of poison berries."));
+        assert!(!says(&world, quiet, heard));
+
+        let rock = super::cell_id(6, 1).unwrap();
+        world.actors.get_mut(&near).unwrap().cell = rock;
+        let sweet_left = world.pile_count(rock, Material::Berry);
+        assert!(sweet_left > 0);
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(again.results[0].message, "You gather a handful of berries.");
+        assert_eq!(world.pile_count(rock, Material::Berry), sweet_left - 1);
+
+        let mut basket = World::valley(crate::tuning::Tuning::evening(), 1);
+        if let Some(deer) = basket.deer.as_mut() {
+            deer.held = true;
+        }
+        let holder = basket.spawn_at("Holder", "h", 6, 1).unwrap();
+        basket.step(&[intent("arm", holder, Attempt::Gather(Material::Berry))]);
+        let patch = super::cell_id(4, 1).unwrap();
+        basket.actors.get_mut(&holder).unwrap().cell = patch;
+        basket.mint_item(Material::Basket, 0, patch, Some(holder), super::Role::Loose);
+        while basket.carry_count(holder) < basket.tuning.carry_slots {
+            basket.mint_item(Material::Stone, 0, patch, Some(holder), super::Role::Loose);
+        }
+        let into = basket.step(&[intent("into", holder, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            into.results[0].message,
+            "You gather a handful of dark berries. It goes into the bark basket."
+        );
+        assert!(!into.results[0].message.contains("poison"));
+        assert_eq!(basket.loose_ids(holder, Material::Berry).len(), 1);
+        let held = basket.observe(holder).unwrap().text;
+        assert!(
+            held.contains("a bark basket holding a dry handful of dark berries")
+                || held.contains("a bark basket holding a soaked handful of dark berries"),
+            "{held}"
+        );
+        assert!(!held.contains("poison"), "{held}");
+    }
+
+    #[test]
     fn eat_berries_on_the_dark_patch_bites_the_pile() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 4, 1).unwrap();

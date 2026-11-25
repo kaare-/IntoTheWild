@@ -15376,11 +15376,26 @@ impl World {
     /// `gather berries` and `eat berries` mean the berries underfoot.
     /// Sweet berries stay sweet. A dark pile, with no sweet berries here,
     /// is the dark handful. The bite is still what names the poison.
+    /// A handful already in the arms is not the pile underfoot.
     fn berry_pile_here(&self, actor: crate::model::ActorId, attempt: Attempt) -> Attempt {
-        let generic = matches!(
-            attempt,
-            Attempt::Gather(Material::Berry) | Attempt::Eat(Material::Berry)
-        );
+        if matches!(attempt, Attempt::Gather(Material::Berry)) {
+            let Some(person) = self.actor(actor) else {
+                return attempt;
+            };
+            let cell = person.cell;
+            let on_ground = |material: Material| {
+                self.pile_count(cell, material) > 0
+                    || !self.ground_ids(cell, material).is_empty()
+            };
+            if on_ground(Material::Berry) {
+                return attempt;
+            }
+            if on_ground(Material::BitterBerry) {
+                return Attempt::Gather(Material::BitterBerry);
+            }
+            return attempt;
+        }
+        let generic = matches!(attempt, Attempt::Eat(Material::Berry));
         if !generic || self.sweet_berries_underfoot(actor) {
             return attempt;
         }
@@ -15393,7 +15408,6 @@ impl World {
             return attempt;
         }
         match attempt {
-            Attempt::Gather(_) => Attempt::Gather(Material::BitterBerry),
             Attempt::Eat(_) => Attempt::Eat(Material::BitterBerry),
             other => other,
         }
