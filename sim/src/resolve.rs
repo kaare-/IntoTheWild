@@ -233,8 +233,24 @@ impl World {
                         && message == "Ice covers the cattail roots.";
                     // A roast miss is the reply only. A cook with no fire here is
                     // the same, including the step when a fire burns next door.
-                    let roast_refusal =
-                        matches!(intent.attempt, Attempt::Roast | Attempt::RoastCattail);
+                    let roast_refusal = matches!(
+                        intent.attempt,
+                        Attempt::Roast
+                            | Attempt::RoastCattail
+                            | Attempt::RoastOnion
+                            | Attempt::RoastMushroom
+                            | Attempt::RoastMeat
+                            | Attempt::RoastFish
+                    );
+                    // A named cook that misses stays with the person who tried.
+                    // It does not heat a different food that happens to be here.
+                    let cook_named_refusal = matches!(
+                        intent.attempt,
+                        Attempt::CookOnion
+                            | Attempt::CookMushroom
+                            | Attempt::CookMeat
+                            | Attempt::CookFish
+                    );
                     let cook_fire_refusal =
                         matches!(intent.attempt, Attempt::Cook | Attempt::CookCattail)
                             && (message.starts_with("There is no fire burning here")
@@ -308,6 +324,7 @@ impl World {
                             && !drink_refusal
                             && !cattail_ice_refusal
                             && !roast_refusal
+                            && !cook_named_refusal
                             && !cook_fire_refusal
                             && !hammer_refusal
                             && !pierce_refusal
@@ -367,7 +384,15 @@ impl World {
                         Attempt::Cook
                         | Attempt::Roast
                         | Attempt::CookCattail
-                        | Attempt::RoastCattail => cooks.push(intent),
+                        | Attempt::RoastCattail
+                        | Attempt::CookOnion
+                        | Attempt::RoastOnion
+                        | Attempt::CookMushroom
+                        | Attempt::RoastMushroom
+                        | Attempt::CookMeat
+                        | Attempt::RoastMeat
+                        | Attempt::CookFish
+                        | Attempt::RoastFish => cooks.push(intent),
                         Attempt::Eat(_) => eats.push(intent),
                         Attempt::Smear => smears.push(intent),
                         Attempt::SmearOchre => ochre_smears.push(intent),
@@ -2390,6 +2415,41 @@ impl World {
                     Ok(true)
                 }
             }
+            Attempt::CookOnion | Attempt::RoastOnion => self.named_heat_ready(
+                actor,
+                busy,
+                body_taken,
+                matches!(attempt, Attempt::RoastOnion),
+                self.raw_onion_near(actor.id),
+                None,
+            ),
+            Attempt::CookMushroom | Attempt::RoastMushroom => self.named_heat_ready(
+                actor,
+                busy,
+                body_taken,
+                matches!(attempt, Attempt::RoastMushroom),
+                self.raw_mushroom_id(actor.id).is_some()
+                    || self.pile_count(actor.cell, Material::Mushroom) > 0,
+                None,
+            ),
+            Attempt::CookMeat | Attempt::RoastMeat => self.named_heat_ready(
+                actor,
+                busy,
+                body_taken,
+                matches!(attempt, Attempt::RoastMeat),
+                self.raw_meat_id(actor.id).is_some(),
+                self.spoiled_meat_near(actor.id)
+                    .then_some("The meat has spoiled."),
+            ),
+            Attempt::CookFish | Attempt::RoastFish => self.named_heat_ready(
+                actor,
+                busy,
+                body_taken,
+                matches!(attempt, Attempt::RoastFish),
+                self.raw_fish_id(actor.id).is_some(),
+                self.spoiled_fish_near(actor.id)
+                    .then_some("The fish has spoiled."),
+            ),
             Attempt::Roast | Attempt::RoastCattail => {
                 if busy {
                     Err("You are in the middle of something.".into())
@@ -5017,6 +5077,37 @@ impl World {
         Ok((Some(id), false))
     }
 
+    fn named_heat_ready(
+        &self,
+        actor: &crate::model::Actor,
+        busy: bool,
+        body_taken: bool,
+        roast: bool,
+        present: bool,
+        spoiled: Option<&str>,
+    ) -> Result<bool, String> {
+        if busy {
+            return Err("You are in the middle of something.".into());
+        }
+        if body_taken {
+            return Err("You already committed to something else this window.".into());
+        }
+        if self.fire_at(actor.cell).is_none() {
+            return Err(self.no_fire_here(actor.cell));
+        }
+        if present {
+            return Ok(true);
+        }
+        if let Some(message) = spoiled {
+            return Err(message.into());
+        }
+        Err(if roast {
+            "There is nothing here to roast.".into()
+        } else {
+            "There is nothing here to cook.".into()
+        })
+    }
+
     pub(crate) fn cook_refusal(&self, actor: crate::model::ActorId) -> Option<String> {
         let person = self.actor(actor)?;
         if self.fire_at(person.cell).is_none() {
@@ -5468,6 +5559,38 @@ impl World {
             }
             if matches!(intent.attempt, Attempt::CookCattail) {
                 self.cook_cattail(intent, results, "cook");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::RoastOnion) {
+                self.heat_onion(intent, results, "roast");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::CookOnion) {
+                self.heat_onion(intent, results, "cook");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::RoastMushroom) {
+                self.heat_mushroom(intent, results, "roast");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::CookMushroom) {
+                self.heat_mushroom(intent, results, "cook");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::RoastMeat) {
+                self.cook_meat(intent, results, "roast");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::CookMeat) {
+                self.cook_meat(intent, results, "cook");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::RoastFish) {
+                self.cook_fish(intent, results, "roast");
+                continue;
+            }
+            if matches!(intent.attempt, Attempt::CookFish) {
+                self.cook_fish(intent, results, "cook");
                 continue;
             }
             if matches!(intent.attempt, Attempt::Roast) {

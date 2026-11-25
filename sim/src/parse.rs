@@ -45,8 +45,8 @@ light fire                   dry bark and a dry branch, from the arms if you car
 signal                       a column of smoke from a burning fire here. smoke signal is the same. It lasts while the fire burns. Someone who cannot see the fire, past the ordinary smoke, reads which way, and that someone is signaling with smoke. One cell farther, they smell it, and the same words. The ordinary plume stays Smoke rises, without that cue. Green reeds or pine needles may be laid on the fire. They do not change the column. With no fire, with nothing green when you asked for it, or with the column already rising, only you hear it
 carve drill                  two dry branches and cordage into a bow drill. One branch is the spindle, one is the fireboard. Hide strips, then willow, then nettle. A spent bow drill in the arms is carved anew with one dry branch
 light fire with drill        the bow drill stays in the arms, and the line names it spent. No bark, no resin, and no charcoal. light fire still wants tinder
-cook                         heat a mushroom, a wild onion, or cook berries, a carcass, raw meat from the arms or the ground, cattail roots from the arms or the pile at your feet, or cattail flour into a flatbread. cook cattail and cook roots are the roots only. A cooked onion eases hunger more than a raw bite. With no fire here, and one burning a step away, only you hear which way. With no roots, only you hear it
-roast                        a mushroom, a wild onion, raw meat from the arms or the ground, a raw fish, or cattail roots from the arms or the pile at your feet, over a fire. roast cattail and roast roots are the roots only. The line says roast. cook still says cook. The food is the same cooked food. A cooked onion eases hunger more than a raw bite. With no fire here, and one burning a step away, only you hear which way. With no roots, only you hear it
+cook                         heat a mushroom, a wild onion, or cook berries, a carcass, raw meat from the arms or the ground, cattail roots from the arms or the pile at your feet, or cattail flour into a flatbread. cook cattail and cook roots are the roots only. cook onion, cook mushroom, cook meat, and cook fish are that food only. A cooked onion eases hunger more than a raw bite. With no fire here, and one burning a step away, only you hear which way. With no roots, only you hear it
+roast                        a mushroom, a wild onion, raw meat from the arms or the ground, a raw fish, or cattail roots from the arms or the pile at your feet, over a fire. roast cattail and roast roots are the roots only. roast onion, roast mushroom, roast meat, and roast fish are that food only. The line says roast. cook still says cook. The food is the same cooked food. A cooked onion eases hunger more than a raw bite. With no fire here, and one burning a step away, only you hear which way. With no roots, only you hear it
 mushroom                     gather mushrooms, or cook them. A raw one does not feed until it is cooked. It does not gather, cook, or eat one
 grind                        dried cattail roots, raw or cooked, with a stone in the arms and a stone under them. The rock is a stone. The stones stay. The roots become cattail flour.
 hunt                         a hardened spear; the deer on your cell or the next, a wolf while it stands on your cell or the next, an otter on its cell or the next, a beaver on its cell or the next, a fox on its cell or the next, or a hare on its cell or the next. With no spear that can reach, a carried bow and a sharp flint flake reach as far as you can see. The flake is spent when the deer, the wolf, the otter, the beaver, the fox, or the hare comes down. A refusal leaves it. The bow stays. When the deer falls off your cell, the reply names where the carcass lies.
@@ -902,6 +902,14 @@ pub fn parse_attempt(line: &str) -> Result<Attempt, String> {
         "light" | "kindle" if rest.is_empty() || rest == "fire" => Ok(Attempt::Light),
         "cook" if cattail_roots_named(rest) => Ok(Attempt::CookCattail),
         "roast" if cattail_roots_named(rest) => Ok(Attempt::RoastCattail),
+        "cook" if onion_named(rest) => Ok(Attempt::CookOnion),
+        "roast" if onion_named(rest) => Ok(Attempt::RoastOnion),
+        "cook" if mushroom_named(rest) => Ok(Attempt::CookMushroom),
+        "roast" if mushroom_named(rest) => Ok(Attempt::RoastMushroom),
+        "cook" if meat_named(rest) => Ok(Attempt::CookMeat),
+        "roast" if meat_named(rest) => Ok(Attempt::RoastMeat),
+        "cook" if fish_named(rest) => Ok(Attempt::CookFish),
+        "roast" if fish_named(rest) => Ok(Attempt::RoastFish),
         "cook" => Ok(Attempt::Cook),
         "roast" => Ok(Attempt::Roast),
         "eat" => parse_eat(rest),
@@ -1020,6 +1028,43 @@ fn parse_dir(text: &str) -> Result<Dir, String> {
         "w" | "west" => Ok(Dir::West),
         _ => Err("Name a direction: n, s, e, or w.".into()),
     }
+}
+
+fn onion_named(rest: &str) -> bool {
+    matches!(
+        rest,
+        "onion"
+            | "onions"
+            | "wild onion"
+            | "wild onions"
+            | "a wild onion"
+            | "the wild onion"
+            | "garlic"
+            | "wild garlic"
+            | "spring greens"
+            | "greens"
+    )
+}
+
+fn mushroom_named(rest: &str) -> bool {
+    matches!(
+        rest,
+        "mushroom" | "mushrooms" | "a mushroom" | "the mushroom"
+    )
+}
+
+fn meat_named(rest: &str) -> bool {
+    matches!(
+        rest,
+        "meat" | "raw meat" | "the meat" | "the raw meat" | "a raw meat"
+    )
+}
+
+fn fish_named(rest: &str) -> bool {
+    matches!(
+        rest,
+        "fish" | "raw fish" | "a fish" | "the fish" | "a raw fish" | "the raw fish"
+    )
 }
 
 fn cattail_roots_named(rest: &str) -> bool {

@@ -430,8 +430,16 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 Attempt::Eat(_)
                     | Attempt::Roast
                     | Attempt::RoastCattail
+                    | Attempt::RoastOnion
+                    | Attempt::RoastMushroom
+                    | Attempt::RoastMeat
+                    | Attempt::RoastFish
                     | Attempt::Cook
                     | Attempt::CookCattail
+                    | Attempt::CookOnion
+                    | Attempt::CookMushroom
+                    | Attempt::CookMeat
+                    | Attempt::CookFish
                     | Attempt::Drink
                     | Attempt::BreakIce => true,
                 Attempt::WeaveBasket | Attempt::WeaveMat | Attempt::SetMat | Attempt::Rest => true,

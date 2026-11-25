@@ -686,6 +686,22 @@ pub enum Attempt {
     CookCattail,
     /// `roast cattail` or `roast roots`. Roots only, and the line says roast.
     RoastCattail,
+    /// `cook onion`. The onion only, not whatever else is in reach.
+    CookOnion,
+    /// `roast onion`. The onion only, and the line says roast.
+    RoastOnion,
+    /// `cook mushroom`. The mushroom only, not whatever else is in reach.
+    CookMushroom,
+    /// `roast mushroom`. The mushroom only, and the line says roast.
+    RoastMushroom,
+    /// `cook meat`. The meat only, not whatever else is in reach.
+    CookMeat,
+    /// `roast meat`. The meat only, and the line says roast.
+    RoastMeat,
+    /// `cook fish`. The fish only, not whatever else is in reach.
+    CookFish,
+    /// `roast fish`. The fish only, and the line says roast.
+    RoastFish,
 }
 
 impl Attempt {
@@ -705,6 +721,14 @@ impl Attempt {
                 | Attempt::Roast
                 | Attempt::CookCattail
                 | Attempt::RoastCattail
+                | Attempt::CookOnion
+                | Attempt::RoastOnion
+                | Attempt::CookMushroom
+                | Attempt::RoastMushroom
+                | Attempt::CookMeat
+                | Attempt::RoastMeat
+                | Attempt::CookFish
+                | Attempt::RoastFish
                 | Attempt::Boil
                 | Attempt::Brew
                 | Attempt::SteepPine
@@ -13917,7 +13941,7 @@ mod mushroom_return {
         assert_eq!(crate::parse::parse_attempt("roast"), Ok(Attempt::Roast));
         assert_eq!(
             crate::parse::parse_attempt("roast mushrooms"),
-            Ok(Attempt::Roast)
+            Ok(Attempt::RoastMushroom)
         );
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 3, 1).unwrap();
@@ -23890,6 +23914,134 @@ mod cattail {
             "{}",
             bare.results[0].message
         );
+    }
+
+    #[test]
+    fn a_named_roast_heats_that_food_and_leaves_the_other() {
+        assert_eq!(
+            crate::parse::parse_attempt("roast onion").unwrap(),
+            Attempt::RoastOnion
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("cook wild onion").unwrap(),
+            Attempt::CookOnion
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("roast mushrooms").unwrap(),
+            Attempt::RoastMushroom
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("cook meat").unwrap(),
+            Attempt::CookMeat
+        );
+        assert_eq!(
+            crate::parse::parse_attempt("roast fish").unwrap(),
+            Attempt::RoastFish
+        );
+        assert_eq!(crate::parse::parse_attempt("roast").unwrap(), Attempt::Roast);
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_fire(cell, 0);
+        world.mint_item(Material::Cattail, 0, cell, Some(near), super::Role::Loose);
+        let missed = world.step(&[intent("miss", near, Attempt::RoastOnion)]);
+        assert_eq!(missed.results[0].message, "There is nothing here to roast.");
+        assert!(!missed.results[0].success);
+        for person in [near, seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "There is nothing here to roast."
+            }));
+        }
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Cattail && !item.cooked && item.carrier == Some(near)
+        }));
+        let cold = world.step(&[intent("cold", quiet, Attempt::CookOnion)]);
+        assert!(cold.results[0]
+            .message
+            .starts_with("There is no fire burning here"));
+        for person in [near, seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                !event.text.starts_with("There is no fire burning here")
+            }));
+        }
+        world.mint_item(Material::Onion, 0, cell, Some(near), super::Role::Loose);
+        let roasted = world.step(&[intent("roast", near, Attempt::RoastOnion)]);
+        assert_eq!(
+            roasted.results[0].message,
+            "You roast the wild onion over the fire."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            !event.text.contains("wild onion")
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near roasts the wild onion over the fire."
+        }));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| { !event.text.contains("onion") }));
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Cattail && !item.cooked && item.carrier == Some(near)
+        }));
+        world.mint_item(Material::Onion, 0, cell, Some(near), super::Role::Loose);
+        world.mint_item(Material::Meat, 0, cell, Some(near), super::Role::Loose);
+        let cooked = world.step(&[intent("cook", near, Attempt::CookOnion)]);
+        assert_eq!(
+            cooked.results[0].message,
+            "You cook the wild onion over the fire."
+        );
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "You cook the wild onion over the fire."
+                && event.text != "Near cooks the wild onion over the fire."
+        }));
+        assert!(world.observe(seen).unwrap().events.iter().any(|event| {
+            event.text == "Near cooks the wild onion over the fire."
+        }));
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Meat && !item.cooked && item.carrier == Some(near)
+        }));
+        world.mint_item(Material::Mushroom, 0, cell, Some(near), super::Role::Loose);
+        let mushroom = world.step(&[intent("mushroom", near, Attempt::RoastMushroom)]);
+        assert_eq!(
+            mushroom.results[0].message,
+            "You roast the mushroom over the fire."
+        );
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Meat && !item.cooked && item.carrier == Some(near)
+        }));
+        world.mint_item(Material::Fish, 0, cell, None, super::Role::Loose);
+        let fish = world.step(&[intent("fish", near, Attempt::RoastFish)]);
+        assert_eq!(
+            fish.results[0].message,
+            "You roast the fish over the fire."
+        );
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Cattail && !item.cooked && item.carrier == Some(near)
+        }));
+        world.mint_item(Material::Onion, 0, cell, None, super::Role::Loose);
+        let at_feet = world.step(&[intent("feet", near, Attempt::RoastOnion)]);
+        assert_eq!(
+            at_feet.results[0].message,
+            "You roast the wild onion over the fire."
+        );
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Cattail && !item.cooked && item.carrier == Some(near)
+        }));
+        let gone = world.step(&[intent("gone", near, Attempt::CookOnion)]);
+        assert_eq!(gone.results[0].message, "There is nothing here to cook.");
+        assert!(!gone.results[0].success);
+        for person in [near, seen, quiet] {
+            assert!(world.observe(person).unwrap().events.iter().all(|event| {
+                event.text != "There is nothing here to cook."
+            }));
+        }
+        assert!(world.items.values().any(|item| {
+            item.material == Material::Cattail && !item.cooked && item.carrier == Some(near)
+        }));
     }
 
     #[test]
