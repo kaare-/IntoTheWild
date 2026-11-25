@@ -7759,6 +7759,13 @@ impl World {
             "{}: hoofprints mark the outside floor. The last branch is gone from the next square {side}. Hoofprints mark that ground.",
             capitalize(dir.word())
         );
+        if self.deer.as_ref().is_some_and(|deer| deer.cell == dest) {
+            if self.deer_meal_this_tick(dest).is_some() {
+                line.push_str(" A deer is eating the berries on that floor.");
+            } else {
+                line.push_str(" A deer stands on that floor.");
+            }
+        }
         if let Some(name) = self.name_standing_on(origin, dest) {
             line.push_str(&format!(" {name} stands on that floor."));
         }

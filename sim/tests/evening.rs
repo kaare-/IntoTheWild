@@ -5146,6 +5146,55 @@ fn rain_reaches_an_open_body_and_the_outside_floor_stays() {
 }
 
 #[test]
+fn a_deer_on_the_outside_floor_is_named_when_the_map_draws_it() {
+    let mut world = World::valley(Tuning::evening(), 1);
+    let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+    let mut found = false;
+    for _ in 0..90 {
+        world.step(&[]);
+        let look = world.observe(near).unwrap();
+        let on_west = look
+            .visible_cells
+            .iter()
+            .any(|cell| cell.x == 5 && cell.y == 1 && cell.deer);
+        if !on_west {
+            continue;
+        }
+        let west = look
+            .text
+            .lines()
+            .find(|line| line.starts_with("West:"))
+            .unwrap_or("");
+        if !west.contains("The last branch is gone from the next square") {
+            continue;
+        }
+        assert!(
+            west.contains("A deer stands on that floor.")
+                || west.contains("A deer is eating the berries on that floor."),
+            "time {} {west}",
+            world.sim_time()
+        );
+        let square = look
+            .visible_cells
+            .iter()
+            .find(|cell| cell.x == 5 && cell.y == 1)
+            .unwrap();
+        assert!(square.deer && square.tracks, "{square:?}");
+        assert!(
+            look.map.contains(".d\""),
+            "the map should draw the deer on the hoofprints\n{}",
+            look.map
+        );
+        found = true;
+        break;
+    }
+    assert!(
+        found,
+        "the deer never stood on the outside floor while that west line was up"
+    );
+}
+
+#[test]
 fn poison_berries_are_not_food_and_still_water_freezes() {
     let mut cook = world_at(10_000);
     let sera = cook.spawn_at("Sera", "s", 6, 1).unwrap();
