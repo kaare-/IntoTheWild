@@ -25647,6 +25647,39 @@ mod gather_step {
     }
 
     #[test]
+    fn bark_one_cell_off_is_the_reply_only() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 5, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 6, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let east = "There is no bark here to gather. Step east.";
+        let miss = world.step(&[intent("bark", near, Attempt::Gather(Material::Bark))]);
+        assert_eq!(miss.results[0].message, east);
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (5, 1));
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != east));
+        }
+        world.actors.get_mut(&near).unwrap().cell = cell_id(6, 2).unwrap();
+        let north = "There is no bark here to gather. Step north.";
+        let south = world.step(&[intent("south", near, Attempt::Gather(Material::Bark))]);
+        assert_eq!(south.results[0].message, north);
+        assert_eq!(cell_xy(world.actor(near).unwrap().cell), (6, 2));
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != north));
+        }
+    }
+
+    #[test]
     fn flint_and_worms_one_cell_off_name_the_step() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         let near = world.spawn_at("Near", "n", 3, 1).unwrap();

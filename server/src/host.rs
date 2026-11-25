@@ -428,6 +428,14 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
                 {
                     true
                 }
+                Attempt::Gather(_)
+                    if !result.success
+                        && result
+                            .message
+                            .starts_with("There is no bark here to gather. Step ") =>
+                {
+                    true
+                }
                 Attempt::Eat(_)
                     | Attempt::Roast
                     | Attempt::RoastCattail
@@ -1634,6 +1642,57 @@ mod tests {
             .events
             .iter()
             .all(|event| event.text != edge));
+        assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_bark_gather_one_cell_off_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-bark-step-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        for (id, line) in [("n1", "north"), ("n2", "north"), ("e1", "east")] {
+            host.submit(&near.token, id, line, None);
+            let closed = host.advance(1).unwrap();
+            assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+            assert!(
+                closed.replies[0].message.starts_with("You walk"),
+                "{:?}",
+                closed.replies
+            );
+        }
+        let beside = host.observe(&near.token).unwrap();
+        assert_eq!((beside.self_info.x, beside.self_info.y), (5, 1));
+        let step = "There is no bark here to gather. Step east.";
+        host.submit(&near.token, "bark", "gather bark", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, step);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        assert_eq!(closed.replies[0].command_id, "bark");
+        let stayed = host.observe(&near.token).unwrap();
+        assert_eq!((stayed.self_info.x, stayed.self_info.y), (5, 1));
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != step));
+        }
         assert!(!host.clock().raining);
         let _ = std::fs::remove_file(&data);
         let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
