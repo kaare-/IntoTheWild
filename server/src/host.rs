@@ -404,7 +404,8 @@ fn spoken_replies(intents: &[Intent], results: &[CommandResult]) -> Vec<SpokenRe
         .filter_map(|result| {
             let attempt = attempts.get(result.command_id.as_str())?;
             let spoken = match attempt {
-                Attempt::Gather(_) | Attempt::Light if result.success => true,
+                Attempt::Gather(_) if result.success => true,
+                Attempt::Light => true,
                 Attempt::Gather(_)
                     if !result.success
                         && result.message == "Your arms are full. Drop something first." =>
@@ -1576,6 +1577,41 @@ mod tests {
             .iter()
             .all(|event| event.text != "Near walks west."));
         assert!(!host.clock().raining);
+        let _ = std::fs::remove_file(&data);
+        let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
+        let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn a_light_that_cannot_catch_comes_back_when_the_window_closes() {
+        let data = std::env::temp_dir().join(format!(
+            "villmarks-light-reply-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/evening.toml");
+        let mut host = Host::open(&data, &config, 1, 1000, true, 20.0).unwrap();
+        let near = host.join("Near").unwrap();
+        let seen = host.join("Seen").unwrap();
+        let quiet = host.join("Quiet").unwrap();
+        let miss = "You need dry loose bark for tinder.";
+        host.submit(&near.token, "bare", "light fire", None);
+        let closed = host.advance(1).unwrap();
+        assert_eq!(closed.replies.len(), 1, "{:?}", closed.replies);
+        assert_eq!(closed.replies[0].message, miss);
+        assert_eq!(closed.replies[0].actor_id, near.actor_id);
+        for token in [&near.token, &seen.token, &quiet.token] {
+            assert!(host
+                .observe(token)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != miss));
+        }
         let _ = std::fs::remove_file(&data);
         let _ = std::fs::remove_file(data.with_extension("sqlite-wal"));
         let _ = std::fs::remove_file(data.with_extension("sqlite-shm"));

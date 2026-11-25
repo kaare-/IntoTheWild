@@ -6811,6 +6811,84 @@ mod dry_tinder {
             .iter()
             .all(|event| { event.text != "The rain puts the bark out before it catches." }));
     }
+
+    #[test]
+    fn a_soaked_branch_in_the_arms_leaves_the_dry_branch_on_the_ground() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(
+            Material::Branch,
+            world.tuning.soaked_at,
+            cell,
+            Some(near),
+            Role::Loose,
+        );
+        let dry = world.mint_item(Material::Branch, 0, cell, None, Role::Loose);
+        let yours = "You light a fire with the bark from the arms and a dry branch from the ground.";
+        let heard = "Near lights a fire with the bark from the arms and a dry branch from the ground.";
+        let lit = world.step(&[intent("light", near, Attempt::Light)]);
+        assert_eq!(lit.results[0].message, yours);
+        assert!(lit.results[0].success);
+        assert!(world.fire_at(cell).is_some());
+        assert!(world.item(dry).is_none());
+        assert_eq!(world.loose_ids(near, Material::Branch).len(), 1);
+        assert!(world.item(world.loose_ids(near, Material::Branch)[0]).unwrap().moisture >= world.tuning.soaked_at);
+        assert!(world.loose_ids(near, Material::Bark).is_empty());
+        assert!(world
+            .observe(near)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != heard));
+        assert!(world
+            .observe(seen)
+            .unwrap()
+            .events
+            .iter()
+            .any(|event| event.text == heard));
+        assert!(world
+            .observe(quiet)
+            .unwrap()
+            .events
+            .iter()
+            .all(|event| event.text != yours && event.text != heard));
+    }
+
+    #[test]
+    fn a_soaked_branch_in_the_arms_names_why_the_fire_does_not_catch() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 3).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 4).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Bark, 0, cell, Some(near), Role::Loose);
+        world.mint_item(
+            Material::Branch,
+            world.tuning.soaked_at,
+            cell,
+            Some(near),
+            Role::Loose,
+        );
+        let miss = "The branch in the arms is soaked. You need a dry branch.";
+        let refused = world.step(&[intent("light", near, Attempt::Light)]);
+        assert_eq!(refused.results[0].message, miss);
+        assert!(!refused.results[0].success);
+        assert!(world.fire_at(cell).is_none());
+        assert_eq!(world.loose_ids(near, Material::Branch).len(), 1);
+        assert_eq!(world.loose_ids(near, Material::Bark).len(), 1);
+        for person in [near, seen, quiet] {
+            assert!(world
+                .observe(person)
+                .unwrap()
+                .events
+                .iter()
+                .all(|event| event.text != miss));
+        }
+    }
 }
 
 #[cfg(test)]

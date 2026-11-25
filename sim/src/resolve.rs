@@ -4774,11 +4774,36 @@ impl World {
                 "You need dry loose bark for tinder.".into()
             });
         }
+        if let Some(line) = self.wet_branch_in_arms(actor) {
+            return Some(line);
+        }
         return Some(if self.has_material_at_hand(actor, Material::Branch) {
             "The branch is too damp to burn.".into()
         } else {
             "You need a dry branch or a lump of charcoal for the fire.".into()
         });
+    }
+
+    /// A branch in the arms that will not burn. A dry one at the feet is fuel instead.
+    fn wet_branch_in_arms(&self, actor: crate::model::ActorId) -> Option<String> {
+        let ids = self.loose_ids(actor, Material::Branch);
+        if ids.is_empty() {
+            return None;
+        }
+        let soaked = ids.iter().all(|id| {
+            self.item(*id)
+                .is_some_and(|branch| branch.moisture >= self.tuning.soaked_at)
+        });
+        let word = if soaked { "soaked" } else { "damp" };
+        if ids.len() == 1 {
+            Some(format!(
+                "The branch in the arms is {word}. You need a dry branch."
+            ))
+        } else {
+            Some(format!(
+                "The branches in the arms are {word}. You need a dry branch."
+            ))
+        }
     }
 
     /// Dry tinder in the arms or on this cell. A soaked sheet is not dry.
@@ -4835,11 +4860,33 @@ impl World {
         Some((Some(id), MossSpot::Ground))
     }
 
-    /// Dry fuel in the arms or on this cell.
+    /// Dry fuel in the arms, in the pile, or a dry branch lying on this ground.
+    /// A soaked branch in the arms is not this fuel.
     fn fuel_at_hand(&self, actor: crate::model::ActorId) -> bool {
         self.charcoal_in_arms(actor)
             || self.has_dry(actor, Material::Branch)
             || self.charcoal_on_ground(actor)
+            || self.actor(actor).is_some_and(|person| {
+                self.dry_ground_id(person.cell, Material::Branch).is_some()
+            })
+    }
+
+    /// A dry branch from the arms, then the pile, then one lying on this ground.
+    /// The bool-sized source says which sentence to use. A soaked branch stays.
+    fn take_branch_fuel(
+        &mut self,
+        actor: crate::model::ActorId,
+    ) -> Result<(Option<crate::model::ItemId>, BranchFrom), ()> {
+        match self.consume_dry(actor, Material::Branch) {
+            Ok((item, true)) => Ok((item, BranchFrom::Arms)),
+            Ok((item, false)) => Ok((item, BranchFrom::Pile)),
+            Err(()) => {
+                let cell = self.actor(actor).map(|person| person.cell).ok_or(())?;
+                let id = self.dry_ground_id(cell, Material::Branch).ok_or(())?;
+                self.items.remove(&id);
+                Ok((Some(id), BranchFrom::Ground))
+            }
+        }
     }
 
     fn open_rain_tinder_line(&self, actor: crate::model::ActorId) -> String {
@@ -5445,7 +5492,7 @@ impl World {
                 };
                 let (fuel_item, from_charcoal, charcoal_arms, branch_arms) = if use_charcoal {
                     match self.take_charcoal(intent.actor_id) {
-                        Ok((lump, charcoal_arms)) => (lump, true, charcoal_arms, false),
+                        Ok((lump, charcoal_arms)) => (lump, true, charcoal_arms, BranchFrom::Pile),
                         Err(()) => {
                             self.finish(
                                 intent.command_id,
@@ -5458,18 +5505,22 @@ impl World {
                         }
                     }
                 } else {
-                    match self.consume_dry(intent.actor_id, Material::Branch) {
-                        Ok((branch_item, branch_arms)) => (branch_item, false, false, branch_arms),
+                    match self.take_branch_fuel(intent.actor_id) {
+                        Ok((branch_item, branch_from)) => (branch_item, false, false, branch_from),
                         Err(()) => {
+                            let message = self.wet_branch_in_arms(intent.actor_id).unwrap_or(
+                                if resin || moss_arms.is_some() || fluff_arms.is_some() {
+                                    "You need a dry branch or a lump of charcoal for the fire."
+                                        .into()
+                                } else {
+                                    "You need dry loose bark and a dry branch.".into()
+                                },
+                            );
                             self.finish(
                                 intent.command_id,
                                 intent.actor_id,
                                 false,
-                                if resin || moss_arms.is_some() || fluff_arms.is_some() {
-                                    "You need a dry branch or a lump of charcoal for the fire."
-                                } else {
-                                    "You need dry loose bark and a dry branch."
-                                },
+                                message,
                                 results,
                             );
                             continue;
@@ -16426,20 +16477,20 @@ fn hare_instead(deer: &str) -> &'static str {
     }
 }
 
-fn resin_light_line(who: Option<&str>, branch_arms: bool) -> String {
-    let fuel = if branch_arms {
-        "the pine resin and the branch from the arms"
-    } else {
-        "the pine resin from the arms and a dry branch from the pile at the feet"
+fn resin_light_line(who: Option<&str>, branch: BranchFrom) -> String {
+    let fuel = match branch {
+        BranchFrom::Arms => "the pine resin and the branch from the arms",
+        BranchFrom::Pile => "the pine resin from the arms and a dry branch from the pile at the feet",
+        BranchFrom::Ground => "the pine resin from the arms and a dry branch from the ground",
     };
     crate::model::spoken_act(who, "light", &format!("a fire with {fuel}."))
 }
 
-fn resin_brand_light_line(who: Option<&str>, branch_arms: bool) -> String {
-    let fuel = if branch_arms {
-        "the pine resin and the branch from the arms"
-    } else {
-        "the pine resin from the arms and a dry branch from the pile at the feet"
+fn resin_brand_light_line(who: Option<&str>, branch: BranchFrom) -> String {
+    let fuel = match branch {
+        BranchFrom::Arms => "the pine resin and the branch from the arms",
+        BranchFrom::Pile => "the pine resin from the arms and a dry branch from the pile at the feet",
+        BranchFrom::Ground => "the pine resin from the arms and a dry branch from the ground",
     };
     crate::model::spoken_act(
         who,
@@ -16448,18 +16499,22 @@ fn resin_brand_light_line(who: Option<&str>, branch_arms: bool) -> String {
     )
 }
 
-fn brand_light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {
-    let fuel = match (bark_arms, branch_arms) {
-        (true, true) => "the bark and the branch from the arms",
-        (false, false) => "bark and a dry branch from the pile at the feet",
-        (true, false) => "the bark from the arms and a dry branch from the pile at the feet",
-        (false, true) => "bark from the pile at the feet and the branch from the arms",
-    };
+fn brand_light_line(who: Option<&str>, bark_arms: bool, branch: BranchFrom) -> String {
     crate::model::spoken_act(
         who,
         "light",
-        &format!("a fire with the burning brand and {fuel}."),
+        &format!(
+            "a fire with the burning brand and {}.",
+            branch_and_bark(bark_arms, branch)
+        ),
     )
+}
+
+#[derive(Clone, Copy)]
+enum BranchFrom {
+    Arms,
+    Pile,
+    Ground,
 }
 
 #[derive(Clone, Copy)]
@@ -16469,26 +16524,46 @@ enum MossSpot {
     Ground,
 }
 
-fn moss_fuel(spot: MossSpot, branch_arms: bool) -> &'static str {
-    match (spot, branch_arms) {
-        (MossSpot::Arms, true) => "the moss and the branch from the arms",
-        (MossSpot::Arms, false) => {
-            "the moss from the arms and a dry branch from the pile at the feet"
-        }
-        (MossSpot::Pile, true) => "moss from the pile at the feet and the branch from the arms",
-        (MossSpot::Pile, false) => "moss and a dry branch from the pile at the feet",
-        (MossSpot::Ground, true) => "moss from the ground and the branch from the arms",
-        (MossSpot::Ground, false) => {
-            "moss from the ground and a dry branch from the pile at the feet"
-        }
+fn branch_and_bark(bark_arms: bool, branch: BranchFrom) -> &'static str {
+    match (bark_arms, branch) {
+        (true, BranchFrom::Arms) => "the bark and the branch from the arms",
+        (false, BranchFrom::Pile) => "bark and a dry branch from the pile at the feet",
+        (true, BranchFrom::Pile) => "the bark from the arms and a dry branch from the pile at the feet",
+        (false, BranchFrom::Arms) => "bark from the pile at the feet and the branch from the arms",
+        (true, BranchFrom::Ground) => "the bark from the arms and a dry branch from the ground",
+        (false, BranchFrom::Ground) => "bark from the pile at the feet and a dry branch from the ground",
     }
 }
 
-fn fluff_light_line(who: Option<&str>, branch_arms: bool, brand: bool) -> String {
-    let fuel = if branch_arms {
-        "the cattail fluff and the branch from the arms"
-    } else {
-        "the cattail fluff from the arms and a dry branch from the pile at the feet"
+fn moss_fuel(spot: MossSpot, branch: BranchFrom) -> &'static str {
+    match (spot, branch) {
+        (MossSpot::Arms, BranchFrom::Arms) => "the moss and the branch from the arms",
+        (MossSpot::Arms, BranchFrom::Pile) => {
+            "the moss from the arms and a dry branch from the pile at the feet"
+        }
+        (MossSpot::Arms, BranchFrom::Ground) => {
+            "the moss from the arms and a dry branch from the ground"
+        }
+        (MossSpot::Pile, BranchFrom::Arms) => "moss from the pile at the feet and the branch from the arms",
+        (MossSpot::Pile, BranchFrom::Pile) => "moss and a dry branch from the pile at the feet",
+        (MossSpot::Pile, BranchFrom::Ground) => {
+            "moss from the pile at the feet and a dry branch from the ground"
+        }
+        (MossSpot::Ground, BranchFrom::Arms) => "moss from the ground and the branch from the arms",
+        (MossSpot::Ground, BranchFrom::Pile) => {
+            "moss from the ground and a dry branch from the pile at the feet"
+        }
+        (MossSpot::Ground, BranchFrom::Ground) => "moss and a dry branch from the ground",
+    }
+}
+
+fn fluff_light_line(who: Option<&str>, branch: BranchFrom, brand: bool) -> String {
+    let fuel = match branch {
+        BranchFrom::Arms => "the cattail fluff and the branch from the arms",
+        BranchFrom::Pile => {
+            "the cattail fluff from the arms and a dry branch from the pile at the feet"
+        }
+        BranchFrom::Ground => "the cattail fluff from the arms and a dry branch from the ground",
     };
     let rest = if brand {
         format!("a fire with the burning brand and {fuel}.")
@@ -16498,21 +16573,21 @@ fn fluff_light_line(who: Option<&str>, branch_arms: bool, brand: bool) -> String
     crate::model::spoken_act(who, "light", &rest)
 }
 
-fn moss_light_line(who: Option<&str>, spot: MossSpot, branch_arms: bool) -> String {
+fn moss_light_line(who: Option<&str>, spot: MossSpot, branch: BranchFrom) -> String {
     crate::model::spoken_act(
         who,
         "light",
-        &format!("a fire with {}.", moss_fuel(spot, branch_arms)),
+        &format!("a fire with {}.", moss_fuel(spot, branch)),
     )
 }
 
-fn moss_brand_light_line(who: Option<&str>, spot: MossSpot, branch_arms: bool) -> String {
+fn moss_brand_light_line(who: Option<&str>, spot: MossSpot, branch: BranchFrom) -> String {
     crate::model::spoken_act(
         who,
         "light",
         &format!(
             "a fire with the burning brand and {}.",
-            moss_fuel(spot, branch_arms)
+            moss_fuel(spot, branch)
         ),
     )
 }
@@ -16581,12 +16656,10 @@ fn off_bark_line(who: Option<&str>, place: &str, bark_pile: bool, fuel: FuelSpot
 }
 
 /// One light, filled for the person who set it and for anyone else.
-fn light_line(who: Option<&str>, bark_arms: bool, branch_arms: bool) -> String {
-    let fuel = match (bark_arms, branch_arms) {
-        (true, true) => "the bark and the branch from the arms",
-        (false, false) => "bark and a dry branch from the pile at the feet",
-        (true, false) => "the bark from the arms and a dry branch from the pile at the feet",
-        (false, true) => "bark from the pile at the feet and the branch from the arms",
-    };
-    crate::model::spoken_act(who, "light", &format!("a fire with {fuel}."))
+fn light_line(who: Option<&str>, bark_arms: bool, branch: BranchFrom) -> String {
+    crate::model::spoken_act(
+        who,
+        "light",
+        &format!("a fire with {}.", branch_and_bark(bark_arms, branch)),
+    )
 }
