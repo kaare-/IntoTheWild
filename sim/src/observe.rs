@@ -1332,7 +1332,7 @@ impl World {
                 self.condition_word(moisture)
             ));
         }
-        for id in self.ground_ids(actor.cell, Material::Brand) {
+        for _id in self.ground_ids(actor.cell, Material::Brand) {
             parts.push("A burning brand lies here.".into());
         }
         for id in self.ground_ids(actor.cell, Material::Fish) {

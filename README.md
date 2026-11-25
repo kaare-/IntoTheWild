@@ -25,6 +25,8 @@ Two worm beds on the same diagonal are named once in the look.
 
 The page is a black terminal. Actions and replies sit on the left and fade as they age. The sign map and the place sit on the right, and empty ground stays black. The body line sits along the bottom.
 
+An older valley file with no hearing distance is read as one cell past sight. If that file still cannot be read, the server names the valley file and the wal and shm files beside it so they can be deleted.
+
 The simulation is a Rust library with no network, database, clock, or model calls. One Tokio and Axum process owns the valley. A TypeScript page and a Python client are players, not special cases. Design choices taken from EmpireMUD, Bunnyland, Aardwolf, and GemStone III are in [DESIGN.md](DESIGN.md). Nothing here is deployed.
 
 ## Run it
