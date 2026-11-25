@@ -15027,6 +15027,25 @@ fn a_walk_is_footsteps_one_cell_past_sight() {
         refused.results[0].message,
         "The valley does not go that way."
     );
+    let edge = "The valley does not go that way.";
+    assert!(world
+        .observe(near)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != edge));
+    assert!(world
+        .observe(seen)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != edge));
+    assert!(world
+        .observe(quiet)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != edge));
     assert_eq!(
         world
             .observe(south)

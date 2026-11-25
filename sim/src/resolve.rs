@@ -308,6 +308,10 @@ impl World {
                     // with the person who tried.
                     let onion_gather_miss =
                         matches!(intent.attempt, Attempt::Gather(Material::Onion));
+                    // Walking off the map is the reply only. The same sentence
+                    // is not also in that person's log.
+                    let edge_refusal = matches!(intent.attempt, Attempt::Move(_))
+                        && message == "The valley does not go that way.";
                     let personal =
                         !matches!(intent.attempt, Attempt::SmokeFish | Attempt::SmokeMeat)
                             && message != RAW_MUSHROOM_REFUSAL
@@ -343,7 +347,8 @@ impl World {
                             && !full_arms_weave
                             && !basket_weave_refusal
                             && !mat_refusal
-                            && !onion_gather_miss;
+                            && !onion_gather_miss
+                            && !edge_refusal;
                     failures.push((intent, message, personal));
                 }
                 Ok(uses_body) => {
