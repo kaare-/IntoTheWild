@@ -15798,6 +15798,15 @@ impl World {
                 );
             }
         }
+        if event.text == "Wild onions grow here again." {
+            if let Scope::Cell(cell) = event.scope {
+                if origin == cell {
+                    return event.text.clone();
+                }
+                let way = self.relative(origin, cell);
+                return format!("Wild onions grow on the valley floor to the {way} again.");
+            }
+        }
         if let Some(rest) = event.text.strip_prefix("A deer steps ") {
             if let Some(dir) = rest.strip_suffix(". A branch snapped under the deer.") {
                 if let Scope::Cell(cell) = event.scope {

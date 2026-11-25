@@ -30843,8 +30843,18 @@ mod wild_onion {
         assert_eq!(world.pile_count(floor, Material::Onion), super::ONION_STAND);
         assert!(world.onion_returns_at.is_empty());
         assert!(says(&world, near, "Wild onions grow here again."));
-        assert!(says(&world, seen, "Wild onions grow here again."));
+        assert!(!says(&world, seen, "Wild onions grow here again."));
+        assert!(says(
+            &world,
+            seen,
+            "Wild onions grow on the valley floor to the south and east again."
+        ));
         assert!(!says(&world, quiet, "Wild onions grow here again."));
+        assert!(!says(
+            &world,
+            quiet,
+            "Wild onions grow on the valley floor to the south and east again."
+        ));
         let from_trail = world.observe(seen).unwrap().text;
         assert!(
             from_trail.contains("Wild onions grow on the valley floor to the south and east."),
@@ -30857,6 +30867,39 @@ mod wild_onion {
         assert!(!says(&world, quiet, "Near gathers a wild onion."));
         assert_eq!(world.pile_count(floor, Material::Onion), 1);
         assert!(world.onion_returns_at.is_empty());
+    }
+
+    #[test]
+    fn onions_growing_back_are_named_where_they_stand() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 4).unwrap();
+        let seen = world.spawn_at("Seen", "s", 3, 3).unwrap();
+        let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+        let ticks = world.tuning.mushroom_ticks;
+        world.step(&[intent("one", near, Attempt::Gather(Material::Onion))]);
+        world.step(&[intent("two", near, Attempt::Gather(Material::Onion))]);
+        for _ in 0..ticks - 1 {
+            world.step(&[]);
+        }
+        assert!(!says(&world, near, "Wild onions grow here again."));
+        world.step(&[]);
+        let aimed = "Wild onions grow on the valley floor to the south and east again.";
+        assert!(says(&world, near, "Wild onions grow here again."));
+        assert!(!says(&world, seen, "Wild onions grow here again."));
+        assert!(says(&world, seen, aimed));
+        assert!(!says(&world, rock, "Wild onions grow here again."));
+        assert!(!says(&world, rock, aimed));
+        let rock_look = world.observe(rock).unwrap().text;
+        assert!(
+            !rock_look.contains("onion"),
+            "{rock_look}"
+        );
+        let seen_look = world.observe(seen).unwrap().text;
+        assert!(
+            seen_look.contains("Wild onions grow on the valley floor to the south and east."),
+            "{seen_look}"
+        );
+        assert!(!seen_look.contains("grow here"), "{seen_look}");
     }
 
     #[test]
