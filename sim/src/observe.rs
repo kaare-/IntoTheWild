@@ -3365,7 +3365,15 @@ impl World {
         if lines.is_empty() {
             None
         } else {
-            Some(lines.join(" "))
+            // Two beds on one diagonal share a direction, so the
+            // sentence is said once.
+            let mut named = Vec::new();
+            for line in lines {
+                if !named.contains(&line) {
+                    named.push(line);
+                }
+            }
+            Some(named.join(" "))
         }
     }
 

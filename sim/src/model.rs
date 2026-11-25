@@ -28470,6 +28470,21 @@ mod worms {
     }
 
     #[test]
+    fn worms_on_the_same_diagonal_are_named_once() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let willow = world.spawn_at("Near", "n", 0, 4).unwrap();
+        let look = world.observe(willow).unwrap().text;
+        let diagonal = "Worms are in the damp earth to the north and east.";
+        assert_eq!(look.matches(diagonal).count(), 1, "{look}");
+        let bank = world.spawn_at("Bank", "b", 1, 4).unwrap();
+        let beside = world.observe(bank).unwrap().text;
+        assert_eq!(beside.matches(diagonal).count(), 1, "{beside}");
+        let north = "Worms are in the damp earth to the north.";
+        let rest = beside.replace(diagonal, "");
+        assert_eq!(rest.matches(north).count(), 1, "{beside}");
+    }
+
+    #[test]
     fn adjacent_worms_are_a_direction_and_the_dig_names_the_step() {
         let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
         if let Some(deer) = world.deer.as_mut() {
