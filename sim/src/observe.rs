@@ -15807,6 +15807,21 @@ impl World {
                 return format!("Wild onions grow on the valley floor to the {way} again.");
             }
         }
+        if event.text == "Berries lie here again."
+            || event.text == "Dark berries lie here again."
+            || event.text == "Pale berries lie here again."
+        {
+            if let Scope::Cell(cell) = event.scope {
+                let line = if origin == cell {
+                    event.text.clone()
+                } else {
+                    let way = self.relative(origin, cell);
+                    let named = event.text.trim_end_matches(" lie here again.");
+                    format!("{named} lie to the {way} again.")
+                };
+                return self.bitter_heard(viewer, line);
+            }
+        }
         if let Some(rest) = event.text.strip_prefix("A deer steps ") {
             if let Some(dir) = rest.strip_suffix(". A branch snapped under the deer.") {
                 if let Scope::Cell(cell) = event.scope {

@@ -13775,13 +13775,12 @@ mod berry_return {
         assert!(!seen_back.text.contains("dark berries"), "{}", seen_back.text);
         assert!(!seen_back.text.contains("poisonous"), "{}", seen_back.text);
         assert!(!seen_back.text.contains("are gone"), "{}", seen_back.text);
-        assert!(seen_back.events.iter().any(|event| event.text == back));
-        assert!(world
-            .observe(quiet)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != back));
+        let aimed = "Dark berries lie to the north again.";
+        assert!(seen_back.events.iter().all(|event| event.text != back));
+        assert!(seen_back.events.iter().any(|event| event.text == aimed));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != back && event.text != aimed
+        }));
         assert!(!world.observe(quiet).unwrap().text.contains("dark berries"));
         assert!(!world.observe(quiet).unwrap().text.contains("poison"));
         let second = world.step(&[intent(
@@ -13879,24 +13878,74 @@ mod berry_return {
         assert!(again.text.contains("Berries lie here"), "{}", again.text);
         assert!(!again.text.contains("are gone"), "{}", again.text);
         assert!(again.events.iter().any(|event| event.text == back));
-        assert!(world
-            .observe(seen)
-            .unwrap()
-            .events
-            .iter()
-            .any(|event| event.text == back));
-        assert!(world
-            .observe(quiet)
-            .unwrap()
-            .events
-            .iter()
-            .all(|event| event.text != back));
+        let aimed = "Berries lie to the east again.";
+        let seen_back = world.observe(seen).unwrap();
+        assert!(seen_back.events.iter().all(|event| event.text != back));
+        assert!(seen_back.events.iter().any(|event| event.text == aimed));
+        assert!(world.observe(quiet).unwrap().events.iter().all(|event| {
+            event.text != back && event.text != aimed
+        }));
         let second = world.step(&[intent("second", near, Attempt::Gather(Material::Berry))]);
         assert_eq!(
             second.results[0].message,
             "You gather a handful of berries."
         );
         assert_eq!(world.pile_count(rock, Material::Berry), 3);
+    }
+
+    #[test]
+    fn berries_growing_back_are_named_where_they_lie() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        if let Some(deer) = world.deer.as_mut() {
+            deer.held = true;
+        }
+        world.tuning.carry_slots = 20;
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 5, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let ash = world.spawn_at("Ash", "a", 1, 4).unwrap();
+        let edge = world.spawn_at("Edge", "e", 2, 4).unwrap();
+        empty_patch(&mut world, near, Material::BitterBerry);
+        world.actors.get_mut(&near).unwrap().cell = super::cell_id(6, 1).unwrap();
+        empty_patch(&mut world, near, Material::Berry);
+        world.actors.get_mut(&near).unwrap().cell = super::cell_id(4, 1).unwrap();
+        let rock = world.spawn_at("Rock", "r", 6, 1).unwrap();
+        empty_patch(&mut world, ash, Material::PaleBerry);
+        let ticks = world.tuning.berry_ticks;
+        for _ in 0..ticks {
+            world.step(&[]);
+        }
+        let says = |world: &World, actor: u32, line: &str| {
+            world
+                .observe(actor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line)
+        };
+        let dark = "Dark berries lie here again.";
+        let dark_west = "Dark berries lie to the west again.";
+        assert!(says(&world, near, dark));
+        assert!(!says(&world, seen, dark));
+        assert!(says(&world, seen, dark_west));
+        assert!(!says(&world, quiet, dark));
+        assert!(!says(&world, quiet, dark_west));
+        let sweet = "Berries lie here again.";
+        let sweet_east = "Berries lie to the east again.";
+        assert!(says(&world, rock, sweet));
+        assert!(!says(&world, seen, sweet));
+        assert!(says(&world, seen, sweet_east));
+        assert!(says(&world, near, sweet_east));
+        assert!(!says(&world, near, sweet));
+        assert!(!says(&world, quiet, sweet));
+        assert!(!says(&world, quiet, sweet_east));
+        let pale = "Pale berries lie here again.";
+        let pale_west = "Pale berries lie to the west again.";
+        assert!(says(&world, ash, pale));
+        assert!(!says(&world, edge, pale));
+        assert!(says(&world, edge, pale_west));
+        assert!(!says(&world, quiet, pale));
+        assert!(!says(&world, quiet, pale_west));
     }
 
     #[test]
