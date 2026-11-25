@@ -170,7 +170,8 @@ impl World {
         let mut ice_breaks = Vec::new();
         let mut pulls = Vec::new();
 
-        for intent in pending {
+        for mut intent in pending {
+            intent.attempt = self.berry_pile_here(intent.actor_id, intent.attempt);
             let Some(actor) = self.actor(intent.actor_id).cloned() else {
                 failures.push((
                     intent,
@@ -15323,6 +15324,32 @@ impl World {
             message.push_str(&format!(" You are {}.", self.hunger_word(after)));
         }
         self.finish(intent.command_id, intent.actor_id, true, message, results);
+    }
+
+    /// `gather berries` and `eat berries` mean the berries underfoot.
+    /// Sweet berries stay sweet. A dark pile, with no sweet berries here,
+    /// is the dark handful. The bite is still what names the poison.
+    fn berry_pile_here(&self, actor: crate::model::ActorId, attempt: Attempt) -> Attempt {
+        let generic = matches!(
+            attempt,
+            Attempt::Gather(Material::Berry) | Attempt::Eat(Material::Berry)
+        );
+        if !generic || self.sweet_berries_underfoot(actor) {
+            return attempt;
+        }
+        let Some(person) = self.actor(actor) else {
+            return attempt;
+        };
+        let dark = self.pile_count(person.cell, Material::BitterBerry) > 0
+            || !self.loose_ids(actor, Material::BitterBerry).is_empty();
+        if !dark {
+            return attempt;
+        }
+        match attempt {
+            Attempt::Gather(_) => Attempt::Gather(Material::BitterBerry),
+            Attempt::Eat(_) => Attempt::Eat(Material::BitterBerry),
+            other => other,
+        }
     }
 
     fn eat_poison(&mut self, intent: Intent, results: &mut Vec<CommandResult>) {

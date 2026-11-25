@@ -13922,6 +13922,147 @@ mod berry_return {
         assert!(says(&world, seen, "Near eats a handful of berries."));
         assert!(!says(&world, quiet, ground.results[0].message.as_str()));
     }
+
+    #[test]
+    fn berries_underfoot_are_the_dark_pile_until_the_bite() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 0).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let before = world.pile_count(cell, Material::BitterBerry);
+        assert!(before > 0);
+        let look = world.observe(near).unwrap().text;
+        assert!(look.contains("Dark berries lie here"), "{look}");
+        assert!(!look.contains("poison"), "{look}");
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a handful of dark berries."
+        );
+        assert!(gathered.results[0].success);
+        assert_eq!(world.pile_count(cell, Material::BitterBerry), before - 1);
+        assert_eq!(world.loose_ids(near, Material::BitterBerry).len(), 1);
+        assert!(world.loose_ids(near, Material::Berry).is_empty());
+        let says = |world: &World, actor: u32, line: &str| {
+            world
+                .observe(actor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line)
+        };
+        assert!(!says(
+            &world,
+            near,
+            "You gather a handful of dark berries."
+        ));
+        assert!(!says(
+            &world,
+            near,
+            "Near gathers a handful of dark berries."
+        ));
+        assert!(says(
+            &world,
+            seen,
+            "Near gathers a handful of dark berries."
+        ));
+        assert!(!says(
+            &world,
+            quiet,
+            "Near gathers a handful of dark berries."
+        ));
+        let still = world.observe(near).unwrap().text;
+        assert!(
+            still.contains("Dark berries lie here") || still.contains("dark berries"),
+            "{still}"
+        );
+        assert!(!still.contains("poison"), "{still}");
+        let south = world.observe(seen).unwrap().text;
+        assert!(!south.contains("poison"), "{south}");
+        assert!(!south.contains("dark berries"), "{south}");
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::Berry))]);
+        assert_eq!(
+            eaten.results[0].message,
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+        );
+        assert!(!says(
+            &world,
+            near,
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+        ));
+        assert!(!says(&world, near, "Near eats a handful of dark berries."));
+        assert!(says(&world, near, "Your stomach turns."));
+        assert!(says(&world, seen, "Near eats a handful of dark berries."));
+        assert!(!says(
+            &world,
+            seen,
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+        ));
+        assert!(!says(&world, seen, "Your stomach turns."));
+        assert!(!says(&world, quiet, "Near eats a handful of dark berries."));
+        let after = world.observe(near).unwrap().text;
+        assert!(after.contains("Poison berries") || after.contains("poison"), "{after}");
+        let seen_after = world.observe(seen).unwrap().text;
+        assert!(!seen_after.contains("poison"), "{seen_after}");
+        let rock = super::cell_id(6, 1).unwrap();
+        world.actors.get_mut(&near).unwrap().cell = rock;
+        let sweet = world.pile_count(rock, Material::Berry);
+        let sweet_got = world.step(&[intent("sweet", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            sweet_got.results[0].message,
+            "You gather a handful of berries."
+        );
+        assert_eq!(world.pile_count(rock, Material::Berry), sweet - 1);
+        let mut empty = World::valley(crate::tuning::Tuning::evening(), 1);
+        let away = empty.spawn_at("Away", "a", 4, 3).unwrap();
+        let miss = empty.step(&[intent("miss", away, Attempt::Gather(Material::Berry))]);
+        assert_eq!(miss.results[0].message, "There is no berry here to gather.");
+        let eat_miss = empty.step(&[intent("eat-miss", away, Attempt::Eat(Material::Berry))]);
+        assert_eq!(
+            eat_miss.results[0].message,
+            "There are no sweet berries here to eat."
+        );
+    }
+
+    #[test]
+    fn eat_berries_on_the_dark_patch_bites_the_pile() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 2).unwrap();
+        let fresh = world.spawn_at("Fresh", "f", 4, 1).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        let before = world.pile_count(cell, Material::BitterBerry);
+        let bitten = world.step(&[intent("pile-eat", near, Attempt::Eat(Material::Berry))]);
+        assert_eq!(
+            bitten.results[0].message,
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+        );
+        assert_eq!(world.pile_count(cell, Material::BitterBerry), before - 1);
+        assert!(world.loose_ids(near, Material::BitterBerry).is_empty());
+        let known = world.observe(near).unwrap().text;
+        assert!(known.contains("Poison berries"), "{known}");
+        let witness = world.observe(seen).unwrap().text;
+        assert!(!witness.contains("poison"), "{witness}");
+        let fresh_look = world.observe(fresh).unwrap().text;
+        assert!(fresh_look.contains("Dark berries lie here"), "{fresh_look}");
+        assert!(!fresh_look.contains("poison"), "{fresh_look}");
+        let says = |actor: u32, line: &str| {
+            world
+                .observe(actor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line)
+        };
+        assert!(says(near, "Your stomach turns."));
+        assert!(says(seen, "Near eats a handful of dark berries."));
+        assert!(!says(
+            seen,
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+        ));
+        assert!(!says(near, "Near eats a handful of dark berries."));
+    }
 }
 
 #[cfg(test)]
