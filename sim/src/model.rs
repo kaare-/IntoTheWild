@@ -23022,8 +23022,8 @@ mod cattail {
             raw.results[0].message,
             "Raw cattail roots do not feed you. They must be cooked."
         );
-        assert!(world.observe(near).unwrap().events.iter().any(|event| {
-            event.text == "Raw cattail roots do not feed you. They must be cooked."
+        assert!(world.observe(near).unwrap().events.iter().all(|event| {
+            event.text != "Raw cattail roots do not feed you. They must be cooked."
         }));
         for person in [seen, quiet] {
             assert!(world.observe(person).unwrap().events.iter().all(|event| {

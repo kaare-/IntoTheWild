@@ -221,6 +221,9 @@ impl World {
                     // A mushroom bite that does not feed is the reply only.
                     let mushroom_eat_refusal =
                         matches!(intent.attempt, Attempt::Eat(Material::Mushroom));
+                    // Raw cattail roots, and no roots here, stay on the reply.
+                    let cattail_eat_refusal =
+                        matches!(intent.attempt, Attempt::Eat(Material::Cattail));
                     // No sweet berries on this ground is the reply only.
                     let berry_eat_refusal = matches!(intent.attempt, Attempt::Eat(Material::Berry));
                     // No brook here, or ice on the still, is the reply only.
@@ -300,6 +303,7 @@ impl World {
                             && !sticks_refusal
                             && !torch_refusal
                             && !mushroom_eat_refusal
+                            && !cattail_eat_refusal
                             && !berry_eat_refusal
                             && !drink_refusal
                             && !cattail_ice_refusal
