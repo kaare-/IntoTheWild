@@ -1155,6 +1155,40 @@ impl World {
             parts.push(format!(
                 "A handful of berries lies here. It is good to eat raw.{rest}"
             ));
+            // The handful sentence says the deer ate. It does not say the deer
+            // is still on the cell the map draws. Name that stand unless a
+            // compass line, or the eating line, already did.
+            if deer_here && self.branches_lying(actor.cell) {
+                let eating = self.deer_meal_this_tick(actor.cell) == Some(false);
+                if !eating {
+                    parts.push("A deer stands on these branches.".into());
+                }
+            } else if !deer_here && self.deer_ate_berries.contains(&actor.cell) {
+                if let Some(deer_cell) = self.deer.as_ref().and_then(|deer| {
+                    (chebyshev(actor.cell, deer.cell) <= self.tuning.sight).then_some(deer.cell)
+                }) {
+                    let day_already_names = !self.dark_for(actor_id)
+                        && (self.deer_look_line(actor_id).is_some()
+                            || Dir::all().into_iter().any(|dir| {
+                                let line = self
+                                    .adjacent_line(actor_id, actor.cell, dir)
+                                    .to_ascii_lowercase();
+                                line.contains("a deer")
+                                    || line.contains("the deer stands")
+                                    || line.contains("the deer is eating")
+                                    || line.contains("and the deer")
+                            }));
+                    if !day_already_names {
+                        if self.deer_meal_this_tick(deer_cell) == Some(false) {
+                            parts.push(self.eating_handful_line(deer_cell, false));
+                        } else {
+                            let place = self.cell_offset(actor.cell, deer_cell);
+                            let cover = self.cover_phrase(deer_cell);
+                            parts.push(format!("The deer {place} stands there, {cover}."));
+                        }
+                    }
+                }
+            }
         }
         let still_eating = self.deer_meal_this_tick(actor.cell) == Some(false);
         let deer_named_standing_here = deer_here

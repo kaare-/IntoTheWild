@@ -11926,6 +11926,94 @@ mod branch_return {
         assert!(!bare.contains("A deer stands on the rock ground."));
         assert!(!bare.contains("A deer stands on these branches."));
     }
+
+    #[test]
+    fn a_deer_the_map_draws_is_named_when_nothing_else_places_it() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 6, 1).unwrap();
+        let rock = world.actor(near).unwrap().cell;
+        let wood = super::cell_id(5, 2).unwrap();
+        for _ in 0..16 {
+            if world.pile_count(rock, Material::Berry) == 0
+                && world.deer.as_ref().is_some_and(|deer| deer.cell == rock)
+            {
+                break;
+            }
+            world.step(&[]);
+        }
+        assert_eq!(world.deer_cell(), Some((6, 1)));
+        assert_eq!(world.pile_count(rock, Material::Berry), 0);
+        let on_it = world.observe(near).unwrap();
+        assert!(
+            on_it
+                .text
+                .contains("A handful of berries lies here. It is good to eat raw. A deer ate the rest."),
+            "{}",
+            on_it.text
+        );
+        assert!(
+            on_it.text.contains("A deer stands on these branches."),
+            "{}",
+            on_it.text
+        );
+        assert!(!on_it.text.contains("A deer stands here."), "{}", on_it.text);
+        let row = on_it.map.lines().nth(2).unwrap_or("");
+        let glyph = row.get(2 + 6 * 4..2 + 6 * 4 + 3).unwrap_or("");
+        assert!(glyph.starts_with("@d"), "{glyph:?}");
+
+        world.deer.as_mut().unwrap().cell = wood;
+        let named = world.observe(near).unwrap().text;
+        assert!(
+            named.contains("and the deer"),
+            "{named}"
+        );
+        assert!(!named.contains("stands there"), "{named}");
+
+        while world.pile_count(wood, Material::Branch) > 0 {
+            world.take_from_pile(wood, Material::Branch, 1);
+        }
+        let gone = world.observe(near).unwrap();
+        assert!(
+            gone.text
+                .contains("The deer one cell south and one cell west stands there"),
+            "{}",
+            gone.text
+        );
+        assert!(!gone.text.contains("and the deer"), "{}", gone.text);
+        let south = gone
+            .text
+            .lines()
+            .find(|line| line.starts_with("South:"))
+            .unwrap_or("");
+        assert!(!south.contains("deer"), "{south}");
+        let wood_row = gone.map.lines().nth(3).unwrap_or("");
+        let wood_glyph = wood_row.get(2 + 5 * 4..2 + 5 * 4 + 3).unwrap_or("");
+        assert!(
+            wood_glyph.starts_with(".d"),
+            "{wood_glyph:?} in {wood_row:?}"
+        );
+
+        world.time = world.tuning.night_at;
+        let night = world.observe(near).unwrap().text;
+        assert!(
+            night.contains("South: you cannot make out the ground."),
+            "{night}"
+        );
+        assert!(
+            night.contains("The deer one cell south and one cell west stands there"),
+            "{night}"
+        );
+        world.deer.as_mut().unwrap().cell = rock;
+        let night_here = world.observe(near).unwrap().text;
+        assert!(
+            night_here.contains("A deer stands on these branches."),
+            "{night_here}"
+        );
+        assert!(
+            night_here.contains("South: you cannot make out the ground."),
+            "{night_here}"
+        );
+    }
 }
 
 #[cfg(test)]
