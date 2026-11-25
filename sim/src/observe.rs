@@ -13,8 +13,7 @@ L log          w dry wood
 n flint nodule
 W wet wood     b bark
 B wet bark     * fire
-y berries      Y wet berries
-m mushrooms    q dark berries
+y berries      m mushrooms
 h pale berries
 k pot          u water
 s stone         c clay
@@ -581,38 +580,9 @@ impl World {
         sees_open_wood.then(|| "The rain is heavier on the wood this season.".to_string())
     }
 
-    /// Open berries cross into soaked on the wet-season rain. Shelter keeps
-    /// a pile dry, so this sentence is not about the rock.
-    fn soaked_open_berries(&self, viewer: ActorId) -> Option<String> {
-        if !self.wet_season || !self.raining {
-            return None;
-        }
-        let origin = self.actor(viewer)?.cell;
-        let mut lines = Vec::new();
-        for cell in self.visible_cell_ids(viewer) {
-            if cell == origin || self.exposure_millis(cell) < 1000 {
-                continue;
-            }
-            let way = self.relative(origin, cell);
-            if self.pile_count(cell, Material::BitterBerry) > 0
-                && self.pile_moisture(cell, Material::BitterBerry) >= self.tuning.soaked_at
-            {
-                lines.push(format!(
-                    "The {} to the {way} are soaked. They taste bitter. They are poisonous.",
-                    self.bitter_kind(viewer)
-                ));
-            }
-            if self.pile_count(cell, Material::Berry) > 0
-                && self.pile_moisture(cell, Material::Berry) >= self.tuning.soaked_at
-            {
-                lines.push(format!("The berries to the {way} are soaked."));
-            }
-        }
-        if lines.is_empty() {
-            None
-        } else {
-            Some(lines.join(" "))
-        }
+    /// Berry moisture is not a fact you can read from another cell.
+    fn soaked_open_berries(&self, _viewer: ActorId) -> Option<String> {
+        None
     }
 
     fn rot_line(&self, viewer: ActorId) -> Option<String> {
@@ -1213,7 +1183,7 @@ impl World {
         }
         if self.pile_count(actor.cell, Material::BitterBerry) > 0 {
             parts.push(format!(
-                "{} lie here, {}. They taste bitter. They are poisonous.",
+                "{} lie here, {}.",
                 self.bitter_kind_cap(actor_id),
                 self.condition_word(self.pile_moisture(actor.cell, Material::BitterBerry)),
             ));
@@ -2375,10 +2345,7 @@ impl World {
             }
             let way = self.relative(origin, cell);
             if self.berry_patch_bare(cell, Material::BitterBerry) {
-                lines.push(format!(
-                    "The {} to the {way} are gone.",
-                    self.bitter_kind(viewer)
-                ));
+                lines.push(format!("The berries to the {way} are gone."));
             } else if self.berry_patch_bare(cell, Material::Berry)
                 && !self.deer_ate_berries.contains(&cell)
             {
@@ -7004,15 +6971,10 @@ impl World {
         if self.pile_count(dest, Material::Branch) > 0 && !deer_on_this_wood {
             bits.push("a pile of branches".into());
         }
-        if self.pile_count(dest, Material::Berry) > 0 {
+        if self.pile_count(dest, Material::Berry) > 0
+            || self.pile_count(dest, Material::BitterBerry) > 0
+        {
             bits.push("berries".into());
-        }
-        if self.pile_count(dest, Material::BitterBerry) > 0 {
-            if self.bitter_known(viewer) {
-                bits.push(self.bitter_kind(viewer).into());
-            } else {
-                bits.push("poisonous dark berries".into());
-            }
         }
         if self.pile_count(dest, Material::PaleBerry) > 0 {
             bits.push("pale berries".into());
@@ -7827,7 +7789,7 @@ impl World {
     /// "That floor" stays the outside floor. The deer is not named here.
     fn person_on_the_berries_off_this_floor(
         &self,
-        viewer: ActorId,
+        _viewer: ActorId,
         origin: CellId,
         floor: CellId,
     ) -> Option<String> {
@@ -7846,9 +7808,8 @@ impl World {
             };
             let way = orthogonal_step(floor, cell)?;
             found.push(format!(
-                " {} of that floor, {name} stands on the {}.",
-                capitalize(way),
-                self.bitter_kind(viewer)
+                " {} of that floor, {name} stands on the berries.",
+                capitalize(way)
             ));
         }
         if found.len() != 1 {
@@ -8308,8 +8269,7 @@ impl World {
         let name = self.other_name_on(viewer, berries)?;
         let cover = self.cover_phrase(berries);
         Some(format!(
-            "{name} stands {cover}, on the {} north of the west floor.",
-            self.bitter_kind(viewer)
+            "{name} stands {cover}, on the berries north of the west floor."
         ))
     }
 
@@ -10626,12 +10586,12 @@ impl World {
         self.actor(viewer).is_some_and(|actor| actor.bark_known)
     }
 
-    /// Dark berries name the bitterness before anyone eats them.
+    /// Dark berries stay a color until a bite. The word poisonous is not a look.
     /// A raw mushroom keeps its warning until this person has tried to eat one.
     /// Pale berries stay unnamed until a raw bite.
     fn food_clause_for(&self, viewer: ActorId, material: Material) -> &'static str {
         if material == Material::BitterBerry {
-            " They taste bitter. They are poisonous."
+            ""
         } else if material == Material::Mushroom && self.raw_mushroom_known(viewer) {
             " They must be cooked. Raw mushrooms do not feed you."
         } else if material == Material::PaleBerry && self.pale_berry_known(viewer) {
@@ -11737,10 +11697,30 @@ impl World {
         })
     }
 
+    /// Every map cell, including the column number, is this many characters.
+    /// The glyph uses at most three. The last character is a gutter, so `Rw+`
+    /// does not sit against the next column and a bare `.` keeps the same width.
+    const MAP_CELL_WIDTH: usize = 4;
+
+    fn push_map_field(line: &mut String, field: &str) {
+        let mut width = 0;
+        for ch in field.chars() {
+            if width >= Self::MAP_CELL_WIDTH {
+                break;
+            }
+            line.push(ch);
+            width += 1;
+        }
+        while width < Self::MAP_CELL_WIDTH {
+            line.push(' ');
+            width += 1;
+        }
+    }
+
     fn map_string(&self, viewer: ActorId) -> String {
         let mut header = String::from("  ");
         for x in 0..crate::model::WIDTH {
-            header.push_str(&format!("{x:<3}"));
+            Self::push_map_field(&mut header, &x.to_string());
         }
         let mut lines = vec![header];
         for y in 0..crate::model::HEIGHT {
@@ -11755,16 +11735,16 @@ impl World {
                 if hole_on_ice && person_here {
                     right = '=';
                 }
-                line.push(left);
-                line.push(right);
+                let mut glyph = String::new();
+                glyph.push(left);
+                glyph.push(right);
                 if hole_on_ice && (person_here || (left != 'l' && right != 'l')) {
-                    line.push('l');
+                    glyph.push('l');
                 } else if left != '?' && marks.len() > 1 {
                     let deer_on_tracks = marks.first() == Some(&'d') && marks.contains(&'"');
-                    line.push(if deer_on_tracks { '"' } else { '+' });
-                } else {
-                    line.push(' ');
+                    glyph.push(if deer_on_tracks { '"' } else { '+' });
                 }
+                Self::push_map_field(&mut line, &glyph);
             }
             lines.push(line);
         }
@@ -11903,26 +11883,17 @@ impl World {
                 'b'
             });
         }
-        let berry_moisture = self.worst_loose(cell, Material::Berry);
-        if self.pile_count(cell, Material::Berry) > 0 || berry_moisture.is_some() {
-            let moisture = berry_moisture
-                .unwrap_or(0)
-                .max(self.pile_moisture(cell, Material::Berry));
-            marks.push(if moisture >= self.tuning.damp_at {
-                'Y'
-            } else {
-                'y'
-            });
+        let berries_here = self.pile_count(cell, Material::Berry) > 0
+            || self.worst_loose(cell, Material::Berry).is_some()
+            || self.pile_count(cell, Material::BitterBerry) > 0
+            || self.worst_loose(cell, Material::BitterBerry).is_some();
+        if berries_here {
+            marks.push('y');
         }
         if self.pile_count(cell, Material::Mushroom) > 0
             || self.worst_loose(cell, Material::Mushroom).is_some()
         {
             marks.push('m');
-        }
-        if self.pile_count(cell, Material::BitterBerry) > 0
-            || self.worst_loose(cell, Material::BitterBerry).is_some()
-        {
-            marks.push('q');
         }
         if self.pile_count(cell, Material::PaleBerry) > 0
             || self.worst_loose(cell, Material::PaleBerry).is_some()
