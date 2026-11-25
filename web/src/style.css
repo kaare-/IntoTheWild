@@ -146,9 +146,9 @@ input::placeholder { color: var(--dim); }
 }
 
 .place {
-  margin: 1rem 0 0;
+  margin: 1.4rem 0 0;
   white-space: pre-wrap;
-  line-height: 1.45;
+  line-height: 1.55;
   flex: 1;
   min-height: 0;
   overflow: auto;

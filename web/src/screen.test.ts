@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isLookCommand, signMap, splitLook } from "./screen.ts";
+import { isLookCommand, meLine, signMap, sparsePlace, splitLook, toInnerVoice } from "./screen.ts";
 
 const raw = [
   "  0   1   2   3   4   5   6   ",
@@ -48,5 +48,67 @@ assert.equal(isLookCommand("look"), true);
 assert.equal(isLookCommand("L"), true);
 assert.equal(isLookCommand("examine deer"), true);
 assert.equal(isLookCommand("gather berries"), false);
+
+assert.equal(toInnerVoice("You walk east."), "I walk east.");
+assert.equal(toInnerVoice("You wade west."), "I wade west.");
+assert.equal(toInnerVoice("Your arms are empty."), "My arms are empty.");
+assert.equal(toInnerVoice("It warms you."), "It warms me.");
+assert.equal(
+  toInnerVoice("The deer bolts. Your flint spear does not land."),
+  "The deer bolts. My flint spear does not land.",
+);
+assert.equal(toInnerVoice("Ash walks west."), "Ash walks west.");
+assert.equal(toInnerVoice("you cannot make out the ground"), "I cannot make out the ground");
+assert.equal(toInnerVoice("A deer steps east."), "A deer steps east.");
+
+const crowded = [
+  "The valley is still dry. The sky is clear. Evening is coming.",
+  "You hear frogs croak to the north and west.",
+  "Wood left in the open is rotting two cells north and one cell east.",
+  "You are on the valley floor, in the open. A deer trail passes here.",
+  "Worms are in the dry ground here. Carve an antler into an antler pick to dig them.",
+  "A deer stands one cell north and one cell west, in the open.",
+  "Around you:",
+  "North: valley floor, the heavy log.",
+  "East: valley floor.",
+  "South: you cannot make out the ground.",
+  "West: hoofprints mark the outside floor. The last branch is gone from the next square south.",
+].join("\n");
+const sparse = sparsePlace(crowded);
+assert.ok(sparse.startsWith("The valley is still dry. The sky is clear. Evening is coming."));
+assert.ok(sparse.includes("I am on the valley floor, in the open."));
+assert.ok(sparse.includes("I hear frogs croak to the north and west."));
+assert.equal(sparse.includes("Worms"), false);
+assert.equal(sparse.includes("Carve"), false);
+assert.equal(sparse.includes("rotting"), false);
+assert.equal(sparse.includes("Around you"), false);
+assert.ok(sparse.includes("North\nvalley floor, the heavy log\n\nEast\nvalley floor"));
+assert.ok(sparse.includes("South\nI cannot make out the ground"));
+assert.ok(sparse.includes("West\nhoofprints mark the outside floor"));
+assert.equal(sparse.includes("next square"), false);
+
+const calm = {
+  wetness: "dry",
+  thirst: "not thirsty",
+  hunger: "not hungry",
+  illness: "well",
+  energy: "rested",
+  cold: "warm",
+  wind: "in the wind",
+  sunburn: "unburned",
+  mud: "bare skin",
+};
+assert.equal(meLine(calm), "I feel all right.");
+assert.equal(meLine({ ...calm, cold: "cold", thirst: "thirsty" }), "I am cold and thirsty.");
+assert.equal(
+  meLine({ ...calm, wetness: "soaked", cold: "cold", thirst: "thirsty" }),
+  "I am cold, thirsty, and soaked.",
+);
+assert.equal(meLine({ ...calm, wind: "out of the wind" }), "I am out of the wind.");
+assert.equal(
+  meLine({ ...calm, cold: "chilly", wind: "out of the wind" }),
+  "I am chilly, out of the wind.",
+);
+assert.equal(meLine({ ...calm, gripping: true }), "I am gripping the heavy log.");
 
 console.log("screen ok");

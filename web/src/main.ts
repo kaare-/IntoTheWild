@@ -1,4 +1,4 @@
-import { isLookCommand, signMap, splitLook } from "./screen.ts";
+import { isLookCommand, meLine, signMap, sparsePlace, toInnerVoice } from "./screen.ts";
 
 type Observation = {
   sim_time: number;
@@ -19,6 +19,7 @@ type Observation = {
     wind: string;
     sunburn: string;
     mud: string;
+    ochre?: string;
     under_roof: boolean;
     gripping: boolean;
     busy: boolean;
@@ -201,15 +202,14 @@ function paint(observation: Observation) {
   const map = app.querySelector("#map");
   if (!map) return;
   map.textContent = signMap(observation.map);
-  const split = splitLook(observation.text);
-  app.querySelector("#place")!.textContent = split.place;
-  app.querySelector("#body")!.textContent = split.body;
+  app.querySelector("#place")!.textContent = sparsePlace(observation.text);
+  app.querySelector("#body")!.textContent = meLine(observation.self_info);
   const work = app.querySelector("#work")!;
-  work.textContent = observation.work?.detail ?? "";
+  work.textContent = observation.work ? toInnerVoice(observation.work.detail) : "";
   for (const event of observation.events) {
     if (seenEvents.has(event.id)) continue;
     seenEvents.add(event.id);
-    localNotes.push(event.text);
+    localNotes.push(toInnerVoice(event.text));
   }
   renderNotes();
 }
@@ -217,7 +217,7 @@ function paint(observation: Observation) {
 function note(text: string) {
   const trimmed = text.trim();
   if (!trimmed) return;
-  localNotes.push(trimmed);
+  localNotes.push(toInnerVoice(trimmed));
   renderNotes();
 }
 

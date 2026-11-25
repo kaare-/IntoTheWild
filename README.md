@@ -27,6 +27,8 @@ The page is a black terminal. Actions and replies sit on the left and fade as th
 
 An older valley file with no hearing distance is read as one cell past sight. If that file still cannot be read, the server names the valley file and the wal and shm files beside it so they can be deleted.
 
+The page speaks in the first person. Beside the map there is a short sky, where I stand, and the compass with room between the directions. The bottom line is one sentence about how I am.
+
 The simulation is a Rust library with no network, database, clock, or model calls. One Tokio and Axum process owns the valley. A TypeScript page and a Python client are players, not special cases. Design choices taken from EmpireMUD, Bunnyland, Aardwolf, and GemStone III are in [DESIGN.md](DESIGN.md). Nothing here is deployed.
 
 ## Run it
