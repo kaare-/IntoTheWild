@@ -5667,7 +5667,7 @@ impl World {
     fn carried_arms_here(&self, viewer: ActorId) -> Option<String> {
         let mut lines = Vec::new();
         for id in self.others_here(viewer) {
-            let bits = self.arm_bits(id);
+            let bits = self.arm_bits(viewer, id);
             if bits.is_empty() {
                 continue;
             }
@@ -5720,7 +5720,7 @@ impl World {
         }
     }
 
-    fn arm_bit(&self, actor_id: ActorId, item: &CarryView) -> String {
+    fn arm_bit(&self, viewer: ActorId, actor_id: ActorId, item: &CarryView) -> String {
         if item.material == "stone" && item.count == 1 {
             format!("a {} stone", item.condition)
         } else if item.material == "stone" {
@@ -5753,7 +5753,7 @@ impl World {
                 item.condition
             )
         } else if item.material == "basket" && item.count == 1 {
-            self.basket_arm_phrase(actor_id)
+            self.basket_arm_phrase(viewer, actor_id)
         } else if item.material == "basket" {
             format!("{} bark baskets", count_word(item.count))
         } else if item.material == "bark cup" && item.count == 1 {
@@ -6150,7 +6150,7 @@ impl World {
                 )
             }
         } else if item.material == "poison berry" {
-            let kind = self.bitter_kind(actor_id);
+            let kind = self.bitter_kind(viewer);
             if item.count == 1 {
                 format!("a {} handful of {kind}", item.condition)
             } else {
@@ -6467,7 +6467,7 @@ impl World {
         if self.carry_views(actor_id).is_empty() {
             return "Your arms are empty.".into();
         }
-        let bits = self.arm_bits(actor_id);
+        let bits = self.arm_bits(actor_id, actor_id);
         let have = if bits.is_empty() {
             "Your arms are empty.".to_string()
         } else {
@@ -6480,7 +6480,7 @@ impl World {
     }
 
     /// The brief list inside `You have`. The basket, when there is one, is last.
-    fn arm_bits(&self, actor_id: ActorId) -> Vec<String> {
+    fn arm_bits(&self, viewer: ActorId, actor_id: ActorId) -> Vec<String> {
         let carrying = self.carry_views(actor_id);
         if carrying.is_empty() {
             return Vec::new();
@@ -6537,10 +6537,10 @@ impl World {
                     if counting != item.count {
                         let mut trimmed = item.clone();
                         trimmed.count = counting;
-                        return Some(self.arm_bit(actor_id, &trimmed));
+                        return Some(self.arm_bit(viewer, actor_id, &trimmed));
                     }
                 }
-                Some(self.arm_bit(actor_id, item))
+                Some(self.arm_bit(viewer, actor_id, item))
             })
             .collect();
         let mut bits = bits;
@@ -12964,7 +12964,7 @@ impl World {
         ids
     }
 
-    fn basket_counted(&self, id: crate::model::ItemId, count: u32) -> String {
+    fn basket_counted(&self, viewer: ActorId, id: crate::model::ItemId, count: u32) -> String {
         let Some(item) = self.item(id) else {
             return "something".into();
         };
@@ -12976,6 +12976,14 @@ impl World {
             Material::Bark => format!("{} {word} sheets of bark", count_word(count)),
             Material::Berry if count == 1 => "a handful of berries".into(),
             Material::Berry => format!("{} handfuls of berries", count_word(count)),
+            Material::BitterBerry => {
+                let kind = self.bitter_kind(viewer);
+                if count == 1 {
+                    format!("a {word} handful of {kind}")
+                } else {
+                    format!("{} {word} handfuls of {kind}", count_word(count))
+                }
+            }
             Material::Clay if count == 1 => "a lump of clay".into(),
             Material::Clay => format!("{} lumps of clay", count_word(count)),
             Material::Pot if count == 1 => "a pot".into(),
@@ -13000,7 +13008,7 @@ impl World {
         }
     }
 
-    fn basket_list(&self, actor_id: ActorId) -> String {
+    fn basket_list(&self, viewer: ActorId, actor_id: ActorId) -> String {
         let ids = self.basket_ids(actor_id);
         let mut groups: Vec<(crate::model::ItemId, u32)> = Vec::new();
         for id in ids {
@@ -13022,7 +13030,7 @@ impl World {
         }
         let bits: Vec<_> = groups
             .into_iter()
-            .map(|(id, count)| self.basket_counted(id, count))
+            .map(|(id, count)| self.basket_counted(viewer, id, count))
             .collect();
         match bits.len() {
             0 => String::new(),
@@ -13034,7 +13042,7 @@ impl World {
         }
     }
 
-    fn basket_arm_phrase(&self, actor_id: ActorId) -> String {
+    fn basket_arm_phrase(&self, viewer: ActorId, actor_id: ActorId) -> String {
         let ids = self.basket_ids(actor_id);
         if ids.is_empty() {
             return "an empty bark basket".into();
@@ -13061,10 +13069,13 @@ impl World {
         } else {
             ""
         };
-        format!("a {full}bark basket holding {}", self.basket_list(actor_id))
+        format!(
+            "a {full}bark basket holding {}",
+            self.basket_list(viewer, actor_id)
+        )
     }
 
-    pub(crate) fn basket_held_sentence(&self, actor_id: ActorId) -> String {
+    pub(crate) fn basket_held_sentence(&self, viewer: ActorId, actor_id: ActorId) -> String {
         let ids = self.basket_ids(actor_id);
         if ids.is_empty() {
             return "It is empty. It can hold two more things.".into();
@@ -13083,13 +13094,13 @@ impl World {
                         _ => "It holds a raw fish.".into(),
                     }
                 } else {
-                    format!("It holds {}.", self.basket_list(actor_id))
+                    format!("It holds {}.", self.basket_list(viewer, actor_id))
                 }
             } else {
                 "It is empty. It can hold two more things.".into()
             }
         } else {
-            format!("It holds {}.", self.basket_list(actor_id))
+            format!("It holds {}.", self.basket_list(viewer, actor_id))
         };
         let room = Self::BASKET_ROOM.saturating_sub(ids.len() as u32);
         if room == 1 {
@@ -13189,7 +13200,7 @@ impl World {
             } else {
                 "a bark basket"
             };
-            let held = self.basket_held_sentence(other);
+            let held = self.basket_held_sentence(viewer, other);
             let held = if empty {
                 held.strip_prefix("It is empty. ")
                     .unwrap_or(held.as_str())

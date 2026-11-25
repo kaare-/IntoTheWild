@@ -3076,7 +3076,7 @@ impl World {
                 if !self.basket_has_room(actor.id) {
                     let phrase = self
                         .basket_put_id(actor.id, actor.cell, *material)
-                        .map(|id| self.basket_thing_phrase(id))
+                        .map(|id| self.basket_thing_phrase(actor.id, id))
                         .unwrap_or_else(|| Self::lifted_phrase(*material));
                     return Err(self.will_not_fit(&phrase));
                 }
@@ -12083,15 +12083,39 @@ impl World {
     }
 
     /// The thing that moved. A cooked onion is not a wild onion.
-    fn basket_thing_phrase(&self, id: crate::model::ItemId) -> String {
+    /// Dark berries stay dark until this person has tasted them.
+    fn basket_thing_phrase(
+        &self,
+        viewer: crate::model::ActorId,
+        id: crate::model::ItemId,
+    ) -> String {
         let Some(item) = self.item(id) else {
             return "something".into();
         };
+        if item.material == Material::BitterBerry {
+            let kind = if self.bitter_known(viewer) {
+                "poison berries"
+            } else {
+                "dark berries"
+            };
+            return format!("a handful of {kind}");
+        }
         if item.material == Material::Onion && item.cooked {
             "a cooked onion".into()
         } else {
             Self::lifted_phrase(item.material)
         }
+    }
+
+    /// The stored line. It stays dark. A tasted listener hears poison.
+    fn basket_witness_phrase(&self, id: crate::model::ItemId) -> String {
+        let Some(item) = self.item(id) else {
+            return "something".into();
+        };
+        if item.material == Material::BitterBerry {
+            return "a handful of dark berries".into();
+        }
+        self.basket_thing_phrase(0, id)
     }
 
     fn will_not_fit(&self, phrase: &str) -> String {
@@ -12129,7 +12153,7 @@ impl World {
         } else {
             format!(
                 "You carry a bark basket. {}",
-                self.basket_held_sentence(actor)
+                self.basket_held_sentence(actor, actor)
             )
         }
     }
@@ -12328,17 +12352,22 @@ impl World {
                     item.cell = actor.cell;
                 }
             }
-            let thing = self.basket_thing_phrase(id);
-            let rest = if into_arms {
-                format!("{thing} from the bark basket.")
-            } else if material == Material::Cattail {
-                format!("{thing} from the bark basket. They are in contact with the ground.")
-            } else {
-                format!("{thing} from the bark basket. It is in contact with the ground.")
+            let thing = self.basket_thing_phrase(actor.id, id);
+            let heard_thing = self.basket_witness_phrase(id);
+            let rest_for = |name: &str| {
+                if into_arms {
+                    format!("{name} from the bark basket.")
+                } else if material == Material::Cattail {
+                    format!("{name} from the bark basket. They are in contact with the ground.")
+                } else {
+                    format!("{name} from the bark basket. It is in contact with the ground.")
+                }
             };
+            let rest = rest_for(&thing);
+            let heard = rest_for(&heard_thing);
             let name = self.name_of(actor.id);
             self.emit(
-                crate::model::spoken_act(Some(name.as_str()), "take", &rest),
+                crate::model::spoken_act(Some(name.as_str()), "take", &heard),
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],
@@ -12387,7 +12416,7 @@ impl World {
             if !self.basket_has_room(actor.id) {
                 let phrase = self
                     .basket_put_id(actor.id, actor.cell, material)
-                    .map(|id| self.basket_thing_phrase(id))
+                    .map(|id| self.basket_thing_phrase(actor.id, id))
                     .unwrap_or_else(|| Self::lifted_phrase(material));
                 self.finish(
                     intent.command_id,
@@ -12430,13 +12459,21 @@ impl World {
                 );
                 continue;
             };
-            let mut rest = format!("{} in the bark basket.", self.basket_thing_phrase(id));
+            let mut rest = format!(
+                "{} in the bark basket.",
+                self.basket_thing_phrase(actor.id, id)
+            );
+            let mut heard = format!(
+                "{} in the bark basket.",
+                self.basket_witness_phrase(id)
+            );
             if self.basket_load(actor.id) >= Self::BASKET_ROOM {
                 rest.push_str(" The basket is full.");
+                heard.push_str(" The basket is full.");
             }
             let name = self.name_of(actor.id);
             self.emit(
-                crate::model::spoken_act(Some(name.as_str()), "put", &rest),
+                crate::model::spoken_act(Some(name.as_str()), "put", &heard),
                 Scope::Cell(actor.cell),
                 vec![actor.id],
                 vec![actor.cell],

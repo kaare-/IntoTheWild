@@ -14118,6 +14118,181 @@ mod berry_return {
         ));
         assert!(!says(near, "Near eats a handful of dark berries."));
     }
+
+    #[test]
+    fn untasted_dark_berries_stay_dark_in_the_basket() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        let seen = world.spawn_at("Seen", "s", 4, 1).unwrap();
+        let quiet = world.spawn_at("Quiet", "q", 0, 4).unwrap();
+        let cell = world.actor(near).unwrap().cell;
+        world.mint_item(Material::Basket, 0, cell, Some(near), super::Role::Loose);
+        for _ in 0..4 {
+            world.mint_item(Material::Stone, 0, cell, Some(near), super::Role::Loose);
+        }
+        let gathered = world.step(&[intent("gather", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            gathered.results[0].message,
+            "You gather a handful of dark berries. It goes into the bark basket."
+        );
+        let here = world.observe(near).unwrap().text;
+        assert!(
+            here.contains("a bark basket holding a dry handful of dark berries"),
+            "{here}"
+        );
+        assert!(!here.contains("poison"), "{here}");
+        let held = world.basket_held_sentence(near, near);
+        assert!(held.contains("a dry handful of dark berries"), "{held}");
+        assert!(!held.contains("poison"), "{held}");
+        let west = world.observe(seen).unwrap().text;
+        assert!(
+            west.contains("a bark basket holding a dry handful of dark berries"),
+            "{west}"
+        );
+        assert!(!west.contains("poison"), "{west}");
+        let quiet_look = world.observe(quiet).unwrap().text;
+        assert!(!quiet_look.contains("dark berries"), "{quiet_look}");
+        assert!(!quiet_look.contains("poison"), "{quiet_look}");
+
+        let dropped = world.step(&[intent("drop-stone", near, Attempt::Drop(Material::Stone))]);
+        assert!(dropped.results[0].success, "{}", dropped.results[0].message);
+        let taken = world.step(&[intent(
+            "take",
+            near,
+            Attempt::TakeFromBasket(Material::BitterBerry),
+        )]);
+        assert_eq!(
+            taken.results[0].message,
+            "You take a handful of dark berries from the bark basket."
+        );
+        let says = |world: &World, actor: u32, line: &str| {
+            world
+                .observe(actor)
+                .unwrap()
+                .events
+                .iter()
+                .any(|event| event.text == line)
+        };
+        let take_heard = "Near takes a handful of dark berries from the bark basket.";
+        assert!(!says(&world, near, take_heard));
+        assert!(says(&world, seen, take_heard));
+        assert!(!says(&world, quiet, take_heard));
+        let put = world.step(&[intent(
+            "put",
+            near,
+            Attempt::PutInBasket(Material::BitterBerry),
+        )]);
+        assert_eq!(
+            put.results[0].message,
+            "You put a handful of dark berries in the bark basket."
+        );
+        let put_heard = "Near puts a handful of dark berries in the bark basket.";
+        assert!(!says(&world, near, put_heard));
+        assert!(says(&world, seen, put_heard));
+        assert!(!says(&world, quiet, put_heard));
+
+        let out = world.step(&[intent(
+            "out",
+            near,
+            Attempt::TakeFromBasket(Material::BitterBerry),
+        )]);
+        assert!(out.results[0].success, "{}", out.results[0].message);
+        world.mint_item(Material::Stone, 0, cell, Some(near), super::Role::Loose);
+        let eaten = world.step(&[intent("eat", near, Attempt::Eat(Material::BitterBerry))]);
+        assert_eq!(
+            eaten.results[0].message,
+            "You eat a handful of poison berries. They taste bitter. Your stomach turns."
+        );
+        let again = world.step(&[intent("again", near, Attempt::Gather(Material::Berry))]);
+        assert_eq!(
+            again.results[0].message,
+            "You gather a handful of poison berries. It goes into the bark basket."
+        );
+        let gather_heard = "Near gathers a handful of dark berries. It goes into the bark basket.";
+        assert!(says(&world, seen, gather_heard));
+        assert!(!says(
+            &world,
+            seen,
+            "Near gathers a handful of poison berries. It goes into the bark basket."
+        ));
+        let known = world.observe(near).unwrap().text;
+        assert!(
+            known.contains("a bark basket holding a dry handful of poison berries"),
+            "{known}"
+        );
+        let still_dark = world.observe(seen).unwrap().text;
+        assert!(
+            still_dark.contains("a bark basket holding a dry handful of dark berries"),
+            "{still_dark}"
+        );
+        assert!(!still_dark.contains("poison"), "{still_dark}");
+        let known_held = world.basket_held_sentence(near, near);
+        assert!(known_held.contains("a dry handful of poison berries"), "{known_held}");
+        let seen_held = world.basket_held_sentence(seen, near);
+        assert!(seen_held.contains("a dry handful of dark berries"), "{seen_held}");
+        assert!(!seen_held.contains("poison"), "{seen_held}");
+
+        let back = world.step(&[intent(
+            "back",
+            near,
+            Attempt::TakeFromBasket(Material::BitterBerry),
+        )]);
+        assert_eq!(
+            back.results[0].message,
+            concat!(
+                "You take a handful of poison berries from the bark basket. ",
+                "It is in contact with the ground."
+            )
+        );
+        let poison_take = concat!(
+            "Near takes a handful of poison berries from the bark basket. ",
+            "It is in contact with the ground."
+        );
+        let dark_take = concat!(
+            "Near takes a handful of dark berries from the bark basket. ",
+            "It is in contact with the ground."
+        );
+        assert!(says(&world, seen, dark_take));
+        assert!(!says(&world, seen, poison_take));
+        let returned = world.step(&[intent(
+            "return",
+            near,
+            Attempt::PutInBasket(Material::BitterBerry),
+        )]);
+        assert_eq!(
+            returned.results[0].message,
+            "You put a handful of poison berries in the bark basket."
+        );
+        let dark_put = "Near puts a handful of dark berries in the bark basket.";
+        let poison_put = "Near puts a handful of poison berries in the bark basket.";
+        assert!(says(&world, seen, dark_put));
+        assert!(!says(&world, seen, poison_put));
+        assert!(!says(&world, quiet, dark_put));
+
+        world.mint_item(
+            Material::BitterBerry,
+            0,
+            cell,
+            Some(seen),
+            super::Role::Loose,
+        );
+        let seen_bite = world.step(&[intent(
+            "seen-eat",
+            seen,
+            Attempt::Eat(Material::BitterBerry),
+        )]);
+        assert!(
+            seen_bite.results[0].message.contains("poison berries"),
+            "{}",
+            seen_bite.results[0].message
+        );
+        let tasted = world.observe(seen).unwrap().text;
+        assert!(
+            tasted.contains("a bark basket holding a dry handful of poison berries"),
+            "{tasted}"
+        );
+        assert!(says(&world, seen, poison_put));
+    }
 }
 
 #[cfg(test)]
@@ -15319,7 +15494,7 @@ mod bark_return {
             .iter()
             .all(|event| event.text != heard));
         assert!(world
-            .basket_held_sentence(near)
+            .basket_held_sentence(near, near)
             .contains("It can hold one more thing."));
         let pot = world.step(&[intent("pot", near, Attempt::PutInBasket(Material::Pot))]);
         assert_eq!(
@@ -15352,7 +15527,7 @@ mod bark_return {
             .text
             .contains("a full bark basket"));
         assert!(world
-            .basket_held_sentence(near)
+            .basket_held_sentence(near, near)
             .contains("It cannot hold more."));
         let full = world.step(&[intent("bone", near, Attempt::PutInBasket(Material::Bone))]);
         assert_eq!(
