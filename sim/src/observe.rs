@@ -13614,6 +13614,8 @@ impl World {
             || text == format!("{name} is chilly. The wind is on them.")
             || text == format!("{name} is cold.")
             || text == format!("{name} is cold. The wind is on them.")
+            || text == format!("{name} is warm at the fire.")
+            || text == format!("{name} is warming at the fire.")
         {
             return Some(text.to_string());
         }

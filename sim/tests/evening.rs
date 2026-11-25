@@ -5311,7 +5311,29 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
     assert!(lit
         .events
         .iter()
-        .any(|event| event.text.contains("warming at the fire")));
+        .any(|event| event.text == "You are warming at the fire."));
+    assert!(lit
+        .events
+        .iter()
+        .all(|event| event.text != "Sera is warming at the fire."));
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Sera is warming at the fire."));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Sera is warming at the fire."));
+    assert!(world
+        .observe(otto)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "You are warming at the fire."));
     assert_ne!(lit.self_info.cold, "cold");
     for _ in 0..3 {
         world.step(&[]);
@@ -5321,7 +5343,23 @@ fn a_fire_warms_the_body_standing_on_it_and_not_the_next_one() {
     assert!(warmed
         .events
         .iter()
-        .any(|event| event.text.contains("is warm at the fire")));
+        .any(|event| event.text == "You are warm at the fire."));
+    assert!(warmed
+        .events
+        .iter()
+        .all(|event| event.text != "Sera is warm at the fire."));
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .any(|event| event.text == "Sera is warm at the fire."));
+    assert!(world
+        .observe(nils)
+        .unwrap()
+        .events
+        .iter()
+        .all(|event| event.text != "You are warm at the fire."));
     assert!(!warmed.text.contains("does not reach you"));
     assert_eq!(world.observe(otto).unwrap().self_info.cold, "cold");
     assert!(!world

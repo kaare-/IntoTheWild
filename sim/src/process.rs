@@ -2834,12 +2834,24 @@ impl World {
             }
             // A chill or a cold is said twice. The body reads first person.
             // Someone who can see the cell keeps the name. The body does not
-            // also read that third person.
-            let cold_line = if on_fire && cold_before >= chilly_at && cold_after < chilly_at {
-                Some((format!("{name} is warm at the fire."), false))
+            // also read that third person. Becoming warm on a fire is the
+            // same split.
+            if on_fire && cold_before >= chilly_at && cold_after < chilly_at {
+                self.say_body(
+                    id,
+                    cell,
+                    format!("{name} is warm at the fire."),
+                    "You are warm at the fire.".to_string(),
+                );
             } else if on_fire && cold_before >= cold_at && cold_after < cold_at {
-                Some((format!("{name} is warming at the fire."), false))
-            } else if !on_fire && cold_before < cold_at && cold_after >= cold_at {
+                self.say_body(
+                    id,
+                    cell,
+                    format!("{name} is warming at the fire."),
+                    "You are warming at the fire.".to_string(),
+                );
+            }
+            let cold_line = if !on_fire && cold_before < cold_at && cold_after >= cold_at {
                 Some((
                     if exposure >= 1000 {
                         format!("{name} is cold. The wind is on them.")
