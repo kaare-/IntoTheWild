@@ -37,10 +37,29 @@ type Clock = {
 };
 
 const app = document.querySelector<HTMLElement>("#app")!;
-const store = sessionStorage;
+const TAB = sessionStorage;
+const LAST = localStorage;
+const TOKEN_KEY = "villmarks-token";
+const NAME_KEY = "villmarks-name";
 
 function token(): string | null {
-  return store.getItem("villmarks-token");
+  return TAB.getItem(TOKEN_KEY) || LAST.getItem(TOKEN_KEY);
+}
+
+function rememberToken(value: string, name?: string) {
+  TAB.setItem(TOKEN_KEY, value);
+  LAST.setItem(TOKEN_KEY, value);
+  if (name) {
+    TAB.setItem(NAME_KEY, name);
+    LAST.setItem(NAME_KEY, name);
+  }
+}
+
+function forgetToken() {
+  TAB.removeItem(TOKEN_KEY);
+  TAB.removeItem(NAME_KEY);
+  LAST.removeItem(TOKEN_KEY);
+  LAST.removeItem(NAME_KEY);
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -58,18 +77,29 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 function renderGate(error = "") {
+  const remembered = LAST.getItem(TOKEN_KEY) || "";
+  const rememberedName = LAST.getItem(NAME_KEY) || "";
   app.innerHTML = `
     <section class="gate">
       <h1>Villmarks</h1>
-      <p class="lede">A brook is already running. Rain is on its way. Take a name the valley has not heard, or resume a token the server still remembers.</p>
+      <p class="lede">A brook is already running. Rain is on its way. Take a name the valley has not heard, or resume a Bearer token the server still remembers. Closing the tab keeps the last token in this browser.</p>
       <div class="row">
         <input id="name" placeholder="Name" maxlength="24" autocomplete="off" />
         <button id="enter" type="button">Enter</button>
       </div>
       <div class="row">
-        <input id="resume" placeholder="Resume token" autocomplete="off" />
+        <input id="resume" placeholder="Resume token" autocomplete="off" value="${escapeHtml(remembered)}" />
         <button id="resume-btn" class="ghost" type="button">Resume</button>
       </div>
+      <p class="status" id="gate-hint">${
+        remembered
+          ? escapeHtml(
+              rememberedName
+                ? `Last body in this browser: ${rememberedName}. Resume restores that body if the valley file still has it.`
+                : "A token from an earlier visit is filled in. Resume restores that body if the valley file still has it.",
+            )
+          : ""
+      }</p>
       <p class="status" id="gate-error">${escapeHtml(error)}</p>
     </section>`;
   const name = app.querySelector<HTMLInputElement>("#name")!;
@@ -88,8 +118,7 @@ async function enter(name: string) {
       method: "POST",
       body: JSON.stringify({ name }),
     });
-    store.setItem("villmarks-token", joined.token);
-    store.setItem("villmarks-name", joined.name);
+    rememberToken(joined.token, joined.name);
     await showPlay();
   } catch (err) {
     renderGate(err instanceof Error ? err.message : "Could not enter.");
@@ -99,12 +128,13 @@ async function enter(name: string) {
 async function resumeWith(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return;
-  store.setItem("villmarks-token", trimmed);
+  TAB.setItem(TOKEN_KEY, trimmed);
   try {
-    await api<Observation>("/v1/observe");
+    const observation = await api<Observation>("/v1/observe");
+    rememberToken(trimmed, observation.self_info.name);
     await showPlay();
   } catch (err) {
-    store.removeItem("villmarks-token");
+    forgetToken();
     renderGate(err instanceof Error ? err.message : "That token is not in this valley.");
   }
 }
@@ -120,10 +150,11 @@ async function showPlay() {
   try {
     observation = await api<Observation>("/v1/observe");
   } catch {
-    store.removeItem("villmarks-token");
+    forgetToken();
     renderGate("The valley does not know that token.");
     return;
   }
+  rememberToken(token() ?? "", observation.self_info.name);
   app.innerHTML = `
     <section class="play">
       <div>
@@ -131,7 +162,9 @@ async function showPlay() {
           <pre id="map"></pre>
           <div class="legend" id="legend"></div>
         </article>
-        <p class="token">This tab's token<br><code id="token"></code></p>
+        <p class="token">Bearer token for this body (survives restart while the valley file lives)<br><code id="token"></code>
+          <button id="copy-token" class="ghost" type="button">Copy</button>
+        </p>
       </div>
       <div class="card">
         <div class="top">
@@ -153,6 +186,16 @@ async function showPlay() {
       </div>
     </section>`;
   paint(observation);
+  app.querySelector("#copy-token")?.addEventListener("click", async () => {
+    const value = token() ?? "";
+    try {
+      await navigator.clipboard.writeText(value);
+      const ack = app.querySelector("#ack");
+      if (ack) ack.textContent = "Token copied.";
+    } catch {
+      /* leave the code visible for manual copy */
+    }
+  });
   const form = app.querySelector<HTMLFormElement>("#form")!;
   const line = app.querySelector<HTMLInputElement>("#line")!;
   form.addEventListener("submit", (event) => {

@@ -3,15 +3,20 @@
 
 The world does not wait. If this process is slow, the window closes and the
 next command is late: it joins the following window instead of being dropped.
+
+Token files under data/tokens/ let the same body resume after a reconnect or
+server restart. Pass --token or --token-file to override; --fresh forces a
+new join.
 """
 
 from __future__ import annotations
 
 import argparse
 import time
+from pathlib import Path
 
 from policy import Memory, choose
-from villmarks import Client, ValleyError
+from villmarks import Client, ValleyError, token_path_for
 
 
 def main() -> None:
@@ -21,13 +26,35 @@ def main() -> None:
     parser.add_argument("--policy", choices=("scripted", "model"), default="scripted")
     parser.add_argument("--turns", type=int, default=40)
     parser.add_argument("--manual-advance", action="store_true")
+    parser.add_argument("--token", default=None, help="Bearer token to resume")
+    parser.add_argument(
+        "--token-file",
+        type=Path,
+        default=None,
+        help=f"Token file (default {token_path_for('NAME')})",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Ignore a saved token and join a new body",
+    )
     args = parser.parse_args()
     if args.policy == "model" and not __import__("os").environ.get("VILLMARKS_MODEL_URL"):
         raise SystemExit("Set VILLMARKS_MODEL_URL, VILLMARKS_MODEL_NAME, and VILLMARKS_MODEL_KEY")
 
     client = Client(args.base)
-    joined = client.join(args.name)
-    print(f"joined as {joined['name']} token={joined['token']}")
+    try:
+        joined = client.connect(
+            args.name,
+            token=args.token,
+            token_file=args.token_file,
+            fresh=args.fresh,
+        )
+    except ValleyError as err:
+        raise SystemExit(f"could not connect: {err}") from err
+    how = "resumed" if joined["resumed"] else "joined"
+    print(f"{how} as {joined['name']} token={joined['token']}")
+    print(f"token file {joined['token_file']}")
     memory = Memory()
     last_time = None
     for _ in range(args.turns):

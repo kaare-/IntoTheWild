@@ -2,9 +2,11 @@
 /web/node_modules
 /web/dist
 /data
+/data/tokens/
 __pycache__/
 *.pyc
 **/*.sqlite
 **/*.sqlite-*
 **/*.sqlite-journal
+*.token
 .DS_Store
