@@ -305,6 +305,9 @@ impl World {
             lines.push(work.detail);
         }
         if self.dark_for(actor_id) {
+            if let Some(deer) = self.night_deer_line(actor_id, &lines) {
+                lines.push(deer);
+            }
             if self
                 .seen_deer_tracks(actor_id)
                 .is_some_and(|tracks| tracks.contains("Deer tracks mark the ground here."))
@@ -6810,6 +6813,31 @@ impl World {
                     .is_some()
             })
             .count()
+    }
+
+    /// Night keeps the compass dark. A deer the map still draws is named
+    /// with the daylight sentence. A place line that already says where the
+    /// deer stands is left as it is.
+    fn night_deer_line(&self, viewer: ActorId, lines: &[String]) -> Option<String> {
+        let origin = self.actor(viewer)?.cell;
+        let deer_cell = self.deer.as_ref()?.cell;
+        if chebyshev(origin, deer_cell) > self.tuning.sight {
+            return None;
+        }
+        let so_far = lines.join("\n").to_ascii_lowercase();
+        if so_far.contains("deer stands")
+            || so_far.contains("deer is eating")
+            || so_far.contains("stands there")
+        {
+            return None;
+        }
+        if let Some(line) = self.deer_look_line(viewer) {
+            return Some(line);
+        }
+        Some(format!(
+            "A deer stands {}.",
+            self.mark_place(origin, deer_cell)
+        ))
     }
 
     /// A deer on a cell in sight that the four neighbor lines do not name.

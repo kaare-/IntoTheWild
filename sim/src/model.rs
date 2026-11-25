@@ -12092,6 +12092,61 @@ mod branch_return {
             "{night_here}"
         );
     }
+
+    #[test]
+    fn a_deer_the_night_map_draws_is_named_where_it_stands() {
+        let mut world = World::valley(crate::tuning::Tuning::evening(), 1);
+        let near = world.spawn_at("Near", "n", 4, 1).unwrap();
+        world.time = world.tuning.night_at;
+        let far = super::cell_id(2, 3).unwrap();
+        world.deer.as_mut().unwrap().cell = far;
+        let night = world.observe(near).unwrap();
+        assert!(night.map.contains('d'), "{}", night.map);
+        let named = "A deer stands two cells south and two cells west, in the open.";
+        assert!(night.text.contains(named), "{}", night.text);
+        assert!(
+            night.text.contains("you cannot make out the ground"),
+            "{}",
+            night.text
+        );
+        assert!(night.text.lines().any(|line| {
+            line.contains("you cannot make out the ground")
+                && !line.to_ascii_lowercase().contains("deer")
+        }));
+        let day_far = {
+            world.time = 0;
+            world.observe(near).unwrap().text
+        };
+        assert!(day_far.contains(named), "{day_far}");
+
+        world.time = world.tuning.night_at;
+        world.actors.get_mut(&near).unwrap().cell = super::cell_id(4, 0).unwrap();
+        world.deer.as_mut().unwrap().cell = super::cell_id(5, 1).unwrap();
+        let beside = world.observe(near).unwrap();
+        assert!(beside.map.contains('d'), "{}", beside.map);
+        let diagonal = "A deer stands one cell south and one cell east, in the open.";
+        assert!(beside.text.contains(diagonal), "{}", beside.text);
+        let south = beside
+            .text
+            .lines()
+            .find(|line| line.starts_with("South:"))
+            .unwrap_or("");
+        assert!(!south.to_ascii_lowercase().contains("deer"), "{south}");
+        assert!(south.contains("rock overhang"), "{south}");
+
+        world.actors.get_mut(&near).unwrap().cell = super::cell_id(4, 1).unwrap();
+        world.deer.as_mut().unwrap().cell = super::cell_id(4, 2).unwrap();
+        let next = world.observe(near).unwrap();
+        assert!(next.map.contains('d'), "{}", next.map);
+        let one = "A deer stands one cell south, in the open.";
+        assert!(next.text.contains(one), "{}", next.text);
+        let next_south = next
+            .text
+            .lines()
+            .find(|line| line.starts_with("South:"))
+            .unwrap_or("");
+        assert_eq!(next_south, "South: you cannot make out the ground.");
+    }
 }
 
 #[cfg(test)]
@@ -28318,7 +28373,18 @@ mod night_marks {
             on_the_ice.contains("The dark hides what lies farther off."),
             "{on_the_ice}"
         );
-        assert!(!on_the_ice.contains("A deer stands"), "{on_the_ice}");
+        let on_the_ice_map = world.observe(near).unwrap().map;
+        if on_the_ice_map.contains('d') {
+            assert!(
+                on_the_ice.contains("A deer stands two cells south, in the rain."),
+                "{on_the_ice}"
+            );
+        }
+        let east = on_the_ice
+            .lines()
+            .find(|line| line.starts_with("East:"))
+            .unwrap_or("");
+        assert!(!east.to_ascii_lowercase().contains("deer"), "{east}");
         assert!(
             !on_the_ice.contains("The rock overhang is to"),
             "{on_the_ice}"

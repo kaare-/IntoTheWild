@@ -14028,7 +14028,7 @@ fn night_shortens_the_look_until_a_fire_is_nearby() {
             && dark.contains("East: the rock overhang to the north and east.")
             && dark.contains("South: you cannot make out the ground.")
             && dark.contains("You are on the")
-            && !dark.contains("A deer stands"),
+            && dark.contains("A deer stands two cells west, in the rain."),
         "{dark}"
     );
     assert!(world
