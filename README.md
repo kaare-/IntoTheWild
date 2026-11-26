@@ -23,11 +23,11 @@ Bare gather berries takes the pile underfoot even when the arms already hold ber
 A gather one cell off that names the step comes back on the window, and that sentence stays with the person who tried.
 Two worm beds on the same diagonal are named once in the look.
 
-The page is a black terminal. Actions and replies sit on the left and fade as they age. The sign map and the place sit on the right, and empty ground stays black. The body line sits along the bottom.
+The page is a black terminal in one centered column. Environmental clues sit at the top with room to breathe. Player statements and replies fill the middle and fade as they age. The bottom line is how I am.
 
 An older valley file with no hearing distance is read as one cell past sight. If that file still cannot be read, the server names the valley file and the wal and shm files beside it so they can be deleted.
 
-The page speaks in the first person. Beside the map there is a short sky, where I stand, and the compass with room between the directions. The bottom line is one spoken answer to how I am, from `self_info.feeling`: all right with a soft although when the body is only a little off, or the worst need first when it is bad.
+The page speaks in the first person. The top holds a short sky, where I stand, and the compass. The bottom line is one spoken answer to how I am, from `self_info.feeling`: all right with a soft although when the body is only a little off, or the worst need first when it is bad. The default play view has no map.
 
 The simulation is a Rust library with no network, database, clock, or model calls. One Tokio and Axum process owns the valley. A TypeScript page and a Python client are players, not special cases. Design choices taken from EmpireMUD, Bunnyland, Aardwolf, and GemStone III are in [DESIGN.md](DESIGN.md). Nothing here is deployed.
 

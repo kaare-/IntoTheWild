@@ -1,4 +1,4 @@
-import { isLookCommand, meLine, signMap, sparsePlace, toInnerVoice } from "./screen.ts";
+import { isLookCommand, meLine, sparsePlace, toInnerVoice } from "./screen.ts";
 
 type Observation = {
   sim_time: number;
@@ -147,7 +147,8 @@ async function showPlay() {
   rememberToken(token() ?? "", observation.self_info.name);
   app.innerHTML = `
     <section class="play">
-      <div class="left">
+      <p class="env" id="place"></p>
+      <div class="chat">
         <div class="transcript" id="log"></div>
         <p class="now" id="work"></p>
         <form class="command" id="form">
@@ -155,10 +156,6 @@ async function showPlay() {
           <input id="line" autocomplete="off" spellcheck="false" />
         </form>
         <button id="copy-token" class="token" type="button">token</button>
-      </div>
-      <div class="right">
-        <pre class="map" id="map"></pre>
-        <p class="place" id="place"></p>
       </div>
       <p class="body" id="body"></p>
     </section>`;
@@ -200,11 +197,11 @@ async function showPlay() {
 }
 
 function paint(observation: Observation) {
-  const map = app.querySelector("#map");
-  if (!map) return;
-  map.textContent = signMap(observation.map);
-  app.querySelector("#place")!.textContent = sparsePlace(observation.text);
-  app.querySelector("#body")!.textContent = meLine(observation.self_info);
+  const place = app.querySelector("#place");
+  const body = app.querySelector("#body");
+  if (!place || !body) return;
+  place.textContent = sparsePlace(observation.text);
+  body.textContent = meLine(observation.self_info);
   const work = app.querySelector("#work")!;
   work.textContent = observation.work ? toInnerVoice(observation.work.detail) : "";
   for (const event of observation.events) {
