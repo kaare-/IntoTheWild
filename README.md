@@ -35,13 +35,23 @@ The simulation is a Rust library with no network, database, clock, or model call
 
 Rust 1.99.1 is pinned in `rust-toolchain.toml`. You need Node and Python 3.
 
+The page is served from `web/dist` (gitignored). A `git pull` alone leaves the old UI until you rebuild that folder from the repo root and restart the process that listens on that tree.
+
 ```bash
-cargo build -p villmarks-server
+git log -1 --oneline
+# expect: f72f716 The page is one centered column...
+! grep -E 'id="map"|class="map"|signMap' web/src/main.ts
+grep -E 'class="env"|class="chat"' web/src/main.ts
+rm -rf web/dist
 cd web && npm install && npm run build && cd ..
-cargo run -p villmarks-server
+grep -E 'class="env"' web/dist/assets/*.js
+! grep -E 'id="map"|class="map"' web/dist/assets/*.js
+cargo build -p villmarks-server
+# stop any old villmarks-server, then from this same directory:
+cargo run -p villmarks-server -- --static web/dist --port 18431
 ```
 
-The valley listens on [http://127.0.0.1:18431](http://127.0.0.1:18431). The action window is 20 seconds (`config/evening.toml`). Open a second browser tab and take a different name. Each tab keeps its own token in `sessionStorage`; the last token also lands in `localStorage` so a closed tab can Resume the same body after a server restart.
+The valley listens on [http://127.0.0.1:18431](http://127.0.0.1:18431). Hard-refresh the tab (cache can keep an old `/assets/index-….js`). The action window is 20 seconds (`config/evening.toml`). Open a second browser tab and take a different name. Each tab keeps its own token in `sessionStorage`; the last token also lands in `localStorage` so a closed tab can Resume the same body after a server restart.
 
 ```bash
 python3 agent/play.py --name Linde
