@@ -138,40 +138,85 @@ export type BodyState = {
   mud: string;
   ochre?: string;
   gripping?: boolean;
+  /** Server-composed spoken answer; prefer this when present. */
+  feeling?: string;
 };
 
-/** One sentence about how I am. Calm defaults stay out of it. */
-export function meLine(self: BodyState): string {
-  const bits: string[] = [];
-  if (self.cold === "chilly" || self.cold === "cold") bits.push(self.cold);
-  if (self.thirst === "thirsty" || self.thirst === "parched") bits.push(self.thirst);
-  if (self.hunger === "hungry" || self.hunger === "starving") bits.push(self.hunger);
-  if (self.wetness === "drying") bits.push("drying off");
-  else if (self.wetness && self.wetness !== "dry") bits.push(self.wetness);
-  if (self.energy === "tiring" || self.energy === "spent") bits.push(self.energy);
-  if (self.illness && self.illness !== "well") bits.push(self.illness);
-  if (self.sunburn === "pink") bits.push("pink from the sun");
-  else if (self.sunburn === "burned") bits.push("burned");
-  if (self.mud && self.mud !== "bare skin") bits.push(self.mud);
-  if (self.ochre && self.ochre !== "bare") bits.push(self.ochre);
+type NeedBit = { kind: "feel" | "am" | "mild"; phrase: string; priority: number };
 
+/**
+ * One spoken answer to "how are you?".
+ * Prefer `self.feeling` from the server so API clients share the same voice.
+ */
+export function meLine(self: BodyState): string {
+  if (self.feeling) return self.feeling;
+
+  const bits: NeedBit[] = [];
+  if (self.cold === "cold") bits.push({ kind: "am", phrase: "cold", priority: 30 });
+  else if (self.cold === "chilly") bits.push({ kind: "mild", phrase: "a little cold", priority: 255 });
+  if (self.thirst === "parched") bits.push({ kind: "am", phrase: "parched", priority: 50 });
+  else if (self.thirst === "thirsty") bits.push({ kind: "mild", phrase: "thirsty", priority: 255 });
+  if (self.hunger === "starving") bits.push({ kind: "am", phrase: "starving", priority: 40 });
+  else if (self.hunger === "hungry") bits.push({ kind: "mild", phrase: "hungry", priority: 255 });
+  if (self.wetness === "soaked") bits.push({ kind: "am", phrase: "soaked", priority: 70 });
+  else if (self.wetness === "drying") bits.push({ kind: "mild", phrase: "drying off", priority: 255 });
+  else if (self.wetness === "damp" || self.wetness === "wet") {
+    bits.push({ kind: "mild", phrase: self.wetness, priority: 255 });
+  }
+  if (self.energy === "spent") bits.push({ kind: "am", phrase: "spent", priority: 60 });
+  else if (self.energy === "tiring") bits.push({ kind: "mild", phrase: "tiring", priority: 255 });
+  if (self.illness === "ill") bits.push({ kind: "feel", phrase: "ill", priority: 10 });
+  else if (self.illness === "stung" || self.illness === "stung by nettles") {
+    bits.push({ kind: "feel", phrase: self.illness, priority: 20 });
+  } else if (self.illness && self.illness !== "well") {
+    bits.push({ kind: "feel", phrase: self.illness, priority: 20 });
+  }
+  if (self.sunburn === "burned") bits.push({ kind: "am", phrase: "burned", priority: 80 });
+  else if (self.sunburn === "pink") bits.push({ kind: "mild", phrase: "pink from the sun", priority: 255 });
+  if (self.mud && self.mud !== "bare skin") bits.push({ kind: "mild", phrase: self.mud, priority: 255 });
+  if (self.ochre && self.ochre !== "bare") bits.push({ kind: "mild", phrase: self.ochre, priority: 255 });
+
+  const noNeeds = bits.length === 0;
+  const hasSevere = bits.some((bit) => bit.kind !== "mild");
   let line: string;
-  if (bits.length === 0) {
-    line = self.wind === "out of the wind" ? "I am out of the wind." : "I feel all right.";
+  if (noNeeds) {
+    line = self.wind === "out of the wind" ? "I'm out of the wind." : "I feel all right.";
+  } else if (!hasSevere) {
+    line = `I'm all right, although I am ${joinSpoken(bits.map((bit) => bit.phrase))}.`;
   } else {
-    line = `I am ${joinAnd(bits)}.`;
-    if (self.wind === "out of the wind") line = line.replace(/\.$/, ", out of the wind.");
-    else if (self.wind === "in a little wind") line = line.replace(/\.$/, ", in a little wind.");
+    let leadAt = 0;
+    let best = 999;
+    bits.forEach((bit, i) => {
+      if (bit.kind !== "mild" && bit.priority < best) {
+        best = bit.priority;
+        leadAt = i;
+      }
+    });
+    const lead = bits.splice(leadAt, 1)[0]!;
+    const rest = bits.map((bit) => bit.phrase);
+    if (lead.phrase === "ill") rest.push("my belly hurts");
+    if (lead.kind === "feel") {
+      line = rest.length === 0
+        ? `I feel ${lead.phrase}.`
+        : `I feel ${lead.phrase} and I'm ${joinSpoken(rest)}.`;
+    } else {
+      line = `I'm ${joinSpoken([lead.phrase, ...rest])}.`;
+    }
+  }
+
+  if (!noNeeds && (self.wind === "out of the wind" || self.wind === "in a little wind")) {
+    const tail = self.wind === "out of the wind" ? ", out of the wind." : ", in a little wind.";
+    line = line.replace(/\.$/, tail);
   }
   if (self.gripping) {
-    if (bits.length === 0 && self.wind !== "out of the wind") return "I am gripping the heavy log.";
+    if (noNeeds && self.wind !== "out of the wind") return "I'm gripping the heavy log.";
     return line.replace(/\.$/, ", and I grip the log.");
   }
   return line;
 }
 
-function joinAnd(parts: string[]): string {
+function joinSpoken(parts: string[]): string {
   if (parts.length <= 1) return parts[0] ?? "";
   if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }

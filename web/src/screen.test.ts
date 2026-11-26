@@ -99,16 +99,28 @@ const calm = {
   mud: "bare skin",
 };
 assert.equal(meLine(calm), "I feel all right.");
-assert.equal(meLine({ ...calm, cold: "cold", thirst: "thirsty" }), "I am cold and thirsty.");
+assert.equal(
+  meLine({ ...calm, cold: "chilly", thirst: "thirsty" }),
+  "I'm all right, although I am a little cold and thirsty.",
+);
+assert.equal(
+  meLine({ ...calm, cold: "cold", thirst: "thirsty", hunger: "hungry", illness: "ill" }),
+  "I feel ill and I'm cold, thirsty, hungry and my belly hurts.",
+);
+assert.equal(meLine({ ...calm, cold: "cold", thirst: "thirsty" }), "I'm cold and thirsty.");
 assert.equal(
   meLine({ ...calm, wetness: "soaked", cold: "cold", thirst: "thirsty" }),
-  "I am cold, thirsty, and soaked.",
+  "I'm cold, thirsty and soaked.",
 );
-assert.equal(meLine({ ...calm, wind: "out of the wind" }), "I am out of the wind.");
+assert.equal(meLine({ ...calm, wind: "out of the wind" }), "I'm out of the wind.");
 assert.equal(
   meLine({ ...calm, cold: "chilly", wind: "out of the wind" }),
-  "I am chilly, out of the wind.",
+  "I'm all right, although I am a little cold, out of the wind.",
 );
-assert.equal(meLine({ ...calm, gripping: true }), "I am gripping the heavy log.");
+assert.equal(meLine({ ...calm, gripping: true }), "I'm gripping the heavy log.");
+assert.equal(
+  meLine({ ...calm, feeling: "I'm all right, although I am thirsty." }),
+  "I'm all right, although I am thirsty.",
+);
 
 console.log("screen ok");

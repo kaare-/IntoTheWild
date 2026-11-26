@@ -22,6 +22,7 @@ type Observation = {
     ochre?: string;
     under_roof: boolean;
     gripping: boolean;
+    feeling?: string;
     busy: boolean;
     carrying: { material: string; condition: string; count: number }[];
   };

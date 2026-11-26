@@ -63,6 +63,8 @@ pub struct SelfInfo {
     pub mud: String,
     pub ochre: String,
     pub gripping: bool,
+    /// One spoken answer to "how are you?", first person.
+    pub feeling: String,
     pub carrying: Vec<CarryView>,
     pub busy: bool,
 }
@@ -131,6 +133,25 @@ impl World {
     pub fn observe(&self, actor_id: ActorId) -> Option<Observation> {
         let actor = self.actor(actor_id)?;
         let (x, y) = cell_xy(actor.cell);
+        let wetness: String = if actor.clothes_dry_at.is_some() {
+            "drying".into()
+        } else {
+            self.clothes_word(actor.wetness).into()
+        };
+        let thirst: String = self.thirst_word(actor.thirst).into();
+        let hunger: String = self.hunger_word(actor.hunger).into();
+        let illness: String = self.body_word(actor).into();
+        let energy: String = self.energy_word(actor.energy).into();
+        let cold: String = self.cold_word(actor.cold).into();
+        let wind: String = self.wind_on(actor.id).into();
+        let sunburn: String = self.sun_word(actor.sunburn).into();
+        let mud: String = self.mud_word(actor.mud).into();
+        let ochre: String = self.ochre_word(actor.ochre).into();
+        let gripping = self.gripping(actor.id).is_some();
+        let feeling = feeling_line(
+            &wetness, &thirst, &hunger, &illness, &energy, &cold, &wind, &sunburn, &mud, &ochre,
+            gripping,
+        );
         Some(Observation {
             sim_time: self.time,
             raining: self.raining,
@@ -144,21 +165,18 @@ impl World {
                 y,
                 region: self.cell(actor.cell).region.word().into(),
                 under_roof: self.exposure_millis(actor.cell) < 1000,
-                wetness: if actor.clothes_dry_at.is_some() {
-                    "drying".into()
-                } else {
-                    self.clothes_word(actor.wetness).into()
-                },
-                thirst: self.thirst_word(actor.thirst).into(),
-                hunger: self.hunger_word(actor.hunger).into(),
-                illness: self.body_word(actor).into(),
-                energy: self.energy_word(actor.energy).into(),
-                cold: self.cold_word(actor.cold).into(),
-                wind: self.wind_on(actor.id).into(),
-                sunburn: self.sun_word(actor.sunburn).into(),
-                mud: self.mud_word(actor.mud).into(),
-                ochre: self.ochre_word(actor.ochre).into(),
-                gripping: self.gripping(actor.id).is_some(),
+                wetness,
+                thirst,
+                hunger,
+                illness,
+                energy,
+                cold,
+                wind,
+                sunburn,
+                mud,
+                ochre,
+                gripping,
+                feeling,
                 carrying: self.carry_views(actor.id),
                 busy: actor.busy.is_some(),
             },
@@ -17299,5 +17317,282 @@ fn orthogonal_step(from: CellId, to: CellId) -> Option<&'static str> {
         (0, -1) => Some("north"),
         (0, 1) => Some("south"),
         _ => None,
+    }
+}
+
+/// One spoken answer to "how are you?", built from body words.
+/// Calm defaults stay out of it. Mild needs soften an all-right lead;
+/// ill, cold, starving, and the like lead, then the rest flows after.
+pub fn feeling_line(
+    wetness: &str,
+    thirst: &str,
+    hunger: &str,
+    illness: &str,
+    energy: &str,
+    cold: &str,
+    wind: &str,
+    sunburn: &str,
+    mud: &str,
+    ochre: &str,
+    gripping: bool,
+) -> String {
+    // Body order stays fixed so the list reads naturally; severity only picks the lead.
+    let mut bits: Vec<NeedBit> = Vec::new();
+    match cold {
+        "cold" => bits.push(NeedBit::am("cold", 30)),
+        "chilly" => bits.push(NeedBit::mild("a little cold")),
+        _ => {}
+    }
+    match thirst {
+        "parched" => bits.push(NeedBit::am("parched", 50)),
+        "thirsty" => bits.push(NeedBit::mild("thirsty")),
+        _ => {}
+    }
+    match hunger {
+        "starving" => bits.push(NeedBit::am("starving", 40)),
+        "hungry" => bits.push(NeedBit::mild("hungry")),
+        _ => {}
+    }
+    match wetness {
+        "soaked" => bits.push(NeedBit::am("soaked", 70)),
+        "drying" => bits.push(NeedBit::mild("drying off")),
+        "damp" | "wet" => bits.push(NeedBit::mild(wetness)),
+        _ => {}
+    }
+    match energy {
+        "spent" => bits.push(NeedBit::am("spent", 60)),
+        "tiring" => bits.push(NeedBit::mild("tiring")),
+        _ => {}
+    }
+    if illness == "ill" {
+        bits.push(NeedBit::feel("ill", 10));
+    } else if illness == "stung" || illness == "stung by nettles" {
+        bits.push(NeedBit::feel(illness, 20));
+    } else if illness != "well" && !illness.is_empty() {
+        bits.push(NeedBit::feel(illness, 20));
+    }
+    match sunburn {
+        "burned" => bits.push(NeedBit::am("burned", 80)),
+        "pink" => bits.push(NeedBit::mild("pink from the sun")),
+        _ => {}
+    }
+    if mud != "bare skin" && !mud.is_empty() {
+        bits.push(NeedBit::mild(mud));
+    }
+    if ochre != "bare" && !ochre.is_empty() {
+        bits.push(NeedBit::mild(ochre));
+    }
+
+    let no_needs = bits.is_empty();
+    let has_severe = bits.iter().any(|bit| bit.severe());
+    let mut line = if no_needs {
+        if wind == "out of the wind" {
+            "I'm out of the wind.".into()
+        } else {
+            "I feel all right.".into()
+        }
+    } else if !has_severe {
+        let mild: Vec<String> = bits.into_iter().map(|bit| bit.phrase).collect();
+        format!("I'm all right, although I am {}.", join_spoken(&mild))
+    } else {
+        let lead_at = bits
+            .iter()
+            .enumerate()
+            .filter(|(_, bit)| bit.severe())
+            .min_by_key(|(_, bit)| bit.priority)
+            .map(|(i, _)| i)
+            .unwrap();
+        let lead = bits.remove(lead_at);
+        let mut rest: Vec<String> = bits.into_iter().map(|bit| bit.phrase).collect();
+        if lead.phrase == "ill" {
+            rest.push("my belly hurts".into());
+        }
+        match lead.kind {
+            LeadKind::Feel => {
+                if rest.is_empty() {
+                    format!("I feel {}.", lead.phrase)
+                } else {
+                    format!("I feel {} and I'm {}.", lead.phrase, join_spoken(&rest))
+                }
+            }
+            LeadKind::Am => {
+                let mut all = vec![lead.phrase];
+                all.extend(rest);
+                format!("I'm {}.", join_spoken(&all))
+            }
+            LeadKind::Mild => unreachable!("severe lead"),
+        }
+    };
+
+    if !no_needs && (wind == "out of the wind" || wind == "in a little wind") {
+        let tail = if wind == "out of the wind" {
+            ", out of the wind."
+        } else {
+            ", in a little wind."
+        };
+        line = line.trim_end_matches('.').to_string() + tail;
+    }
+
+    if gripping {
+        if no_needs && wind != "out of the wind" {
+            return "I'm gripping the heavy log.".into();
+        }
+        return line.trim_end_matches('.').to_string() + ", and I grip the log.";
+    }
+    line
+}
+
+#[derive(Clone)]
+struct NeedBit {
+    kind: LeadKind,
+    phrase: String,
+    priority: u8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LeadKind {
+    Feel,
+    Am,
+    Mild,
+}
+
+impl NeedBit {
+    fn feel(phrase: &str, priority: u8) -> Self {
+        Self {
+            kind: LeadKind::Feel,
+            phrase: phrase.into(),
+            priority,
+        }
+    }
+
+    fn am(phrase: &str, priority: u8) -> Self {
+        Self {
+            kind: LeadKind::Am,
+            phrase: phrase.into(),
+            priority,
+        }
+    }
+
+    fn mild(phrase: &str) -> Self {
+        Self {
+            kind: LeadKind::Mild,
+            phrase: phrase.into(),
+            priority: 255,
+        }
+    }
+
+    fn severe(&self) -> bool {
+        self.kind != LeadKind::Mild
+    }
+}
+
+fn join_spoken(parts: &[String]) -> String {
+    match parts.len() {
+        0 => String::new(),
+        1 => parts[0].clone(),
+        2 => format!("{} and {}", parts[0], parts[1]),
+        _ => {
+            let head = parts[..parts.len() - 1].join(", ");
+            format!("{} and {}", head, parts[parts.len() - 1])
+        }
+    }
+}
+
+#[cfg(test)]
+mod feeling_tests {
+    use super::feeling_line;
+
+    fn calm() -> [&'static str; 10] {
+        [
+            "dry",
+            "not thirsty",
+            "not hungry",
+            "well",
+            "rested",
+            "warm",
+            "in the wind",
+            "unburned",
+            "bare skin",
+            "bare",
+        ]
+    }
+
+    fn line(
+        wetness: &str,
+        thirst: &str,
+        hunger: &str,
+        illness: &str,
+        energy: &str,
+        cold: &str,
+        wind: &str,
+        sunburn: &str,
+        mud: &str,
+        ochre: &str,
+        gripping: bool,
+    ) -> String {
+        feeling_line(
+            wetness, thirst, hunger, illness, energy, cold, wind, sunburn, mud, ochre, gripping,
+        )
+    }
+
+    #[test]
+    fn empty_body_feels_all_right() {
+        let c = calm();
+        assert_eq!(
+            line(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], false),
+            "I feel all right."
+        );
+    }
+
+    #[test]
+    fn mild_needs_soften_an_all_right_lead() {
+        let c = calm();
+        assert_eq!(
+            line(c[0], "thirsty", c[2], c[3], c[4], "chilly", c[6], c[7], c[8], c[9], false),
+            "I'm all right, although I am a little cold and thirsty."
+        );
+    }
+
+    #[test]
+    fn ill_leads_then_the_rest_flows() {
+        let c = calm();
+        assert_eq!(
+            line(
+                c[0], "thirsty", "hungry", "ill", c[4], "cold", c[6], c[7], c[8], c[9], false,
+            ),
+            "I feel ill and I'm cold, thirsty, hungry and my belly hurts."
+        );
+    }
+
+    #[test]
+    fn multi_need_without_illness_is_one_am_sentence() {
+        let c = calm();
+        assert_eq!(
+            line(c[0], "thirsty", c[2], c[3], c[4], "cold", c[6], c[7], c[8], c[9], false),
+            "I'm cold and thirsty."
+        );
+        assert_eq!(
+            line(
+                "soaked", "thirsty", c[2], c[3], c[4], "cold", c[6], c[7], c[8], c[9], false,
+            ),
+            "I'm cold, thirsty and soaked."
+        );
+    }
+
+    #[test]
+    fn wind_and_grip_stay_on_the_same_sentence() {
+        let c = calm();
+        assert_eq!(
+            line(c[0], c[1], c[2], c[3], c[4], c[5], "out of the wind", c[7], c[8], c[9], false),
+            "I'm out of the wind."
+        );
+        assert_eq!(
+            line(c[0], c[1], c[2], c[3], c[4], "chilly", "out of the wind", c[7], c[8], c[9], false),
+            "I'm all right, although I am a little cold, out of the wind."
+        );
+        assert_eq!(
+            line(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], true),
+            "I'm gripping the heavy log."
+        );
     }
 }

@@ -14,6 +14,6 @@ pub use model::{
     contest_hash, ActorId, Attempt, CommandResult, ConstructionId, Dir, Event, EventId,
     ExamineTarget, Intent, ItemId, Material, StepReport, WorkId, World, HEIGHT, WIDTH,
 };
-pub use observe::Observation;
+pub use observe::{feeling_line, Observation};
 pub use parse::{help_text, parse_attempt};
 pub use tuning::Tuning;
