@@ -1,0 +1,160 @@
+:root {
+  color-scheme: dark;
+  --ink: #f4fff6;
+  --dim: rgba(244, 255, 246, 0.55);
+  background: #000;
+  color: var(--ink);
+  font-size: 17px;
+  font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-variant-ligatures: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  background: #000;
+  color: var(--ink);
+}
+
+button, input {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+button { cursor: pointer; }
+
+input {
+  width: 100%;
+  outline: none;
+  caret-color: var(--ink);
+}
+
+input::placeholder { color: var(--dim); }
+
+::selection {
+  background: #14301c;
+  color: var(--ink);
+}
+
+.gate {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 12vh 1.4rem 2rem;
+  line-height: 1.5;
+}
+
+.gate p { margin: 0 0 1.2rem; }
+
+.gate form {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  margin: 0.7rem 0;
+}
+
+.gate label { color: var(--dim); }
+
+.gate .word {
+  color: var(--dim);
+}
+
+.gate .word:hover { color: var(--ink); }
+
+.miss { color: var(--dim); min-height: 1.4em; }
+
+.play {
+  height: 100%;
+  width: min(40rem, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 1.1rem 1.25rem 0.85rem;
+  min-height: 0;
+}
+
+.env {
+  flex: 0 0 auto;
+  overflow: visible;
+  margin: 0;
+  padding: 0 0 1.1rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.35rem;
+}
+
+.transcript {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 22%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 22%);
+  scrollbar-color: #1a1a1a #000;
+}
+
+.transcript p {
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.now {
+  margin: 0.35rem 0 0.15rem;
+  color: var(--dim);
+  white-space: pre-wrap;
+}
+
+.command {
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+  padding: 0.4rem 0 0.15rem;
+}
+
+.prompt { color: var(--ink); }
+
+.token {
+  align-self: flex-start;
+  color: var(--dim);
+  margin-top: 0.2rem;
+}
+
+.token:hover { color: var(--ink); }
+
+.body {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.85rem 0 0.15rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .play {
+    padding: 0.85rem 0.95rem 0.7rem;
+  }
+
+  .env {
+    padding-bottom: 0.85rem;
+    line-height: 1.55;
+  }
+
+  .body {
+    padding-top: 0.7rem;
+  }
+}

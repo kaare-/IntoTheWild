@@ -1,0 +1,820 @@
+//! Material properties and attempt parameters. Loaded from TOML at the edge
+//! of the process; the core only sees this struct.
+
+use crate::Material;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tuning {
+    pub rain_starts_at: u64,
+    #[serde(default = "default_season_at")]
+    pub season_at: u64,
+    #[serde(default = "default_rot_ticks")]
+    pub rot_ticks: u64,
+    pub drag_ticks: u64,
+    pub frame_phase_ticks: u64,
+    pub frame_phases: u8,
+    pub bark_ticks: u64,
+    #[serde(default = "default_fire_ticks")]
+    pub fire_ticks: u64,
+    /// Ticks of leftover heat after a body leaves a fire or the fire goes out.
+    /// During them the sky's cold is halved. Open wind still cools.
+    #[serde(default = "default_warmth_hold")]
+    pub warmth_hold: u64,
+    /// Ticks a lump of clay sits at a burning fire before it becomes a bowl.
+    #[serde(default = "default_clay_ticks")]
+    pub clay_ticks: u64,
+    /// Ticks a person waits at a lit fire before wet clothes are dry.
+    /// Look says the clothes are drying until then. Stepping off the fire
+    /// clears the wait.
+    #[serde(default = "default_clothes_ticks")]
+    pub clothes_ticks: u64,
+    /// Ticks a carried spear must be held at a burning fire before the point hardens.
+    #[serde(default = "default_spear_ticks")]
+    pub spear_ticks: u64,
+    /// Ticks a look still names deer tracks after the deer has left that cell.
+    /// A bolt or a kill leaves the same tracks. The old hoofprints stay.
+    #[serde(default = "default_track_ticks")]
+    pub track_ticks: u64,
+    /// Ticks a wolf stands on the howl corner, counting the nightfall tick.
+    /// Shorter than the tracks, so the prints can outlast the wolf.
+    #[serde(default = "default_wolf_ticks")]
+    pub wolf_ticks: u64,
+    /// Ticks after `set snare` before it springs. Beside the valley hare
+    /// that is the hare. Farther off it is small game, and the hare stays.
+    #[serde(default = "default_snare_ticks")]
+    pub snare_ticks: u64,
+    /// Ticks after `set net` in the brook before the net catches a fish.
+    /// The net stays set. Gathering it takes it back to the arms.
+    #[serde(default = "default_net_ticks")]
+    pub net_ticks: u64,
+    /// Ticks after `set weir` in the brook before a raw fish lies there.
+    /// The reeds and the cordage are spent when it is set. The weir is gone
+    /// once it catches. The brook is not fished out.
+    #[serde(default = "default_weir_ticks")]
+    pub weir_ticks: u64,
+    /// Ticks after raw meat is cut before it spoils. For the second half of
+    /// that wait, look says it is going bad, and raw meat on the ground is
+    /// named once. Salted meat is not on this timer. Cooked meat stays good.
+    #[serde(default = "default_meat_ticks")]
+    pub meat_ticks: u64,
+    /// Ticks after the salt crust on the slope is gathered before another forms.
+    /// Look says the slope is bare until then.
+    #[serde(default = "default_salt_ticks")]
+    pub salt_ticks: u64,
+    /// Ticks a bee sting stays on the body. Look says stung until the tick it fades.
+    #[serde(default = "default_sting_ticks")]
+    pub sting_ticks: u64,
+    /// Ticks after the honeycomb is taken before the nest fills again.
+    /// Look says the nest is empty until then.
+    #[serde(default = "default_honey_ticks")]
+    pub honey_ticks: u64,
+    /// Ticks after the eggs are gathered before the bird's nest holds eggs again.
+    /// Look says the nest is empty until then.
+    #[serde(default = "default_egg_ticks")]
+    pub egg_ticks: u64,
+    /// Ticks after the moss is gathered before it grows on the damp bank again.
+    /// Look says the bank is bare until then.
+    #[serde(default = "default_moss_ticks")]
+    pub moss_ticks: u64,
+    /// Ticks after the last lump of pine resin is gathered before pitch lies there again.
+    /// Look says the pine has no resin until then.
+    #[serde(default = "default_resin_ticks")]
+    pub resin_ticks: u64,
+    /// Ticks after the last bundle of willow cordage is gathered before withies hang there again.
+    /// Look says the willow has no withies until then.
+    #[serde(default = "default_willow_ticks")]
+    pub willow_ticks: u64,
+    /// Ticks after the last bundle of nettle cordage is stripped before the nettles grow again.
+    /// Look says the nettles are bare until then.
+    #[serde(default = "default_nettle_ticks")]
+    pub nettle_ticks: u64,
+    /// Ticks after the last cattail roots are dug before the shallows grow cattails again.
+    /// Look says the shallows have none until then.
+    #[serde(default = "default_cattail_ticks")]
+    pub cattail_ticks: u64,
+    /// Ticks a drink stays in an unsealed bark cup before it soaks through.
+    /// A cup sealed with pine resin keeps the drink.
+    #[serde(default = "default_cup_leak_ticks")]
+    pub cup_leak_ticks: u64,
+    /// Ticks after the flint nodule on the slope is gathered before another lies there.
+    /// Look says the slope has no flint until then. Knapping the carried nodule
+    /// leaves the same wait.
+    #[serde(default = "default_flint_ticks")]
+    pub flint_ticks: u64,
+    /// Ticks after the lump of ochre on the slope is gathered before another lies there.
+    /// Look says the slope has no ochre until then. Smearing or marking with the
+    /// carried lump leaves the same wait.
+    #[serde(default = "default_ochre_ticks")]
+    pub ochre_ticks: u64,
+    /// Ticks after the clay on the brook bank is gathered before that pile lies there again.
+    /// Look says there is no clay on the bank until then. Shaping the last lump
+    /// off the pile leaves the same wait.
+    #[serde(default = "default_clay_bank_ticks")]
+    pub clay_bank_ticks: u64,
+    /// Ticks after the copper ore on the brook is gathered before another lump lies there.
+    /// Look says the brook has no copper ore until then. Smelting the carried lump
+    /// leaves the same wait.
+    #[serde(default = "default_copper_ore_ticks")]
+    pub copper_ore_ticks: u64,
+    /// Ticks after the iron ore on the slope is gathered before another lump lies there.
+    /// Look says the slope has no iron ore until then. Smelting the carried lump
+    /// leaves the same wait.
+    #[serde(default = "default_iron_ore_ticks")]
+    pub iron_ore_ticks: u64,
+    /// Ticks after the last reeds on the brook edge are gathered before they grow again.
+    /// Look says the edge has no reeds until then. Thatching the last bundle off
+    /// the edge leaves the same wait.
+    #[serde(default = "default_reed_ticks")]
+    pub reed_ticks: u64,
+    /// Ticks after the rock's dry branches are gone before that pile lies there again.
+    #[serde(default = "default_branch_ticks")]
+    pub branch_ticks: u64,
+    /// Ticks after the bark under the rock is gathered or used before that pile lies there again.
+    /// Look says there is no bark under the rock until then. Bark on the slope does not return.
+    #[serde(default = "default_bark_pile_ticks")]
+    pub bark_pile_ticks: u64,
+    /// Ticks after a berry patch is emptied before the same pile lies there again.
+    /// A person gathering the last handful, or the deer eating it, leaves the same wait.
+    /// Look says the berries are gone until then.
+    #[serde(default = "default_berry_ticks")]
+    pub berry_ticks: u64,
+    /// Ticks after a mushroom patch is emptied before the same pile lies there again.
+    /// Gathering the last one, or cooking it off the pile, leaves the same wait.
+    /// Look says the mushrooms are gone until then.
+    #[serde(default = "default_mushroom_ticks")]
+    pub mushroom_ticks: u64,
+    /// Ticks after a deer is brought down before another stands on the trail.
+    /// Look names no standing deer until then. The carcass does not change the wait.
+    #[serde(default = "default_deer_ticks")]
+    pub deer_ticks: u64,
+    /// Sim time when the first night falls. Night lasts `night_len` ticks,
+    /// then morning. The day between nights is `day_len` ticks, and that repeats.
+    #[serde(default = "default_night_at")]
+    pub night_at: u64,
+    /// Ticks a night lasts before dawn.
+    #[serde(default = "default_night_len")]
+    pub night_len: u64,
+    /// Ticks of morning between one dawn and the next night.
+    #[serde(default = "default_day_len")]
+    pub day_len: u64,
+    pub body_rain: u32,
+    pub brook_rain: u32,
+    pub wade: u32,
+    pub damp_at: u32,
+    pub soaked_at: u32,
+    pub thirst_per_tick: u32,
+    pub drink_relief: u32,
+    pub thirsty_at: u32,
+    pub parched_at: u32,
+    #[serde(default = "default_hunger_tick")]
+    pub hunger_per_tick: u32,
+    #[serde(default = "default_cook_relief")]
+    pub cook_relief: u32,
+    #[serde(default = "default_hungry_at")]
+    pub hungry_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub starving_at: u32,
+    #[serde(default = "default_illness_chance")]
+    pub illness_chance: u32,
+    #[serde(default = "default_still_chance")]
+    pub still_chance: u32,
+    #[serde(default = "default_hunger_tick")]
+    pub energy_per_tick: u32,
+    #[serde(default = "default_hungry_at")]
+    pub tiring_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub spent_at: u32,
+    #[serde(default = "default_cook_relief")]
+    pub eat_relief: u32,
+    #[serde(default = "default_chill_at")]
+    pub chill_at: u64,
+    #[serde(default = "default_cold_tick")]
+    pub cold_per_tick: u32,
+    #[serde(default = "default_hungry_at")]
+    pub chilly_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub cold_at: u32,
+    /// Cold a body loses each tick while standing on a burning fire.
+    /// That tick does not also add the sky's cold.
+    #[serde(default = "default_fire_warmth")]
+    pub fire_warmth: u32,
+    #[serde(default = "default_sun_tick")]
+    pub sun_per_tick: u32,
+    #[serde(default = "default_hungry_at")]
+    pub pink_at: u32,
+    #[serde(default = "default_starving_at")]
+    pub burned_at: u32,
+    #[serde(default = "default_smear_at")]
+    pub smear_at: u32,
+    #[serde(default = "default_mud_fade")]
+    pub mud_fade: u32,
+    #[serde(default = "default_mud_wash")]
+    pub mud_wash: u32,
+    #[serde(default = "default_mud_sun")]
+    pub mud_sun: u32,
+    #[serde(default = "default_illness_hit")]
+    pub illness_hit: u32,
+    #[serde(default = "default_ill_at")]
+    pub ill_at: u32,
+    #[serde(default = "default_illness_recovery")]
+    pub illness_recovery: u32,
+    pub carry_slots: u32,
+    pub sight: i32,
+    /// How far a breaking branch carries. One cell past sight, so someone
+    /// who cannot see the gather can still hear it. Farther than this, nothing.
+    pub hearing: i32,
+    /// Exposure under a lean-to of branches. Under 1, so the wind does not
+    /// double there, and less than open sky.
+    pub lean_to: u32,
+    pub drag_needed: u32,
+    pub rock_roof: u32,
+    pub dry_bark_roof: u32,
+    pub wet_bark_roof: u32,
+    pub branch_rain: u32,
+    pub bark_rain: u32,
+    pub log_rain: u32,
+    #[serde(default = "default_berry_rain")]
+    pub berry_rain: u32,
+    #[serde(default = "default_water_rain")]
+    pub water_rain: u32,
+    #[serde(default = "default_berry_rain")]
+    pub mushroom_rain: u32,
+    #[serde(default = "default_berry_rain")]
+    pub bitter_rain: u32,
+    #[serde(default = "default_water_rain")]
+    pub pot_rain: u32,
+    #[serde(default = "default_water_rain")]
+    pub mud_rain: u32,
+}
+
+fn default_fire_ticks() -> u64 {
+    20
+}
+fn default_warmth_hold() -> u64 {
+    4
+}
+fn default_clay_ticks() -> u64 {
+    4
+}
+fn default_clothes_ticks() -> u64 {
+    4
+}
+fn default_spear_ticks() -> u64 {
+    4
+}
+fn default_track_ticks() -> u64 {
+    4
+}
+fn default_wolf_ticks() -> u64 {
+    2
+}
+fn default_snare_ticks() -> u64 {
+    3
+}
+fn default_net_ticks() -> u64 {
+    3
+}
+fn default_weir_ticks() -> u64 {
+    3
+}
+fn default_meat_ticks() -> u64 {
+    24
+}
+fn default_salt_ticks() -> u64 {
+    24
+}
+fn default_sting_ticks() -> u64 {
+    4
+}
+fn default_honey_ticks() -> u64 {
+    24
+}
+fn default_egg_ticks() -> u64 {
+    24
+}
+fn default_moss_ticks() -> u64 {
+    24
+}
+fn default_resin_ticks() -> u64 {
+    24
+}
+fn default_willow_ticks() -> u64 {
+    24
+}
+fn default_nettle_ticks() -> u64 {
+    24
+}
+fn default_cattail_ticks() -> u64 {
+    24
+}
+fn default_cup_leak_ticks() -> u64 {
+    8
+}
+fn default_flint_ticks() -> u64 {
+    24
+}
+fn default_ochre_ticks() -> u64 {
+    24
+}
+fn default_clay_bank_ticks() -> u64 {
+    24
+}
+fn default_copper_ore_ticks() -> u64 {
+    24
+}
+fn default_iron_ore_ticks() -> u64 {
+    24
+}
+fn default_reed_ticks() -> u64 {
+    24
+}
+fn default_branch_ticks() -> u64 {
+    24
+}
+fn default_bark_pile_ticks() -> u64 {
+    24
+}
+fn default_berry_ticks() -> u64 {
+    24
+}
+fn default_mushroom_ticks() -> u64 {
+    24
+}
+fn default_deer_ticks() -> u64 {
+    24
+}
+fn default_night_at() -> u64 {
+    72
+}
+fn default_night_len() -> u64 {
+    8
+}
+fn default_day_len() -> u64 {
+    16
+}
+fn default_season_at() -> u64 {
+    18
+}
+fn default_rot_ticks() -> u64 {
+    8
+}
+fn default_hunger_tick() -> u32 {
+    10
+}
+fn default_cook_relief() -> u32 {
+    450
+}
+fn default_hungry_at() -> u32 {
+    250
+}
+fn default_starving_at() -> u32 {
+    600
+}
+fn default_berry_rain() -> u32 {
+    160
+}
+fn default_illness_chance() -> u32 {
+    500
+}
+fn default_still_chance() -> u32 {
+    900
+}
+fn default_chill_at() -> u64 {
+    12
+}
+fn default_cold_tick() -> u32 {
+    40
+}
+fn default_fire_warmth() -> u32 {
+    160
+}
+fn default_sun_tick() -> u32 {
+    50
+}
+fn default_smear_at() -> u32 {
+    500
+}
+fn default_mud_fade() -> u32 {
+    40
+}
+fn default_mud_wash() -> u32 {
+    200
+}
+fn default_mud_sun() -> u32 {
+    250
+}
+fn default_illness_hit() -> u32 {
+    600
+}
+fn default_ill_at() -> u32 {
+    250
+}
+fn default_illness_recovery() -> u32 {
+    100
+}
+fn default_water_rain() -> u32 {
+    0
+}
+
+#[derive(Deserialize)]
+struct RawFile {
+    time: RawTime,
+    body: RawBody,
+    forces: RawForces,
+    roof: RawRoof,
+    materials: BTreeMap<String, RawMat>,
+}
+
+#[derive(Deserialize)]
+struct RawTime {
+    rain_starts_at: u64,
+    season_at: u64,
+    rot_ticks: u64,
+    drag_ticks: u64,
+    frame_phase_ticks: u64,
+    frame_phases: u8,
+    bark_ticks: u64,
+    fire_ticks: u64,
+    warmth_hold: u64,
+    clay_ticks: u64,
+    #[serde(default = "default_clothes_ticks")]
+    clothes_ticks: u64,
+    spear_ticks: u64,
+    #[serde(default = "default_track_ticks")]
+    track_ticks: u64,
+    #[serde(default = "default_wolf_ticks")]
+    wolf_ticks: u64,
+    #[serde(default = "default_snare_ticks")]
+    snare_ticks: u64,
+    #[serde(default = "default_net_ticks")]
+    net_ticks: u64,
+    #[serde(default = "default_weir_ticks")]
+    weir_ticks: u64,
+    #[serde(default = "default_meat_ticks")]
+    meat_ticks: u64,
+    #[serde(default = "default_salt_ticks")]
+    salt_ticks: u64,
+    #[serde(default = "default_sting_ticks")]
+    sting_ticks: u64,
+    #[serde(default = "default_honey_ticks")]
+    honey_ticks: u64,
+    #[serde(default = "default_egg_ticks")]
+    egg_ticks: u64,
+    #[serde(default = "default_moss_ticks")]
+    moss_ticks: u64,
+    #[serde(default = "default_resin_ticks")]
+    resin_ticks: u64,
+    #[serde(default = "default_willow_ticks")]
+    willow_ticks: u64,
+    #[serde(default = "default_nettle_ticks")]
+    nettle_ticks: u64,
+    #[serde(default = "default_cattail_ticks")]
+    cattail_ticks: u64,
+    #[serde(default = "default_cup_leak_ticks")]
+    cup_leak_ticks: u64,
+    #[serde(default = "default_flint_ticks")]
+    flint_ticks: u64,
+    #[serde(default = "default_ochre_ticks")]
+    ochre_ticks: u64,
+    #[serde(default = "default_clay_bank_ticks")]
+    clay_bank_ticks: u64,
+    #[serde(default = "default_copper_ore_ticks")]
+    copper_ore_ticks: u64,
+    #[serde(default = "default_iron_ore_ticks")]
+    iron_ore_ticks: u64,
+    #[serde(default = "default_reed_ticks")]
+    reed_ticks: u64,
+    #[serde(default = "default_branch_ticks")]
+    branch_ticks: u64,
+    #[serde(default = "default_bark_pile_ticks")]
+    bark_pile_ticks: u64,
+    #[serde(default = "default_berry_ticks")]
+    berry_ticks: u64,
+    #[serde(default = "default_mushroom_ticks")]
+    mushroom_ticks: u64,
+    #[serde(default = "default_deer_ticks")]
+    deer_ticks: u64,
+    #[serde(default = "default_night_at")]
+    night_at: u64,
+    #[serde(default = "default_night_len")]
+    night_len: u64,
+    #[serde(default = "default_day_len")]
+    day_len: u64,
+    chill_at: u64,
+}
+
+#[derive(Deserialize)]
+struct RawBody {
+    rain_gain: f64,
+    brook_rain: f64,
+    wade: f64,
+    damp_at: f64,
+    soaked_at: f64,
+    thirst_per_tick: f64,
+    drink_relief: f64,
+    thirsty_at: f64,
+    parched_at: f64,
+    hunger_per_tick: f64,
+    cook_relief: f64,
+    hungry_at: f64,
+    starving_at: f64,
+    illness_chance: f64,
+    still_chance: f64,
+    illness_hit: f64,
+    ill_at: f64,
+    illness_recovery: f64,
+    cold_per_tick: f64,
+    chilly_at: f64,
+    cold_at: f64,
+    fire_warmth: f64,
+    sun_per_tick: f64,
+    pink_at: f64,
+    burned_at: f64,
+    smear_at: f64,
+    mud_fade: f64,
+    mud_wash: f64,
+    mud_sun: f64,
+    carry_slots: u32,
+    sight: i32,
+}
+
+#[derive(Deserialize)]
+struct RawForces {
+    drag_needed: u32,
+}
+
+#[derive(Deserialize)]
+struct RawRoof {
+    rock: f64,
+    dry_bark: f64,
+    wet_bark: f64,
+}
+
+#[derive(Deserialize)]
+struct RawMat {
+    rain_gain: f64,
+}
+
+fn millis(value: f64, name: &str) -> Result<u32, String> {
+    if !(0.0..=1.0).contains(&value) {
+        return Err(format!("{name} must be between 0 and 1"));
+    }
+    Ok((value * 1000.0).round() as u32)
+}
+
+impl Tuning {
+    /// How far smoke shows. One cell past sight, so someone who cannot
+    /// see the fire can still see the smoke. Farther than this, nothing.
+    pub(crate) fn smoke_range(&self) -> i32 {
+        self.sight.saturating_add(1)
+    }
+
+    pub fn from_toml(text: &str) -> Result<Self, String> {
+        let raw: RawFile = toml::from_str(text).map_err(|err| err.to_string())?;
+        if raw.time.drag_ticks == 0
+            || raw.time.frame_phase_ticks == 0
+            || raw.time.bark_ticks == 0
+            || raw.time.fire_ticks == 0
+            || raw.time.rot_ticks == 0
+            || raw.time.warmth_hold == 0
+            || raw.time.clay_ticks == 0
+            || raw.time.clothes_ticks == 0
+            || raw.time.spear_ticks == 0
+            || raw.time.track_ticks == 0
+            || raw.time.wolf_ticks == 0
+            || raw.time.snare_ticks == 0
+            || raw.time.net_ticks == 0
+            || raw.time.weir_ticks == 0
+            || raw.time.meat_ticks == 0
+            || raw.time.salt_ticks == 0
+            || raw.time.sting_ticks == 0
+            || raw.time.honey_ticks == 0
+            || raw.time.egg_ticks == 0
+            || raw.time.moss_ticks == 0
+            || raw.time.resin_ticks == 0
+            || raw.time.willow_ticks == 0
+            || raw.time.nettle_ticks == 0
+            || raw.time.cattail_ticks == 0
+            || raw.time.cup_leak_ticks == 0
+            || raw.time.flint_ticks == 0
+            || raw.time.ochre_ticks == 0
+            || raw.time.clay_bank_ticks == 0
+            || raw.time.copper_ore_ticks == 0
+            || raw.time.iron_ore_ticks == 0
+            || raw.time.reed_ticks == 0
+            || raw.time.branch_ticks == 0
+            || raw.time.deer_ticks == 0
+            || raw.time.night_len == 0
+            || raw.time.day_len == 0
+        {
+            return Err("work durations must be at least 1 tick".into());
+        }
+        if raw.time.frame_phases == 0 {
+            return Err("frame_phases must be at least 1".into());
+        }
+        if raw.body.carry_slots == 0 {
+            return Err("carry_slots must be at least 1".into());
+        }
+        if raw.body.sight < 1 {
+            return Err("sight must be at least 1".into());
+        }
+        if raw.forces.drag_needed == 0 {
+            return Err("drag_needed must be at least 1".into());
+        }
+        let branch = raw
+            .materials
+            .get("branch")
+            .ok_or("missing material branch")?;
+        let bark = raw.materials.get("bark").ok_or("missing material bark")?;
+        let log = raw.materials.get("log").ok_or("missing material log")?;
+        let berry = raw.materials.get("berry").ok_or("missing material berry")?;
+        let water = raw.materials.get("water").ok_or("missing material water")?;
+        let mushroom = raw
+            .materials
+            .get("mushroom")
+            .ok_or("missing material mushroom")?;
+        let bitter = raw
+            .materials
+            .get("bitter berry")
+            .ok_or("missing material bitter berry")?;
+        let pot = raw.materials.get("pot").ok_or("missing material pot")?;
+        let mud = raw.materials.get("mud").ok_or("missing material mud")?;
+        let hunger_per_tick = millis(raw.body.hunger_per_tick, "body.hunger_per_tick")?;
+        let cook_relief = millis(raw.body.cook_relief, "body.cook_relief")?;
+        let hungry_at = millis(raw.body.hungry_at, "body.hungry_at")?;
+        let starving_at = millis(raw.body.starving_at, "body.starving_at")?;
+        Ok(Tuning {
+            rain_starts_at: raw.time.rain_starts_at,
+            season_at: raw.time.season_at,
+            rot_ticks: raw.time.rot_ticks,
+            drag_ticks: raw.time.drag_ticks,
+            frame_phase_ticks: raw.time.frame_phase_ticks,
+            frame_phases: raw.time.frame_phases,
+            bark_ticks: raw.time.bark_ticks,
+            fire_ticks: raw.time.fire_ticks,
+            warmth_hold: raw.time.warmth_hold,
+            clay_ticks: raw.time.clay_ticks,
+            clothes_ticks: raw.time.clothes_ticks,
+            spear_ticks: raw.time.spear_ticks,
+            track_ticks: raw.time.track_ticks,
+            wolf_ticks: raw.time.wolf_ticks,
+            snare_ticks: raw.time.snare_ticks,
+            net_ticks: raw.time.net_ticks,
+            weir_ticks: raw.time.weir_ticks,
+            meat_ticks: raw.time.meat_ticks,
+            salt_ticks: raw.time.salt_ticks,
+            sting_ticks: raw.time.sting_ticks,
+            honey_ticks: raw.time.honey_ticks,
+            egg_ticks: raw.time.egg_ticks,
+            moss_ticks: raw.time.moss_ticks,
+            resin_ticks: raw.time.resin_ticks,
+            willow_ticks: raw.time.willow_ticks,
+            nettle_ticks: raw.time.nettle_ticks,
+            cattail_ticks: raw.time.cattail_ticks,
+            cup_leak_ticks: raw.time.cup_leak_ticks,
+            flint_ticks: raw.time.flint_ticks,
+            ochre_ticks: raw.time.ochre_ticks,
+            clay_bank_ticks: raw.time.clay_bank_ticks,
+            copper_ore_ticks: raw.time.copper_ore_ticks,
+            iron_ore_ticks: raw.time.iron_ore_ticks,
+            reed_ticks: raw.time.reed_ticks,
+            branch_ticks: raw.time.branch_ticks,
+            bark_pile_ticks: raw.time.bark_pile_ticks,
+            berry_ticks: raw.time.berry_ticks,
+            mushroom_ticks: raw.time.mushroom_ticks,
+            deer_ticks: raw.time.deer_ticks,
+            night_at: raw.time.night_at,
+            night_len: raw.time.night_len,
+            day_len: raw.time.day_len,
+            chill_at: raw.time.chill_at,
+            body_rain: millis(raw.body.rain_gain, "body.rain_gain")?,
+            brook_rain: millis(raw.body.brook_rain, "body.brook_rain")?,
+            wade: millis(raw.body.wade, "body.wade")?,
+            damp_at: millis(raw.body.damp_at, "body.damp_at")?,
+            soaked_at: millis(raw.body.soaked_at, "body.soaked_at")?,
+            thirst_per_tick: millis(raw.body.thirst_per_tick, "body.thirst_per_tick")?,
+            drink_relief: millis(raw.body.drink_relief, "body.drink_relief")?,
+            thirsty_at: millis(raw.body.thirsty_at, "body.thirsty_at")?,
+            parched_at: millis(raw.body.parched_at, "body.parched_at")?,
+            hunger_per_tick,
+            cook_relief,
+            hungry_at,
+            starving_at,
+            illness_chance: millis(raw.body.illness_chance, "body.illness_chance")?,
+            still_chance: millis(raw.body.still_chance, "body.still_chance")?,
+            energy_per_tick: hunger_per_tick,
+            tiring_at: hungry_at,
+            spent_at: starving_at,
+            eat_relief: cook_relief,
+            cold_per_tick: millis(raw.body.cold_per_tick, "body.cold_per_tick")?,
+            chilly_at: millis(raw.body.chilly_at, "body.chilly_at")?,
+            cold_at: millis(raw.body.cold_at, "body.cold_at")?,
+            fire_warmth: millis(raw.body.fire_warmth, "body.fire_warmth")?,
+            sun_per_tick: millis(raw.body.sun_per_tick, "body.sun_per_tick")?,
+            pink_at: millis(raw.body.pink_at, "body.pink_at")?,
+            burned_at: millis(raw.body.burned_at, "body.burned_at")?,
+            smear_at: millis(raw.body.smear_at, "body.smear_at")?,
+            mud_fade: millis(raw.body.mud_fade, "body.mud_fade")?,
+            mud_wash: millis(raw.body.mud_wash, "body.mud_wash")?,
+            mud_sun: millis(raw.body.mud_sun, "body.mud_sun")?,
+            illness_hit: millis(raw.body.illness_hit, "body.illness_hit")?,
+            ill_at: millis(raw.body.ill_at, "body.ill_at")?,
+            illness_recovery: millis(raw.body.illness_recovery, "body.illness_recovery")?,
+            carry_slots: raw.body.carry_slots,
+            sight: raw.body.sight,
+            hearing: raw.body.sight.saturating_add(1),
+            lean_to: 500,
+            drag_needed: raw.forces.drag_needed,
+            rock_roof: millis(raw.roof.rock, "roof.rock")?,
+            dry_bark_roof: millis(raw.roof.dry_bark, "roof.dry_bark")?,
+            wet_bark_roof: millis(raw.roof.wet_bark, "roof.wet_bark")?,
+            branch_rain: millis(branch.rain_gain, "branch.rain_gain")?,
+            bark_rain: millis(bark.rain_gain, "bark.rain_gain")?,
+            log_rain: millis(log.rain_gain, "log.rain_gain")?,
+            berry_rain: millis(berry.rain_gain, "berry.rain_gain")?,
+            water_rain: millis(water.rain_gain, "water.rain_gain")?,
+            mushroom_rain: millis(mushroom.rain_gain, "mushroom.rain_gain")?,
+            bitter_rain: millis(bitter.rain_gain, "bitter berry.rain_gain")?,
+            pot_rain: millis(pot.rain_gain, "pot.rain_gain")?,
+            mud_rain: millis(mud.rain_gain, "mud.rain_gain")?,
+        })
+    }
+
+    pub fn evening() -> Self {
+        Self::from_toml(include_str!("../../config/evening.toml"))
+            .expect("config/evening.toml is valid")
+    }
+
+    pub fn rain_gain(&self, material: Material) -> u32 {
+        match material {
+            Material::Branch => self.branch_rain,
+            Material::Bark => self.bark_rain,
+            Material::Log => self.log_rain,
+            Material::Berry => self.berry_rain,
+            Material::Water => self.water_rain,
+            Material::Mushroom => self.mushroom_rain,
+            Material::BitterBerry => self.bitter_rain,
+            Material::Pot => self.pot_rain,
+            Material::Mud => self.mud_rain,
+            Material::Stone => 0,
+            Material::Clay => 0,
+            Material::Bowl => 0,
+            Material::Spear => 0,
+            Material::Carcass => 0,
+            Material::Flint => 0,
+            Material::Flake => 0,
+            Material::Meat => 0,
+            Material::Hide => 0,
+            Material::Ochre => 0,
+            Material::CopperOre => 0,
+            Material::IronOre => 0,
+            Material::Iron => 0,
+            Material::Knife => 0,
+            Material::Copper => 0,
+            Material::Awl => 0,
+            Material::Cord => 0,
+            Material::Fish => 0,
+            Material::Brand => 0,
+            Material::Basket => 0,
+            Material::Charcoal => 0,
+            Material::Reed => 0,
+            Material::Bone => 0,
+            Material::Salt => 0,
+            Material::Honey => 0,
+            Material::Egg => 0,
+            Material::Moss => self.bark_rain,
+            Material::Bow => 0,
+            Material::Net => 0,
+            Material::Mat => 0,
+            Material::Canoe => 0,
+            Material::PaleBerry => self.berry_rain,
+            Material::Paddle => 0,
+            Material::Hook => 0,
+            Material::Resin => 0,
+            Material::Willow => 0,
+            Material::Nettle => 0,
+            Material::Cattail => 0,
+            Material::BarkCup => 0,
+            Material::Flour => 0,
+            Material::Mint => 0,
+            Material::Needle => 0,
+            Material::Drill => 0,
+            Material::WillowBark => 0,
+            Material::Fluff => self.bark_rain,
+            Material::Worm => 0,
+            Material::Quartz => 0,
+            Material::Whistle => 0,
+            Material::Flute => 0,
+            Material::Drum => 0,
+            Material::Sinew => 0,
+            Material::Sticks => 0,
+            Material::Torch => 0,
+            Material::BoneNeedle => 0,
+            Material::Antler => 0,
+            Material::Pick => 0,
+            Material::Onion => 0,
+        }
+    }
+}
