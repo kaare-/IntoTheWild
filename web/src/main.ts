@@ -147,7 +147,7 @@ async function showPlay() {
   rememberToken(token() ?? "", observation.self_info.name);
   app.innerHTML = `
     <section class="play">
-      <p class="env" id="place"></p>
+      <div class="env" id="place"></div>
       <div class="chat">
         <div class="transcript" id="log"></div>
         <p class="now" id="work"></p>
